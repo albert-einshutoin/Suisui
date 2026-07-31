@@ -1325,7 +1325,11 @@ private func seedCaptureFixtures(
                 "Scheduled manual capture",
                 "planned",
                 "Voice memo capture with transcript and local interpretation metadata.",
-                .null,
+                // Keep both Inbox rows one pinned day overdue so the app
+                // deterministically creates two reschedule suggestions. Those
+                // extra rows make each queue-state landmark scroll to a
+                // distinct viewport without depending on the host's date.
+                .text(yesterday),
                 .null,
                 "high"
             ),
@@ -1334,7 +1338,7 @@ private func seedCaptureFixtures(
                 "Review captured note",
                 "backlog",
                 "Manual Inbox item keeps the normal route visually distinct from the seeded voice intake detail.",
-                .null,
+                .text(yesterday),
                 .null,
                 "medium"
             ),

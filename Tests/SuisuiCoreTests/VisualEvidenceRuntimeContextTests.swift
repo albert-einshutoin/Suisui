@@ -697,6 +697,21 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
             ),
             ["visual-approved", "visual-failed", "visual-waiting"]
         )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                """
+                SELECT title || '=' || COALESCE(substr(due_at, 1, 10), 'missing')
+                FROM tasks
+                WHERE title IN ('Review captured note', 'Scheduled manual capture')
+                ORDER BY title;
+                """
+            ),
+            [
+                "Review captured note=2026-07-09",
+                "Scheduled manual capture=2026-07-09"
+            ],
+            "Assistant Queue visual states need deterministic overdue tasks relative to the pinned July 10 clock."
+        )
     }
 
     func testCaptureSeedOnlySecurelyCleansAutomaticEvidenceHome() throws {
