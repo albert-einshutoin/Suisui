@@ -76,7 +76,7 @@ struct ProjectBoardMissedTaskFollowUpDateProvider: DateProvider {
     var now: Date {
         // Production launches retain the real system clock. Only the complete
         // visual-evidence context pins missed-task suggestions, preventing a
-        // hosted run's weekday from rewriting deterministic queue fixtures.
+        // hosted run's weekday from rewriting deterministic queue content.
         visualEvidenceReferenceDate ?? SystemDateProvider().now
     }
 }
