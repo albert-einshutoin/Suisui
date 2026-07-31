@@ -4632,6 +4632,27 @@ public final class ProjectBoardViewModel: ObservableObject {
         on referenceDate: Date = Date(),
         calendar: Calendar = .current
     ) async -> Bool {
+        await playDailyPlanningReviewReadout(
+            using: previewer,
+            languageCode: languageCode,
+            voiceID: voiceID,
+            provider: .localKokoro,
+            transcript: transcript,
+            on: referenceDate,
+            calendar: calendar
+        )
+    }
+
+    @discardableResult
+    public func playDailyPlanningReviewReadout(
+        using previewer: any TextToSpeechPreviewing,
+        languageCode: String,
+        voiceID: String,
+        provider: TTSProvider,
+        transcript: String = "Today daily planning review",
+        on referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) async -> Bool {
         // Readout callers with explicit inputs must receive a review built from
         // those inputs unless the user already prepared an explicit review.
         let review = dailyPlanningReview
@@ -4645,7 +4666,8 @@ public final class ProjectBoardViewModel: ObservableObject {
         let request = DailyPlanningReviewReadoutBuilder.makeRequest(
             review: review,
             languageCode: languageCode,
-            voiceID: voiceID
+            voiceID: voiceID,
+            provider: provider
         )
 
         do {

@@ -87,8 +87,8 @@ Choose a provider in **Settings > AI** and save your API key. Secrets are stored
 
 ### Speech
 
-- **STT:** configure whisper.cpp and a compatible local model.
-- **TTS:** configure Kokoro and a compatible local model.
+- **STT:** choose on-device Apple Speech with no API key, OpenAI Transcribe, or a configured whisper.cpp runtime and compatible local model.
+- **TTS:** choose macOS System Speech with no model download, or configure Kokoro and a compatible local model.
 - Speech models are not bundled. Select their file or directory from Settings.
 - Voice Command requires microphone permission from macOS.
 

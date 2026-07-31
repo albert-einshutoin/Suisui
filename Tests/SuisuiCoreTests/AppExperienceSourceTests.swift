@@ -1518,7 +1518,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("does not\n                    // consume LLM budget"))
         XCTAssertTrue(boardSource.contains("decision.status == .readyForReview"))
         XCTAssertTrue(boardSource.contains("openTaskInspector(taskID)"))
-        XCTAssertTrue(boardSource.contains("viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())"))
+        XCTAssertEqual(
+            boardSource.components(
+                separatedBy: "dateProvider: ProjectBoardMissedTaskFollowUpDateProvider()"
+            ).count - 1,
+            2
+        )
+        XCTAssertTrue(boardSource.contains("visualEvidenceReferenceDate ?? SystemDateProvider().now"))
         XCTAssertTrue(boardSource.contains(".help(\"Review Task Automation: prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings.\")"))
         XCTAssertTrue(appSource.contains("@StateObject private var settingsViewModel: AppSettingsViewModel"))
@@ -5305,18 +5311,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(aiTabSource.contains(".accessibilityIdentifier(\"settings-tts-unavailable\")"))
     }
 
-    func testSettingsExposesLocalSTTReadinessBeforeRuntimeSelection() throws {
+    func testSettingsExposesSelectedSTTReadinessBeforeRuntimeSelection() throws {
         let appSource = try readAppShellSource()
         let coreSource = try readPackageFile("Sources/SuisuiCore/App/AppSettings.swift")
         let aiTabStart = try XCTUnwrap(appSource.range(of: "struct SettingsAIFeatureView: View"))
         let syncTabStart = try XCTUnwrap(appSource.range(of: "struct SettingsSyncFeatureView: View"))
         let aiTabSource = String(appSource[aiTabStart.lowerBound..<syncTabStart.lowerBound])
 
-        XCTAssertTrue(aiTabSource.contains("LocalSTTProviderStatusRow(row: settingsViewModel.localSTTProviderReadinessRow)"))
+        XCTAssertTrue(aiTabSource.contains("LocalSTTProviderStatusRow(row: settingsViewModel.selectedSTTProviderReadinessRow)"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"settings-local-stt-readiness-row\")"))
         XCTAssertTrue(appSource.contains("Text(localizedSettingsDisplay(row.statusLabel))"))
         XCTAssertTrue(appSource.contains("struct LocalSTTProviderStatusRow"))
         XCTAssertTrue(appSource.contains("STT provider readiness"))
+        XCTAssertTrue(coreSource.contains("Uses on-device Apple Speech without an API key"))
         XCTAssertTrue(coreSource.contains("run the local voice runtime smoke"))
     }
 
@@ -5533,14 +5540,36 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(factorySource.contains(".openAITranscribe, .appleSpeechAnalyzer, .localWhisperKit, .localWhisperCpp"))
     }
 
-    func testRuntimeTTSFactoryUsesKokoroProviderWithoutSystemSpeechFallback() throws {
+    func testRuntimeSTTFactoryUsesAppleSpeechProviderWithoutOpenAIFallback() throws {
+        let appSource = try readAppShellSource()
+        let factoryStart = try XCTUnwrap(appSource.range(of: "private static func makeSpeechToTextProvider"))
+        let factorySource = String(appSource[factoryStart.lowerBound..<appSource.endIndex])
+        let providerSource = try readPackageFile("Sources/SuisuiApp/Adapters/AppleSpeechRecognitionProvider.swift")
+
+        XCTAssertTrue(factorySource.contains("case .appleSpeechAnalyzer:"))
+        XCTAssertTrue(factorySource.contains("AppleSpeechRecognitionProvider()"))
+        XCTAssertFalse(factorySource.contains("case .openAITranscribe, .appleSpeechAnalyzer"))
+        XCTAssertTrue(providerSource.contains("import Speech"))
+        XCTAssertTrue(providerSource.contains("SFSpeechRecognizer.requestAuthorization"))
+        XCTAssertTrue(providerSource.contains("SFSpeechURLRecognitionRequest"))
+        XCTAssertTrue(providerSource.contains("requiresOnDeviceRecognition = true"))
+        XCTAssertTrue(providerSource.contains("suisuiAppleSpeechAuthorizationDidChange"))
+        let buildScript = try readPackageFile("script/build_and_run.sh")
+        XCTAssertTrue(buildScript.contains("NSSpeechRecognitionUsageDescription"))
+    }
+
+    func testRuntimeTTSFactoryUsesAppleSystemSpeechWithoutKokoroFallback() throws {
         let appSource = try readAppShellSource()
         let runtimeFactoryStart = try XCTUnwrap(appSource.range(of: "enum AppTextToSpeechRuntimeFactory"))
         let runtimeFactorySource = String(appSource[runtimeFactoryStart.lowerBound..<appSource.endIndex])
+        let providerSource = try readPackageFile("Sources/SuisuiApp/Adapters/AppleSystemSpeechProvider.swift")
 
         XCTAssertTrue(appSource.contains("static func makeTextToSpeechPreviewer(settings: AppSettings) -> any TextToSpeechPreviewing"))
         XCTAssertTrue(appSource.contains("AppTextToSpeechRuntimeFactory.makePreviewer(settings: settings)"))
-        XCTAssertTrue(runtimeFactorySource.contains("case .systemSpeech, .localKokoro:"))
+        XCTAssertTrue(appSource.contains("settings.selectedTTSVoiceID"))
+        XCTAssertTrue(runtimeFactorySource.contains("case .systemSpeech:"))
+        XCTAssertTrue(runtimeFactorySource.contains("AppleSystemSpeechProvider("))
+        XCTAssertTrue(runtimeFactorySource.contains("case .localKokoro:"))
         XCTAssertTrue(runtimeFactorySource.contains("KokoroLocalTTSConfiguration("))
         XCTAssertTrue(runtimeFactorySource.contains("normalizedSettings.kokoroExecutablePath ?? \"\""))
         XCTAssertTrue(runtimeFactorySource.contains("normalizedSettings.ttsLanguageCode"))
@@ -5550,7 +5579,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(runtimeFactorySource.contains("TextToSpeechPreviewService("))
         XCTAssertTrue(runtimeFactorySource.contains("AVFoundationSpeechAudioPlayer()"))
         XCTAssertTrue(runtimeFactorySource.contains("temporaryDirectory: temporaryDirectory"))
-        XCTAssertFalse(runtimeFactorySource.contains("AVSpeechSynthesizer"))
+        XCTAssertTrue(providerSource.contains("AVSpeechSynthesizer"))
+        XCTAssertTrue(providerSource.contains("AVSpeechSynthesisVoice"))
+        XCTAssertTrue(providerSource.contains("baseLanguageCode(selected.language) == baseLanguageCode(languageCode)"))
+        XCTAssertTrue(providerSource.contains("AVAudioFile"))
     }
 
     func testAVFoundationSpeechAudioPlayerUsesAudioPlayerInsteadOfSystemSpeech() throws {

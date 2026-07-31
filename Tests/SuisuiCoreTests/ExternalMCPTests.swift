@@ -320,7 +320,7 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(transport.recordedMethods, ["initialize"])
     }
 
-    func testClientRejectsDraft20260728ProtocolWithStableBaselineGuidance() async throws {
+    func testClientRejectsCurrentStable20260728WithLegacyBaselineGuidance() async throws {
         let transport = RecordingMCPTransport { request in
             MCPJSONRPCResponse(
                 id: request.id,
@@ -328,31 +328,31 @@ final class ExternalMCPTests: XCTestCase {
                     "protocolVersion": .string("2026-07-28"),
                     "capabilities": .object([:]),
                     "serverInfo": .object([
-                        "name": .string("draft-mcp"),
+                        "name": .string("current-stable-mcp"),
                         "version": .string("0.1.0")
                     ])
                 ])
             )
         }
-        let client = MCPClient(serverID: "draft", transport: transport)
+        let client = MCPClient(serverID: "current-stable", transport: transport)
 
         do {
             _ = try await client.initialize()
-            XCTFail("draft initialize protocolVersion should fail for this release")
+            XCTFail("unsupported current stable protocolVersion should fail for this release")
         } catch let error as MCPClientError {
             XCTAssertEqual(
                 error,
                 .invalidResponse(
-                    serverID: "draft",
+                    serverID: "current-stable",
                     method: "initialize",
-                    reason: "Unsupported result.protocolVersion: 2026-07-28. Suisui public alpha supports stable MCP 2025-11-25 stdio Tools only; draft 2026-07-28 protocol metadata and server/discover are out of scope for this release."
+                    reason: "Unsupported result.protocolVersion: 2026-07-28. Suisui public alpha supports legacy MCP 2025-11-25 stdio Tools only; current stable MCP 2026-07-28 protocol metadata and server/discover are unsupported in this release."
                 )
             )
         }
         XCTAssertEqual(transport.recordedMethods, ["initialize"])
     }
 
-    func testClientRejectsModernProtocolOnlyInitializeErrorWithStableBaselineGuidance() async throws {
+    func testClientRejectsModernProtocolOnlyInitializeErrorWithLegacyBaselineGuidance() async throws {
         let transport = RecordingMCPTransport { request in
             MCPJSONRPCResponse(
                 id: request.id,
@@ -370,7 +370,7 @@ final class ExternalMCPTests: XCTestCase {
                 .invalidResponse(
                     serverID: "modern-only",
                     method: "initialize",
-                    reason: "Unsupported protocol version during initialize. Suisui public alpha supports stable MCP 2025-11-25 stdio Tools only; draft/modern protocol metadata and server/discover are out of scope for this release."
+                    reason: "Unsupported protocol version during initialize. Suisui public alpha supports legacy MCP 2025-11-25 stdio Tools only; current stable MCP 2026-07-28 protocol metadata and server/discover are unsupported in this release."
                 )
             )
         }
@@ -1464,7 +1464,7 @@ final class ExternalMCPTests: XCTestCase {
     }
 
     @MainActor
-    func testExternalMCPSettingsViewModelShowsStableGuidanceForModernProtocolOnlyServer() async throws {
+    func testExternalMCPSettingsViewModelShowsLegacyGuidanceForModernProtocolOnlyServer() async throws {
         let registration = MCPServerRegistration(
             id: "modern-only",
             displayName: "Modern MCP",
@@ -1493,7 +1493,7 @@ final class ExternalMCPTests: XCTestCase {
         XCTAssertEqual(viewModel.connectionCheckResultLabel, "Failed")
         XCTAssertEqual(
             viewModel.errorMessage,
-            "MCP initialize response was invalid: Unsupported protocol version during initialize. Suisui public alpha supports stable MCP 2025-11-25 stdio Tools only; draft/modern protocol metadata and server/discover are out of scope for this release."
+            "MCP initialize response was invalid: Unsupported protocol version during initialize. Suisui public alpha supports legacy MCP 2025-11-25 stdio Tools only; current stable MCP 2026-07-28 protocol metadata and server/discover are unsupported in this release."
         )
         XCTAssertEqual(transport.recordedMethods, ["initialize"])
     }

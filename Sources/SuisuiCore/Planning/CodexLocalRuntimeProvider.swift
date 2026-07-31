@@ -267,6 +267,7 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
                 scratchDirectory: scratchDirectory
             )
         )
+        let approvalRevocation = CodexApprovalRevocationState()
 
         do {
             let response = try await withThrowingTaskGroup(of: PlanningResponse.self) { group in
@@ -282,6 +283,10 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
                 }
                 group.addTask {
                     for await _ in changes {
+                        // Record the security event before closing stdio. Closing
+                        // the stream can wake the planning task first, so the
+                        // catch path must still report revocation as the cause.
+                        await approvalRevocation.markRevoked()
                         // Close stdio before surfacing revocation so a provider
                         // blocked on an App Server event cannot keep the old
                         // process alive while the task group is unwinding.
@@ -314,6 +319,11 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
             if Self.isExecutableIntegrityMismatch(error) {
                 approvalInvalidator()
             }
+            if await approvalRevocation.wasRevoked {
+                throw LLMProviderError.executionNotApproved(
+                    "Codex approval changed while the planning request was running."
+                )
+            }
             throw error
         }
     }
@@ -338,5 +348,13 @@ public struct CodexLocalRuntimeProvider: StreamingLLMProvider {
                 approvedExecutable: approvedExecutable
             )
         )
+    }
+}
+
+private actor CodexApprovalRevocationState {
+    private(set) var wasRevoked = false
+
+    func markRevoked() {
+        wasRevoked = true
     }
 }

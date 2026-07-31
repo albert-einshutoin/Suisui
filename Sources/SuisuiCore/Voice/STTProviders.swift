@@ -644,6 +644,10 @@ private extension AudioFileFormat {
 public extension STTProviderCatalog {
     static let phase1Default = STTProviderCatalog(
         availabilities: [
+            STTProviderAvailability(
+                providerID: .appleSpeechAnalyzer,
+                isAvailable: true
+            ),
             OpenAITranscribeProvider.defaultAvailability,
             STTProviderAvailability(
                 providerID: .whisperCpp,

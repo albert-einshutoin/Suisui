@@ -134,9 +134,20 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
         let store = try SQLiteAssistantQueueStore(path: databaseURL.path)
         let items = try store.list(filter: .all(limit: 100))
         let itemsByID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
-        XCTAssertEqual(Set(itemsByID.keys), ["visual-waiting", "visual-approved", "visual-failed"])
-        XCTAssertEqual(items.count, 3, "rerunning the seeder must update stable rows, not append duplicates")
+        XCTAssertEqual(
+            Set(itemsByID.keys),
+            [
+                "visual-waiting",
+                "visual-waiting-density-a",
+                "visual-waiting-density-b",
+                "visual-approved",
+                "visual-failed"
+            ]
+        )
+        XCTAssertEqual(items.count, 5, "rerunning the seeder must update stable rows, not append duplicates")
         XCTAssertEqual(itemsByID["visual-waiting"]?.state, .waitingReview)
+        XCTAssertEqual(itemsByID["visual-waiting-density-a"]?.state, .waitingReview)
+        XCTAssertEqual(itemsByID["visual-waiting-density-b"]?.state, .waitingReview)
         XCTAssertEqual(itemsByID["visual-approved"]?.state, .approved)
         XCTAssertEqual(itemsByID["visual-failed"]?.state, .failed)
 
@@ -166,8 +177,8 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
             planIDs.insert(plan.id)
             actionIDs.insert(action.id)
         }
-        XCTAssertEqual(planIDs.count, 3, "only stable plan IDs may differ between fixture payloads")
-        XCTAssertEqual(actionIDs.count, 3, "only stable action IDs may differ between fixture payloads")
+        XCTAssertEqual(planIDs.count, 5, "only stable plan IDs may differ between fixture payloads")
+        XCTAssertEqual(actionIDs.count, 5, "only stable action IDs may differ between fixture payloads")
 
         XCTAssertNil(itemsByID["visual-waiting"]?.approval)
         for id in ["visual-approved", "visual-failed"] {
@@ -695,7 +706,13 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
             try connection.queryStrings(
                 "SELECT id FROM assistant_queue_items WHERE id LIKE 'visual-%' ORDER BY id;"
             ),
-            ["visual-approved", "visual-failed", "visual-waiting"]
+            [
+                "visual-approved",
+                "visual-failed",
+                "visual-waiting",
+                "visual-waiting-density-a",
+                "visual-waiting-density-b"
+            ]
         )
     }
 

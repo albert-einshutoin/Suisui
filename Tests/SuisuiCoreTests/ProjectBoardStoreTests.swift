@@ -5710,6 +5710,26 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDailyPlanningReadoutPassesSystemSpeechVoiceIdentifier() async throws {
+        let previewer = RecordingDailyPlanningTTSPreviewer()
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+
+        let played = await viewModel.playDailyPlanningReviewReadout(
+            using: previewer,
+            languageCode: "en",
+            voiceID: "com.apple.voice.compact.en-US.Samantha",
+            provider: .systemSpeech
+        )
+
+        XCTAssertTrue(played)
+        XCTAssertEqual(
+            previewer.requests.first?.voiceID,
+            "com.apple.voice.compact.en-US.Samantha"
+        )
+    }
+
+    @MainActor
     func testDailyPlanningReadoutFailureRedactsSecretsAndLocalPathsWithoutMutating() async throws {
         var calendar = utcCalendar()
         calendar.firstWeekday = 2

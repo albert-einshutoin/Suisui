@@ -18,7 +18,7 @@ Long-term product direction: iOS / Web / macOS からアクセスできる会話
 | STT | whisper.cpp first | **SpeechAnalyzer / WhisperKit / whisper.cpp の3段構え**に変更。macOS 26+ では SpeechAnalyzer、Swift-native OSS では WhisperKit、低レイヤー/広互換では whisper.cpp |
 | TTS | macOS 標準 TTS | **Local Kokoro + AVAudioPlayer preview** に更新。Product TTS は VoiceOver / AVSpeechSynthesizer に依存しない |
 | LLM API | OpenAI-compatible adapter | **OpenAI Responses API adapter first** に更新。OpenAI-compatible Chat Completions は OpenRouter / Ollama fallback として維持 |
-| MCP | 2025-03-26 transport前提 | **MCP spec 2025-11-25** を基準にする。stdio / Streamable HTTP は維持。外部MCPは後続 |
+| MCP | 2025-03-26 transport前提 | **legacy MCP spec 2025-11-25** を実装基準にする。公式current stableは2026-07-28で、現行public alphaでは未対応。外部MCPはstdio Tools subsetに限定 |
 | Knowledge | SQLite + FTS5 | そのまま採用。sqlite-vec はまだ later/experimental 扱い |
 | Apple on-device LLM | 未記載 | **Foundation Models framework** を later に追加。macOS 26+ / Apple Intelligence availability 依存のためMVPコアにはしない |
 | 配布 | Developer ID + Sparkle | そのまま採用。Xcode 27 beta / macOS 27 beta は本番基準にしない |
@@ -77,7 +77,7 @@ MVP の基本方針は以下。
 | AI 推論 | ユーザー BYOK。OpenAI Responses API adapter を先に実装し、OpenAI-compatible fallback を持つ |
 | STT | SpeechAnalyzer / WhisperKit / whisper.cpp の3段構え |
 | TTS | MVP は Local Kokoro をready-gatedで使い、Settings Test PlayだけAVAudioPlayerで再生する |
-| MCP | MVP は Swift 内蔵 Tool Registry。外部 MCP は MCP spec 2025-11-25 / stdio から後続対応 |
+| MCP | MVP は Swift 内蔵 Tool Registry。外部 MCP は legacy MCP spec 2025-11-25 / stdio Tools subsetから後続対応 |
 | DB | SQLite + FTS5 |
 | Knowledge | 本格 RAG ではなく Knowledge Frame + FTS5 |
 | ベクトル検索 | MVP では不要。後続で sqlite-vec を検討 |
@@ -512,9 +512,9 @@ ToolRegistry
 }
 ```
 
-## 8.2 Later: External MCP stdio client / MCP spec 2025-11-25
+## 8.2 Later: External MCP stdio client / implemented legacy MCP spec 2025-11-25
 
-外部 MCP は後続で stdio から対応する。実装時は **MCP specification 2025-11-25** を基準にする。stdio と Streamable HTTP は継続して重要だが、古い 2025-03-26 固定で設計しない。
+外部 MCP は stdio Tools subsetから対応する。現行実装は **legacy MCP specification 2025-11-25** を基準にし、公式current stable `2026-07-28` のper-request metadata、`server/discover`、list cache semanticsには未対応。current stable対応はライフサイクルとcapability discoveryを実装・検証してから別release gateで有効化する。
 
 ```text
 External MCP
@@ -928,7 +928,7 @@ Pro later:
 | Embedding | fastembed-rs | Later | Rust core を入れる時に検討 |
 | Apple Silicon ML | MLX Swift | Later | 実験・高機能版向け |
 | TTS | Kokoro | Yes | ready-gated local TTS provider。モデルはcache + checksum、Settings Test Playは短文previewのみ |
-| MCP | Swift MCP SDK | Later | 外部 MCP 対応を本格化する時。spec 2025-11-25基準 |
+| MCP | Swift MCP SDK | Later | 外部 MCP 対応を本格化する時。implemented legacy spec 2025-11-25からcurrent stable 2026-07-28への移行を別途評価 |
 | On-device LLM | Foundation Models | Later | macOS 26+ / Apple Intelligence availability依存 |
 
 ---
@@ -1109,7 +1109,7 @@ Tool Execution:
   Built-in Swift Tool Registry
   MCP-compatible schema
   External MCP stdio later
-  MCP spec 2025-11-25 baseline
+  legacy MCP spec 2025-11-25 baseline
 
 Storage:
   SQLite
@@ -1183,4 +1183,5 @@ Business:
 - Apple SpeechAnalyzer: https://developer.apple.com/documentation/speech/speechanalyzer
 - Argmax OSS Swift / WhisperKit: https://github.com/argmaxinc/argmax-oss-swift
 - OpenAI Responses API migration: https://developers.openai.com/api/docs/guides/migrate-to-responses
-- MCP specification 2025-11-25: https://modelcontextprotocol.io/specification/2025-11-25
+- Implemented legacy MCP specification 2025-11-25: https://modelcontextprotocol.io/specification/2025-11-25
+- Current stable MCP specification 2026-07-28: https://modelcontextprotocol.io/specification/2026-07-28

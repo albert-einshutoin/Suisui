@@ -1,45 +1,50 @@
 # Suisui MCP Compliance Review
 
-Last reviewed: 2026-06-24
+Last reviewed: 2026-07-31
 
 ## Baseline
 
-Suisui の外部MCP実装は、MCP specification `2025-11-25` を基準にする。現時点の実装対象は **client-side stdio Tools** に限定し、Resources、Prompts、Streamable HTTP、OAuth/remote MCP は未対応として扱う。
+Suisui の外部MCP実装は、legacy MCP specification `2025-11-25` を基準にする。現時点の実装対象は **client-side stdio Tools** に限定し、Resources、Prompts、Streamable HTTP、OAuth/remote MCP は未対応として扱う。
 
-- Stable baseline: `2025-11-25`
-- Official stable latest: `2025-11-25`
+- Implemented legacy baseline: `2025-11-25`
+- Official stable latest: `2026-07-28`
 - Official latest source: https://modelcontextprotocol.io/specification
 - Official GitHub releases source: https://github.com/modelcontextprotocol/modelcontextprotocol/releases
-- Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release.
-- Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning
-- Official versioning assertion: current protocol version is `2025-11-25`
-- Official latest checked: 2026-06-24
-- Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
+- Official GitHub release assertion: GitHub marks 2026-07-28 as Latest stable release and 2026-07-28 RC as Pre-release.
+- Official versioning source: https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning
+- Official versioning assertion: current stable protocol version is `2026-07-28`; `2025-11-25` is a legacy protocol revision.
+- Official latest checked: 2026-07-31
+- Implemented legacy source: https://modelcontextprotocol.io/specification/2025-11-25
+- Current stable source: https://modelcontextprotocol.io/specification/2026-07-28
 - Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
-- Draft watchlist: `2026-07-28`
-- Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog
-- Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline.
-- Release positioning: Suisui is not a full MCP host; it supports the stable stdio Tools subset described in this document.
+- Historical RC source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+- Historical RC assertion: GitHub marks 2026-07-28 RC as Pre-release; it is superseded by stable 2026-07-28.
+- Current stable changelog source: https://modelcontextprotocol.io/specification/2026-07-28/changelog
+- Current stable changelog assertion: changes are listed since legacy `2025-11-25`; `2026-07-28` is the current stable release.
+- Current stable support status: MCP 2026-07-28 is not implemented in Suisui public alpha.
+- Release positioning: Suisui is not a full MCP host; it supports the legacy `2025-11-25` stdio Tools subset described in this document.
 
-`2026-07-28` は draft / release-candidate として監視するが、今回の release target には含めない。The final specification is scheduled for 2026-07-28. Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions, moves protocolVersion/clientInfo/clientCapabilities to per-request `_meta`, and requires `server/discover` for version/capability discovery. Suisui does not send per-request protocol metadata; specifically, it does not send per-request `_meta` protocolVersion/clientInfo/clientCapabilities, does not implement draft `server/discover`, and will not claim draft or full-host compatibility until those paths are implemented, tested, and inspector-backed.
+Current stable 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions, moves protocolVersion/clientInfo/clientCapabilities to per-request `_meta`, and requires `server/discover` for version/capability discovery. Suisui does not send per-request protocol metadata; specifically, it does not send per-request `_meta` protocolVersion/clientInfo/clientCapabilities, does not implement current stable `server/discover`, and will not claim current-stable or full-host compatibility until those paths are implemented, tested, and inspector-backed.
 
-Draft tools/list cache hints `ttlMs` / `cacheScope` are not implemented in Suisui's public-alpha MCP path. The stable 2025-11-25 stdio Tools subset remains the advertised release boundary, so a server that only supports draft `2026-07-28` must fail with stable-baseline guidance rather than partially working with stale lifecycle assumptions.
+Current stable tools/list cache hints `ttlMs` / `cacheScope` are not implemented in Suisui's public-alpha MCP path. The legacy 2025-11-25 stdio Tools subset remains the advertised release boundary, so a server that only supports current stable `2026-07-28` must fail with legacy-baseline guidance rather than partially working with stale lifecycle assumptions.
 
 Enterprise-Managed Authorization is stable as of 2026-06-18 and remains a watchlist item for Suisui because this public alpha intentionally excludes remote MCP authorization flows. EMA remote authorization is not a Suisui public-alpha release target; adding it later requires a separate product/security design for remote servers, organization identity, token storage, and consent/audit UX.
 
 Primary references:
 
-- MCP specification 2025-11-25: https://modelcontextprotocol.io/specification/2025-11-25
+- Implemented legacy MCP specification 2025-11-25: https://modelcontextprotocol.io/specification/2025-11-25
+- Current stable MCP specification 2026-07-28: https://modelcontextprotocol.io/specification/2026-07-28
+- Current stable changelog: https://modelcontextprotocol.io/specification/2026-07-28/changelog
 - MCP GitHub releases: https://github.com/modelcontextprotocol/modelcontextprotocol/releases
-- MCP versioning: https://modelcontextprotocol.io/docs/learn/versioning
+- MCP versioning: https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning
 - MCP latest specification entrypoint: https://modelcontextprotocol.io/specification
+- Historical 2026-07-28 RC announcement: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
 - Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/posts/enterprise-managed-auth/
 - Lifecycle: https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle
 - Tools: https://modelcontextprotocol.io/specification/2025-11-25/server/tools
 - Architecture: https://modelcontextprotocol.io/docs/learn/architecture
 - Inspector: https://modelcontextprotocol.io/docs/tools/inspector
-- Draft versioning watchlist: https://modelcontextprotocol.io/specification/draft/basic/versioning
-- Draft discovery watchlist: https://modelcontextprotocol.io/specification/draft/server/discover
+- Current stable discovery: https://modelcontextprotocol.io/specification/2026-07-28/server/discover
 
 ## Current Status
 
@@ -49,7 +54,7 @@ Primary references:
 | Request id matching | Implemented | `MCPClient.send` rejects mismatched response id. |
 | Lifecycle initialize | Implemented | `MCPClient.initialize` sends `initialize` with `protocolVersion = 2025-11-25`, empty client capabilities, and client info before any normal operation request. It requires result `capabilities` to be an object and `serverInfo.name` / `serverInfo.version` to be strings before accepting the server. |
 | Initialized notification | Implemented | `MCPClient.initialize` sends `notifications/initialized` only after a successful initialize result, and regression tests verify invalid initialize responses do not emit it. Missing or malformed `capabilities` / `serverInfo` responses fail before the initialized notification. |
-| Protocol version negotiation | Implemented for current release | Suisui offers `2025-11-25`, rejects unsupported server response versions, and shows the accepted server version in Settings after Check Connection. Servers that return draft `2026-07-28` or an `Unsupported protocol version` initialize error are rejected with stable-baseline guidance instead of being treated as compatible. |
+| Protocol version negotiation | Implemented for legacy release subset | Suisui offers `2025-11-25`, rejects unsupported server response versions, and shows the accepted server version in Settings after Check Connection. Servers that return current stable `2026-07-28` or an `Unsupported protocol version` initialize error are rejected with legacy-baseline guidance instead of being treated as compatible. |
 | Tools list | Implemented | `MCPClient.listTools` calls `tools/list` and parses `tools` as an array of tool definitions. |
 | Tools list pagination | Implemented | `MCPClient.listTools` follows `result.nextCursor` with `params.cursor`, rejects malformed cursor metadata, and guards against repeated cursors so paginated servers are not silently truncated. |
 | Tool name policy | Implemented for release subset | MCP marks 1-128 character ASCII tool names with letters, digits, underscore, hyphen, and dot as the interoperable shape, and expects names to be unique within a server. Suisui treats names outside that shape or duplicate names across paginated responses as invalid to keep Settings, audit rows, and approval policies deterministic. |
@@ -64,9 +69,9 @@ Primary references:
 | Prompts | Not implemented | No `prompts/list` or prompt get path is exposed; Settings displays "Not supported in this release". |
 | Streamable HTTP | Not implemented | Architecture leaves transport protocol extensibility, but only stdio is release path. |
 | Enterprise-Managed Authorization | Not implemented | EMA is now a stable MCP extension, but Suisui public alpha has no remote MCP authorization flow. Keep it in the watchlist and do not market Suisui as supporting enterprise-managed remote authorization. |
-| Draft modern protocol metadata | Not implemented | The draft `2026-07-28` path removes initialize/notifications/initialized and protocol-level sessions, and uses per-request `_meta` protocolVersion/clientInfo/clientCapabilities. Suisui remains on the stable `2025-11-25` initialize lifecycle for this release. |
-| Draft server discovery | Not implemented | Draft `server/discover` is required in `2026-07-28`, but it is outside Suisui's current release boundary and must not be advertised as supported. |
-| Draft list caching | Not implemented | Draft tools/list cache hints `ttlMs` / `cacheScope` are not implemented; Suisui must not claim draft list-cache behavior until it supports and tests the draft semantics. |
+| Current stable protocol metadata | Not implemented | The current stable `2026-07-28` path removes initialize/notifications/initialized and protocol-level sessions, and uses per-request `_meta` protocolVersion/clientInfo/clientCapabilities. Suisui remains on the legacy `2025-11-25` initialize lifecycle for this release. |
+| Current stable server discovery | Not implemented | Current stable `server/discover` is required in `2026-07-28`, but it is outside Suisui's current release boundary and must not be advertised as supported. |
+| Current stable list caching | Not implemented | Current stable tools/list cache hints `ttlMs` / `cacheScope` are not implemented; Suisui must not claim list-cache behavior until it supports and tests the current stable semantics. |
 | Official Inspector evidence | Recorded | `script/verify_mcp_compliance.sh` runs the official MCP Inspector CLI against `fixtures/mcp/stdio-fixture-server.mjs`; `docs/release/evidence/mcp-inspector.md` records `tools/list`, `tools/call`, failure taxonomy smoke output, and the current MCP runtime/fixture `Source commit` so stale evidence is rejected. |
 | Settings failure taxonomy | Implemented | Settings `Check Connection` exposes `malformed-json`, `mismatched-id`, `invalid-schema`, and `timeout` through `connectionCheckResultLabel` and prefixes matching user-facing errors with the same taxonomy. |
 
@@ -81,14 +86,14 @@ Primary references:
 - `ExternalMCPTests.testToolsListRejectsInvalidToolNames`
 - `ExternalMCPTests.testToolsListRejectsDuplicateToolNamesAcrossPages`
 - `ExternalMCPTests.testClientRejectsUnsupportedInitializeProtocolVersionBeforeInitializedNotification`
-- `ExternalMCPTests.testClientRejectsDraft20260728ProtocolWithStableBaselineGuidance`
-- `ExternalMCPTests.testClientRejectsModernProtocolOnlyInitializeErrorWithStableBaselineGuidance`
+- `ExternalMCPTests.testClientRejectsCurrentStable20260728WithLegacyBaselineGuidance`
+- `ExternalMCPTests.testClientRejectsModernProtocolOnlyInitializeErrorWithLegacyBaselineGuidance`
 - `ExternalMCPTests.testClientRejectsNonObjectInitializeServerInfo`
 - `ExternalMCPTests.testClientRequiresInitializeCapabilitiesObject`
 - `ExternalMCPTests.testClientRequiresInitializeServerInfoNameAndVersion`
 - `ExternalMCPTests.testClientRejectsNonStringInitializeServerName`
 - `ExternalMCPTests.testExternalMCPSettingsViewModelChecksConnectionAndRefreshesToolCatalog`
-- `ExternalMCPTests.testExternalMCPSettingsViewModelShowsStableGuidanceForModernProtocolOnlyServer`
+- `ExternalMCPTests.testExternalMCPSettingsViewModelShowsLegacyGuidanceForModernProtocolOnlyServer`
 - `ExternalMCPTests.testMCPStdioTransportRunsRealProcessAndParsesLineDelimitedResponses`
 - `ExternalMCPTests.testMCPStdioTransportReportsMalformedJSONAsInvalidResponse`
 - `ExternalMCPTests.testClientRejectsNonBooleanToolCallIsError`
@@ -119,14 +124,14 @@ Primary references:
 - `MCPInspectorEvidenceTests.testInspectorVerificationScriptUsesOfficialCLIAndFixturePaths`
 - `MCPInspectorEvidenceTests.testMCPFixtureServerCoversSuccessAndFailureModesOutsideRuntimeSources`
 - `MCPInspectorEvidenceTests.testInspectorEvidenceRecordsSuccessAndFailureTaxonomy`
-- `MCPInspectorEvidenceTests.testComplianceReviewAndEvidenceRecordStableSpecAndDraftBoundary`
+- `MCPInspectorEvidenceTests.testComplianceReviewAndEvidenceRecordLegacyBaselineAndCurrentStableBoundary`
 - `MCPInspectorEvidenceTests.testInspectorVerificationScriptRunsWithFakeInspectorWithoutNetwork`
 
 ## Gaps Before Claiming Full Compliance
 
 - Add a deeper method-by-method matrix for optional capabilities before adding Resources, Prompts, or Streamable HTTP.
 - Add comprehensive JSON Schema keyword validation only when Suisui needs to reason about server tool arguments or outputs beyond the release subset. The current release validates MCP-required schema shape, dialect boundaries, `outputSchema` object shape, required structured output fields, and primitive output types, but does not claim full keyword-level JSON Schema validation.
-- Track the draft `2026-07-28` discovery / metadata model separately from the release baseline.
+- Add current stable `2026-07-28` discovery / metadata support before changing the implemented legacy baseline.
 - Track stable Enterprise-Managed Authorization separately from the local stdio release subset before adding remote MCP servers.
 - Add Streamable HTTP only after stdio compliance evidence is stable.
 

@@ -62,6 +62,25 @@ private struct ProjectBoardDestinationPersistenceSuppression: Equatable {
     let destination: ProjectBoardSidebarDestination?
 }
 
+struct ProjectBoardMissedTaskFollowUpDateProvider: DateProvider {
+    private let visualEvidenceReferenceDate: Date?
+
+    init(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
+        visualEvidenceReferenceDate = VisualEvidenceRuntimeContext(
+            environment: environment
+        )?.referenceInstant
+    }
+
+    var now: Date {
+        // Production launches retain the real system clock. Only the complete
+        // visual-evidence context pins missed-task suggestions, preventing a
+        // hosted run's weekday from rewriting deterministic queue content.
+        visualEvidenceReferenceDate ?? SystemDateProvider().now
+    }
+}
+
 struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
@@ -309,7 +328,10 @@ struct ProjectBoardView: View {
             }
             LaunchPerformanceMilestones.record("command-ready")
             NotificationCenter.default.post(name: .suisuiProjectBoardCommandReady, object: nil)
-            viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
+            viewModel.scheduleMissedTaskDailyFollowUp(
+                settings: appSettings(),
+                dateProvider: ProjectBoardMissedTaskFollowUpDateProvider()
+            )
             reloadSavedSmartLists()
             restoreSelectedDestinationIfNeeded()
             consumePendingSceneOpenRequests()
@@ -323,7 +345,10 @@ struct ProjectBoardView: View {
         })
         .onReceive(NotificationCenter.default.publisher(for: .suisuiProjectBoardDidChange)) { _ in
             viewModel.load()
-            viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())
+            viewModel.scheduleMissedTaskDailyFollowUp(
+                settings: appSettings(),
+                dateProvider: ProjectBoardMissedTaskFollowUpDateProvider()
+            )
             restoreSelectedDestinationIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .suisuiVoiceDailyPlanningReviewRequested)) { notification in
@@ -1322,7 +1347,8 @@ struct ProjectBoardView: View {
                     outputFilename: "readout.wav"
                 ),
                 languageCode: settings.ttsLanguageCode,
-                voiceID: settings.ttsVoiceID
+                voiceID: settings.selectedTTSVoiceID,
+                provider: settings.ttsProvider
             )
         }
     }

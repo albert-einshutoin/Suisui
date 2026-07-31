@@ -9,7 +9,7 @@ public enum STTProviderID: String, CaseIterable, Equatable, Sendable {
     public var displayName: String {
         switch self {
         case .appleSpeechAnalyzer:
-            "Apple SpeechAnalyzer"
+            "Apple Speech"
         case .whisperKit:
             "WhisperKit"
         case .whisperCpp:

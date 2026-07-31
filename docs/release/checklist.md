@@ -169,18 +169,21 @@ Regenerate the MCP stdio Tools evidence for this release candidate:
 Confirm `docs/release/evidence/mcp-inspector.md` includes:
 
 - `- Source commit: \`<latest MCP runtime/fixture source commit>\``
-- ``Stable baseline: `2025-11-25` ``
-- ``Official stable latest: `2025-11-25` ``
+- ``Implemented legacy baseline: `2025-11-25` ``
+- ``Official stable latest: `2026-07-28` ``
 - `Official latest source: https://modelcontextprotocol.io/specification`
 - `Official GitHub releases source: https://github.com/modelcontextprotocol/modelcontextprotocol/releases`
-- `Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release.`
-- `Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning`
-- ``Official versioning assertion: current protocol version is `2025-11-25` ``
-- `Official latest checked: 2026-06-24`
-- `Official stable source: https://modelcontextprotocol.io/specification/2025-11-25`
-- ``Draft watchlist: `2026-07-28` ``
-- `Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog`
-- ``Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline. ``
+- `Official GitHub release assertion: GitHub marks 2026-07-28 as Latest stable release and 2026-07-28 RC as Pre-release.`
+- `Official versioning source: https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning`
+- ``Official versioning assertion: current stable protocol version is `2026-07-28`; `2025-11-25` is a legacy protocol revision. ``
+- `Official latest checked: 2026-07-31`
+- `Implemented legacy source: https://modelcontextprotocol.io/specification/2025-11-25`
+- `Current stable source: https://modelcontextprotocol.io/specification/2026-07-28`
+- `Historical RC source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/`
+- `Historical RC assertion: GitHub marks 2026-07-28 RC as Pre-release; it is superseded by stable 2026-07-28.`
+- `Current stable changelog source: https://modelcontextprotocol.io/specification/2026-07-28/changelog`
+- ``Current stable changelog assertion: changes are listed since legacy `2025-11-25`; `2026-07-28` is the current stable release. ``
+- `Current stable support status: MCP 2026-07-28 is not implemented in Suisui public alpha.`
 - `tools/list` and `tools/call`
 - malformed-json / mismatched-id / invalid-schema / timeout failure taxonomy
 

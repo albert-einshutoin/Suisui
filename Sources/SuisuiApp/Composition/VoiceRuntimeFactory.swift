@@ -202,7 +202,11 @@ extension AppRuntimeFactory {
         let request = TextToSpeechRequest(
             text: limitedWorkspaceAnswerReadoutText(answer),
             languageCode: languageCode,
-            voiceID: AppSettings.normalizedTTSVoiceID(settings.ttsVoiceID, languageCode: languageCode)
+            voiceID: AppSettings.normalizedTTSVoiceID(
+                settings.selectedTTSVoiceID,
+                languageCode: languageCode,
+                provider: settings.ttsProvider
+            )
         )
         let previewer = makeTextToSpeechPreviewer(settings: settings)
         Task {
@@ -303,7 +307,9 @@ extension AppRuntimeFactory {
     ) -> any SpeechToTextProvider {
         let normalizedSettings = settings.normalizedForRuntime
         switch normalizedSettings.sttProvider {
-        case .openAITranscribe, .appleSpeechAnalyzer, .localWhisperKit:
+        case .appleSpeechAnalyzer:
+            return AppleSpeechRecognitionProvider()
+        case .openAITranscribe, .localWhisperKit:
             return OpenAITranscribeProvider(secretStore: secretStore)
         case .localWhisperCpp:
             let configuration = WhisperCppLocalSTTConfiguration(
@@ -321,31 +327,40 @@ extension AppRuntimeFactory {
 enum AppTextToSpeechRuntimeFactory {
     static func makeProvider(settings: AppSettings, outputURL: URL? = nil) -> any TextToSpeechProvider {
         let normalizedSettings = settings.normalizedForRuntime
-        switch normalizedSettings.ttsProvider {
-        case .systemSpeech, .localKokoro:
-            let configuration = KokoroLocalTTSConfiguration(
-                executablePath: normalizedSettings.kokoroExecutablePath ?? "",
-                languageCode: normalizedSettings.ttsLanguageCode,
-                voiceID: normalizedSettings.ttsVoiceID,
-                outputURL: outputURL
-            )
-            return KokoroLocalTTSProvider(configuration: configuration)
-        }
+        let configuration = KokoroLocalTTSConfiguration(
+            executablePath: normalizedSettings.kokoroExecutablePath ?? "",
+            languageCode: normalizedSettings.ttsLanguageCode,
+            voiceID: normalizedSettings.ttsVoiceID,
+            outputURL: outputURL
+        )
+        return KokoroLocalTTSProvider(configuration: configuration)
     }
 
     static func makePreviewer(
         settings: AppSettings,
         temporaryDirectoryPrefix: String = "suisui-tts-preview",
-        outputFilename: String = "preview.wav"
+        outputFilename: String? = nil
     ) -> any TextToSpeechPreviewing {
         let temporaryDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(temporaryDirectoryPrefix)-\(UUID().uuidString)", isDirectory: true)
-        let outputURL = temporaryDirectory.appendingPathComponent(outputFilename, isDirectory: false)
-        return TemporaryDirectoryTextToSpeechPreviewer(
-            previewer: TextToSpeechPreviewService(
+        let resolvedOutputFilename = outputFilename
+            ?? (settings.normalizedForRuntime.ttsProvider == .systemSpeech ? "preview.caf" : "preview.wav")
+        let outputURL = temporaryDirectory.appendingPathComponent(resolvedOutputFilename, isDirectory: false)
+        let previewer: any TextToSpeechPreviewing
+        switch settings.normalizedForRuntime.ttsProvider {
+        case .systemSpeech:
+            previewer = AppleSystemSpeechProvider(
+                outputURL: outputURL,
+                audioPlayer: AVFoundationSpeechAudioPlayer()
+            )
+        case .localKokoro:
+            previewer = TextToSpeechPreviewService(
                 provider: makeProvider(settings: settings, outputURL: outputURL),
                 audioPlayer: AVFoundationSpeechAudioPlayer()
-            ),
+            )
+        }
+        return TemporaryDirectoryTextToSpeechPreviewer(
+            previewer: previewer,
             temporaryDirectory: temporaryDirectory
         )
     }

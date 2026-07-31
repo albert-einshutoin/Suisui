@@ -1,5 +1,11 @@
 # Suisui Voice Model Cache
 
+Apple-native voice providers do not require these OSS model downloads. `Apple
+Speech` performs on-device transcription through the macOS Speech framework,
+and `System Speech` uses a voice installed in macOS. The model manager and
+runtime requirements below apply only when selecting `whisper.cpp` or `Local
+Kokoro`.
+
 Suisui does not bundle local STT or TTS model binaries in the repository or app bundle. Local OSS voice models are installed only after an explicit user action in Settings, then stored in the user's application support directory.
 
 ## Cache Location
