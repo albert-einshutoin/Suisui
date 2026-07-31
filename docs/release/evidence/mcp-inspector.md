@@ -1,28 +1,30 @@
 # MCP Inspector Evidence
 
-Generated: 2026-07-31T06:55:42Z
+Generated: 2026-07-31T08:16:57Z
 
-- Source commit: `fb527f06`
+- Source commit: `fdbec2cc`
 
 Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and Suisui's local JSON-RPC smoke checks.
 
-Stable baseline: `2025-11-25`
+Implemented legacy baseline: `2025-11-25`
 
-Official stable latest: `2025-11-25`
+Official stable latest: `2026-07-28`
 
 Official latest source: https://modelcontextprotocol.io/specification
 
 Official GitHub releases source: https://github.com/modelcontextprotocol/modelcontextprotocol/releases
 
-Official GitHub release assertion: GitHub marks 2025-11-25 as Latest stable release and 2026-07-28 RC as Pre-release.
+Official GitHub release assertion: GitHub marks 2026-07-28 as Latest stable release and 2026-07-28 RC as Pre-release.
 
-Official versioning source: https://modelcontextprotocol.io/docs/learn/versioning
+Official versioning source: https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning
 
-Official versioning assertion: current protocol version is `2025-11-25`
+Official versioning assertion: current stable protocol version is `2026-07-28`; `2025-11-25` is a legacy protocol revision.
 
-Official latest checked: 2026-06-24
+Official latest checked: 2026-07-31
 
-Official stable source: https://modelcontextprotocol.io/specification/2025-11-25
+Implemented legacy source: https://modelcontextprotocol.io/specification/2025-11-25
+
+Current stable source: https://modelcontextprotocol.io/specification/2026-07-28
 
 Stable extension watchlist: Enterprise-Managed Authorization stable on 2026-06-18
 
@@ -30,25 +32,25 @@ Enterprise-Managed Authorization source: https://blog.modelcontextprotocol.io/po
 
 EMA remote authorization is not a Suisui public-alpha release target
 
-Draft watchlist: `2026-07-28`
+Historical RC source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
 
-Draft release-candidate source: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+Historical RC assertion: GitHub marks 2026-07-28 RC as Pre-release; it is superseded by stable 2026-07-28.
 
-Draft changelog source: https://modelcontextprotocol.io/specification/draft/changelog
+Current stable changelog source: https://modelcontextprotocol.io/specification/2026-07-28/changelog
 
-Draft changelog assertion: changes are listed since `2025-11-25`; it is not the current release baseline.
+Current stable changelog assertion: changes are listed since legacy `2025-11-25`; `2026-07-28` is the current stable release.
 
-2026-07-28 is release-candidate; final specification is scheduled for 2026-07-28.
+Current stable support status: MCP 2026-07-28 is not implemented in Suisui public alpha.
 
-Draft 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions.
+Current stable 2026-07-28 removes initialize/notifications/initialized and protocol-level sessions.
 
-Draft 2026-07-28 uses per-request `_meta` protocolVersion/clientInfo/clientCapabilities.
+Current stable 2026-07-28 uses per-request `_meta` protocolVersion/clientInfo/clientCapabilities.
 
-Draft `server/discover` is required for draft 2026-07-28 version and capability discovery.
+Current stable `server/discover` is required for 2026-07-28 version and capability discovery.
 
-Draft tools/list cache hints `ttlMs` / `cacheScope` are not implemented in Suisui public alpha.
+Current stable tools/list cache hints `ttlMs` / `cacheScope` are not implemented in Suisui public alpha.
 
-Release positioning: Suisui is not a full MCP host; this evidence covers stable client-side stdio Tools only. Resources, Prompts, Streamable HTTP, OAuth/remote MCP, Enterprise-Managed Authorization, draft per-request protocol metadata, and draft server/discover are not release targets.
+Release positioning: Suisui is not a full MCP host; this evidence covers legacy 2025-11-25 client-side stdio Tools only. Resources, Prompts, Streamable HTTP, OAuth/remote MCP, Enterprise-Managed Authorization, current stable per-request protocol metadata, and current stable server/discover are not release targets.
 
 Fixture: `fixtures/mcp/stdio-fixture-server.mjs`
 
