@@ -1518,7 +1518,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("does not\n                    // consume LLM budget"))
         XCTAssertTrue(boardSource.contains("decision.status == .readyForReview"))
         XCTAssertTrue(boardSource.contains("openTaskInspector(taskID)"))
-        XCTAssertTrue(boardSource.contains("viewModel.scheduleMissedTaskDailyFollowUp(settings: appSettings())"))
+        XCTAssertEqual(
+            boardSource.components(
+                separatedBy: "dateProvider: ProjectBoardMissedTaskFollowUpDateProvider()"
+            ).count - 1,
+            2
+        )
+        XCTAssertTrue(boardSource.contains("visualEvidenceReferenceDate ?? SystemDateProvider().now"))
         XCTAssertTrue(boardSource.contains(".help(\"Review Task Automation: prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Prepares review-only task automation from the configured priority, due-date, cadence, and daily budget settings.\")"))
         XCTAssertTrue(appSource.contains("@StateObject private var settingsViewModel: AppSettingsViewModel"))
