@@ -458,17 +458,25 @@ private func perform(_ behavior: ProjectBoardSidebarItemBehavior) {
     }
 }
 
-private func countAccessibilityValue(for itemID: ProjectBoardSidebarItemID) -> Text {
+private func countAccessibilityValue(for itemID: ProjectBoardSidebarItemID) -> String {
     guard let count = counts.count(for: itemID) else {
-        return Text(verbatim: "")
+        return ""
     }
-    return Text(
-        count > 0
-            ? localizedCount(count, one: "%d item", other: "%d items")
-            : localizedDisplay("No pending items")
-    )
+    guard count > 0 else {
+        return switch itemID {
+        case .inbox: localizedDisplay("No pending items")
+        case .today: localizedDisplay("No items today")
+        case .projects: localizedDisplay("No projects")
+        case .schedule: localizedDisplay("No scheduled items")
+        case .completed: localizedDisplay("No completed items")
+        case .voiceCommand, .settings: ""
+        }
+    }
+    return localizedCount(count, one: "%d item", other: "%d items")
 }
 ```
+
+The root hint describes the whole sidebar, so do not reuse it on each destination. Destination rows use the focused `Opens this section.` hint; otherwise VoiceOver repeats quick-action behavior for a simple navigation action. Zero-count values are item-specific because “no pending items” is accurate for Inbox but misleading for Today, Projects, Schedule, and Completed.
 
 Use these stable identifiers:
 
@@ -669,7 +677,11 @@ git commit -m "feat: connect sidebar quick actions"
 func testTodaySidebarLabelsAreLocalizedAndAccessible() throws {
     let english = try readPackageFile("Sources/SuisuiApp/Resources/en.lproj/Localizable.strings")
     let japanese = try readPackageFile("Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings")
-    for key in ["Search", "Completed", "Add by Voice", "Block Time", "Navigate work or open a quick action."] {
+    for key in [
+        "Search", "Completed", "Add by Voice", "Block Time",
+        "Navigate work or open a quick action.", "Opens this section.",
+        "No items today", "No projects", "No scheduled items", "No completed items",
+    ] {
         XCTAssertTrue(english.contains("\"\(key)\" ="), "Missing English \(key)")
         XCTAssertTrue(japanese.contains("\"\(key)\" ="), "Missing Japanese \(key)")
     }
@@ -702,7 +714,12 @@ English:
 "Block Time" = "Block Time";
 "Navigate work or open a quick action." = "Navigate work or open a quick action.";
 "Opens the command palette." = "Opens the command palette.";
+"Opens this section." = "Opens this section.";
 "Creates a local schedule draft without writing Calendar." = "Creates a local schedule draft without writing Calendar.";
+"No items today" = "No items today";
+"No projects" = "No projects";
+"No scheduled items" = "No scheduled items";
+"No completed items" = "No completed items";
 ```
 
 Japanese:
@@ -714,10 +731,15 @@ Japanese:
 "Block Time" = "時間をブロック";
 "Navigate work or open a quick action." = "作業画面へ移動するか、クイックアクションを開きます。";
 "Opens the command palette." = "コマンドパレットを開きます。";
+"Opens this section." = "このセクションを開きます。";
 "Creates a local schedule draft without writing Calendar." = "カレンダーへ書き込まず、ローカルのスケジュール下書きを作成します。";
+"No items today" = "今日の項目はありません";
+"No projects" = "プロジェクトはありません";
+"No scheduled items" = "予定項目はありません";
+"No completed items" = "完了済みの項目はありません";
 ```
 
-Apply `accessibilityLabel`, localized count value, help, and hint to every row. Keep every SF Symbol and the app icon hidden from VoiceOver so the Japanese label is read once.
+Apply `accessibilityLabel`, localized count value, help, and hint to every row. Keep every SF Symbol and the app icon hidden from VoiceOver so the Japanese label is read once. Scope the root, Search, destination, utility, and quick-action AX assertions to their source blocks, and require zero duplicate keys across both localization files.
 
 - [ ] **Step 4: Run the focused localization/AX test**
 
