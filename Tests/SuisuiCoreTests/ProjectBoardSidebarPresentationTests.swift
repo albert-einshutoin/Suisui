@@ -2,6 +2,11 @@
 import XCTest
 
 final class ProjectBoardSidebarPresentationTests: XCTestCase {
+    private struct QuickActionFixture: Equatable {
+        let title: String
+        let systemImage: String
+    }
+
     func testItemsMatchApprovedSevenItemOrderAndSymbols() {
         XCTAssertEqual(
             ProjectBoardSidebarPresentation.items,
@@ -17,11 +22,17 @@ final class ProjectBoardSidebarPresentationTests: XCTestCase {
         )
     }
 
-    func testQuickActionsMatchApprovedOrderAndSymbols() {
-        XCTAssertEqual(ProjectBoardSidebarQuickAction.allCases, [.addTask, .addByVoice, .blockTime])
-        XCTAssertEqual(ProjectBoardSidebarQuickAction.addTask.systemImage, "plus.circle")
-        XCTAssertEqual(ProjectBoardSidebarQuickAction.addByVoice.systemImage, "mic.circle")
-        XCTAssertEqual(ProjectBoardSidebarQuickAction.blockTime.systemImage, "calendar.badge.clock")
+    func testQuickActionsMatchApprovedOrderTitlesAndSymbols() {
+        XCTAssertEqual(
+            ProjectBoardSidebarQuickAction.allCases.map {
+                QuickActionFixture(title: $0.title, systemImage: $0.systemImage)
+            },
+            [
+                .init(title: "Add Task", systemImage: "plus.circle"),
+                .init(title: "Add by Voice", systemImage: "mic.circle"),
+                .init(title: "Block Time", systemImage: "calendar.badge.clock"),
+            ]
+        )
     }
 
     func testRouteSelectionMapsOnlyOwnedDestinations() {
