@@ -1,7 +1,7 @@
 # Today Sidebar Parity Design
 
 - Date: 2026-08-02
-- Status: approved for implementation
+- Status: implemented; final clean-tree validation pending
 - Source baseline: `origin/main` at `9209f5551e25fc8630dee9972c69c14af0c9282a`
 - Reference: `ui-samples/today.png`
 - Chosen approach: sample-faithful sidebar with existing Suisui behavior
@@ -249,3 +249,16 @@ flowchart LR
 - legacy route migration全体の撤去。
 
 Todayメインコンテンツは、サイドバー完成後に別の設計・実装スライスとして扱う。
+
+## 12. Implementation Evidence
+
+- Product source commit: `34601981dc5a03a5edbe1cb06d0eaf238628bf29`.
+- Direct runtime accessibility actions: `.tmp/task6-axpress-evidence.0xBpb3/README.txt` records `AXUIElementPerformAction(kAXPressAction)` with no pointer fallback. Search, Inbox, Voice Command, Add Task, and Block Time each returned `axpress_result=0` and were accepted only after an independent window, route, focus, or selection marker changed. Representative receipts are `.tmp/task6-axpress-evidence.0xBpb3/search-axpress.txt`, `inbox-axpress.txt`, `voice-axpress.txt`, `add-task-axpress.txt`, and `block-time-axpress.txt`.
+- Authenticated visual capture: `capture_ui_evidence.sh` produced 39/39 healthy screens and a passed live AX receipt for both `en-US` (`.tmp/visual-ax-audit-receipt.json`) and `ja-JP` (`.tmp/visual-ax-audit-receipt-ja.json`), bound to the product source commit above.
+- Visual gates: `SUISUI_CI_VISUAL_GATE_LOCALE=en-US ./script/check_ci_visual_gate.sh` and `SUISUI_CI_VISUAL_GATE_LOCALE=ja-JP ./script/check_ci_visual_gate.sh` each completed with 39 runtime-audited screenshots, `status=passed`, and exit 0.
+- Baseline scope: all 25 Project Board/sidebar-containing rasters per locale were refreshed. The 14 unrelated Settings/Voice Command rasters per locale remain byte-identical to their previous baselines. Fresh Dark/System Settings captures differed from the previous raster only by one red-channel level across the semantic content background (`[35, 42, 46, 255]` to `[34, 42, 46, 255]`, maximum channel delta 1) and passed the existing raster tolerance; because no Settings or global theme source changed, this environmental rendering drift was not adopted as a product baseline change. Metadata for all 39 screens was refreshed to preserve the authenticated source-commit contract.
+- Reference comparison: the implemented sidebar matches the approved seven-row order, real app logo, reviewed symbols, selected-row treatment, spacing hierarchy, and three bottom quick actions. Today main-content parity remains explicitly out of scope under section 11.
+- Security: the pre-refresh `./script/check_security_regressions.sh` run completed with exit 0. It is pending a final clean-tree rerun after the evidence commit.
+- Complete SwiftPM pre-refresh result: 3,121 tests executed, 6 skipped, and 1 expected visual-baseline mismatch before this authenticated refresh; `ReleasePipelineTests` executed 235 tests with the same single pre-refresh visual mismatch. This is not claimed as final green validation.
+- Increase Contrast and Reduce Motion behavior were not directly proven at runtime in this slice. Light, Dark, and System appearance evidence is proven by the authenticated capture above.
+- Hosted CI, notarization, release publication, and shipped-product completion are not established by this local evidence.
