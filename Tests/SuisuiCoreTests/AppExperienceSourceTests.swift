@@ -86,17 +86,133 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardView.swift"
         )
+        let sidebarSource = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift"
+        )
 
+        XCTAssertTrue(boardSource.contains("today: sidebarMetrics.todayCount"))
+        XCTAssertTrue(boardSource.contains("inbox: sidebarMetrics.inboxCount"))
+        XCTAssertTrue(boardSource.contains("projects: sidebarMetrics.projectsCount"))
         XCTAssertTrue(boardSource.contains("schedule: sidebarMetrics.scheduleCount"))
         XCTAssertTrue(boardSource.contains("completed: sidebarMetrics.doneCount"))
         XCTAssertTrue(boardSource.contains("onOpenSearch: { isCommandPaletteVisible = true }"))
-        XCTAssertTrue(boardSource.contains("onOpenVoiceCommand: openVoiceCommandFromBoardContext"))
-        XCTAssertTrue(boardSource.contains("onAddByVoice: openVoiceCommandFromBoardContext"))
         XCTAssertTrue(boardSource.contains("onOpenSettings: { openSettings() }"))
         XCTAssertTrue(boardSource.contains("onAddTask: beginInboxQuickAddFromSidebar"))
         XCTAssertTrue(boardSource.contains("onBlockTime: prepareScheduleDraftFromSidebar"))
-        XCTAssertTrue(boardSource.contains("private func beginInboxQuickAddFromSidebar()"))
         XCTAssertTrue(boardSource.contains("private func prepareScheduleDraftFromSidebar()"))
+        XCTAssertFalse(sidebarSource.contains("review: Int?"))
+        XCTAssertFalse(
+            boardSource.contains("review: viewModel.assistantQueueSnapshot.needsAttentionCount")
+        )
+        XCTAssertFalse(sidebarSource.contains("@escaping () -> Void = {}"))
+    }
+
+    func testSidebarVoiceEntrypointsShareSelectedBoardConversationContext() throws {
+        let boardSource = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectBoardView.swift"
+        )
+        let sidebarCallStart = try XCTUnwrap(
+            boardSource.range(of: "ProjectBoardSidebarView(")
+        )
+        let sidebarCallEnd = try XCTUnwrap(
+            boardSource.range(
+                of: ".id(toolbarLayoutRefreshToken)",
+                range: sidebarCallStart.upperBound..<boardSource.endIndex
+            )
+        )
+        let sidebarCall = String(
+            boardSource[sidebarCallStart.lowerBound..<sidebarCallEnd.lowerBound]
+        )
+        let toolbarCallStart = try XCTUnwrap(
+            boardSource.range(of: "ProjectBoardToolbarContent(")
+        )
+        let toolbarCallEnd = try XCTUnwrap(
+            boardSource.range(
+                of: "onToggleInspector:",
+                range: toolbarCallStart.upperBound..<boardSource.endIndex
+            )
+        )
+        let toolbarCall = String(
+            boardSource[toolbarCallStart.lowerBound..<toolbarCallEnd.lowerBound]
+        )
+        let helperStart = try XCTUnwrap(
+            boardSource.range(of: "private func openVoiceCommandFromBoardContext()")
+        )
+        let helperEnd = try XCTUnwrap(
+            boardSource.range(
+                of: "private func ",
+                range: helperStart.upperBound..<boardSource.endIndex
+            )
+        )
+        let helper = String(boardSource[helperStart.lowerBound..<helperEnd.lowerBound])
+
+        XCTAssertTrue(helper.contains("let task = viewModel.selectedTask"))
+        XCTAssertTrue(
+            helper.contains("let projectID = task?.projectID ?? viewModel.selectedProject?.id")
+        )
+        XCTAssertTrue(
+            helper.contains("viewModel.snapshot.projects.first { $0.id == projectID }")
+        )
+        XCTAssertTrue(helper.contains("projectID: projectID"))
+        XCTAssertTrue(helper.contains("projectName: project?.title"))
+        XCTAssertTrue(helper.contains("taskID: task?.id"))
+        XCTAssertTrue(helper.contains("taskName: task?.title"))
+        let store = try XCTUnwrap(
+            helper.range(of: "SuisuiVoiceConversationScopeBridge.store(")
+        )
+        let openWindow = try XCTUnwrap(
+            helper.range(of: "openWindow(id: \"voice-capture\")")
+        )
+        XCTAssertLessThan(store.lowerBound, openWindow.lowerBound)
+        XCTAssertTrue(
+            helper.contains("name: .suisuiVoiceConversationScopeRequested")
+        )
+        XCTAssertTrue(helper.contains("NotificationCenter.default.post("))
+        XCTAssertTrue(
+            toolbarCall.contains("onOpenVoiceCommand: openVoiceCommandFromBoardContext")
+        )
+        XCTAssertTrue(
+            sidebarCall.contains("onOpenVoiceCommand: openVoiceCommandFromBoardContext")
+        )
+        XCTAssertTrue(
+            sidebarCall.contains("onAddByVoice: openVoiceCommandFromBoardContext")
+        )
+        XCTAssertEqual(
+            boardSource.components(
+                separatedBy: "onOpenVoiceCommand: openVoiceCommandFromBoardContext"
+            ).count - 1,
+            2
+        )
+        XCTAssertEqual(
+            boardSource.components(
+                separatedBy: "onAddByVoice: openVoiceCommandFromBoardContext"
+            ).count - 1,
+            1
+        )
+    }
+
+    func testSidebarAddTaskRequestsFocusBeforeNavigatingToInbox() throws {
+        let boardSource = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectBoardView.swift"
+        )
+        let helperStart = try XCTUnwrap(
+            boardSource.range(of: "private func beginInboxQuickAddFromSidebar()")
+        )
+        let helperEnd = try XCTUnwrap(
+            boardSource.range(
+                of: "private func ",
+                range: helperStart.upperBound..<boardSource.endIndex
+            )
+        )
+        let helper = String(boardSource[helperStart.lowerBound..<helperEnd.lowerBound])
+        let focusRequest = try XCTUnwrap(
+            helper.range(of: "requestsInboxQuickAddFocus = true")
+        )
+        let navigation = try XCTUnwrap(
+            helper.range(of: "navigateWithinScene(to: .primary(.inbox))")
+        )
+
+        XCTAssertLessThan(focusRequest.lowerBound, navigation.lowerBound)
     }
 
     func testSidebarBlockTimeOnlyPreparesALocalScheduleDraft() throws {
@@ -142,15 +258,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(inboxSource.contains("let onQuickAddFocusConsumed: () -> Void"))
         XCTAssertTrue(inboxSource.contains("@FocusState private var isQuickAddFocused: Bool"))
         XCTAssertTrue(inboxSource.contains(".focused($isQuickAddFocused)"))
-        XCTAssertTrue(inboxSource.contains("consumeQuickAddFocusRequestIfNeeded()"))
-        XCTAssertTrue(inboxSource.contains(".onChange(of: requestsQuickAddFocus)"))
 
         let helperStart = try XCTUnwrap(
             inboxSource.range(of: "private func consumeQuickAddFocusRequestIfNeeded()")
         )
         let helperEnd = try XCTUnwrap(
             inboxSource.range(
-                of: "private func ",
+                of: "\n}\n\nprivate struct InboxHeaderControls",
                 range: helperStart.upperBound..<inboxSource.endIndex
             )
         )
@@ -159,6 +273,33 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(helper.contains("isQuickAddFocused = true"))
         XCTAssertEqual(
             helper.components(separatedBy: "onQuickAddFocusConsumed()").count - 1,
+            1
+        )
+        XCTAssertFalse(helper.contains("private struct InboxHeaderControls"))
+
+        let onAppearStart = try XCTUnwrap(inboxSource.range(of: ".onAppear {"))
+        let onAppearEnd = try XCTUnwrap(
+            inboxSource.range(
+                of: ".onChange(of: requestsQuickAddFocus)",
+                range: onAppearStart.upperBound..<inboxSource.endIndex
+            )
+        )
+        let onAppear = String(inboxSource[onAppearStart.lowerBound..<onAppearEnd.lowerBound])
+        XCTAssertEqual(
+            onAppear.components(separatedBy: "consumeQuickAddFocusRequestIfNeeded()").count - 1,
+            1
+        )
+
+        let onChangeStart = onAppearEnd
+        let onChangeEnd = try XCTUnwrap(
+            inboxSource.range(
+                of: ".onChange(of: tasks.map(\\.id))",
+                range: onChangeStart.upperBound..<inboxSource.endIndex
+            )
+        )
+        let onChange = String(inboxSource[onChangeStart.lowerBound..<onChangeEnd.lowerBound])
+        XCTAssertEqual(
+            onChange.components(separatedBy: "consumeQuickAddFocusRequestIfNeeded()").count - 1,
             1
         )
     }
