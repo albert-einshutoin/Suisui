@@ -123,11 +123,38 @@ struct ProjectBoardSidebarView: View {
         .accessibilityHint(Text(LocalizedStringKey("Navigate work or open a quick action.")))
     }
 
+    @ViewBuilder
     private func sidebarRow(
         _ item: ProjectBoardSidebarItemPresentation
     ) -> some View {
-        let count = counts.count(for: item.id)
+        switch item.behavior {
+        case .route:
+            destinationSidebarRow(item)
+        case .openVoiceCommand, .openSettings:
+            utilitySidebarRow(item)
+        }
+    }
+
+    private func destinationSidebarRow(
+        _ item: ProjectBoardSidebarItemPresentation
+    ) -> some View {
         let isSelected = ProjectBoardSidebarPresentation.selectedItemID(for: route) == item.id
+
+        return sidebarRowButton(item, isSelected: isSelected)
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func utilitySidebarRow(
+        _ item: ProjectBoardSidebarItemPresentation
+    ) -> some View {
+        sidebarRowButton(item, isSelected: false)
+    }
+
+    private func sidebarRowButton(
+        _ item: ProjectBoardSidebarItemPresentation,
+        isSelected: Bool
+    ) -> some View {
+        let count = counts.count(for: item.id)
 
         return Button {
             perform(item.behavior)
@@ -159,7 +186,6 @@ struct ProjectBoardSidebarView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(LocalizedStringKey(item.title)))
         .accessibilityValue(accessibilityValue(for: count))
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier(accessibilityIdentifier(for: item.id))
         .accessibilityHint(Text(LocalizedStringKey(accessibilityHintKey(for: item.behavior))))
         .help(LocalizedStringKey(accessibilityHintKey(for: item.behavior)))

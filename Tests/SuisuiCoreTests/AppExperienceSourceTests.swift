@@ -158,54 +158,144 @@ final class AppExperienceSourceTests: XCTestCase {
         let sidebar = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift"
         )
-        XCTAssertGreaterThanOrEqual(
-            sidebar.components(separatedBy: ".accessibilityHidden(true)").count - 1,
-            4
+        let brand = try sourceBlock(
+            in: sidebar,
+            from: "HStack(spacing: 8) {\n                Image(nsImage:",
+            to: "Button(action: onOpenSearch)"
         )
-        XCTAssertTrue(
-            sidebar.contains(".accessibilityLabel(Text(LocalizedStringKey(\"Project navigation\")))")
+        let search = try sourceBlock(
+            in: sidebar,
+            from: "Button(action: onOpenSearch)",
+            to: "ScrollView {"
         )
-        XCTAssertTrue(
-            sidebar.contains(".accessibilityLabel(Text(LocalizedStringKey(\"Search\")))")
+        let root = try sourceBlock(
+            in: sidebar,
+            from: ".accessibilityIdentifier(\"project-board-sidebar\")",
+            to: "private func sidebarRow("
         )
+        let destinationRow = try sourceBlock(
+            in: sidebar,
+            from: "private func destinationSidebarRow(",
+            to: "private func utilitySidebarRow("
+        )
+        let utilityRow = try sourceBlock(
+            in: sidebar,
+            from: "private func utilitySidebarRow(",
+            to: "private func sidebarRowButton("
+        )
+        let sidebarRow = try sourceBlock(
+            in: sidebar,
+            from: "private func sidebarRowButton(",
+            to: "private func quickAction("
+        )
+        let quickAction = try sourceBlock(
+            in: sidebar,
+            from: "private func quickAction(",
+            to: "private func perform"
+        )
+        let hintHelpers = try sourceBlock(
+            in: sidebar,
+            from: "private func accessibilityHintKey(",
+            to: "private func accessibilityIdentifier("
+        )
+        let brandText = try sourceBlock(
+            in: brand,
+            from: "Text(LocalizedStringKey(\"Suisui\"))",
+            to: ".accessibilityElement(children: .ignore)"
+        )
+        let searchText = try sourceBlock(
+            in: search,
+            from: "Text(LocalizedStringKey(\"Search\"))",
+            to: "Spacer()"
+        )
+        let sidebarRowText = try sourceBlock(
+            in: sidebarRow,
+            from: "Text(LocalizedStringKey(item.title))",
+            to: "Spacer(minLength: 8)"
+        )
+        let quickActionText = try sourceBlock(
+            in: quickAction,
+            from: "Text(LocalizedStringKey(action.title))",
+            to: ".frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)"
+        )
+
+        XCTAssertTrue(brand.contains("NSApplication.shared.applicationIconImage"))
+        XCTAssertTrue(brand.contains(".accessibilityHidden(true)"))
+        XCTAssertFalse(brandText.contains(".accessibilityHidden(true)"))
+
+        XCTAssertTrue(search.contains("Image(systemName: \"magnifyingglass\")"))
+        XCTAssertTrue(search.contains(".accessibilityHidden(true)"))
+        XCTAssertFalse(searchText.contains(".accessibilityHidden(true)"))
+        XCTAssertTrue(search.contains(".accessibilityLabel(Text(LocalizedStringKey(\"Search\")))"))
         XCTAssertTrue(
-            sidebar.contains(
+            search.contains(
                 ".accessibilityHint(Text(LocalizedStringKey(\"Opens the command palette.\")))"
             )
         )
-        XCTAssertTrue(sidebar.contains(".help(LocalizedStringKey(\"Opens the command palette.\"))"))
-        XCTAssertTrue(sidebar.contains(".accessibilityLabel(Text(LocalizedStringKey(item.title)))"))
-        XCTAssertTrue(sidebar.contains(".accessibilityValue(accessibilityValue(for: count))"))
-        XCTAssertTrue(sidebar.contains("localizedDisplay(\"No pending items\")"))
-        XCTAssertTrue(sidebar.contains("localizedCount(count, one: \"%d item\", other: \"%d items\")"))
-        XCTAssertTrue(sidebar.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
-        XCTAssertTrue(sidebar.contains(".accessibilityIdentifier(accessibilityIdentifier(for: item.id))"))
+        XCTAssertTrue(search.contains(".help(LocalizedStringKey(\"Opens the command palette.\"))"))
+
+        XCTAssertTrue(root.contains(".accessibilityLabel(Text(LocalizedStringKey(\"Project navigation\")))"))
         XCTAssertTrue(
-            sidebar.contains(
+            root.contains(
+                ".accessibilityHint(Text(LocalizedStringKey(\"Navigate work or open a quick action.\")))"
+            )
+        )
+
+        XCTAssertTrue(destinationRow.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
+        XCTAssertFalse(utilityRow.contains(".accessibilityAddTraits"))
+        XCTAssertFalse(sidebarRow.contains(".accessibilityAddTraits"))
+        XCTAssertEqual(sidebar.components(separatedBy: ".accessibilityAddTraits").count - 1, 1)
+
+        XCTAssertTrue(sidebarRow.contains("Image(systemName: item.systemImage)"))
+        XCTAssertTrue(sidebarRow.contains(".accessibilityHidden(true)"))
+        XCTAssertFalse(sidebarRowText.contains(".accessibilityHidden(true)"))
+        XCTAssertTrue(sidebarRow.contains(".accessibilityLabel(Text(LocalizedStringKey(item.title)))"))
+        XCTAssertTrue(sidebarRow.contains(".accessibilityValue(accessibilityValue(for: count))"))
+        XCTAssertTrue(sidebarRow.contains(".accessibilityIdentifier(accessibilityIdentifier(for: item.id))"))
+        XCTAssertTrue(
+            sidebarRow.contains(
                 ".accessibilityHint(Text(LocalizedStringKey(accessibilityHintKey(for: item.behavior))))"
             )
         )
         XCTAssertTrue(
-            sidebar.contains(".help(LocalizedStringKey(accessibilityHintKey(for: item.behavior)))")
+            sidebarRow.contains(".help(LocalizedStringKey(accessibilityHintKey(for: item.behavior)))")
         )
+
+        XCTAssertTrue(quickAction.contains("Image(systemName: action.systemImage)"))
+        XCTAssertTrue(quickAction.contains(".accessibilityHidden(true)"))
+        XCTAssertFalse(quickActionText.contains(".accessibilityHidden(true)"))
+        XCTAssertTrue(quickAction.contains(".accessibilityElement(children: .ignore)"))
+        XCTAssertTrue(quickAction.contains(".accessibilityLabel(Text(LocalizedStringKey(action.title)))"))
         XCTAssertTrue(
-            sidebar.contains(
+            quickAction.contains(
                 ".accessibilityHint(Text(LocalizedStringKey(accessibilityHintKey(for: action))))"
             )
         )
-        XCTAssertTrue(sidebar.contains(".help(LocalizedStringKey(accessibilityHintKey(for: action)))"))
+        XCTAssertTrue(quickAction.contains(".help(LocalizedStringKey(accessibilityHintKey(for: action)))"))
+        XCTAssertFalse(quickAction.contains(".accessibilityAddTraits"))
 
-        let quickActionStart = try XCTUnwrap(sidebar.range(of: "private func quickAction("))
-        let quickActionEnd = try XCTUnwrap(
-            sidebar.range(
-                of: "private func perform",
-                range: quickActionStart.upperBound..<sidebar.endIndex
+        XCTAssertTrue(
+            hintHelpers.contains(
+                "case .blockTime:\n            \"Creates a local schedule draft without writing Calendar.\""
             )
         )
-        let quickAction = String(sidebar[quickActionStart.lowerBound..<quickActionEnd.lowerBound])
-        XCTAssertTrue(quickAction.contains(".accessibilityElement(children: .ignore)"))
-        XCTAssertTrue(quickAction.contains(".accessibilityLabel(Text(LocalizedStringKey(action.title)))"))
-        XCTAssertFalse(quickAction.contains(".accessibilityAddTraits"))
+        XCTAssertTrue(sidebar.contains("localizedDisplay(\"No pending items\")"))
+        XCTAssertTrue(sidebar.contains("localizedCount(count, one: \"%d item\", other: \"%d items\")"))
+    }
+
+    func testAppLocalizationsContainNoDuplicateKeys() throws {
+        for path in [
+            "Sources/SuisuiApp/Resources/en.lproj/Localizable.strings",
+            "Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings",
+        ] {
+            let occurrences = try localizableKeyOccurrences(in: path)
+            let duplicateKeys = occurrences
+                .filter { $0.value > 1 }
+                .map(\.key)
+                .sorted()
+
+            XCTAssertEqual(duplicateKeys, [], "Duplicate localization keys in \(path)")
+        }
     }
 
     func testSidebarVoiceEntrypointsShareSelectedBoardConversationContext() throws {
@@ -7591,6 +7681,20 @@ final class AppExperienceSourceTests: XCTestCase {
             }
             return String(source[keyRange])
         })
+    }
+
+    private func localizableKeyOccurrences(in relativePath: String) throws -> [String: Int] {
+        let source = try readPackageFile(relativePath)
+        let pattern = #""((?:[^"\\]|\\.)*)"\s*="#
+        let regex = try NSRegularExpression(pattern: pattern)
+        let range = NSRange(source.startIndex..<source.endIndex, in: source)
+
+        return regex.matches(in: source, range: range).reduce(into: [:]) { occurrences, match in
+            guard let keyRange = Range(match.range(at: 1), in: source) else {
+                return
+            }
+            occurrences[String(source[keyRange]), default: 0] += 1
+        }
     }
 
     private func readProjectWorkflowSources() throws -> String {

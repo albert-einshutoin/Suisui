@@ -963,7 +963,6 @@
 "%@ permission is available; writes still require approval." = "%@ permission is available; writes still require approval.";
 "%@ permission is denied in System Settings." = "%@ permission is denied in System Settings.";
 "%@ permission is restricted on this Mac." = "%@ permission is restricted on this Mac.";
-"Permission denied" = "Permission denied";
 "System Speech" = "System Speech";
 "Voice Models" = "Voice Models";
 "Manages the cached local voice model file." = "Manages the cached local voice model file.";
