@@ -780,11 +780,11 @@ run_normal_routes() {
   local routes=(
     "inbox|inbox|sidebar-destination-inbox|inbox-workflow"
     "today|today|sidebar-destination-today|today-workflow"
-    "review|primary:review|sidebar-destination-review|review-hub"
-    "review-schedule|review:schedule|sidebar-destination-review|schedule-workflow"
-    "review-completed|review:completed|sidebar-destination-review|done-workflow"
-    "review-automation|review:automation|sidebar-destination-review|automation-activity-workflow"
-    "review-assistant-queue|review:assistant-queue|sidebar-destination-review|assistant-queue-workflow"
+    "review|primary:review|sidebar-destination-schedule|review-hub"
+    "review-schedule|review:schedule|sidebar-destination-schedule|schedule-workflow"
+    "review-completed|review:completed|sidebar-destination-completed|done-workflow"
+    "review-automation|review:automation|sidebar-destination-schedule|automation-activity-workflow"
+    "review-assistant-queue|review:assistant-queue|sidebar-destination-schedule|assistant-queue-workflow"
     "projects|projects|sidebar-destination-projects|projects-portfolio-overview"
   )
 

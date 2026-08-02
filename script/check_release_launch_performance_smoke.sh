@@ -567,7 +567,7 @@ activate_app
 # a product navigation regression.
 wait_for_marker "project-board-sidebar"
 DESTINATION_INBOX_SAMPLES=()
-DESTINATION_REVIEW_SAMPLES=()
+DESTINATION_SCHEDULE_SAMPLES=()
 DESTINATION_ASSISTANT_QUEUE_SAMPLES=()
 DESTINATION_TODAY_SAMPLES=()
 LAST_DESTINATION_ELAPSED_MS=""
@@ -578,11 +578,11 @@ LAST_DESTINATION_ELAPSED_MS=""
 for sample_index in $(seq 1 "$DESTINATION_SAMPLE_COUNT"); do
   measure_destination "destination-inbox" "$sample_index" "sidebar-destination-inbox" "Inbox" "inbox-workflow"
   DESTINATION_INBOX_SAMPLES+=("$LAST_DESTINATION_ELAPSED_MS")
-  # Assistant Queue is intentionally nested under Review in the four-area IA.
-  # Measure both real user transitions so this gate cannot silently restore the
-  # removed top-level destination just to satisfy an old performance fixture.
-  measure_destination "destination-review" "$sample_index" "sidebar-destination-review" "Review" "review-hub"
-  DESTINATION_REVIEW_SAMPLES+=("$LAST_DESTINATION_ELAPSED_MS")
+  # Schedule is the represented sidebar entry for review workflows. Assistant
+  # Queue remains a separately measured nested transition so the benchmark
+  # proves both the new IA and the existing review workflow path.
+  measure_destination "destination-schedule" "$sample_index" "sidebar-destination-schedule" "Schedule" "schedule-workflow"
+  DESTINATION_SCHEDULE_SAMPLES+=("$LAST_DESTINATION_ELAPSED_MS")
   measure_review_assistant_queue "$sample_index"
   DESTINATION_ASSISTANT_QUEUE_SAMPLES+=("$LAST_DESTINATION_ELAPSED_MS")
   measure_destination "destination-today" "$sample_index" "sidebar-destination-today" "Today" "today-workflow"
@@ -590,11 +590,11 @@ for sample_index in $(seq 1 "$DESTINATION_SAMPLE_COUNT"); do
 done
 
 median_destination_inbox_ms="$(median_elapsed_ms "${DESTINATION_INBOX_SAMPLES[@]}")"
-median_destination_review_ms="$(median_elapsed_ms "${DESTINATION_REVIEW_SAMPLES[@]}")"
+median_destination_schedule_ms="$(median_elapsed_ms "${DESTINATION_SCHEDULE_SAMPLES[@]}")"
 median_destination_assistant_queue_ms="$(median_elapsed_ms "${DESTINATION_ASSISTANT_QUEUE_SAMPLES[@]}")"
 median_destination_today_ms="$(median_elapsed_ms "${DESTINATION_TODAY_SAMPLES[@]}")"
 record_elapsed_sample "destination-inbox" "$median_destination_inbox_ms" "$MAX_DESTINATION_SWITCH_MS"
-record_elapsed_sample "destination-review" "$median_destination_review_ms" "$MAX_DESTINATION_SWITCH_MS"
+record_elapsed_sample "destination-schedule" "$median_destination_schedule_ms" "$MAX_DESTINATION_SWITCH_MS"
 record_elapsed_sample "destination-assistant-queue" "$median_destination_assistant_queue_ms" "$MAX_DESTINATION_SWITCH_MS"
 record_elapsed_sample "destination-today" "$median_destination_today_ms" "$MAX_DESTINATION_SWITCH_MS"
 

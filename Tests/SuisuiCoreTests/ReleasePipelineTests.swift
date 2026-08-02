@@ -7483,11 +7483,19 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("inspector-wide-open"))
         XCTAssertTrue(script.contains("window-wide"))
         XCTAssertTrue(script.contains("destination-inbox"))
-        XCTAssertTrue(script.contains("destination-review"))
+        XCTAssertTrue(script.contains("destination-schedule"))
+        XCTAssertTrue(script.contains("destination-completed"))
         XCTAssertTrue(script.contains("destination-review-assistant-queue"))
         XCTAssertTrue(script.contains("destination-today"))
         XCTAssertTrue(script.contains("sidebar-destination-inbox"))
-        XCTAssertTrue(script.contains("sidebar-destination-review"))
+        XCTAssertTrue(script.contains("sidebar-destination-schedule"))
+        XCTAssertTrue(script.contains("sidebar-destination-completed"))
+        XCTAssertFalse(script.contains("sidebar-destination-review"))
+        XCTAssertTrue(script.contains("readonly SIDEBAR_DESTINATION_FIRST_ROW_CENTER_Y_OFFSET_PX=142"))
+        XCTAssertTrue(script.contains("readonly SIDEBAR_DESTINATION_ROW_STRIDE_PX=34"))
+        XCTAssertTrue(script.contains("destination_index * SIDEBAR_DESTINATION_ROW_STRIDE_PX"))
+        XCTAssertTrue(script.contains("assert_sidebar_destination_window_size_stable \"destination-schedule\" \"sidebar-destination-schedule\" \"Schedule\" \"schedule-workflow\""))
+        XCTAssertTrue(script.contains("assert_sidebar_destination_window_size_stable \"destination-completed\" \"sidebar-destination-completed\" \"Completed\" \"done-workflow\""))
         XCTAssertTrue(script.contains("review-destination-assistant-queue"))
         XCTAssertTrue(script.contains("sidebar-destination-today"))
         XCTAssertTrue(script.contains("BLOCKER: Project Board window size changed after selecting"))
@@ -7591,7 +7599,9 @@ final class ReleasePipelineTests: XCTestCase {
         )
         XCTAssertLessThan(sidebarReady.lowerBound, destinationLoop.lowerBound)
         XCTAssertTrue(script.contains("measure_destination \"destination-inbox\" \"$sample_index\" \"sidebar-destination-inbox\" \"Inbox\" \"inbox-workflow\""))
-        XCTAssertTrue(script.contains("measure_destination \"destination-review\" \"$sample_index\" \"sidebar-destination-review\" \"Review\" \"review-hub\""))
+        XCTAssertTrue(script.contains("measure_destination \"destination-schedule\" \"$sample_index\" \"sidebar-destination-schedule\" \"Schedule\" \"schedule-workflow\""))
+        XCTAssertTrue(script.contains("DESTINATION_SCHEDULE_SAMPLES"))
+        XCTAssertFalse(script.contains("sidebar-destination-review"))
         let measureDestinationStart = try XCTUnwrap(script.range(of: "measure_destination() {"))
         let measureDestinationEnd = try XCTUnwrap(
             script.range(
@@ -16420,7 +16430,7 @@ final class ReleasePipelineTests: XCTestCase {
         HELPER_DELAY_SECONDS="$7"
         HELPER_IGNORES_TERM="$8"
         EXPECTED_APP_PID="$APP_PID"
-        EXPECTED_DESTINATION_IDENTIFIER="sidebar-destination-review"
+        EXPECTED_DESTINATION_IDENTIFIER="sidebar-destination-schedule"
         export HELPER_COUNTER_FILE SUCCEED_ON_ATTEMPT HELPER_DELAY_SECONDS HELPER_IGNORES_TERM
         export EXPECTED_APP_PID EXPECTED_DESTINATION_IDENTIFIER
         ax_process_matches_identity() {
@@ -16450,7 +16460,7 @@ final class ReleasePipelineTests: XCTestCase {
         activate_app() { :; }
         sleep() { :; }
         \(functionSource)
-        if click_destination_until_available "sidebar-destination-review" "Review"; then
+        if click_destination_until_available "sidebar-destination-schedule" "Schedule"; then
           exit 0
         else
           exit $?
