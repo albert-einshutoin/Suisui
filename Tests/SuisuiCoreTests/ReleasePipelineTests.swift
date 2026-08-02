@@ -7376,6 +7376,31 @@ final class ReleasePipelineTests: XCTestCase {
         let resizeWindowHelper = try readPackageFile("script/ui_evidence_ax_resize_window.swift")
         let windowMetadataHelper = try readPackageFile("script/ui_evidence_window_metadata.swift")
         let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
+        let coordinateFallbackStart = try XCTUnwrap(
+            script.range(of: "click_sidebar_destination_by_coordinate() {")
+        )
+        let coordinateFallbackEnd = try XCTUnwrap(
+            script.range(
+                of: "\n}\n\nassert_sidebar_destination_window_size_stable()",
+                range: coordinateFallbackStart.upperBound..<script.endIndex
+            )
+        )
+        let coordinateFallbackSource = String(
+            script[coordinateFallbackStart.lowerBound..<coordinateFallbackEnd.upperBound]
+        )
+        let mappingStart = try XCTUnwrap(
+            coordinateFallbackSource.range(of: "case \"$destination_identifier\" in")
+        )
+        let mappingEnd = try XCTUnwrap(
+            coordinateFallbackSource.range(
+                of: "    *)",
+                range: mappingStart.upperBound..<coordinateFallbackSource.endIndex
+            )
+        )
+        let mappingLines = coordinateFallbackSource[mappingStart.lowerBound..<mappingEnd.lowerBound]
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
 
         XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
         XCTAssertTrue(script.contains("AX_FRAME_HELPER=\"${AX_FRAME_HELPER:-$ROOT_DIR/script/ui_evidence_ax_frame_dump.swift}\""))
@@ -7493,7 +7518,21 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("sidebar-destination-review"))
         XCTAssertTrue(script.contains("readonly SIDEBAR_DESTINATION_FIRST_ROW_CENTER_Y_OFFSET_PX=142"))
         XCTAssertTrue(script.contains("readonly SIDEBAR_DESTINATION_ROW_STRIDE_PX=34"))
-        XCTAssertTrue(script.contains("destination_index * SIDEBAR_DESTINATION_ROW_STRIDE_PX"))
+        XCTAssertTrue(script.contains("readonly SIDEBAR_DESTINATION_ROW_CENTER_X_OFFSET_PX=112"))
+        XCTAssertTrue(script.contains("180px minimum sidebar leaves the Button hit region from x=10 through x=170; x=112"))
+        XCTAssertEqual(
+            mappingLines,
+            [
+                "case \"$destination_identifier\" in",
+                "sidebar-destination-inbox)", "destination_index=0", ";;",
+                "sidebar-destination-today)", "destination_index=1", ";;",
+                "sidebar-destination-projects)", "destination_index=2", ";;",
+                "sidebar-destination-schedule)", "destination_index=3", ";;",
+                "sidebar-destination-completed)", "destination_index=4", ";;",
+            ]
+        )
+        XCTAssertTrue(coordinateFallbackSource.contains("target_x=$((window_x + SIDEBAR_DESTINATION_ROW_CENTER_X_OFFSET_PX))"))
+        XCTAssertTrue(coordinateFallbackSource.contains("target_y=$((window_y + SIDEBAR_DESTINATION_FIRST_ROW_CENTER_Y_OFFSET_PX + destination_index * SIDEBAR_DESTINATION_ROW_STRIDE_PX))"))
         XCTAssertTrue(script.contains("assert_sidebar_destination_window_size_stable \"destination-schedule\" \"sidebar-destination-schedule\" \"Schedule\" \"schedule-workflow\""))
         XCTAssertTrue(script.contains("assert_sidebar_destination_window_size_stable \"destination-completed\" \"sidebar-destination-completed\" \"Completed\" \"done-workflow\""))
         XCTAssertTrue(script.contains("review-destination-assistant-queue"))

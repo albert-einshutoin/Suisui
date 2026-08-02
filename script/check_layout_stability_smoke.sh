@@ -50,6 +50,8 @@ readonly PRODUCT_LAYOUT_WINDOW_WIDE_HEIGHT_FLOOR=860
 # 32px brand row, 10px gap, 36px Search button, and another 10px gap. Its
 # 32px destination buttons use 2px spacing, matching the approved today.png
 # rhythm. Keep the fallback aimed at each Button center when AXPress is absent.
+# The 180px minimum sidebar leaves the Button hit region from x=10 through x=170; x=112
+# stays well inside those bounds, left of trailing count badges and away from the split divider.
 readonly SIDEBAR_DESTINATION_ROW_CENTER_X_OFFSET_PX=112
 readonly SIDEBAR_DESTINATION_FIRST_ROW_CENTER_Y_OFFSET_PX=142
 readonly SIDEBAR_DESTINATION_ROW_STRIDE_PX=34

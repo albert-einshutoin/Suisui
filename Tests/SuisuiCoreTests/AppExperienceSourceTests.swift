@@ -994,22 +994,44 @@ final class AppExperienceSourceTests: XCTestCase {
     func testTodayProductionRouteSmokeCoversNormalBoardDestinationMatrix() throws {
         let script = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
         let appSource = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
+        let normalRoutesStart = try XCTUnwrap(script.range(of: "run_normal_routes() {"))
+        let normalRoutesEnd = try XCTUnwrap(
+            script.range(
+                of: "\n}\n\ncpu_percent_for_app()",
+                range: normalRoutesStart.upperBound..<script.endIndex
+            )
+        )
+        let normalRoutesSource = String(script[normalRoutesStart.lowerBound..<normalRoutesEnd.upperBound])
+        let routesStart = try XCTUnwrap(normalRoutesSource.range(of: "local routes=("))
+        let routesEnd = try XCTUnwrap(
+            normalRoutesSource.range(
+                of: "\n  )",
+                range: routesStart.upperBound..<normalRoutesSource.endIndex
+            )
+        )
+        let routesSource = String(normalRoutesSource[routesStart.lowerBound..<routesEnd.upperBound])
+        let routeRows = routesSource
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.hasPrefix("\"") && $0.hasSuffix("\"") }
 
         XCTAssertTrue(script.contains("run_route()"))
-        XCTAssertTrue(script.contains("routes=("))
-        XCTAssertTrue(script.contains("inbox|inbox|sidebar-destination-inbox|inbox-workflow"))
-        XCTAssertTrue(script.contains("today|today|sidebar-destination-today|today-workflow"))
-        XCTAssertTrue(script.contains("projects|projects|sidebar-destination-projects|projects-portfolio-overview"))
-        XCTAssertTrue(script.contains("review|primary:review|sidebar-destination-schedule|review-hub"))
-        XCTAssertTrue(script.contains("review-schedule|review:schedule|sidebar-destination-schedule|schedule-workflow"))
-        XCTAssertTrue(script.contains("review-completed|review:completed|sidebar-destination-completed|done-workflow"))
-        XCTAssertTrue(script.contains("review-automation|review:automation|sidebar-destination-schedule|automation-activity-workflow"))
+        XCTAssertEqual(
+            routeRows,
+            [
+                "\"inbox|inbox|sidebar-destination-inbox|inbox-workflow\"",
+                "\"today|today|sidebar-destination-today|today-workflow\"",
+                "\"review|primary:review|sidebar-destination-schedule|review-hub\"",
+                "\"review-schedule|review:schedule|sidebar-destination-schedule|schedule-workflow\"",
+                "\"review-completed|review:completed|sidebar-destination-completed|done-workflow\"",
+                "\"review-automation|review:automation|sidebar-destination-schedule|automation-activity-workflow\"",
+                "\"review-assistant-queue|review:assistant-queue|sidebar-destination-schedule|assistant-queue-workflow\"",
+                "\"projects|projects|sidebar-destination-projects|projects-portfolio-overview\"",
+            ]
+        )
         XCTAssertTrue(script.contains(#"review-automation:en) printf '%s' "Automation Activity""#))
         XCTAssertTrue(script.contains(#"review-automation:ja) printf '%s' "自動化アクティビティ""#))
-        XCTAssertTrue(script.contains("review-assistant-queue|review:assistant-queue|sidebar-destination-schedule|assistant-queue-workflow"))
-        XCTAssertTrue(script.contains("sidebar-destination-schedule"))
-        XCTAssertTrue(script.contains("sidebar-destination-completed"))
-        XCTAssertFalse(script.contains("sidebar-destination-review"))
+        XCTAssertFalse(routesSource.contains("sidebar-destination-review"))
         XCTAssertTrue(script.contains("navigate_to_seed_project()"))
         XCTAssertTrue(script.contains("\"project:$seed_project_id\""))
         XCTAssertTrue(script.contains("\"sidebar-destination-projects\""))
