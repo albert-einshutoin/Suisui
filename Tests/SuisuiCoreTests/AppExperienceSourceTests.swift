@@ -274,7 +274,9 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         let helper = String(inboxSource[helperStart.lowerBound..<helperEnd.lowerBound])
         XCTAssertTrue(helper.contains("guard requestsQuickAddFocus else"))
-        XCTAssertTrue(helper.contains("isQuickAddFocused = true"))
+        let focus = try XCTUnwrap(helper.range(of: "isQuickAddFocused = true"))
+        let consume = try XCTUnwrap(helper.range(of: "onQuickAddFocusConsumed()"))
+        XCTAssertLessThan(focus.lowerBound, consume.lowerBound)
         XCTAssertEqual(
             helper.components(separatedBy: "onQuickAddFocusConsumed()").count - 1,
             1

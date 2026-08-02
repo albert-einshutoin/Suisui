@@ -160,8 +160,8 @@ struct InboxWorkflowView: View {
         guard requestsQuickAddFocus else {
             return
         }
-        onQuickAddFocusConsumed()
         isQuickAddFocused = true
+        onQuickAddFocusConsumed()
     }
 }
 
