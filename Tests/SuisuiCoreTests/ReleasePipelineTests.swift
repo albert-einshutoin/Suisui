@@ -7638,16 +7638,18 @@ final class ReleasePipelineTests: XCTestCase {
         )
         let destinationLoopEnd = try XCTUnwrap(
             script.range(
-                of: "\ndone\n\nmedian_destination_inbox_ms=",
+                of: "\ndone\n\n",
                 range: destinationLoop.upperBound..<script.endIndex
             )
         )
         let destinationDeclarations = String(script[sidebarReady.upperBound..<destinationLoop.lowerBound])
-        let destinationSampleLoop = String(script[destinationLoop.lowerBound..<destinationLoopEnd.upperBound])
+        let destinationSampleLoop = String(
+            script[destinationLoop.lowerBound..<destinationLoopEnd.upperBound]
+        )
         let destinationAggregationStart = try XCTUnwrap(
             script.range(
                 of: "median_destination_inbox_ms=",
-                range: destinationLoopEnd.lowerBound..<script.endIndex
+                range: destinationLoopEnd.upperBound..<script.endIndex
             )
         ).lowerBound
         let destinationAggregationEnd = try XCTUnwrap(
@@ -7659,12 +7661,46 @@ final class ReleasePipelineTests: XCTestCase {
         let destinationAggregation = String(
             script[destinationAggregationStart..<destinationAggregationEnd.lowerBound]
         )
+        let scheduleMeasure = "measure_destination \"destination-schedule\" \"$sample_index\" \"sidebar-destination-schedule\" \"Schedule\" \"schedule-workflow\""
+        let scheduleAppend = "DESTINATION_SCHEDULE_SAMPLES+=(\"$LAST_DESTINATION_ELAPSED_MS\")"
+        let scheduleMedian = "median_destination_schedule_ms=\"$(median_elapsed_ms \"${DESTINATION_SCHEDULE_SAMPLES[@]}\")\""
+        let scheduleRecord = "record_elapsed_sample \"destination-schedule\" \"$median_destination_schedule_ms\" \"$MAX_DESTINATION_SWITCH_MS\""
         XCTAssertLessThan(sidebarReady.lowerBound, destinationLoop.lowerBound)
         XCTAssertTrue(destinationDeclarations.contains("DESTINATION_SCHEDULE_SAMPLES=()"))
-        XCTAssertTrue(destinationSampleLoop.contains("measure_destination \"destination-schedule\" \"$sample_index\" \"sidebar-destination-schedule\" \"Schedule\" \"schedule-workflow\""))
-        XCTAssertTrue(destinationSampleLoop.contains("DESTINATION_SCHEDULE_SAMPLES+=(\"$LAST_DESTINATION_ELAPSED_MS\")"))
-        XCTAssertTrue(destinationAggregation.contains("median_destination_schedule_ms=\"$(median_elapsed_ms \"${DESTINATION_SCHEDULE_SAMPLES[@]}\")\""))
-        XCTAssertTrue(destinationAggregation.contains("record_elapsed_sample \"destination-schedule\" \"$median_destination_schedule_ms\" \"$MAX_DESTINATION_SWITCH_MS\""))
+        let sampleOrder = try orderedShellStatementIndices(
+            [scheduleMeasure, scheduleAppend],
+            in: destinationSampleLoop
+        )
+        XCTAssertLessThan(sampleOrder[0], sampleOrder[1])
+        let aggregationOrder = try orderedShellStatementIndices(
+            [scheduleMedian, scheduleRecord],
+            in: destinationAggregation
+        )
+        XCTAssertLessThan(aggregationOrder[0], aggregationOrder[1])
+        let phaseOrder = try orderedShellStatementIndices(
+            [
+                "DESTINATION_SCHEDULE_SAMPLES=()",
+                scheduleMeasure,
+                scheduleAppend,
+                scheduleMedian,
+                scheduleRecord,
+            ],
+            in: destinationDeclarations + destinationSampleLoop + destinationAggregation
+        )
+        for pair in zip(phaseOrder, phaseOrder.dropFirst()) {
+            XCTAssertLessThan(pair.0, pair.1)
+        }
+        let inboxValueMutation = destinationSampleLoop.replacingOccurrences(
+            of: "  \(scheduleMeasure)\n  \(scheduleAppend)",
+            with: "  \(scheduleAppend)\n  \(scheduleMeasure)"
+        )
+        XCTAssertNotEqual(inboxValueMutation, destinationSampleLoop)
+        XCTAssertThrowsError(
+            try orderedShellStatementIndices(
+                [scheduleMeasure, scheduleAppend],
+                in: inboxValueMutation
+            )
+        )
         XCTAssertFalse(script.contains("sidebar-destination-review"))
         XCTAssertFalse(script.contains("DESTINATION_REVIEW_SAMPLES"))
         XCTAssertFalse(script.contains("median_destination_review_ms"))
@@ -16647,6 +16683,34 @@ final class ReleasePipelineTests: XCTestCase {
         // reports. Draining while the child is running prevents the child bash
         // process from blocking on a full stdout/stderr pipe.
         return (process.terminationStatus, String(data: outputBuffer.data, encoding: .utf8) ?? "")
+    }
+
+    private func orderedShellStatementIndices(
+        _ expectedStatements: [String],
+        in source: String
+    ) throws -> [Int] {
+        let executableLines = source
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+        let indices = try expectedStatements.map { statement in
+            let matchingIndices = executableLines.indices.filter {
+                executableLines[$0] == statement
+            }
+            guard matchingIndices.count == 1, let index = matchingIndices.first else {
+                throw ShellStatementOrderError.missingOrDuplicate(statement)
+            }
+            return index
+        }
+        guard zip(indices, indices.dropFirst()).allSatisfy({ $0.0 < $0.1 }) else {
+            throw ShellStatementOrderError.outOfOrder(expectedStatements)
+        }
+        return indices
+    }
+
+    private enum ShellStatementOrderError: Error {
+        case missingOrDuplicate(String)
+        case outOfOrder([String])
     }
 
     private final class ProcessOutputBuffer: @unchecked Sendable {
