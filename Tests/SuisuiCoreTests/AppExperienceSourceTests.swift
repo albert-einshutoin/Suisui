@@ -82,6 +82,21 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(sidebarSource.contains("sidebar-destination-review"))
     }
 
+    func testTodayCatchUpDisplayExpansionAndAccessibilityFocusContract() throws {
+        let todaySource = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift"
+        )
+
+        XCTAssertTrue(todaySource.contains("viewModel.catchUpCount > 0"))
+        XCTAssertTrue(todaySource.contains("today-catch-up-section"))
+        XCTAssertTrue(todaySource.contains("@AccessibilityFocusState private var isCatchUpFocused"))
+        XCTAssertTrue(todaySource.contains("catchUpFocusRevision"))
+        XCTAssertTrue(todaySource.contains("_isCatchUpExpanded = State(initialValue: initiallyExpandsCatchUp)"))
+        XCTAssertTrue(todaySource.contains("isCatchUpExpanded = true"))
+        XCTAssertTrue(todaySource.contains(".accessibilityFocused($isCatchUpFocused)"))
+        XCTAssertTrue(todaySource.contains(".onChange(of: viewModel.catchUpCount)"))
+    }
+
     func testLegacyCatchUpFocusIsResolvedAndConsumedWithinOneBoardScene() throws {
         let boardSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardView.swift"
