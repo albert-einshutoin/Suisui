@@ -61,7 +61,7 @@
 - Create: `Sources/SuisuiCore/App/ProjectBoardSidebarPresentation.swift`
 - Create: `Tests/SuisuiCoreTests/ProjectBoardSidebarPresentationTests.swift`
 
-- [ ] **Step 1: Write failing ordering and semantics tests**
+- [x] **Step 1: Write failing ordering and semantics tests**
 
 ```swift
 @testable import SuisuiCore
@@ -111,7 +111,7 @@ final class ProjectBoardSidebarPresentationTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run the tests and verify the new types are missing**
+- [x] **Step 2: Run the tests and verify the new types are missing**
 
 Run:
 
@@ -121,7 +121,7 @@ swift test --filter ProjectBoardSidebarPresentationTests
 
 Expected: FAIL with `cannot find 'ProjectBoardSidebarPresentation' in scope`.
 
-- [ ] **Step 3: Add the minimal presentation types**
+- [x] **Step 3: Add the minimal presentation types**
 
 ```swift
 import Foundation
@@ -209,7 +209,7 @@ public enum ProjectBoardSidebarPresentation {
 }
 ```
 
-- [ ] **Step 4: Run focused Core tests**
+- [x] **Step 4: Run focused Core tests**
 
 Run:
 
@@ -219,7 +219,7 @@ swift test --filter ProjectBoardSidebarPresentationTests
 
 Expected: PASS, 4 tests, 0 failures.
 
-- [ ] **Step 5: Commit the pure policy**
+- [x] **Step 5: Commit the pure policy**
 
 ```bash
 git add Sources/SuisuiCore/App/ProjectBoardSidebarPresentation.swift Tests/SuisuiCoreTests/ProjectBoardSidebarPresentationTests.swift
@@ -232,7 +232,7 @@ git commit -m "feat: define today sidebar presentation"
 - Modify: `Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift`
 - Modify: `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`
 
-- [ ] **Step 1: Replace the obsolete four-row source test with a failing approved-layout contract**
+- [x] **Step 1: Replace the obsolete four-row source test with a failing approved-layout contract**
 
 Replace `testProjectBoardPrimaryNavigationUsesExactlyFourTopLevelRows` with:
 
@@ -295,7 +295,7 @@ XCTAssertTrue(boardSource.contains("sidebar-destination-completed"))
 XCTAssertFalse(boardSource.contains("sidebar-destination-review"))
 ```
 
-- [ ] **Step 2: Run the source contract and verify it fails against the old List**
+- [x] **Step 2: Run the source contract and verify it fails against the old List**
 
 Run:
 
@@ -305,7 +305,7 @@ swift test --filter AppExperienceSourceTests/testProjectBoardSidebarMatchesAppro
 
 Expected: FAIL because `sidebar-destination-schedule` and the branded quick actions do not exist.
 
-- [ ] **Step 3: Expand counts and handler inputs**
+- [x] **Step 3: Expand counts and handler inputs**
 
 Change the sidebar inputs to:
 
@@ -341,7 +341,7 @@ struct ProjectBoardSidebarView: View {
 }
 ```
 
-- [ ] **Step 4: Replace the List body with the approved hierarchy**
+- [x] **Step 4: Replace the List body with the approved hierarchy**
 
 Add `import AppKit`, use `NSApplication.shared.applicationIconImage` for the real installed app icon, and render the body in this order:
 
@@ -496,7 +496,7 @@ private func identifier(for itemID: ProjectBoardSidebarItemID) -> String {
 
 The row label must render `Image(systemName: item.systemImage)`, `Text(LocalizedStringKey(item.title))`, an optional positive count, and a rounded selected background. Add `.isSelected` only when `selectedItemID == item.id`; utility actions never receive selection.
 
-- [ ] **Step 5: Run the focused source and policy tests**
+- [x] **Step 5: Run the focused source and policy tests**
 
 Run:
 
@@ -507,7 +507,7 @@ swift test --filter AppExperienceSourceTests/testProjectBoardSidebarMatchesAppro
 
 Expected: both commands PASS.
 
-- [ ] **Step 6: Commit the visual hierarchy**
+- [x] **Step 6: Commit the visual hierarchy**
 
 ```bash
 git add Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift Tests/SuisuiCoreTests/AppExperienceSourceTests.swift
@@ -521,7 +521,7 @@ git commit -m "feat: render branded seven-item sidebar"
 - Modify: `Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift`
 - Modify: `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`
 
-- [ ] **Step 1: Add failing source contracts for every handler boundary**
+- [x] **Step 1: Add failing source contracts for every handler boundary**
 
 ```swift
 func testTodaySidebarQuickActionsUseExistingSafeFlows() throws {
@@ -556,7 +556,7 @@ func testInboxQuickAddFocusIntentIsConsumed() throws {
 }
 ```
 
-- [ ] **Step 2: Run and verify both contracts fail**
+- [x] **Step 2: Run and verify both contracts fail**
 
 Run:
 
@@ -567,7 +567,7 @@ swift test --filter AppExperienceSourceTests/testInboxQuickAddFocusIntentIsConsu
 
 Expected: FAIL because no sidebar handlers or focus intent exist.
 
-- [ ] **Step 3: Wire counts and actions from ProjectBoardView**
+- [x] **Step 3: Wire counts and actions from ProjectBoardView**
 
 Add:
 
@@ -614,7 +614,7 @@ Extract the toolbar's existing project/task scope bridge into `openVoiceCommandF
 
 The Block Time handler intentionally calls only the local draft API. Do not call `enqueueScheduleDraftCalendarApply` or `applyScheduleDraftToCalendar`.
 
-- [ ] **Step 4: Consume Inbox focus exactly once**
+- [x] **Step 4: Consume Inbox focus exactly once**
 
 Change `InboxWorkflowView` inputs and field:
 
@@ -645,7 +645,7 @@ InboxWorkflowView(
 )
 ```
 
-- [ ] **Step 5: Run focused tests and build the macOS target**
+- [x] **Step 5: Run focused tests and build the macOS target**
 
 Run:
 
@@ -657,7 +657,7 @@ swift build --product Suisui
 
 Expected: tests PASS and `Build complete!`.
 
-- [ ] **Step 6: Commit behavior wiring**
+- [x] **Step 6: Commit behavior wiring**
 
 ```bash
 git add Sources/SuisuiApp/Views/ProjectBoardView.swift Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift Tests/SuisuiCoreTests/AppExperienceSourceTests.swift
@@ -671,7 +671,7 @@ git commit -m "feat: connect sidebar quick actions"
 - Modify: `Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings`
 - Modify: `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`
 
-- [ ] **Step 1: Add a failing bilingual and AX source test**
+- [x] **Step 1: Add a failing bilingual and AX source test**
 
 ```swift
 func testTodaySidebarLabelsAreLocalizedAndAccessible() throws {
@@ -693,7 +693,7 @@ func testTodaySidebarLabelsAreLocalizedAndAccessible() throws {
 }
 ```
 
-- [ ] **Step 2: Run and verify missing localization entries fail**
+- [x] **Step 2: Run and verify missing localization entries fail**
 
 Run:
 
@@ -703,7 +703,7 @@ swift test --filter AppExperienceSourceTests/testTodaySidebarLabelsAreLocalizedA
 
 Expected: FAIL on at least `Add by Voice` or `Navigate work or open a quick action.`.
 
-- [ ] **Step 3: Add matching localization entries**
+- [x] **Step 3: Add matching localization entries**
 
 English:
 
@@ -741,7 +741,7 @@ Japanese:
 
 Apply `accessibilityLabel`, localized count value, help, and hint to every row. Keep every SF Symbol and the app icon hidden from VoiceOver so the Japanese label is read once. Scope the root, Search, destination, utility, and quick-action AX assertions to their source blocks, and require zero duplicate keys across both localization files.
 
-- [ ] **Step 4: Run the focused localization/AX test**
+- [x] **Step 4: Run the focused localization/AX test**
 
 Run:
 
@@ -751,7 +751,7 @@ swift test --filter AppExperienceSourceTests/testTodaySidebarLabelsAreLocalizedA
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit localization and AX semantics**
+- [x] **Step 5: Commit localization and AX semantics**
 
 ```bash
 git add Sources/SuisuiApp/Resources/en.lproj/Localizable.strings Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift Tests/SuisuiCoreTests/AppExperienceSourceTests.swift
@@ -767,7 +767,7 @@ git commit -m "feat: localize accessible sidebar actions"
 - Modify: `Tests/SuisuiCoreTests/ReleasePipelineTests.swift`
 - Modify: `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`
 
-- [ ] **Step 1: Change test expectations first**
+- [x] **Step 1: Change test expectations first**
 
 Update the release/source tests to require:
 
@@ -790,7 +790,7 @@ review-assistant-queue|review:assistant-queue|sidebar-destination-schedule|assis
 
 The marker on unrepresented Review routes proves the new sidebar exists; content markers continue to prove the actual active route. Do not add a false selected state to Schedule for Automation Activity or Assistant Queue.
 
-- [ ] **Step 2: Run the affected contracts and verify old Review markers fail**
+- [x] **Step 2: Run the affected contracts and verify old Review markers fail**
 
 Run:
 
@@ -801,7 +801,7 @@ swift test --filter AppExperienceSourceTests
 
 Expected: FAIL on `sidebar-destination-review` expectations before script migration.
 
-- [ ] **Step 3: Update layout stability destinations**
+- [x] **Step 3: Update layout stability destinations**
 
 Replace the Review sidebar lane with Schedule and Completed lanes:
 
@@ -813,7 +813,7 @@ assert_ax_destination_window_size_stable "destination-review-assistant-queue" "r
 
 Update the coordinate fallback cases to the final fixed row layout constants. Keep AXPress as the primary path; the fallback must target the center of the corresponding custom Button row, not the removed List offsets.
 
-- [ ] **Step 4: Update release performance navigation**
+- [x] **Step 4: Update release performance navigation**
 
 Rename the Review sample collection to Schedule and use:
 
@@ -825,11 +825,11 @@ measure_review_assistant_queue "$sample_index"
 
 Record `destination-schedule` against the existing destination-switch budget. Preserve the separate Assistant Queue nested transition measurement.
 
-- [ ] **Step 5: Update the typed-route smoke matrix**
+- [x] **Step 5: Update the typed-route smoke matrix**
 
 Use the exact matrix from Step 1. Keep content markers unchanged so a visible sidebar cannot make a wrong route pass.
 
-- [ ] **Step 6: Run source-level script contracts and shell syntax checks**
+- [x] **Step 6: Run source-level script contracts and shell syntax checks**
 
 Run:
 
@@ -843,7 +843,7 @@ swift test --filter AppExperienceSourceTests
 
 Expected: shell syntax checks exit 0; both XCTest suites PASS.
 
-- [ ] **Step 7: Commit the contract migration**
+- [x] **Step 7: Commit the contract migration**
 
 ```bash
 git add script/check_layout_stability_smoke.sh script/check_release_launch_performance_smoke.sh script/check_runtime_today_production_route_smoke.sh Tests/SuisuiCoreTests/ReleasePipelineTests.swift Tests/SuisuiCoreTests/AppExperienceSourceTests.swift
@@ -855,7 +855,7 @@ git commit -m "test: migrate sidebar runtime contracts"
 **Files:**
 - Modify only if a verified runtime defect is found: files from Tasks 2–5
 
-- [ ] **Step 1: Build and launch the real app**
+- [x] **Step 1: Build and launch the real app**
 
 Run:
 
@@ -865,7 +865,7 @@ Run:
 
 Expected: app builds, launches, and the automated smoke exits successfully.
 
-- [ ] **Step 2: Exercise all sidebar actions in the running app**
+- [x] **Step 2: Exercise all sidebar actions in the running app**
 
 Verify in order:
 
@@ -877,7 +877,7 @@ Verify in order:
 6. Block Time routes to Schedule and creates a local visible draft.
 7. Block Time does not create a Calendar event or enqueue Calendar apply.
 
-- [ ] **Step 3: Run layout and route smokes**
+- [x] **Step 3: Run layout and route smokes**
 
 Run:
 
@@ -890,6 +890,8 @@ Expected: both report OK with Inbox, Today, Projects, Schedule, Completed and ne
 
 - [ ] **Step 4: Verify Japanese, keyboard, VoiceOver, and compact height**
 
+Light、Dark、System、keyboard、direct AXPress、selected state、false selection、`1024x676` reachabilityは確認済み。Increase ContrastとReduce Motionは、process-local registration argumentsで`NSWorkspace`値を変更できなかったため`not_proven`のまま残す。詳細は`docs/release/evidence/today-sidebar-runtime-ax-receipt.json`を参照する。
+
 At the canonical `1024x676` window verify:
 
 - all 7 row labels and 3 quick actions are reachable;
@@ -900,7 +902,7 @@ At the canonical `1024x676` window verify:
 - Automation Activity and Assistant Queue show no false selected sidebar row;
 - Light, Dark, System, Increase Contrast, and Reduce Motion remain legible.
 
-- [ ] **Step 5: Route a verified defect back through its owning TDD task**
+- [x] **Step 5: Route a verified defect back through its owning TDD task**
 
 If Steps 1–4 reveal a defect, return to the owning task above, add its specified failing test, implement the smallest correction, rerun that task's commands, and use that task's exact `git add` file list. If no defect is found, continue without an empty commit.
 
@@ -909,7 +911,7 @@ If Steps 1–4 reveal a defect, return to the owning task above, add its specifi
 **Files:**
 - No product files unless a failing check produces a reproducible defect with a new regression test.
 
-- [ ] **Step 1: Run the complete SwiftPM suite fail-closed**
+- [x] **Step 1: Run the complete SwiftPM suite fail-closed**
 
 Run:
 
@@ -919,7 +921,7 @@ Run:
 
 Expected: discovered tests are nonzero, executed count matches the gate contract, skipped count remains within budget, exit 0.
 
-- [ ] **Step 2: Run security regression checks**
+- [x] **Step 2: Run security regression checks**
 
 Run:
 
@@ -929,7 +931,7 @@ Run:
 
 Expected: exit 0; no secret, unsafe Calendar write, injection, or path-safety regression.
 
-- [ ] **Step 3: Run the visual gate in comparison mode**
+- [x] **Step 3: Run the visual gate in comparison mode**
 
 Run:
 
@@ -940,7 +942,7 @@ SUISUI_CI_VISUAL_GATE_LOCALE=ja-JP ./script/check_ci_visual_gate.sh
 
 Expected before baseline refresh: the gate may report bounded raster mismatch for screens containing the intentionally changed sidebar, but must not report black image, missing AX target, wrong route, unsafe output, or unrelated-screen changes.
 
-- [ ] **Step 4: Self-review the complete source diff**
+- [x] **Step 4: Self-review the complete source diff**
 
 Run:
 
@@ -965,7 +967,7 @@ Review specifically:
 - Modify: visual manifests, affected sidebar screenshot baselines and metadata
 - Modify: `docs/superpowers/specs/2026-08-02-today-sidebar-parity-design.md`
 
-- [ ] **Step 1: Ensure all source changes are committed before capture**
+- [x] **Step 1: Ensure all source changes are committed before capture**
 
 Run:
 
@@ -977,7 +979,7 @@ git log --oneline origin/main..HEAD
 
 Expected: no uncommitted `Sources`, `Package.swift`, or capture-harness change; doctor reports the capture environment ready.
 
-- [ ] **Step 2: Capture complete English and Japanese evidence**
+- [x] **Step 2: Capture complete English and Japanese evidence**
 
 Run:
 
@@ -997,7 +999,7 @@ SUISUI_VISUAL_AX_AUDIT_RESULT="$PWD/.tmp/visual-ax-audit-receipt-ja.json" \
 
 Expected: 39 healthy screenshots per locale and passed live AX receipts.
 
-- [ ] **Step 3: Review before/after sidebar pixels and update only authenticated baselines**
+- [x] **Step 3: Review before/after sidebar pixels and update only authenticated baselines**
 
 Align each manifest `baselineContext.sourceCommit` to the committed product-source commit, then run the paired explicit update:
 
@@ -1007,7 +1009,7 @@ Align each manifest `baselineContext.sourceCommit` to the committed product-sour
 
 Expected: only screens containing the changed Project Board sidebar receive raster/metadata changes; unrelated Settings and Voice Command baselines remain unchanged.
 
-- [ ] **Step 4: Run final visual comparison and full validation**
+- [x] **Step 4: Run final visual comparison and full validation**
 
 Run:
 
@@ -1020,18 +1022,18 @@ SUISUI_CI_VISUAL_GATE_LOCALE=ja-JP ./script/check_ci_visual_gate.sh
 
 Expected: every command exits 0 with nonzero test execution and complete visual evidence.
 
-- [ ] **Step 5: Mark the approved design implemented with evidence**
+- [x] **Step 5: Mark the approved design implemented with evidence**
 
 Change the design status to `implemented and verified` and append the exact source commit, test command results, runtime AX result, visual gate result, and security result. Do not claim hosted CI or release completion from local evidence.
 
-- [ ] **Step 6: Commit authenticated evidence and documentation**
+- [x] **Step 6: Commit authenticated evidence and documentation**
 
 ```bash
 git add docs/quality docs/release/evidence docs/superpowers/specs/2026-08-02-today-sidebar-parity-design.md
 git commit -m "test: refresh today sidebar visual evidence"
 ```
 
-- [ ] **Step 7: Final clean-tree review**
+- [x] **Step 7: Final clean-tree review**
 
 Run:
 

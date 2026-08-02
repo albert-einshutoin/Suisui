@@ -1,0 +1,204 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-02T18:34:02Z",
+  "sourceCommit": "34601981dc5a03a5edbe1cb06d0eaf238628bf29",
+  "status": "partial",
+  "methodology": {
+    "appBundle": "dist/Suisui.app",
+    "fixture": "today-sidebar-runtime-fixture-v1",
+    "window": "1024x676",
+    "singleIsolatedProcess": true,
+    "isolatedEnvironmentKeys": [
+      "HOME",
+      "CFFIXED_USER_HOME",
+      "TMPDIR",
+      "SUISUI_DATABASE_PATH"
+    ],
+    "activation": "AXUIElementPerformAction(element, kAXPressAction)",
+    "pointerFallback": false,
+    "acceptanceRule": "A control passes only when AXPress returns success and an independent route, window, focus, selection, or database marker confirms the expected outcome.",
+    "commands": [
+      "AXUIElementPerformAction(element, kAXPressAction)",
+      "CGEvent keyboard shortcuts for Command-K and Command-1 through Command-4",
+      "sqlite3 <isolated-fixture> before and after Block Time",
+      "NSWorkspace appearance probe with baseline and process-local registration arguments"
+    ],
+    "accessibilityTextMapping": "On macOS these SwiftUI button names are exposed through AXDescription; AXLabel and AXTitle are empty."
+  },
+  "controls": [
+    {
+      "id": "sidebar-open-search",
+      "description": "Search",
+      "role": "AXButton",
+      "actions": ["AXPress"],
+      "frame": {"width": 267, "height": 36, "visible": true},
+      "pressResults": [0],
+      "outcome": {"marker": "command-palette-input", "routeUnchanged": "projects"},
+      "status": "passed"
+    },
+    {
+      "id": "sidebar-destination-inbox",
+      "description": "Inbox",
+      "role": "AXButton",
+      "actions": ["AXScrollToVisible", "AXPress"],
+      "frame": {"width": 267, "height": 32, "visible": true},
+      "pressResults": [0],
+      "outcome": {"marker": "inbox-workflow", "selectedDestination": "inbox", "otherDestinationsSelected": false},
+      "status": "passed"
+    },
+    {
+      "id": "sidebar-destination-today",
+      "description": "Today",
+      "role": "AXButton",
+      "actions": ["AXScrollToVisible", "AXPress"],
+      "frame": {"width": 267, "height": 32, "visible": true},
+      "pressResults": [0],
+      "outcome": {"marker": "today-workflow", "selectedDestination": "today", "otherDestinationsSelected": false},
+      "status": "passed"
+    },
+    {
+      "id": "sidebar-destination-projects",
+      "description": "Projects",
+      "role": "AXButton",
+      "actions": ["AXScrollToVisible", "AXPress"],
+      "frame": {"width": 267, "height": 32, "visible": true},
+      "pressResults": [0],
+      "outcome": {"marker": "projects-portfolio-overview", "selectedDestination": "projects", "otherDestinationsSelected": false},
+      "status": "passed"
+    },
+    {
+      "id": "sidebar-destination-schedule",
+      "description": "Schedule",
+      "role": "AXButton",
+      "actions": ["AXScrollToVisible", "AXPress"],
+      "frame": {"width": 267, "height": 32, "visible": true},
+      "pressResults": [0],
+      "outcome": {"marker": "schedule-workflow", "selectedDestination": "schedule", "otherDestinationsSelected": false},
+      "status": "passed"
+    },
+    {
+      "id": "sidebar-destination-completed",
+      "description": "Completed",
+      "role": "AXButton",
+      "actions": ["AXScrollToVisible", "AXPress"],
+      "frame": {"width": 267, "height": 32, "visible": true},
+      "pressResults": [0],
+      "outcome": {"marker": "done-workflow", "selectedDestination": "completed", "otherDestinationsSelected": false},
+      "status": "passed"
+    },
+    {
+      "id": "sidebar-action-voice-command",
+      "description": "Voice Command",
+      "role": "AXButton",
+      "actions": ["AXScrollToVisible", "AXPress"],
+      "frame": {"width": 267, "height": 32, "visible": true},
+      "pressResults": [0],
+      "outcome": {"marker": "voice-command-quick-command-tab", "window": "Voice Command", "routeUnchanged": "projects"},
+      "status": "passed"
+    },
+    {
+      "id": "sidebar-action-settings",
+      "description": "Settings",
+      "role": "AXButton",
+      "actions": ["AXScrollToVisible", "AXPress"],
+      "frame": {"width": 267, "height": 32, "visible": true},
+      "pressResults": [-25204, 0],
+      "outcome": {"window": "Overview", "routeUnchanged": "projects", "firstAttemptOutcomeObserved": true, "boundedRetrySucceeded": true},
+      "status": "passed_with_retry"
+    },
+    {
+      "id": "sidebar-quick-add-task",
+      "description": "Add Task",
+      "role": "AXButton",
+      "actions": ["AXPress"],
+      "frame": {"width": 267, "height": 32, "visible": true},
+      "pressResults": [0],
+      "outcome": {"marker": "inbox-workflow", "focusedIdentifier": "inbox-quick-add-title", "selectedDestination": "inbox"},
+      "status": "passed"
+    },
+    {
+      "id": "sidebar-quick-add-by-voice",
+      "description": "Add by Voice",
+      "role": "AXButton",
+      "actions": ["AXPress"],
+      "frame": {"width": 267, "height": 32, "visible": true},
+      "pressResults": [0],
+      "outcome": {"marker": "voice-command-quick-command-tab", "window": "Voice Command", "routeUnchanged": "projects"},
+      "status": "passed"
+    },
+    {
+      "id": "sidebar-quick-block-time",
+      "description": "Block Time",
+      "role": "AXButton",
+      "actions": ["AXPress"],
+      "frame": {"width": 267, "height": 32, "visible": true},
+      "pressResults": [0],
+      "outcome": {
+        "marker": "schedule-workflow",
+        "selectedDestination": "schedule",
+        "draftVisible": true,
+        "calendarApplyControlEnabled": true,
+        "databaseBefore": {"calendarLinks": 0, "assistantQueueItems": 0, "externalSideEffectJournal": 0, "approvalExecutionNonces": 0, "tasks": 1},
+        "databaseAfter": {"calendarLinks": 0, "assistantQueueItems": 0, "externalSideEffectJournal": 0, "approvalExecutionNonces": 0, "tasks": 1}
+      },
+      "status": "passed"
+    }
+  ],
+  "labelDuplicateCounts": {
+    "Suisui": 1,
+    "Search": 1,
+    "Inbox": 1,
+    "Today": 1,
+    "Projects": 1,
+    "Schedule": 1,
+    "Completed": 1,
+    "Voice Command": 1,
+    "Settings": 1,
+    "Add Task": 1,
+    "Add by Voice": 1,
+    "Block Time": 1
+  },
+  "keyboard": {
+    "Command-K": {"marker": "command-palette-input", "routeUnchanged": "projects", "status": "passed"},
+    "Command-1": {"marker": "today-workflow", "selectedDestination": "today", "status": "passed"},
+    "Command-2": {"marker": "inbox-workflow", "selectedDestination": "inbox", "status": "passed"},
+    "Command-3": {"marker": "projects-portfolio-overview", "selectedDestination": "projects", "status": "passed"},
+    "Command-4": {"marker": "review-hub", "selectedDestinations": [], "status": "passed"}
+  },
+  "falseSelection": {
+    "assistantQueue": {"marker": "assistant-queue-workflow", "selectedDestinations": [], "status": "passed"},
+    "automationActivity": {"marker": "automation-activity-workflow", "selectedDestinations": [], "status": "passed"}
+  },
+  "appearance": {
+    "sourceCommit": "34601981dc5a03a5edbe1cb06d0eaf238628bf29",
+    "locales": {
+      "en-US": {"manifest": "docs/release/evidence/ui-screenshots/visual-baseline-capture-manifest.json", "capturedScreens": 39},
+      "ja-JP": {"manifest": "docs/release/evidence/ui-screenshots-ja/visual-baseline-capture-manifest.json", "capturedScreens": 39}
+    },
+    "themes": {
+      "light": "passed",
+      "dark": "passed",
+      "system": "passed"
+    }
+  },
+  "unsupportedConditions": {
+    "increaseContrast": {
+      "status": "not_proven",
+      "baselineProbe": false,
+      "processLocalRegistrationArgumentProbe": false,
+      "reason": "NSWorkspace did not report a changed value from process-local registration arguments; changing the user's global accessibility preference requires separate authority."
+    },
+    "reduceMotion": {
+      "status": "not_proven",
+      "baselineProbe": false,
+      "processLocalRegistrationArgumentProbe": false,
+      "reason": "NSWorkspace did not report a changed value from process-local registration arguments; changing the user's global accessibility preference requires separate authority."
+    }
+  },
+  "externalCompletion": {
+    "hostedCI": "not_proven",
+    "notarization": "not_proven",
+    "releasePublication": "not_proven",
+    "shippedProduct": "not_proven"
+  }
+}

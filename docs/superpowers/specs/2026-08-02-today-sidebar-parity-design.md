@@ -1,7 +1,7 @@
 # Today Sidebar Parity Design
 
 - Date: 2026-08-02
-- Status: implemented and verified
+- Status: implemented; runtime verification partial
 - Source baseline: `origin/main` at `9209f5551e25fc8630dee9972c69c14af0c9282a`
 - Reference: `ui-samples/today.png`
 - Chosen approach: sample-faithful sidebar with existing Suisui behavior
@@ -80,6 +80,8 @@ Sidebar
 | 5 | Completed | `checkmark.circle` | destination | `.review(.completed)` |
 | 6 | Voice Command | `mic` | utility action | `openWindow(id: "voice-capture")` |
 | 7 | Settings | `gearshape` | utility action | `openSettings()` |
+
+日本語の`Completed`は、このサイドバーでは短く一覧性を保てる`完了`へ統一する。既存の完了済みtaskを示す製品用語と一致し、状態説明をnavigation labelへ重複させないためである。
 
 ### Selection ownership
 
@@ -253,12 +255,12 @@ Todayメインコンテンツは、サイドバー完成後に別の設計・実
 ## 12. Implementation Evidence
 
 - Product source commit: `34601981dc5a03a5edbe1cb06d0eaf238628bf29`.
-- Direct runtime accessibility actions: `.tmp/task6-axpress-evidence.0xBpb3/README.txt` records `AXUIElementPerformAction(kAXPressAction)` with no pointer fallback. Search, Inbox, Voice Command, Add Task, and Block Time each returned `axpress_result=0` and were accepted only after an independent window, route, focus, or selection marker changed. Representative receipts are `.tmp/task6-axpress-evidence.0xBpb3/search-axpress.txt`, `inbox-axpress.txt`, `voice-axpress.txt`, `add-task-axpress.txt`, and `block-time-axpress.txt`.
-- Authenticated visual capture: `capture_ui_evidence.sh` produced 39/39 healthy screens and a passed live AX receipt for both `en-US` (`.tmp/visual-ax-audit-receipt.json`) and `ja-JP` (`.tmp/visual-ax-audit-receipt-ja.json`), bound to the product source commit above.
+- Tracked runtime receipt: `docs/release/evidence/today-sidebar-runtime-ax-receipt.json` records one isolated `1024x676` app process, the AX role/action inventory, direct `AXUIElementPerformAction(kAXPressAction)` results for all 11 controls with no pointer fallback, independent route/window/focus/selection outcomes, keyboard shortcuts, false-selection checks, duplicate-label counts, and the Block Time database before/after boundary. Settings produced an outcome on the first attempt while returning `-25204`; an independent bounded retry returned `0`, so both attempts remain visible in the receipt rather than being collapsed into an unconditional pass.
+- Authenticated visual capture: `capture_ui_evidence.sh` produced 39/39 healthy screens and a passed live AX receipt for both `en-US` and `ja-JP`, bound to the product source commit above. The tracked manifests are `docs/release/evidence/ui-screenshots/visual-baseline-capture-manifest.json` and `docs/release/evidence/ui-screenshots-ja/visual-baseline-capture-manifest.json`; ignored `.tmp` capture logs are auxiliary diagnostics, not the evidence source of record.
 - Visual gates: `SUISUI_CI_VISUAL_GATE_LOCALE=en-US ./script/check_ci_visual_gate.sh` and `SUISUI_CI_VISUAL_GATE_LOCALE=ja-JP ./script/check_ci_visual_gate.sh` each completed with 39 runtime-audited screenshots, `status=passed`, and exit 0.
 - Baseline scope: all 25 Project Board/sidebar-containing rasters per locale were refreshed. The 14 unrelated Settings/Voice Command rasters per locale remain byte-identical to their previous baselines. Fresh Dark/System Settings captures differed predominantly by a one-level red-channel decrease across the semantic content background (`[35, 42, 46, 255]` to `[34, 42, 46, 255]`). In `settings-appearance-system`, exactly four antialiased pixels per locale had the maximum channel delta of 2 in red; across the seven Japanese Settings captures, four pixels also had a blue-channel delta of 1. All differences remained within the existing raster tolerance. Because no Settings or global theme source changed, this environmental rendering drift was not adopted as a product baseline change. Metadata for all 39 screens was refreshed to preserve the authenticated source-commit contract.
 - Reference comparison: the implemented sidebar matches the approved seven-row order, real app logo, reviewed symbols, selected-row treatment, spacing hierarchy, and three bottom quick actions. Today main-content parity remains explicitly out of scope under section 11.
 - Complete SwiftPM: after the authenticated evidence commit, `./script/run_complete_swiftpm_tests.sh` completed with exit 0: 3,121 discovered, 3,121 executed, 6 skipped, and 0 failures. `ReleasePipelineTests` executed all 235 tests with 0 failures.
 - Security: after the authenticated evidence commit, `./script/check_security_regressions.sh` completed with exit 0 across fixtures, screenshot metadata, release evidence, packaging, tracked voice-model binaries, Keychain references, OAuth, MCP, NOTARY, and runtime-smoke artifacts.
-- Increase Contrast and Reduce Motion behavior were not directly proven at runtime in this slice. Light, Dark, and System appearance evidence is proven by the authenticated capture above.
+- Increase Contrast and Reduce Motion remain `not_proven`. A baseline `NSWorkspace` probe reported both values disabled, and process-local registration arguments did not change either reported value. Changing the user's global accessibility preferences requires separate authority, so this slice does not claim those modes. Light, Dark, and System appearance evidence is proven by the authenticated capture above.
 - Hosted CI, notarization, release publication, and shipped-product completion are not established by this local evidence.
