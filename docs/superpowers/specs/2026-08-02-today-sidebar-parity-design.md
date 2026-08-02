@@ -81,7 +81,7 @@ Sidebar
 | 6 | Voice Command | `mic` | utility action | `openWindow(id: "voice-capture")` |
 | 7 | Settings | `gearshape` | utility action | `openSettings()` |
 
-日本語の`Completed`は、このサイドバーでは短く一覧性を保てる`完了`へ統一する。既存の完了済みtaskを示す製品用語と一致し、状態説明をnavigation labelへ重複させないためである。
+日本語の共有Localization key `Completed`は、サイドバーだけでなくProjects section、Done workflow、状態accessibility valueを含む製品全体で`完了`へ統一する。短い共通語にすることで一覧性を保ち、同じ完了状態を画面ごとに異なる語で説明しないためである。
 
 ### Selection ownership
 
