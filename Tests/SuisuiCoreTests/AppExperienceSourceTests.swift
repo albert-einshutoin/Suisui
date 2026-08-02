@@ -29,6 +29,44 @@ final class AppExperienceSourceTests: XCTestCase {
                 "Expected exactly one top-level marker for \(marker)"
             )
         }
+        let markerRanges = try requiredMarkers.map { marker in
+            try XCTUnwrap(sidebarSource.range(of: marker))
+        }
+        for (leading, trailing) in zip(markerRanges, markerRanges.dropFirst()) {
+            XCTAssertLessThan(leading.lowerBound, trailing.lowerBound)
+        }
+
+        let searchStart = try XCTUnwrap(sidebarSource.range(of: "Button(action: onOpenSearch)"))
+        let searchEnd = try XCTUnwrap(
+            sidebarSource.range(
+                of: "ScrollView {",
+                range: searchStart.lowerBound..<sidebarSource.endIndex
+            )
+        )
+        let searchButton = String(sidebarSource[searchStart.lowerBound..<searchEnd.lowerBound])
+        XCTAssertTrue(searchButton.contains(".padding(.horizontal, 10)"))
+        XCTAssertTrue(
+            searchButton.contains(
+                ".frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36, alignment: .leading)"
+            )
+        )
+        XCTAssertTrue(
+            searchButton.contains(
+                ".background(.quaternary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))"
+            )
+        )
+        XCTAssertTrue(searchButton.contains(".contentShape(Rectangle())"))
+
+        let quickActionStart = try XCTUnwrap(sidebarSource.range(of: "private func quickAction("))
+        let quickActionEnd = try XCTUnwrap(
+            sidebarSource.range(
+                of: "private func perform",
+                range: quickActionStart.lowerBound..<sidebarSource.endIndex
+            )
+        )
+        let quickAction = String(sidebarSource[quickActionStart.lowerBound..<quickActionEnd.lowerBound])
+        XCTAssertTrue(quickAction.contains(".contentShape(Rectangle())"))
+
         XCTAssertTrue(sidebarSource.contains("NSApplication.shared.applicationIconImage"))
         XCTAssertTrue(
             FileManager.default.fileExists(

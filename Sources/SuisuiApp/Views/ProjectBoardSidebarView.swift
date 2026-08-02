@@ -90,7 +90,10 @@ struct ProjectBoardSidebarView: View {
                     Text(LocalizedStringKey("⌘K"))
                         .foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36, alignment: .leading)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("sidebar-open-search")
@@ -166,6 +169,7 @@ struct ProjectBoardSidebarView: View {
         Button(action: handler) {
             Label(LocalizedStringKey(action.title), systemImage: action.systemImage)
                 .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(quickActionAccessibilityIdentifier(for: action))
