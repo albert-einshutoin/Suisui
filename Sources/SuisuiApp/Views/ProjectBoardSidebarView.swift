@@ -140,19 +140,28 @@ struct ProjectBoardSidebarView: View {
     ) -> some View {
         let isSelected = ProjectBoardSidebarPresentation.selectedItemID(for: route) == item.id
 
-        return sidebarRowButton(item, isSelected: isSelected)
+        return sidebarRowButton(
+            item,
+            isSelected: isSelected,
+            hintKey: "Opens this section."
+        )
             .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func utilitySidebarRow(
         _ item: ProjectBoardSidebarItemPresentation
     ) -> some View {
-        sidebarRowButton(item, isSelected: false)
+        sidebarRowButton(
+            item,
+            isSelected: false,
+            hintKey: utilityAccessibilityHintKey(for: item.behavior)
+        )
     }
 
     private func sidebarRowButton(
         _ item: ProjectBoardSidebarItemPresentation,
-        isSelected: Bool
+        isSelected: Bool,
+        hintKey: String
     ) -> some View {
         let count = counts.count(for: item.id)
 
@@ -185,10 +194,10 @@ struct ProjectBoardSidebarView: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(LocalizedStringKey(item.title)))
-        .accessibilityValue(accessibilityValue(for: count))
+        .accessibilityValue(countAccessibilityValue(for: item.id))
         .accessibilityIdentifier(accessibilityIdentifier(for: item.id))
-        .accessibilityHint(Text(LocalizedStringKey(accessibilityHintKey(for: item.behavior))))
-        .help(LocalizedStringKey(accessibilityHintKey(for: item.behavior)))
+        .accessibilityHint(Text(LocalizedStringKey(hintKey)))
+        .help(LocalizedStringKey(hintKey))
     }
 
     private func quickAction(
@@ -224,22 +233,30 @@ struct ProjectBoardSidebarView: View {
         }
     }
 
-    private func accessibilityValue(for count: Int?) -> String {
-        guard let count else {
+    private func countAccessibilityValue(for itemID: ProjectBoardSidebarItemID) -> String {
+        guard let count = counts.count(for: itemID) else {
             return ""
         }
         guard count > 0 else {
-            return localizedDisplay("No pending items")
+            return switch itemID {
+            case .inbox: localizedDisplay("No pending items")
+            case .today: localizedDisplay("No items today")
+            case .projects: localizedDisplay("No projects")
+            case .schedule: localizedDisplay("No scheduled items")
+            case .completed: localizedDisplay("No completed items")
+            case .voiceCommand, .settings: ""
+            }
         }
         return localizedCount(count, one: "%d item", other: "%d items")
     }
 
-    private func accessibilityHintKey(
+    private func utilityAccessibilityHintKey(
         for behavior: ProjectBoardSidebarItemBehavior
     ) -> String {
         switch behavior {
         case .route:
-            "Navigate work or open a quick action."
+            // Route rows are separated before this helper; reaching this case is a rendering bug.
+            preconditionFailure("A destination cannot use a utility accessibility hint")
         case .openVoiceCommand:
             "Opens Voice Command."
         case .openSettings:

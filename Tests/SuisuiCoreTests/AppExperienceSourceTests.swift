@@ -123,6 +123,11 @@ final class AppExperienceSourceTests: XCTestCase {
             "Opens the command palette.": "Opens the command palette.",
             "Creates a local schedule draft without writing Calendar.":
                 "Creates a local schedule draft without writing Calendar.",
+            "No items today": "No items today",
+            "No projects": "No projects",
+            "No scheduled items": "No scheduled items",
+            "No completed items": "No completed items",
+            "Opens this section.": "Opens this section.",
         ]
         let expectedJapanese = [
             "Search": "検索",
@@ -134,6 +139,11 @@ final class AppExperienceSourceTests: XCTestCase {
             "Opens the command palette.": "コマンドパレットを開きます。",
             "Creates a local schedule draft without writing Calendar.":
                 "カレンダーへ書き込まず、ローカルのスケジュール下書きを作成します。",
+            "No items today": "今日の項目はありません",
+            "No projects": "プロジェクトはありません",
+            "No scheduled items": "予定項目はありません",
+            "No completed items": "完了済みの項目はありません",
+            "Opens this section.": "このセクションを開きます。",
         ]
 
         for (key, value) in expectedEnglish {
@@ -195,8 +205,13 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         let hintHelpers = try sourceBlock(
             in: sidebar,
-            from: "private func accessibilityHintKey(",
+            from: "private func utilityAccessibilityHintKey(",
             to: "private func accessibilityIdentifier("
+        )
+        let countValue = try sourceBlock(
+            in: sidebar,
+            from: "private func countAccessibilityValue(",
+            to: "private func accessibilityHintKey("
         )
         let brandText = try sourceBlock(
             in: brand,
@@ -242,7 +257,19 @@ final class AppExperienceSourceTests: XCTestCase {
         )
 
         XCTAssertTrue(destinationRow.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
+        XCTAssertTrue(
+            destinationRow.contains(
+                "hintKey: \"Opens this section.\""
+            )
+        )
+        XCTAssertEqual(sidebar.components(separatedBy: "\"Opens this section.\"").count - 1, 1)
+        XCTAssertFalse(destinationRow.contains("Navigate work or open a quick action."))
         XCTAssertFalse(utilityRow.contains(".accessibilityAddTraits"))
+        XCTAssertTrue(
+            utilityRow.contains(
+                "hintKey: utilityAccessibilityHintKey(for: item.behavior)"
+            )
+        )
         XCTAssertFalse(sidebarRow.contains(".accessibilityAddTraits"))
         XCTAssertEqual(sidebar.components(separatedBy: ".accessibilityAddTraits").count - 1, 1)
 
@@ -250,16 +277,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(sidebarRow.contains(".accessibilityHidden(true)"))
         XCTAssertFalse(sidebarRowText.contains(".accessibilityHidden(true)"))
         XCTAssertTrue(sidebarRow.contains(".accessibilityLabel(Text(LocalizedStringKey(item.title)))"))
-        XCTAssertTrue(sidebarRow.contains(".accessibilityValue(accessibilityValue(for: count))"))
+        XCTAssertTrue(sidebarRow.contains(".accessibilityValue(countAccessibilityValue(for: item.id))"))
         XCTAssertTrue(sidebarRow.contains(".accessibilityIdentifier(accessibilityIdentifier(for: item.id))"))
-        XCTAssertTrue(
-            sidebarRow.contains(
-                ".accessibilityHint(Text(LocalizedStringKey(accessibilityHintKey(for: item.behavior))))"
-            )
-        )
-        XCTAssertTrue(
-            sidebarRow.contains(".help(LocalizedStringKey(accessibilityHintKey(for: item.behavior)))")
-        )
+        XCTAssertTrue(sidebarRow.contains(".accessibilityHint(Text(LocalizedStringKey(hintKey)))"))
+        XCTAssertTrue(sidebarRow.contains(".help(LocalizedStringKey(hintKey))"))
 
         XCTAssertTrue(quickAction.contains("Image(systemName: action.systemImage)"))
         XCTAssertTrue(quickAction.contains(".accessibilityHidden(true)"))
@@ -279,8 +300,18 @@ final class AppExperienceSourceTests: XCTestCase {
                 "case .blockTime:\n            \"Creates a local schedule draft without writing Calendar.\""
             )
         )
-        XCTAssertTrue(sidebar.contains("localizedDisplay(\"No pending items\")"))
-        XCTAssertTrue(sidebar.contains("localizedCount(count, one: \"%d item\", other: \"%d items\")"))
+        for mapping in [
+            "case .inbox: localizedDisplay(\"No pending items\")",
+            "case .today: localizedDisplay(\"No items today\")",
+            "case .projects: localizedDisplay(\"No projects\")",
+            "case .schedule: localizedDisplay(\"No scheduled items\")",
+            "case .completed: localizedDisplay(\"No completed items\")",
+        ] {
+            XCTAssertTrue(countValue.contains(mapping), "Missing zero-count mapping: \(mapping)")
+        }
+        XCTAssertTrue(
+            countValue.contains("localizedCount(count, one: \"%d item\", other: \"%d items\")")
+        )
     }
 
     func testAppLocalizationsContainNoDuplicateKeys() throws {

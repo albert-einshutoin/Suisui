@@ -1645,7 +1645,7 @@
 "Opening Project Board" = "Project Boardを開いています";
 "Preparing local project data for the visible window." = "表示ウィンドウ用にローカルプロジェクトデータを準備しています。";
 "Portfolio Watchlist" = "ポートフォリオ監視リスト";
-"No projects" = "プロジェクトがありません";
+"No projects" = "プロジェクトはありません";
 "Open tasks" = "未完了タスク";
 "Developer Mode" = "開発者モード";
 "Developer Mode exposes local shell and repository automation controls after explicit approval." = "開発者モードでは、明示承認後にローカルシェルとリポジトリ自動化コントロールを表示します。";
@@ -1750,6 +1750,10 @@
 "Block Time" = "時間をブロック";
 "Navigate work or open a quick action." = "作業画面へ移動するか、クイックアクションを開きます。";
 "Opens the command palette." = "コマンドパレットを開きます。";
+"Opens this section." = "このセクションを開きます。";
+"No items today" = "今日の項目はありません";
+"No scheduled items" = "予定項目はありません";
+"No completed items" = "完了済みの項目はありません";
 
 /* Voice workspace Q&A */
 "Searching your workspace" = "ワークスペースを検索中";

@@ -1762,6 +1762,10 @@
 "Block Time" = "Block Time";
 "Navigate work or open a quick action." = "Navigate work or open a quick action.";
 "Opens the command palette." = "Opens the command palette.";
+"Opens this section." = "Opens this section.";
+"No items today" = "No items today";
+"No scheduled items" = "No scheduled items";
+"No completed items" = "No completed items";
 
 /* Voice workspace Q&A */
 "Searching your workspace" = "Searching your workspace";
