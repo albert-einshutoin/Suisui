@@ -8,15 +8,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".frame(width: 680, height: 584)"))
     }
 
-    func testProjectBoardPrimaryNavigationUsesExactlyFourTopLevelRows() throws {
+    func testProjectBoardSidebarMatchesApprovedTodaySampleStructure() throws {
         let sidebarSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift"
         )
         let requiredMarkers = [
-            "sidebar-destination-today",
             "sidebar-destination-inbox",
+            "sidebar-destination-today",
             "sidebar-destination-projects",
-            "sidebar-destination-review"
+            "sidebar-destination-schedule",
+            "sidebar-destination-completed",
+            "sidebar-action-voice-command",
+            "sidebar-action-settings",
         ]
 
         for marker in requiredMarkers {
@@ -26,22 +29,19 @@ final class AppExperienceSourceTests: XCTestCase {
                 "Expected exactly one top-level marker for \(marker)"
             )
         }
-        XCTAssertFalse(sidebarSource.contains("sidebar-destination-catch-up"))
-        XCTAssertFalse(sidebarSource.contains("sidebar-destination-schedule"))
-        XCTAssertFalse(sidebarSource.contains("sidebar-destination-done"))
-        XCTAssertFalse(sidebarSource.contains("sidebar-destination-assistant-queue"))
-
-        let todaySource = try readPackageFile(
-            "Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift"
+        XCTAssertTrue(sidebarSource.contains("NSApplication.shared.applicationIconImage"))
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: packageRoot()
+                    .appendingPathComponent("packaging/Suisui-AppIcon-1024.png")
+                    .path
+            )
         )
-        XCTAssertTrue(todaySource.contains("viewModel.catchUpCount > 0"))
-        XCTAssertTrue(todaySource.contains("today-catch-up-section"))
-        XCTAssertTrue(todaySource.contains("@AccessibilityFocusState private var isCatchUpFocused"))
-        XCTAssertTrue(todaySource.contains("catchUpFocusRevision"))
-        XCTAssertTrue(todaySource.contains("_isCatchUpExpanded = State(initialValue: initiallyExpandsCatchUp)"))
-        XCTAssertTrue(todaySource.contains("isCatchUpExpanded = true"))
-        XCTAssertTrue(todaySource.contains(".accessibilityFocused($isCatchUpFocused)"))
-        XCTAssertTrue(todaySource.contains(".onChange(of: viewModel.catchUpCount)"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-open-search"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-quick-add-task"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-quick-add-by-voice"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-quick-block-time"))
+        XCTAssertFalse(sidebarSource.contains("sidebar-destination-review"))
     }
 
     func testLegacyCatchUpFocusIsResolvedAndConsumedWithinOneBoardScene() throws {
@@ -2640,7 +2640,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("sidebar-destination-inbox"))
         XCTAssertTrue(source.contains("sidebar-destination-today"))
         XCTAssertTrue(source.contains("sidebar-destination-projects"))
-        XCTAssertTrue(source.contains("sidebar-destination-review"))
+        XCTAssertTrue(source.contains("sidebar-destination-schedule"))
+        XCTAssertTrue(source.contains("sidebar-destination-completed"))
+        XCTAssertFalse(source.contains("sidebar-destination-review"))
         XCTAssertFalse(
             try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift")
                 .contains("sidebar-destination-catch-up")
@@ -2679,20 +2681,24 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(persistenceSource.contains("availableProjects.contains(where: { $0.id == projectID }) else {\n                    return .today"))
     }
 
-    func testPhase12SidebarShowsWorkflowDestinationsBeforeProjectRows() throws {
+    func testSidebarShowsApprovedDestinationsInSampleOrder() throws {
         let sidebarSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift"
         )
 
-        let todayRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-today"))
         let inboxRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-inbox"))
+        let todayRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-today"))
         let projectsRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-projects"))
-        let reviewRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-review"))
+        let scheduleRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-schedule"))
+        let completedRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-completed"))
 
-        XCTAssertLessThan(todayRow.lowerBound, inboxRow.lowerBound)
-        XCTAssertLessThan(inboxRow.lowerBound, projectsRow.lowerBound)
-        XCTAssertLessThan(projectsRow.lowerBound, reviewRow.lowerBound)
+        XCTAssertLessThan(inboxRow.lowerBound, todayRow.lowerBound)
+        XCTAssertLessThan(todayRow.lowerBound, projectsRow.lowerBound)
+        XCTAssertLessThan(projectsRow.lowerBound, scheduleRow.lowerBound)
+        XCTAssertLessThan(scheduleRow.lowerBound, completedRow.lowerBound)
         XCTAssertFalse(sidebarSource.contains("project-sidebar-row-"))
+        XCTAssertFalse(sidebarSource.contains("sidebar-destination-catch-up"))
+        XCTAssertFalse(sidebarSource.contains("sidebar-destination-assistant-queue"))
         let projectsSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift"
         )
@@ -3313,9 +3319,11 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-sidebar\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Project navigation\")"))
-        XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Select Today, Inbox, Projects, or Review.\")"))
+        XCTAssertTrue(boardSource.contains("LocalizedStringKey(\"Navigate work or open a quick action.\")"))
         XCTAssertTrue(boardSource.contains("sidebar-destination-today"))
-        XCTAssertTrue(boardSource.contains("sidebar-destination-review"))
+        XCTAssertTrue(boardSource.contains("sidebar-destination-schedule"))
+        XCTAssertTrue(boardSource.contains("sidebar-destination-completed"))
+        XCTAssertFalse(boardSource.contains("sidebar-destination-review"))
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-sidebar-row-\\(project.id)\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityLabel(project.accessibilityProjectsHubLabel)"))
         XCTAssertTrue(boardSource.contains(".tag(BoardRoute.project(project.id))"))

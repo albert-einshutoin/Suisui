@@ -1,3 +1,4 @@
+import AppKit
 import SuisuiCore
 import SwiftUI
 
@@ -5,114 +6,211 @@ struct ProjectBoardSidebarCounts: Equatable {
     let today: Int
     let inbox: Int
     let projects: Int
-    let review: Int
+    let schedule: Int
+    let completed: Int
+
+    init(
+        today: Int,
+        inbox: Int,
+        projects: Int,
+        schedule: Int = 0,
+        completed: Int = 0,
+        review: Int? = nil
+    ) {
+        self.today = today
+        self.inbox = inbox
+        self.projects = projects
+        self.schedule = schedule
+        self.completed = completed
+        // Some callers still supply this retired aggregate; accepting it keeps
+        // source compatibility while each visible route receives its own count.
+        _ = review
+    }
+
+    func count(for itemID: ProjectBoardSidebarItemID) -> Int? {
+        switch itemID {
+        case .today: today
+        case .inbox: inbox
+        case .projects: projects
+        case .schedule: schedule
+        case .completed: completed
+        case .voiceCommand, .settings: nil
+        }
+    }
 }
 
-/// The primary source list intentionally owns only the four stable product
-/// areas. Feature-level navigation belongs to the Projects and Review hubs so
-/// adding a workflow cannot silently grow the app's top-level information
-/// architecture again.
 struct ProjectBoardSidebarView: View {
-    @Binding var route: BoardRoute
-    let counts: ProjectBoardSidebarCounts
+    @Binding private var route: BoardRoute
+    private let counts: ProjectBoardSidebarCounts
+    private let onOpenSearch: () -> Void
+    private let onOpenVoiceCommand: () -> Void
+    private let onOpenSettings: () -> Void
+    private let onAddTask: () -> Void
+    private let onAddByVoice: () -> Void
+    private let onBlockTime: () -> Void
+
+    init(
+        route: Binding<BoardRoute>,
+        counts: ProjectBoardSidebarCounts,
+        onOpenSearch: @escaping () -> Void = {},
+        onOpenVoiceCommand: @escaping () -> Void = {},
+        onOpenSettings: @escaping () -> Void = {},
+        onAddTask: @escaping () -> Void = {},
+        onAddByVoice: @escaping () -> Void = {},
+        onBlockTime: @escaping () -> Void = {}
+    ) {
+        _route = route
+        self.counts = counts
+        self.onOpenSearch = onOpenSearch
+        self.onOpenVoiceCommand = onOpenVoiceCommand
+        self.onOpenSettings = onOpenSettings
+        self.onAddTask = onAddTask
+        self.onAddByVoice = onAddByVoice
+        self.onBlockTime = onBlockTime
+    }
 
     var body: some View {
-        List(selection: primarySelection) {
-            primaryRow(
-                destination: .today,
-                title: "Today",
-                systemImage: "sun.max",
-                count: counts.today,
-                accessibilityIdentifier: "sidebar-destination-today"
-            )
-            primaryRow(
-                destination: .inbox,
-                title: "Inbox",
-                systemImage: "tray",
-                count: counts.inbox,
-                accessibilityIdentifier: "sidebar-destination-inbox"
-            )
-            primaryRow(
-                destination: .projects,
-                title: "Projects",
-                systemImage: "folder.circle",
-                count: counts.projects,
-                accessibilityIdentifier: "sidebar-destination-projects"
-            )
-            primaryRow(
-                destination: .review,
-                title: "Review",
-                systemImage: "checklist",
-                count: counts.review,
-                accessibilityIdentifier: "sidebar-destination-review"
-            )
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(nsImage: NSApplication.shared.applicationIconImage)
+                    .resizable()
+                    .frame(width: 32, height: 32)
+                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .accessibilityHidden(true)
+                Text(LocalizedStringKey("Suisui"))
+                    .font(.headline)
+            }
+
+            Button(action: onOpenSearch) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .accessibilityHidden(true)
+                    Text(LocalizedStringKey("Search"))
+                    Spacer()
+                    Text(LocalizedStringKey("⌘K"))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("sidebar-open-search")
+            .accessibilityHint(Text(LocalizedStringKey("Opens the command palette.")))
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    ForEach(ProjectBoardSidebarPresentation.items, id: \.id) { item in
+                        sidebarRow(item)
+                    }
+                }
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 2) {
+                quickAction(.addTask, handler: onAddTask)
+                quickAction(.addByVoice, handler: onAddByVoice)
+                quickAction(.blockTime, handler: onBlockTime)
+            }
         }
-        .listStyle(.sidebar)
+        .padding(10)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project-board-sidebar")
         .accessibilityLabel("Project navigation")
-        .accessibilityHint("Select Today, Inbox, Projects, or Review.")
+        .accessibilityHint(Text(LocalizedStringKey("Navigate work or open a quick action.")))
     }
 
-    private var primarySelection: Binding<BoardPrimaryDestination?> {
-        Binding(
-            get: { route.primaryDestination },
-            set: { destination in
-                guard let destination else {
-                    return
-                }
-                route = .primary(destination)
-            }
-        )
-    }
-
-    private func primaryRow(
-        destination: BoardPrimaryDestination,
-        title: LocalizedStringKey,
-        systemImage: String,
-        count: Int,
-        accessibilityIdentifier: String
+    private func sidebarRow(
+        _ item: ProjectBoardSidebarItemPresentation
     ) -> some View {
-        Label {
+        let count = counts.count(for: item.id)
+        let isSelected = ProjectBoardSidebarPresentation.selectedItemID(for: route) == item.id
+
+        return Button {
+            perform(item.behavior)
+        } label: {
             HStack(spacing: 8) {
-                Text(title)
+                Image(systemName: item.systemImage)
+                    .frame(width: 20)
+                    .accessibilityHidden(true)
+                Text(LocalizedStringKey(item.title))
                     .lineLimit(1)
-                    .layoutPriority(1)
                 Spacer(minLength: 8)
-                if count > 0 {
+                if let count, count > 0 {
                     Text("\(count)")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
-                        .accessibilityLabel(
-                            localizedCount(count, one: "%d item", other: "%d items")
-                        )
                 }
             }
-        } icon: {
-            Image(systemName: systemImage)
-                .accessibilityHidden(true)
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+            .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+            .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isSelected ? Color.accentColor.opacity(0.16) : .clear)
+            }
+            .contentShape(Rectangle())
         }
-        .tag(destination)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(title)
-        .accessibilityValue(
-            count > 0
-                ? localizedCount(count, one: "%d item", other: "%d items")
-                : localizedDisplay("No pending items")
-        )
-        .accessibilityIdentifier(accessibilityIdentifier)
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(LocalizedStringKey(item.title)))
+        .accessibilityValue(accessibilityValue(for: count))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier(accessibilityIdentifier(for: item.id))
     }
-}
 
-private extension BoardRoute {
-    var primaryDestination: BoardPrimaryDestination? {
-        switch self {
-        case .primary(let destination):
-            return destination
-        case .project, .smartList:
-            return .projects
-        case .review:
-            return .review
+    private func quickAction(
+        _ action: ProjectBoardSidebarQuickAction,
+        handler: @escaping () -> Void
+    ) -> some View {
+        Button(action: handler) {
+            Label(LocalizedStringKey(action.title), systemImage: action.systemImage)
+                .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(quickActionAccessibilityIdentifier(for: action))
+    }
+
+    private func perform(_ behavior: ProjectBoardSidebarItemBehavior) {
+        switch behavior {
+        case .route(let destination):
+            route = destination
+        case .openVoiceCommand:
+            onOpenVoiceCommand()
+        case .openSettings:
+            onOpenSettings()
+        }
+    }
+
+    private func accessibilityValue(for count: Int?) -> String {
+        guard let count else {
+            return ""
+        }
+        guard count > 0 else {
+            return localizedDisplay("No pending items")
+        }
+        return localizedCount(count, one: "%d item", other: "%d items")
+    }
+
+    private func accessibilityIdentifier(for itemID: ProjectBoardSidebarItemID) -> String {
+        switch itemID {
+        case .inbox: "sidebar-destination-inbox"
+        case .today: "sidebar-destination-today"
+        case .projects: "sidebar-destination-projects"
+        case .schedule: "sidebar-destination-schedule"
+        case .completed: "sidebar-destination-completed"
+        case .voiceCommand: "sidebar-action-voice-command"
+        case .settings: "sidebar-action-settings"
+        }
+    }
+
+    private func quickActionAccessibilityIdentifier(
+        for action: ProjectBoardSidebarQuickAction
+    ) -> String {
+        switch action {
+        case .addTask: "sidebar-quick-add-task"
+        case .addByVoice: "sidebar-quick-add-by-voice"
+        case .blockTime: "sidebar-quick-block-time"
         }
     }
 }
