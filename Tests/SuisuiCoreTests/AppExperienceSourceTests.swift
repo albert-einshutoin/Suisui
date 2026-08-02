@@ -211,7 +211,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let countValue = try sourceBlock(
             in: sidebar,
             from: "private func countAccessibilityValue(",
-            to: "private func accessibilityHintKey("
+            to: "private func utilityAccessibilityHintKey("
         )
         let brandText = try sourceBlock(
             in: brand,
