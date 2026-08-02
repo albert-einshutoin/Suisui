@@ -7636,11 +7636,39 @@ final class ReleasePipelineTests: XCTestCase {
                 range: destinationActivation.lowerBound..<script.endIndex
             )
         )
+        let destinationLoopEnd = try XCTUnwrap(
+            script.range(
+                of: "\ndone\n\nmedian_destination_inbox_ms=",
+                range: destinationLoop.upperBound..<script.endIndex
+            )
+        )
+        let destinationDeclarations = String(script[sidebarReady.upperBound..<destinationLoop.lowerBound])
+        let destinationSampleLoop = String(script[destinationLoop.lowerBound..<destinationLoopEnd.upperBound])
+        let destinationAggregationStart = try XCTUnwrap(
+            script.range(
+                of: "median_destination_inbox_ms=",
+                range: destinationLoopEnd.lowerBound..<script.endIndex
+            )
+        ).lowerBound
+        let destinationAggregationEnd = try XCTUnwrap(
+            script.range(
+                of: "\nprintf '\\nStatus: passed\\n'",
+                range: destinationAggregationStart..<script.endIndex
+            )
+        )
+        let destinationAggregation = String(
+            script[destinationAggregationStart..<destinationAggregationEnd.lowerBound]
+        )
         XCTAssertLessThan(sidebarReady.lowerBound, destinationLoop.lowerBound)
-        XCTAssertTrue(script.contains("measure_destination \"destination-inbox\" \"$sample_index\" \"sidebar-destination-inbox\" \"Inbox\" \"inbox-workflow\""))
-        XCTAssertTrue(script.contains("measure_destination \"destination-schedule\" \"$sample_index\" \"sidebar-destination-schedule\" \"Schedule\" \"schedule-workflow\""))
-        XCTAssertTrue(script.contains("DESTINATION_SCHEDULE_SAMPLES"))
+        XCTAssertTrue(destinationDeclarations.contains("DESTINATION_SCHEDULE_SAMPLES=()"))
+        XCTAssertTrue(destinationSampleLoop.contains("measure_destination \"destination-schedule\" \"$sample_index\" \"sidebar-destination-schedule\" \"Schedule\" \"schedule-workflow\""))
+        XCTAssertTrue(destinationSampleLoop.contains("DESTINATION_SCHEDULE_SAMPLES+=(\"$LAST_DESTINATION_ELAPSED_MS\")"))
+        XCTAssertTrue(destinationAggregation.contains("median_destination_schedule_ms=\"$(median_elapsed_ms \"${DESTINATION_SCHEDULE_SAMPLES[@]}\")\""))
+        XCTAssertTrue(destinationAggregation.contains("record_elapsed_sample \"destination-schedule\" \"$median_destination_schedule_ms\" \"$MAX_DESTINATION_SWITCH_MS\""))
         XCTAssertFalse(script.contains("sidebar-destination-review"))
+        XCTAssertFalse(script.contains("DESTINATION_REVIEW_SAMPLES"))
+        XCTAssertFalse(script.contains("median_destination_review_ms"))
+        XCTAssertFalse(script.contains("record_elapsed_sample \"destination-review\""))
         let measureDestinationStart = try XCTUnwrap(script.range(of: "measure_destination() {"))
         let measureDestinationEnd = try XCTUnwrap(
             script.range(

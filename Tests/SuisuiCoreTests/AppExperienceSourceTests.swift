@@ -1009,29 +1009,32 @@ final class AppExperienceSourceTests: XCTestCase {
                 range: routesStart.upperBound..<normalRoutesSource.endIndex
             )
         )
-        let routesSource = String(normalRoutesSource[routesStart.lowerBound..<routesEnd.upperBound])
-        let routeRows = routesSource
-            .split(separator: "\n")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { $0.hasPrefix("\"") && $0.hasSuffix("\"") }
+        let routesSource = String(normalRoutesSource[routesStart.upperBound..<routesEnd.lowerBound])
+        let routeRows = try bashArrayStringPayloads(in: routesSource)
 
         XCTAssertTrue(script.contains("run_route()"))
         XCTAssertEqual(
             routeRows,
             [
-                "\"inbox|inbox|sidebar-destination-inbox|inbox-workflow\"",
-                "\"today|today|sidebar-destination-today|today-workflow\"",
-                "\"review|primary:review|sidebar-destination-schedule|review-hub\"",
-                "\"review-schedule|review:schedule|sidebar-destination-schedule|schedule-workflow\"",
-                "\"review-completed|review:completed|sidebar-destination-completed|done-workflow\"",
-                "\"review-automation|review:automation|sidebar-destination-schedule|automation-activity-workflow\"",
-                "\"review-assistant-queue|review:assistant-queue|sidebar-destination-schedule|assistant-queue-workflow\"",
-                "\"projects|projects|sidebar-destination-projects|projects-portfolio-overview\"",
+                "inbox|inbox|sidebar-destination-inbox|inbox-workflow",
+                "today|today|sidebar-destination-today|today-workflow",
+                "review|primary:review|sidebar-destination-schedule|review-hub",
+                "review-schedule|review:schedule|sidebar-destination-schedule|schedule-workflow",
+                "review-completed|review:completed|sidebar-destination-completed|done-workflow",
+                "review-automation|review:automation|sidebar-destination-schedule|automation-activity-workflow",
+                "review-assistant-queue|review:assistant-queue|sidebar-destination-schedule|assistant-queue-workflow",
+                "projects|projects|sidebar-destination-projects|projects-portfolio-overview",
             ]
+        )
+        XCTAssertEqual(routeRows.count, 8)
+        XCTAssertThrowsError(try bashArrayStringPayloads(in: routesSource + "\n  unquoted-extra"))
+        XCTAssertEqual(
+            try bashArrayStringPayloads(in: #"  "route-with-\"escaped-quote\"""#),
+            [#"route-with-\"escaped-quote\""#]
         )
         XCTAssertTrue(script.contains(#"review-automation:en) printf '%s' "Automation Activity""#))
         XCTAssertTrue(script.contains(#"review-automation:ja) printf '%s' "自動化アクティビティ""#))
-        XCTAssertFalse(routesSource.contains("sidebar-destination-review"))
+        XCTAssertFalse(routeRows.contains { $0.contains("sidebar-destination-review") })
         XCTAssertTrue(script.contains("navigate_to_seed_project()"))
         XCTAssertTrue(script.contains("\"project:$seed_project_id\""))
         XCTAssertTrue(script.contains("\"sidebar-destination-projects\""))
@@ -7831,6 +7834,49 @@ final class AppExperienceSourceTests: XCTestCase {
             "task-"
         ]
         return !nonLocalizedPrefixes.contains { key.hasPrefix($0) }
+    }
+
+    private func bashArrayStringPayloads(in source: String) throws -> [String] {
+        var payloads: [String] = []
+
+        for (lineIndex, rawLine) in source.split(
+            separator: "\n",
+            omittingEmptySubsequences: false
+        ).enumerated() {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty, !line.hasPrefix("#") else {
+                continue
+            }
+            guard line.count >= 2, line.first == "\"", line.last == "\"" else {
+                throw BashArrayStringParseError.invalidElement(line: lineIndex + 1, value: line)
+            }
+
+            let payload = line.dropFirst().dropLast()
+            var backslashEscaped = false
+            for character in payload {
+                if character == "\"", !backslashEscaped {
+                    throw BashArrayStringParseError.invalidElement(line: lineIndex + 1, value: line)
+                }
+                if character == "\\" {
+                    backslashEscaped.toggle()
+                } else {
+                    backslashEscaped = false
+                }
+            }
+            guard !backslashEscaped else {
+                throw BashArrayStringParseError.invalidElement(line: lineIndex + 1, value: line)
+            }
+
+            // Removing only the boundary quotes preserves Bash escapes verbatim;
+            // replacing quote text here could silently change a route payload.
+            payloads.append(String(payload))
+        }
+
+        return payloads
+    }
+
+    private enum BashArrayStringParseError: Error {
+        case invalidElement(line: Int, value: String)
     }
 
     private func packageRoot() -> URL {
