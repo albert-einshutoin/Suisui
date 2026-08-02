@@ -1,7 +1,7 @@
 # Today Sidebar Parity Design
 
 - Date: 2026-08-02
-- Status: visual decisions approved; pending written-spec review
+- Status: approved for implementation
 - Source baseline: `origin/main` at `9209f5551e25fc8630dee9972c69c14af0c9282a`
 - Reference: `ui-samples/today.png`
 - Chosen approach: sample-faithful sidebar with existing Suisui behavior
