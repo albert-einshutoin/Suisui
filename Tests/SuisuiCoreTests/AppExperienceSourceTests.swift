@@ -82,6 +82,87 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(sidebarSource.contains("sidebar-destination-review"))
     }
 
+    func testProjectBoardConnectsSidebarCountsAndActionsToProductBehavior() throws {
+        let boardSource = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectBoardView.swift"
+        )
+
+        XCTAssertTrue(boardSource.contains("schedule: sidebarMetrics.scheduleCount"))
+        XCTAssertTrue(boardSource.contains("completed: sidebarMetrics.doneCount"))
+        XCTAssertTrue(boardSource.contains("onOpenSearch: { isCommandPaletteVisible = true }"))
+        XCTAssertTrue(boardSource.contains("onOpenVoiceCommand: openVoiceCommandFromBoardContext"))
+        XCTAssertTrue(boardSource.contains("onAddByVoice: openVoiceCommandFromBoardContext"))
+        XCTAssertTrue(boardSource.contains("onOpenSettings: { openSettings() }"))
+        XCTAssertTrue(boardSource.contains("onAddTask: beginInboxQuickAddFromSidebar"))
+        XCTAssertTrue(boardSource.contains("onBlockTime: prepareScheduleDraftFromSidebar"))
+        XCTAssertTrue(boardSource.contains("private func beginInboxQuickAddFromSidebar()"))
+        XCTAssertTrue(boardSource.contains("private func prepareScheduleDraftFromSidebar()"))
+    }
+
+    func testSidebarBlockTimeOnlyPreparesALocalScheduleDraft() throws {
+        let boardSource = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectBoardView.swift"
+        )
+        let start = try XCTUnwrap(
+            boardSource.range(of: "private func prepareScheduleDraftFromSidebar()")
+        )
+        let end = try XCTUnwrap(
+            boardSource.range(
+                of: "private func ",
+                range: start.upperBound..<boardSource.endIndex
+            )
+        )
+        let helper = String(boardSource[start.lowerBound..<end.lowerBound])
+
+        XCTAssertTrue(helper.contains("navigateWithinScene(to: .review(.schedule))"))
+        XCTAssertTrue(
+            helper.contains(
+                "viewModel.prepareScheduleDraft(on: VisualEvidenceRuntimeContext.referenceDate())"
+            )
+        )
+        XCTAssertFalse(helper.contains("apply"))
+        XCTAssertFalse(helper.contains("enqueue"))
+        XCTAssertFalse(helper.contains("calendar"))
+    }
+
+    func testInboxQuickAddFocusRequestIsConsumedExactlyOnce() throws {
+        let boardSource = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectBoardView.swift"
+        )
+        let inboxSource = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift"
+        )
+
+        XCTAssertTrue(boardSource.contains("@State private var requestsInboxQuickAddFocus = false"))
+        XCTAssertTrue(boardSource.contains("requestsQuickAddFocus: requestsInboxQuickAddFocus"))
+        XCTAssertTrue(boardSource.contains("requestsInboxQuickAddFocus = true"))
+        XCTAssertTrue(boardSource.contains("requestsInboxQuickAddFocus = false"))
+
+        XCTAssertTrue(inboxSource.contains("let requestsQuickAddFocus: Bool"))
+        XCTAssertTrue(inboxSource.contains("let onQuickAddFocusConsumed: () -> Void"))
+        XCTAssertTrue(inboxSource.contains("@FocusState private var isQuickAddFocused: Bool"))
+        XCTAssertTrue(inboxSource.contains(".focused($isQuickAddFocused)"))
+        XCTAssertTrue(inboxSource.contains("consumeQuickAddFocusRequestIfNeeded()"))
+        XCTAssertTrue(inboxSource.contains(".onChange(of: requestsQuickAddFocus)"))
+
+        let helperStart = try XCTUnwrap(
+            inboxSource.range(of: "private func consumeQuickAddFocusRequestIfNeeded()")
+        )
+        let helperEnd = try XCTUnwrap(
+            inboxSource.range(
+                of: "private func ",
+                range: helperStart.upperBound..<inboxSource.endIndex
+            )
+        )
+        let helper = String(inboxSource[helperStart.lowerBound..<helperEnd.lowerBound])
+        XCTAssertTrue(helper.contains("guard requestsQuickAddFocus else"))
+        XCTAssertTrue(helper.contains("isQuickAddFocused = true"))
+        XCTAssertEqual(
+            helper.components(separatedBy: "onQuickAddFocusConsumed()").count - 1,
+            1
+        )
+    }
+
     func testTodayCatchUpDisplayExpansionAndAccessibilityFocusContract() throws {
         let todaySource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift"
@@ -2238,7 +2319,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("public func refreshScheduleReadModel("))
         XCTAssertTrue(boardSource.contains("let sidebarMetrics = viewModel.derivedReadModels.sidebarMetrics"))
         XCTAssertTrue(boardSource.contains("today: sidebarMetrics.todayCount"))
-        XCTAssertTrue(boardSource.contains("review: viewModel.assistantQueueSnapshot.needsAttentionCount"))
+        XCTAssertTrue(boardSource.contains("schedule: sidebarMetrics.scheduleCount"))
+        XCTAssertTrue(boardSource.contains("completed: sidebarMetrics.doneCount"))
         XCTAssertTrue(boardSource.contains("viewModel.derivedReadModels.projectPortfolioSummaries"))
         XCTAssertFalse(boardSource.contains("count: viewModel.todayTasks().count"))
         XCTAssertFalse(boardSource.contains("count: viewModel.missedTaskReview().newlyMissedCount"))
@@ -2992,7 +3074,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
         let workflowSource = try readProjectWorkflowSources()
 
-        XCTAssertTrue(boardSource.contains("InboxWorkflowView(viewModel: viewModel, selectInboxTask: selectInboxTask)"))
+        XCTAssertTrue(boardSource.contains("InboxWorkflowView("))
+        XCTAssertTrue(boardSource.contains("selectInboxTask: selectInboxTask"))
         XCTAssertTrue(boardSource.contains("route: currentBoardRoute"))
         XCTAssertTrue(boardSource.contains("private func selectInboxTask(_ task: ProjectBoardTask)"))
         XCTAssertTrue(boardSource.contains("allowsCompactInspectorPresentation = false"))

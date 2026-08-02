@@ -119,6 +119,7 @@ struct ProjectBoardView: View {
     @State private var savedSmartLists: [SmartList] = []
     @State private var isPresentingSmartListEditor = false
     @State private var transientBoardRoute: BoardRoute?
+    @State private var requestsInboxQuickAddFocus = false
     @State private var catchUpFocusRevision = 0
     @State private var consumedCatchUpFocusRevision = 0
     @State private var activeBoardRouteFocus: BoardRouteFocus?
@@ -158,8 +159,15 @@ struct ProjectBoardView: View {
                     today: sidebarMetrics.todayCount,
                     inbox: sidebarMetrics.inboxCount,
                     projects: sidebarMetrics.projectsCount,
-                    review: viewModel.assistantQueueSnapshot.needsAttentionCount
-                )
+                    schedule: sidebarMetrics.scheduleCount,
+                    completed: sidebarMetrics.doneCount
+                ),
+                onOpenSearch: { isCommandPaletteVisible = true },
+                onOpenVoiceCommand: openVoiceCommandFromBoardContext,
+                onOpenSettings: { openSettings() },
+                onAddTask: beginInboxQuickAddFromSidebar,
+                onAddByVoice: openVoiceCommandFromBoardContext,
+                onBlockTime: prepareScheduleDraftFromSidebar
             )
             .id(toolbarLayoutRefreshToken)
             .projectBoardSynchronizedColumnBounds()
@@ -273,27 +281,7 @@ struct ProjectBoardView: View {
                 googleCalendarSyncHelp: viewModel.googleCalendarSyncHelp,
                 onToggleSidebar: toggleSidebarVisibility,
                 onOpenSearch: { isCommandPaletteVisible = true },
-                onOpenVoiceCommand: {
-                    let task = viewModel.selectedTask
-                    let projectID =
-                        task?.projectID ?? viewModel.selectedProject?.id
-                    let project = viewModel.snapshot.projects.first {
-                        $0.id == projectID
-                    }
-                    SuisuiVoiceConversationScopeBridge.store(
-                        .init(
-                            projectID: projectID,
-                            projectName: project?.title,
-                            taskID: task?.id,
-                            taskName: task?.title
-                        )
-                    )
-                    openWindow(id: "voice-capture")
-                    NotificationCenter.default.post(
-                        name: .suisuiVoiceConversationScopeRequested,
-                        object: nil
-                    )
-                },
+                onOpenVoiceCommand: openVoiceCommandFromBoardContext,
                 onToggleInspector: toggleInspectorPresentation,
                 onExportTasks: beginTaskInteropExport,
                 onImportTasks: { isImportingTaskInterop = true },
@@ -593,7 +581,14 @@ struct ProjectBoardView: View {
                 }
             )
         case .primary(.inbox):
-            InboxWorkflowView(viewModel: viewModel, selectInboxTask: selectInboxTask)
+            InboxWorkflowView(
+                viewModel: viewModel,
+                selectInboxTask: selectInboxTask,
+                requestsQuickAddFocus: requestsInboxQuickAddFocus,
+                onQuickAddFocusConsumed: {
+                    requestsInboxQuickAddFocus = false
+                }
+            )
         case .primary(.projects), .project, .smartList:
             ProjectBoardProjectsHubView(
                 route: boardRouteBinding,
@@ -684,6 +679,35 @@ struct ProjectBoardView: View {
         case .primary, .project, .smartList:
             EmptyView()
         }
+    }
+
+    private func openVoiceCommandFromBoardContext() {
+        let task = viewModel.selectedTask
+        let projectID = task?.projectID ?? viewModel.selectedProject?.id
+        let project = viewModel.snapshot.projects.first { $0.id == projectID }
+        SuisuiVoiceConversationScopeBridge.store(
+            .init(
+                projectID: projectID,
+                projectName: project?.title,
+                taskID: task?.id,
+                taskName: task?.title
+            )
+        )
+        openWindow(id: "voice-capture")
+        NotificationCenter.default.post(
+            name: .suisuiVoiceConversationScopeRequested,
+            object: nil
+        )
+    }
+
+    private func beginInboxQuickAddFromSidebar() {
+        requestsInboxQuickAddFocus = true
+        navigateWithinScene(to: .primary(.inbox))
+    }
+
+    private func prepareScheduleDraftFromSidebar() {
+        navigateWithinScene(to: .review(.schedule))
+        _ = viewModel.prepareScheduleDraft(on: VisualEvidenceRuntimeContext.referenceDate())
     }
 
     private func createAndOpenProject() {

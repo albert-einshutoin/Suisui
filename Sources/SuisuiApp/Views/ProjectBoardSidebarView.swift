@@ -13,18 +13,14 @@ struct ProjectBoardSidebarCounts: Equatable {
         today: Int,
         inbox: Int,
         projects: Int,
-        schedule: Int = 0,
-        completed: Int = 0,
-        review: Int? = nil
+        schedule: Int,
+        completed: Int
     ) {
         self.today = today
         self.inbox = inbox
         self.projects = projects
         self.schedule = schedule
         self.completed = completed
-        // Some callers still supply this retired aggregate; accepting it keeps
-        // source compatibility while each visible route receives its own count.
-        _ = review
     }
 
     func count(for itemID: ProjectBoardSidebarItemID) -> Int? {
@@ -52,12 +48,12 @@ struct ProjectBoardSidebarView: View {
     init(
         route: Binding<BoardRoute>,
         counts: ProjectBoardSidebarCounts,
-        onOpenSearch: @escaping () -> Void = {},
-        onOpenVoiceCommand: @escaping () -> Void = {},
-        onOpenSettings: @escaping () -> Void = {},
-        onAddTask: @escaping () -> Void = {},
-        onAddByVoice: @escaping () -> Void = {},
-        onBlockTime: @escaping () -> Void = {}
+        onOpenSearch: @escaping () -> Void,
+        onOpenVoiceCommand: @escaping () -> Void,
+        onOpenSettings: @escaping () -> Void,
+        onAddTask: @escaping () -> Void,
+        onAddByVoice: @escaping () -> Void,
+        onBlockTime: @escaping () -> Void
     ) {
         _route = route
         self.counts = counts
