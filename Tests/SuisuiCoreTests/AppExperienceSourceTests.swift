@@ -267,9 +267,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(utilityRow.contains(".accessibilityAddTraits"))
         XCTAssertTrue(
             utilityRow.contains(
-                "hintKey: utilityAccessibilityHintKey(for: item.behavior)"
+                "if let hintKey = utilityAccessibilityHintKey(for: item.behavior)"
             )
         )
+        XCTAssertTrue(utilityRow.contains("hintKey: hintKey"))
+        XCTAssertTrue(hintHelpers.contains(") -> String?"))
+        XCTAssertTrue(hintHelpers.contains("case .route:\n            nil"))
+        XCTAssertFalse(sidebar.contains("preconditionFailure"))
         XCTAssertFalse(sidebarRow.contains(".accessibilityAddTraits"))
         XCTAssertEqual(sidebar.components(separatedBy: ".accessibilityAddTraits").count - 1, 1)
 

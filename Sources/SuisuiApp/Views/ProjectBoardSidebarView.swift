@@ -148,14 +148,18 @@ struct ProjectBoardSidebarView: View {
             .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
+    @ViewBuilder
     private func utilitySidebarRow(
         _ item: ProjectBoardSidebarItemPresentation
     ) -> some View {
-        sidebarRowButton(
-            item,
-            isSelected: false,
-            hintKey: utilityAccessibilityHintKey(for: item.behavior)
-        )
+        // An optional mapping prevents invalid presentation data from gaining a misleading hint or crashing release builds.
+        if let hintKey = utilityAccessibilityHintKey(for: item.behavior) {
+            sidebarRowButton(
+                item,
+                isSelected: false,
+                hintKey: hintKey
+            )
+        }
     }
 
     private func sidebarRowButton(
@@ -252,11 +256,10 @@ struct ProjectBoardSidebarView: View {
 
     private func utilityAccessibilityHintKey(
         for behavior: ProjectBoardSidebarItemBehavior
-    ) -> String {
+    ) -> String? {
         switch behavior {
         case .route:
-            // Route rows are separated before this helper; reaching this case is a rendering bug.
-            preconditionFailure("A destination cannot use a utility accessibility hint")
+            nil
         case .openVoiceCommand:
             "Opens Voice Command."
         case .openSettings:
