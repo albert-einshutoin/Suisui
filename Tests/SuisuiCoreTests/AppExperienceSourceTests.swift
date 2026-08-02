@@ -236,10 +236,13 @@ final class AppExperienceSourceTests: XCTestCase {
                 "viewModel.prepareScheduleDraft(on: VisualEvidenceRuntimeContext.referenceDate())"
             )
         )
-        XCTAssertFalse(helper.contains("apply"))
-        XCTAssertFalse(helper.contains("enqueue"))
-        XCTAssertFalse(helper.contains("calendar"))
-        XCTAssertFalse(helper.lowercased().contains("persist"))
+        XCTAssertEqual(
+            helper.components(separatedBy: "viewModel.prepareScheduleDraft(").count - 1,
+            1
+        )
+        XCTAssertEqual(helper.components(separatedBy: "viewModel.").count - 1, 1)
+        XCTAssertFalse(helper.contains("enqueueScheduleDraftCalendarApply"))
+        XCTAssertFalse(helper.contains("applyScheduleDraftToCalendar"))
     }
 
     func testInboxQuickAddFocusRequestIsConsumedExactlyOnce() throws {
