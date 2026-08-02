@@ -107,6 +107,107 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(sidebarSource.contains("@escaping () -> Void = {}"))
     }
 
+    func testTodaySidebarLabelsAreLocalizedAndAccessible() throws {
+        let english = try readPackageFile(
+            "Sources/SuisuiApp/Resources/en.lproj/Localizable.strings"
+        )
+        let japanese = try readPackageFile(
+            "Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings"
+        )
+        let expectedEnglish = [
+            "Search": "Search",
+            "Completed": "Completed",
+            "Add by Voice": "Add by Voice",
+            "Block Time": "Block Time",
+            "Navigate work or open a quick action.": "Navigate work or open a quick action.",
+            "Opens the command palette.": "Opens the command palette.",
+            "Creates a local schedule draft without writing Calendar.":
+                "Creates a local schedule draft without writing Calendar.",
+        ]
+        let expectedJapanese = [
+            "Search": "検索",
+            "Completed": "完了",
+            "Add by Voice": "音声で追加",
+            "Block Time": "時間をブロック",
+            "Navigate work or open a quick action.":
+                "作業画面へ移動するか、クイックアクションを開きます。",
+            "Opens the command palette.": "コマンドパレットを開きます。",
+            "Creates a local schedule draft without writing Calendar.":
+                "カレンダーへ書き込まず、ローカルのスケジュール下書きを作成します。",
+        ]
+
+        for (key, value) in expectedEnglish {
+            let entry = "\"\(key)\" = \"\(value)\";"
+            XCTAssertEqual(
+                english.components(separatedBy: "\"\(key)\" =").count - 1,
+                1,
+                "Expected one English localization key for \(key)"
+            )
+            XCTAssertTrue(english.contains(entry), "Unexpected English localization for \(key)")
+        }
+        for (key, value) in expectedJapanese {
+            let entry = "\"\(key)\" = \"\(value)\";"
+            XCTAssertEqual(
+                japanese.components(separatedBy: "\"\(key)\" =").count - 1,
+                1,
+                "Expected one Japanese localization key for \(key)"
+            )
+            XCTAssertTrue(japanese.contains(entry), "Unexpected Japanese localization for \(key)")
+        }
+
+        let sidebar = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift"
+        )
+        XCTAssertGreaterThanOrEqual(
+            sidebar.components(separatedBy: ".accessibilityHidden(true)").count - 1,
+            4
+        )
+        XCTAssertTrue(
+            sidebar.contains(".accessibilityLabel(Text(LocalizedStringKey(\"Project navigation\")))")
+        )
+        XCTAssertTrue(
+            sidebar.contains(".accessibilityLabel(Text(LocalizedStringKey(\"Search\")))")
+        )
+        XCTAssertTrue(
+            sidebar.contains(
+                ".accessibilityHint(Text(LocalizedStringKey(\"Opens the command palette.\")))"
+            )
+        )
+        XCTAssertTrue(sidebar.contains(".help(LocalizedStringKey(\"Opens the command palette.\"))"))
+        XCTAssertTrue(sidebar.contains(".accessibilityLabel(Text(LocalizedStringKey(item.title)))"))
+        XCTAssertTrue(sidebar.contains(".accessibilityValue(accessibilityValue(for: count))"))
+        XCTAssertTrue(sidebar.contains("localizedDisplay(\"No pending items\")"))
+        XCTAssertTrue(sidebar.contains("localizedCount(count, one: \"%d item\", other: \"%d items\")"))
+        XCTAssertTrue(sidebar.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
+        XCTAssertTrue(sidebar.contains(".accessibilityIdentifier(accessibilityIdentifier(for: item.id))"))
+        XCTAssertTrue(
+            sidebar.contains(
+                ".accessibilityHint(Text(LocalizedStringKey(accessibilityHintKey(for: item.behavior))))"
+            )
+        )
+        XCTAssertTrue(
+            sidebar.contains(".help(LocalizedStringKey(accessibilityHintKey(for: item.behavior)))")
+        )
+        XCTAssertTrue(
+            sidebar.contains(
+                ".accessibilityHint(Text(LocalizedStringKey(accessibilityHintKey(for: action))))"
+            )
+        )
+        XCTAssertTrue(sidebar.contains(".help(LocalizedStringKey(accessibilityHintKey(for: action)))"))
+
+        let quickActionStart = try XCTUnwrap(sidebar.range(of: "private func quickAction("))
+        let quickActionEnd = try XCTUnwrap(
+            sidebar.range(
+                of: "private func perform",
+                range: quickActionStart.upperBound..<sidebar.endIndex
+            )
+        )
+        let quickAction = String(sidebar[quickActionStart.lowerBound..<quickActionEnd.lowerBound])
+        XCTAssertTrue(quickAction.contains(".accessibilityElement(children: .ignore)"))
+        XCTAssertTrue(quickAction.contains(".accessibilityLabel(Text(LocalizedStringKey(action.title)))"))
+        XCTAssertFalse(quickAction.contains(".accessibilityAddTraits"))
+    }
+
     func testSidebarVoiceEntrypointsShareSelectedBoardConversationContext() throws {
         let boardSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardView.swift"
@@ -3601,7 +3702,11 @@ final class AppExperienceSourceTests: XCTestCase {
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
 
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-sidebar\")"))
-        XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Project navigation\")"))
+        XCTAssertTrue(
+            boardSource.contains(
+                ".accessibilityLabel(Text(LocalizedStringKey(\"Project navigation\")))"
+            )
+        )
         XCTAssertTrue(boardSource.contains("LocalizedStringKey(\"Navigate work or open a quick action.\")"))
         XCTAssertTrue(boardSource.contains("sidebar-destination-today"))
         XCTAssertTrue(boardSource.contains("sidebar-destination-schedule"))

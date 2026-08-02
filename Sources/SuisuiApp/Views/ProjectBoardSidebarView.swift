@@ -76,6 +76,8 @@ struct ProjectBoardSidebarView: View {
                 Text(LocalizedStringKey("Suisui"))
                     .font(.headline)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(LocalizedStringKey("Suisui")))
 
             Button(action: onOpenSearch) {
                 HStack(spacing: 8) {
@@ -92,8 +94,11 @@ struct ProjectBoardSidebarView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(LocalizedStringKey("Search")))
             .accessibilityIdentifier("sidebar-open-search")
             .accessibilityHint(Text(LocalizedStringKey("Opens the command palette.")))
+            .help(LocalizedStringKey("Opens the command palette."))
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
@@ -114,7 +119,7 @@ struct ProjectBoardSidebarView: View {
         .padding(10)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project-board-sidebar")
-        .accessibilityLabel("Project navigation")
+        .accessibilityLabel(Text(LocalizedStringKey("Project navigation")))
         .accessibilityHint(Text(LocalizedStringKey("Navigate work or open a quick action.")))
     }
 
@@ -156,6 +161,8 @@ struct ProjectBoardSidebarView: View {
         .accessibilityValue(accessibilityValue(for: count))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier(accessibilityIdentifier(for: item.id))
+        .accessibilityHint(Text(LocalizedStringKey(accessibilityHintKey(for: item.behavior))))
+        .help(LocalizedStringKey(accessibilityHintKey(for: item.behavior)))
     }
 
     private func quickAction(
@@ -163,12 +170,21 @@ struct ProjectBoardSidebarView: View {
         handler: @escaping () -> Void
     ) -> some View {
         Button(action: handler) {
-            Label(LocalizedStringKey(action.title), systemImage: action.systemImage)
+            HStack(spacing: 8) {
+                Image(systemName: action.systemImage)
+                    .frame(width: 20)
+                    .accessibilityHidden(true)
+                Text(LocalizedStringKey(action.title))
+            }
                 .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(LocalizedStringKey(action.title)))
         .accessibilityIdentifier(quickActionAccessibilityIdentifier(for: action))
+        .accessibilityHint(Text(LocalizedStringKey(accessibilityHintKey(for: action))))
+        .help(LocalizedStringKey(accessibilityHintKey(for: action)))
     }
 
     private func perform(_ behavior: ProjectBoardSidebarItemBehavior) {
@@ -190,6 +206,32 @@ struct ProjectBoardSidebarView: View {
             return localizedDisplay("No pending items")
         }
         return localizedCount(count, one: "%d item", other: "%d items")
+    }
+
+    private func accessibilityHintKey(
+        for behavior: ProjectBoardSidebarItemBehavior
+    ) -> String {
+        switch behavior {
+        case .route:
+            "Navigate work or open a quick action."
+        case .openVoiceCommand:
+            "Opens Voice Command."
+        case .openSettings:
+            "Opens Settings."
+        }
+    }
+
+    private func accessibilityHintKey(
+        for action: ProjectBoardSidebarQuickAction
+    ) -> String {
+        switch action {
+        case .addTask:
+            "Opens the inline composer for a new local task."
+        case .addByVoice:
+            "Opens Voice Command."
+        case .blockTime:
+            "Creates a local schedule draft without writing Calendar."
+        }
     }
 
     private func accessibilityIdentifier(for itemID: ProjectBoardSidebarItemID) -> String {

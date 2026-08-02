@@ -360,7 +360,7 @@
 "Command" = "コマンド";
 "Complete Project" = "プロジェクトを完了";
 "Complete task" = "タスクを完了";
-"Completed" = "完了済み";
+"Completed" = "完了";
 "Completes the selected project in the local Suisui database" = "選択中のプロジェクトをローカルSuisuiデータベースで完了にします";
 "Completes the selected project in the local Suisui database." = "選択中のプロジェクトをローカルSuisuiデータベースで完了にします。";
 "Configured" = "設定済み";
@@ -764,7 +764,7 @@
 "Focus" = "集中";
 "Starts local focus without changing task status." = "タスクステータスを変えずにローカル集中を開始します。";
 "Schedule Block" = "時間枠を作成";
-"Creates a local schedule draft without writing Calendar." = "Calendarへ書き込まずにローカル予定ドラフトを作成します。";
+"Creates a local schedule draft without writing Calendar." = "カレンダーへ書き込まず、ローカルのスケジュール下書きを作成します。";
 "Opens the selected task in the inspector for manual edits." = "選択中タスクを手動編集用のInspectorで開きます。";
 "Add Subtask" = "サブタスク追加";
 "Subtask for %@: " = "%@ のサブタスク: ";
@@ -1762,6 +1762,12 @@
 "Choose a Suisui backup file to restore" = "復元するSuisuiバックアップファイルを選択してください";
 "Add a task for today" = "今日のタスクを追加";
 "Capture with Voice" = "音声でキャプチャ";
+
+/* Today sidebar navigation and quick actions */
+"Add by Voice" = "音声で追加";
+"Block Time" = "時間をブロック";
+"Navigate work or open a quick action." = "作業画面へ移動するか、クイックアクションを開きます。";
+"Opens the command palette." = "コマンドパレットを開きます。";
 
 /* Voice workspace Q&A */
 "Searching your workspace" = "ワークスペースを検索中";

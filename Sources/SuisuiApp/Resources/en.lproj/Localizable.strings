@@ -1758,6 +1758,12 @@
 "Add a task for today" = "Add a task for today";
 "Capture with Voice" = "Capture with Voice";
 
+/* Today sidebar navigation and quick actions */
+"Add by Voice" = "Add by Voice";
+"Block Time" = "Block Time";
+"Navigate work or open a quick action." = "Navigate work or open a quick action.";
+"Opens the command palette." = "Opens the command palette.";
+
 /* Voice workspace Q&A */
 "Searching your workspace" = "Searching your workspace";
 "Composing answer" = "Composing answer";
