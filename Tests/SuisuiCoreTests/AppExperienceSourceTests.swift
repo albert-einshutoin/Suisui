@@ -82,6 +82,53 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(sidebarSource.contains("sidebar-destination-review"))
     }
 
+    func testProjectBoardSidebarButtonsPreserveNativeAccessibilityActions() throws {
+        let sidebarSource = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift"
+        )
+
+        let searchStart = try XCTUnwrap(sidebarSource.range(of: "Button(action: onOpenSearch)"))
+        let searchEnd = try XCTUnwrap(
+            sidebarSource.range(
+                of: "ScrollView {",
+                range: searchStart.lowerBound..<sidebarSource.endIndex
+            )
+        )
+        let sidebarRowStart = try XCTUnwrap(
+            sidebarSource.range(of: "private func sidebarRowButton(")
+        )
+        let sidebarRowEnd = try XCTUnwrap(
+            sidebarSource.range(
+                of: "private func quickAction(",
+                range: sidebarRowStart.lowerBound..<sidebarSource.endIndex
+            )
+        )
+        let quickActionStart = sidebarRowEnd
+        let quickActionEnd = try XCTUnwrap(
+            sidebarSource.range(
+                of: "private func perform",
+                range: quickActionStart.lowerBound..<sidebarSource.endIndex
+            )
+        )
+
+        let buttonBlocks = [
+            String(sidebarSource[searchStart.lowerBound..<searchEnd.lowerBound]),
+            String(sidebarSource[sidebarRowStart.lowerBound..<sidebarRowEnd.lowerBound]),
+            String(sidebarSource[quickActionStart.lowerBound..<quickActionEnd.lowerBound]),
+        ]
+        for block in buttonBlocks {
+            XCTAssertTrue(block.contains("Button"))
+            XCTAssertTrue(block.contains(".accessibilityHidden(true)"))
+            XCTAssertTrue(block.contains(".accessibilityLabel("))
+            XCTAssertTrue(block.contains(".contentShape(Rectangle())"))
+            XCTAssertFalse(
+                block.contains(".accessibilityElement(children: .ignore)"),
+                "Replacing a native Button AX element removes its AXPress action"
+            )
+        }
+        XCTAssertFalse(sidebarSource.contains(".accessibilityAddTraits(.isButton)"))
+    }
+
     func testProjectBoardConnectsSidebarCountsAndActionsToProductBehavior() throws {
         let boardSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardView.swift"
@@ -289,7 +336,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(quickAction.contains("Image(systemName: action.systemImage)"))
         XCTAssertTrue(quickAction.contains(".accessibilityHidden(true)"))
         XCTAssertFalse(quickActionText.contains(".accessibilityHidden(true)"))
-        XCTAssertTrue(quickAction.contains(".accessibilityElement(children: .ignore)"))
+        XCTAssertFalse(quickAction.contains(".accessibilityElement(children: .ignore)"))
         XCTAssertTrue(quickAction.contains(".accessibilityLabel(Text(LocalizedStringKey(action.title)))"))
         XCTAssertTrue(
             quickAction.contains(

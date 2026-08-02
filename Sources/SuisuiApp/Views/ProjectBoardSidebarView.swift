@@ -94,7 +94,6 @@ struct ProjectBoardSidebarView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(LocalizedStringKey("Search")))
             .accessibilityIdentifier("sidebar-open-search")
             .accessibilityHint(Text(LocalizedStringKey("Opens the command palette.")))
@@ -196,7 +195,6 @@ struct ProjectBoardSidebarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(LocalizedStringKey(item.title)))
         .accessibilityValue(countAccessibilityValue(for: item.id))
         .accessibilityIdentifier(accessibilityIdentifier(for: item.id))
@@ -219,7 +217,6 @@ struct ProjectBoardSidebarView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(LocalizedStringKey(action.title)))
         .accessibilityIdentifier(quickActionAccessibilityIdentifier(for: action))
         .accessibilityHint(Text(LocalizedStringKey(accessibilityHintKey(for: action))))
