@@ -239,6 +239,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(helper.contains("apply"))
         XCTAssertFalse(helper.contains("enqueue"))
         XCTAssertFalse(helper.contains("calendar"))
+        XCTAssertFalse(helper.lowercased().contains("persist"))
     }
 
     func testInboxQuickAddFocusRequestIsConsumedExactlyOnce() throws {
