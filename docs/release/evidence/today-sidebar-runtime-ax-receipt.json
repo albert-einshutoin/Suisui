@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-02T18:34:02Z",
-  "sourceCommit": "34601981dc5a03a5edbe1cb06d0eaf238628bf29",
+  "generatedAt": "2026-08-08T15:30:11Z",
+  "sourceCommit": "83263bdad787923b8ae116771661f055b5d68a31",
   "status": "partial",
   "methodology": {
     "appBundle": "dist/Suisui.app",
@@ -111,7 +111,7 @@
       "description": "Add Task",
       "role": "AXButton",
       "actions": ["AXPress"],
-      "frame": {"width": 267, "height": 32, "visible": true},
+      "frame": {"width": 247, "height": 32, "visible": true},
       "pressResults": [0],
       "outcome": {"marker": "inbox-workflow", "focusedIdentifier": "inbox-quick-add-title", "selectedDestination": "inbox"},
       "status": "passed"
@@ -121,7 +121,7 @@
       "description": "Add by Voice",
       "role": "AXButton",
       "actions": ["AXPress"],
-      "frame": {"width": 267, "height": 32, "visible": true},
+      "frame": {"width": 247, "height": 32, "visible": true},
       "pressResults": [0],
       "outcome": {"marker": "voice-command-quick-command-tab", "window": "Voice Command", "routeUnchanged": "projects"},
       "status": "passed"
@@ -131,7 +131,7 @@
       "description": "Block Time",
       "role": "AXButton",
       "actions": ["AXPress"],
-      "frame": {"width": 267, "height": 32, "visible": true},
+      "frame": {"width": 247, "height": 32, "visible": true},
       "pressResults": [0],
       "outcome": {
         "marker": "schedule-workflow",
@@ -170,7 +170,7 @@
     "automationActivity": {"marker": "automation-activity-workflow", "selectedDestinations": [], "status": "passed"}
   },
   "appearance": {
-    "sourceCommit": "34601981dc5a03a5edbe1cb06d0eaf238628bf29",
+    "sourceCommit": "83263bdad787923b8ae116771661f055b5d68a31",
     "locales": {
       "en-US": {"manifest": "docs/release/evidence/ui-screenshots/visual-baseline-capture-manifest.json", "capturedScreens": 39},
       "ja-JP": {"manifest": "docs/release/evidence/ui-screenshots-ja/visual-baseline-capture-manifest.json", "capturedScreens": 39}
