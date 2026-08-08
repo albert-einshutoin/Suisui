@@ -6152,7 +6152,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(factorySource.contains("case .localWhisperCpp:"))
         XCTAssertTrue(factorySource.contains("WhisperCppLocalSTTConfiguration("))
-        XCTAssertTrue(factorySource.contains("normalizedSettings.whisperCppExecutablePath ?? \"\""))
+        XCTAssertTrue(factorySource.contains("settings.whisperCppExecutablePath ?? \"\""))
         XCTAssertTrue(factorySource.contains("WhisperCppLocalSTTProvider(configuration: configuration)"))
         XCTAssertFalse(factorySource.contains(".openAITranscribe, .appleSpeechAnalyzer, .localWhisperKit, .localWhisperCpp"))
     }
