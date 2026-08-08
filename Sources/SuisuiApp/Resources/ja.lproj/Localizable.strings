@@ -2081,3 +2081,5 @@
 "Default" = "標準";
 "Enhanced" = "拡張";
 "Premium" = "プレミアム";
+"Prioritizes Apple or local speech engines when STT retries after a recoverable failure." = "復旧可能な失敗後にSTTを再試行する際、Appleまたはローカルの音声エンジンを優先します。";
+"Prioritizes Apple or local speech engines when TTS retries after a recoverable failure." = "復旧可能な失敗後にTTSを再試行する際、Appleまたはローカルの音声エンジンを優先します。";

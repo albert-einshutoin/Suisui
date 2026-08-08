@@ -2081,3 +2081,5 @@
 "Default" = "Default";
 "Enhanced" = "Enhanced";
 "Premium" = "Premium";
+"Prioritizes Apple or local speech engines when STT retries after a recoverable failure." = "Prioritizes Apple or local speech engines when STT retries after a recoverable failure.";
+"Prioritizes Apple or local speech engines when TTS retries after a recoverable failure." = "Prioritizes Apple or local speech engines when TTS retries after a recoverable failure.";
