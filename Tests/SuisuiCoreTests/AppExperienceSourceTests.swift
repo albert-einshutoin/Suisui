@@ -162,6 +162,8 @@ final class AppExperienceSourceTests: XCTestCase {
             "Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings"
         )
         let expectedEnglish = [
+            "Suisui": "Suisui",
+            "Welcome to Suisui": "Welcome to Suisui",
             "Search": "Search",
             "Completed": "Completed",
             "Add by Voice": "Add by Voice",
@@ -177,6 +179,8 @@ final class AppExperienceSourceTests: XCTestCase {
             "Opens this section.": "Opens this section.",
         ]
         let expectedJapanese = [
+            "Suisui": "Suisui",
+            "Welcome to Suisui": "Suisuiへようこそ",
             "Search": "検索",
             "Completed": "完了",
             "Add by Voice": "音声で追加",

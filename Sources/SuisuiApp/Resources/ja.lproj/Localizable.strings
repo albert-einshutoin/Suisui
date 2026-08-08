@@ -1887,8 +1887,8 @@
 "Suisui currently supports only Option + Space." = "現在Suisuiが対応するグローバルショートカットはOption + Spaceのみです。";
 
 /* Suisui public brand. Internal Suisui compatibility keys remain for stored data and configuration. */
-"Suisui" = "すいすい";
-"Welcome to Suisui" = "すいすいへようこそ";
+"Suisui" = "Suisui";
+"Welcome to Suisui" = "Suisuiへようこそ";
 "Speak it. Review it. Move it." = "声から、仕事がすいすい進む。";
 "Talk to Suisui. Review the draft, then move your work forward." = "Suisuiに話すだけ。あとは確認して、仕事を前へ。";
 "Suisui can open now, but planning is not ready yet. Review the required item below or finish setup later from Settings." = "Suisuiは今すぐ開けますが、プラン作成の準備ができていません。下の必須項目を確認するか、設定から後でセットアップしてください。";
