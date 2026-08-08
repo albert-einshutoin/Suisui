@@ -52,9 +52,10 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertTrue(
             searchButton.contains(
-                ".background(.quaternary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))"
+                ".background(.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))"
             )
         )
+        XCTAssertTrue(searchButton.contains(".stroke(Color.secondary.opacity(0.22), lineWidth: 1)"))
         XCTAssertTrue(searchButton.contains(".contentShape(Rectangle())"))
 
         let quickActionStart = try XCTUnwrap(sidebarSource.range(of: "private func quickAction("))
@@ -164,6 +165,10 @@ final class AppExperienceSourceTests: XCTestCase {
         let expectedEnglish = [
             "Suisui": "Suisui",
             "Welcome to Suisui": "Welcome to Suisui",
+            "Inbox": "Inbox",
+            "Schedule": "Schedule",
+            "Add Task": "Add Task",
+            "Quick Actions": "Quick Actions",
             "Search": "Search",
             "Completed": "Completed",
             "Add by Voice": "Add by Voice",
@@ -181,6 +186,10 @@ final class AppExperienceSourceTests: XCTestCase {
         let expectedJapanese = [
             "Suisui": "Suisui",
             "Welcome to Suisui": "Suisuiへようこそ",
+            "Inbox": "受信箱",
+            "Schedule": "スケジュール",
+            "Add Task": "タスクを追加",
+            "Quick Actions": "クイックアクション",
             "Search": "検索",
             "Completed": "完了",
             "Add by Voice": "音声で追加",
@@ -282,12 +291,13 @@ final class AppExperienceSourceTests: XCTestCase {
         let quickActionText = try sourceBlock(
             in: quickAction,
             from: "Text(LocalizedStringKey(action.title))",
-            to: ".frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)"
+            to: "Spacer(minLength: 8)"
         )
 
         XCTAssertTrue(brand.contains("NSApplication.shared.applicationIconImage"))
         XCTAssertTrue(brand.contains(".accessibilityHidden(true)"))
         XCTAssertFalse(brandText.contains(".accessibilityHidden(true)"))
+        XCTAssertTrue(brandText.contains(".foregroundStyle(Color.accentColor)"))
 
         XCTAssertTrue(search.contains("Image(systemName: \"magnifyingglass\")"))
         XCTAssertTrue(search.contains(".accessibilityHidden(true)"))
@@ -336,8 +346,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(sidebarRow.contains(".accessibilityIdentifier(accessibilityIdentifier(for: item.id))"))
         XCTAssertTrue(sidebarRow.contains(".accessibilityHint(Text(LocalizedStringKey(hintKey)))"))
         XCTAssertTrue(sidebarRow.contains(".help(LocalizedStringKey(hintKey))"))
+        XCTAssertTrue(sidebarRow.contains(".foregroundStyle(isSelected ? Color.white : Color.primary)"))
+        XCTAssertTrue(sidebarRow.contains(".fill(isSelected ? Color.accentColor : .clear)"))
 
         XCTAssertTrue(quickAction.contains("Image(systemName: action.systemImage)"))
+        XCTAssertTrue(quickAction.contains("Image(systemName: \"plus\")"))
         XCTAssertTrue(quickAction.contains(".accessibilityHidden(true)"))
         XCTAssertFalse(quickActionText.contains(".accessibilityHidden(true)"))
         XCTAssertFalse(quickAction.contains(".accessibilityElement(children: .ignore)"))
@@ -349,6 +362,8 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertTrue(quickAction.contains(".help(LocalizedStringKey(accessibilityHintKey(for: action)))"))
         XCTAssertFalse(quickAction.contains(".accessibilityAddTraits"))
+        XCTAssertTrue(sidebar.contains("Text(LocalizedStringKey(\"Quick Actions\"))"))
+        XCTAssertTrue(sidebar.contains(".stroke(Color.secondary.opacity(0.18), lineWidth: 1)"))
 
         XCTAssertTrue(
             hintHelpers.contains(

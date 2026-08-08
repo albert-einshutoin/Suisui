@@ -1,7 +1,8 @@
 "Add" = "追加";
 "Add Project" = "プロジェクト追加";
 "Add Server" = "サーバー追加";
-"Add Task" = "タスク追加";
+"Add Task" = "タスクを追加";
+"Quick Actions" = "クイックアクション";
 "Advanced" = "詳細";
 "Advanced AI Options" = "AIの詳細オプション";
 "AI" = "AI";
@@ -175,7 +176,7 @@
 "Update Suisui runtime configuration" = "Suisuiランタイム設定を更新";
 "Upgrade to Pro before OAuth authorization" = "OAuth認証前にProへアップグレード";
 "In Progress" = "進行中";
-"Inbox" = "インボックス";
+"Inbox" = "受信箱";
 "Import Tasks" = "タスクをインポート";
 "Integrations" = "連携";
 "Integrations: import, export, and sync task data" = "連携: タスクデータのインポート、エクスポート、同期";
@@ -878,7 +879,7 @@
 "Prepare suggested action for review" = "提案アクションを確認用に準備";
 "Prepares the local assistant suggestion for review without writing task status." = "タスクステータスを書き込まず、ローカルアシスタント提案を確認用に準備します。";
 "Prepares the suggested blocked task action for review without writing task status." = "タスクステータスを書き込まず、提案されたブロック中タスクのアクションを確認用に準備します。";
-"Schedule" = "予定";
+"Schedule" = "スケジュール";
 "Stale" = "停滞";
 "Generate Draft" = "ドラフトを生成";
 "Draft Blocks" = "ドラフト枠";

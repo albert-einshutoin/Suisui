@@ -74,7 +74,8 @@ struct ProjectBoardSidebarView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                     .accessibilityHidden(true)
                 Text(LocalizedStringKey("Suisui"))
-                    .font(.headline)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(LocalizedStringKey("Suisui")))
@@ -90,7 +91,11 @@ struct ProjectBoardSidebarView: View {
                 }
                 .padding(.horizontal, 10)
                 .frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36, alignment: .leading)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.secondary.opacity(0.22), lineWidth: 1)
+                }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -107,12 +112,20 @@ struct ProjectBoardSidebarView: View {
                 }
             }
 
-            Divider()
+            VStack(alignment: .leading, spacing: 6) {
+                Text(LocalizedStringKey("Quick Actions"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
 
-            VStack(alignment: .leading, spacing: 2) {
                 quickAction(.addTask, handler: onAddTask)
                 quickAction(.addByVoice, handler: onAddByVoice)
                 quickAction(.blockTime, handler: onBlockTime)
+            }
+            .padding(10)
+            .background(.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
             }
         }
         .padding(10)
@@ -181,16 +194,22 @@ struct ProjectBoardSidebarView: View {
                 if let count, count > 0 {
                     Text("\(count)")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(isSelected ? Color.white.opacity(0.9) : Color.accentColor)
                         .monospacedDigit()
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            isSelected ? Color.white.opacity(0.16) : Color.accentColor.opacity(0.12),
+                            in: Capsule()
+                        )
                 }
             }
             .padding(.horizontal, 8)
             .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
-            .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+            .foregroundStyle(isSelected ? Color.white : Color.primary)
             .background {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.16) : .clear)
+                    .fill(isSelected ? Color.accentColor : .clear)
             }
             .contentShape(Rectangle())
         }
@@ -212,8 +231,19 @@ struct ProjectBoardSidebarView: View {
                     .frame(width: 20)
                     .accessibilityHidden(true)
                 Text(LocalizedStringKey(action.title))
+                Spacer(minLength: 8)
+                Image(systemName: "plus")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
             }
+                .padding(.horizontal, 8)
                 .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                .background(.background, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
