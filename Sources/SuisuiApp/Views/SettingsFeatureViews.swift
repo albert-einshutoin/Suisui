@@ -298,6 +298,21 @@ struct SettingsAIFeatureView: View {
                             .tag(provider)
                     }
                 }
+                Picker(
+                    "STT routing",
+                    selection: Binding(
+                        get: { settingsViewModel.settings.sttRoutingPreference },
+                        set: { settingsViewModel.setSTTRoutingPreference($0) }
+                    )
+                ) {
+                    ForEach(VoiceRoutingPreference.allCases, id: \.self) { preference in
+                        Text(preference.displayName)
+                            .tag(preference)
+                    }
+                }
+                .accessibilityIdentifier("settings-stt-routing-preference")
+                .accessibilityHint("Prioritizes Apple or local speech engines when STT retries after a recoverable failure.")
+
                 if settingsViewModel.settings.sttProvider == .localWhisperCpp {
                     LocalPathSelectionField(
                         title: "whisper.cpp executable",
@@ -410,6 +425,21 @@ struct SettingsAIFeatureView: View {
                     }
                 }
                 .accessibilityIdentifier("settings-tts-provider-picker")
+
+                Picker(
+                    "TTS routing",
+                    selection: Binding(
+                        get: { settingsViewModel.settings.ttsRoutingPreference },
+                        set: { settingsViewModel.setTTSRoutingPreference($0) }
+                    )
+                ) {
+                    ForEach(VoiceRoutingPreference.allCases, id: \.self) { preference in
+                        Text(preference.displayName)
+                            .tag(preference)
+                    }
+                }
+                .accessibilityIdentifier("settings-tts-routing-preference")
+                .accessibilityHint("Prioritizes Apple or local speech engines when TTS retries after a recoverable failure.")
 
                 SelectedTTSProviderStatusRow(row: settingsViewModel.ttsProviderReadinessRow)
 

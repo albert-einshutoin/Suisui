@@ -306,14 +306,60 @@ extension AppRuntimeFactory {
         secretStore: any SecretStore
     ) -> any SpeechToTextProvider {
         let normalizedSettings = settings.normalizedForRuntime
-        switch normalizedSettings.sttProvider {
+        let voiceModelManager: any VoiceModelManaging = VoiceModelManager()
+        let providers = Self.orderedSTTProviders(
+            for: normalizedSettings.sttProvider,
+            routingPreference: normalizedSettings.sttRoutingPreference
+        )
+        let fallbackProviders = providers.compactMap { provider in
+            Self.makeSpeechToTextProvider(
+                provider,
+                settings: normalizedSettings,
+                secretStore: secretStore
+            ).map { (provider: provider, runtime: $0) }
+        }
+        guard !fallbackProviders.isEmpty else {
+            return OpenAITranscribeProvider(secretStore: secretStore)
+        }
+
+        return FallbackSpeechToTextProvider(
+            providers: fallbackProviders,
+            selectedProviderID: normalizedSettings.sttProvider.providerID,
+            voiceModelManager: voiceModelManager
+        )
+    }
+
+    private static func orderedSTTProviders(
+        for selected: STTProvider,
+        routingPreference: VoiceRoutingPreference
+    ) -> [STTProvider] {
+        let localPreferredOrder: [STTProvider]
+        switch routingPreference {
+        case .appleFirst:
+            localPreferredOrder = [.appleSpeechAnalyzer, .localWhisperCpp, .openAITranscribe]
+        case .localFirst:
+            localPreferredOrder = [.localWhisperCpp, .appleSpeechAnalyzer, .openAITranscribe]
+        }
+        var ordered: [STTProvider] = [selected]
+        for provider in localPreferredOrder where provider != selected {
+            ordered.append(provider)
+        }
+        return ordered.filter { $0.isReleaseReady }
+    }
+
+    private static func makeSpeechToTextProvider(
+        _ provider: STTProvider,
+        settings: AppSettings,
+        secretStore: any SecretStore
+    ) -> any SpeechToTextProvider {
+        switch provider {
         case .appleSpeechAnalyzer:
             return AppleSpeechRecognitionProvider()
         case .openAITranscribe, .localWhisperKit:
             return OpenAITranscribeProvider(secretStore: secretStore)
         case .localWhisperCpp:
             let configuration = WhisperCppLocalSTTConfiguration(
-                executablePath: normalizedSettings.whisperCppExecutablePath ?? ""
+                executablePath: settings.whisperCppExecutablePath ?? ""
             )
             return WhisperCppLocalSTTProvider(configuration: configuration)
         }
@@ -344,24 +390,251 @@ enum AppTextToSpeechRuntimeFactory {
         let temporaryDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(temporaryDirectoryPrefix)-\(UUID().uuidString)", isDirectory: true)
         let resolvedOutputFilename = outputFilename
-            ?? (settings.normalizedForRuntime.ttsProvider == .systemSpeech ? "preview.caf" : "preview.wav")
-        let outputURL = temporaryDirectory.appendingPathComponent(resolvedOutputFilename, isDirectory: false)
-        let previewer: any TextToSpeechPreviewing
-        switch settings.normalizedForRuntime.ttsProvider {
-        case .systemSpeech:
-            previewer = AppleSystemSpeechProvider(
-                outputURL: outputURL,
-                audioPlayer: AVFoundationSpeechAudioPlayer()
+        let voiceModelManager: any VoiceModelManaging = VoiceModelManager()
+        let candidates = orderedTTSProviders(for: settings.normalizedForRuntime.ttsProvider, routingPreference: settings.ttsRoutingPreference)
+            .compactMap { provider in
+                makeTTSPreviewer(
+                    for: provider,
+                    settings: settings.normalizedForRuntime,
+                    temporaryDirectory: temporaryDirectory,
+                    outputFilename: resolvedOutputFilename
+                ).map { (provider: provider, runtime: $0) }
+            }
+        let previewer = candidates.isEmpty
+            ? FallbackTextToSpeechPreviewer(
+                previewers: [
+                    (
+                        provider: .localKokoro,
+                        runtime: TextToSpeechPreviewService(
+                            provider: makeProvider(settings: settings, outputURL: temporaryDirectory.appendingPathComponent("preview.wav", isDirectory: false)),
+                            audioPlayer: AVFoundationSpeechAudioPlayer()
+                        )
+                    )
+                ],
+                voiceModelManager: voiceModelManager
             )
-        case .localKokoro:
-            previewer = TextToSpeechPreviewService(
-                provider: makeProvider(settings: settings, outputURL: outputURL),
-                audioPlayer: AVFoundationSpeechAudioPlayer()
+            : FallbackTextToSpeechPreviewer(
+                previewers: candidates,
+                voiceModelManager: voiceModelManager
             )
-        }
         return TemporaryDirectoryTextToSpeechPreviewer(
             previewer: previewer,
             temporaryDirectory: temporaryDirectory
         )
+    }
+
+    private static func orderedTTSProviders(
+        for selected: TTSProvider,
+        routingPreference: VoiceRoutingPreference
+    ) -> [TTSProvider] {
+        let localPreferredOrder: [TTSProvider]
+        switch routingPreference {
+        case .appleFirst:
+            localPreferredOrder = [.systemSpeech, .localKokoro]
+        case .localFirst:
+            localPreferredOrder = [.localKokoro, .systemSpeech]
+        }
+        var ordered = [selected]
+        for provider in localPreferredOrder where provider != selected {
+            ordered.append(provider)
+        }
+        return ordered.filter { $0.isReleaseReady }
+    }
+
+    private static func makeTTSPreviewer(
+        for provider: TTSProvider,
+        settings: AppSettings,
+        temporaryDirectory: URL,
+        outputFilename: String?
+    ) -> any TextToSpeechPreviewing? {
+        let providerOutputFilename = outputFilename
+            ?? (provider == .systemSpeech ? "preview.caf" : "preview.wav")
+        let outputURL = temporaryDirectory.appendingPathComponent(providerOutputFilename, isDirectory: false)
+        switch provider {
+        case .systemSpeech:
+            return AppleSystemSpeechProvider(
+                outputURL: outputURL,
+                audioPlayer: AVFoundationSpeechAudioPlayer()
+            )
+        case .localKokoro:
+            return TextToSpeechPreviewService(
+                provider: makeProvider(settings: settings, outputURL: outputURL),
+                audioPlayer: AVFoundationSpeechAudioPlayer()
+            )
+        }
+    }
+}
+
+private struct FallbackSpeechToTextProvider: SpeechToTextProvider, @unchecked Sendable {
+    typealias Candidate = (provider: STTProvider, runtime: any SpeechToTextProvider)
+    let providers: [Candidate]
+    let selectedProviderID: STTProviderID
+    let voiceModelManager: any VoiceModelManaging
+
+    var id: STTProviderID {
+        selectedProviderID
+    }
+
+    var availability: STTProviderAvailability {
+        let selectedAvailability = providers.first(where: { $0.id == selectedProviderID })?.availability
+        return selectedAvailability ?? STTProviderAvailability(providerID: selectedProviderID, isAvailable: !providers.isEmpty)
+    }
+
+    func transcribe(_ audio: RecordedAudio) async throws -> STTTranscript {
+        var lastError: Error?
+        var installAttemptedForModels: Set<VoiceModelID> = []
+        for candidate in providers {
+            do {
+                return try await candidate.runtime.transcribe(audio)
+            } catch {
+                if error is CancellationError {
+                    throw error
+                }
+                if let modelMissingError = error as? STTProviderError, case .modelMissing = modelMissingError,
+                   let model = sttModelDescriptor(for: candidate.provider),
+                   !installAttemptedForModels.contains(model.id)
+                {
+                    installAttemptedForModels.insert(model.id)
+                    if await ensureModelInstalled(model) {
+                        do {
+                            return try await candidate.runtime.transcribe(audio)
+                        } catch {
+                            if !providerErrorIsRecoverable(error) {
+                                throw error
+                            }
+                            lastError = error
+                            continue
+                        }
+                    }
+                }
+                if !providerErrorIsRecoverable(error) {
+                    throw error
+                }
+                lastError = error
+            }
+        }
+        throw lastError ?? STTProviderError.unavailable("No speech-to-text provider succeeded.")
+    }
+
+    private func providerErrorIsRecoverable(_ error: Error) -> Bool {
+        guard let sttError = error as? STTProviderError else {
+            return true
+        }
+        return sttError.isRecoverable
+    }
+
+    private func sttModelDescriptor(for provider: STTProvider) -> VoiceModelDescriptor? {
+        switch provider {
+        case .localWhisperCpp:
+            return VoiceModelCatalog.phase1Default.model(for: .whisperCppTinyMultilingual)
+        case .appleSpeechAnalyzer, .openAITranscribe, .localWhisperKit:
+            return nil
+        }
+    }
+
+    private func ensureModelInstalled(_ model: VoiceModelDescriptor) async -> Bool {
+        switch voiceModelManager.status(for: model) {
+        case .installed:
+            return true
+        case .downloading:
+            return false
+        case .notInstalled, .failed, .corrupted:
+            do {
+                _ = try await voiceModelManager.install(model)
+                return true
+            } catch {
+                return false
+            }
+        }
+    }
+}
+
+private struct FallbackTextToSpeechPreviewer: TextToSpeechPreviewing, @unchecked Sendable {
+    typealias Candidate = (provider: TTSProvider, runtime: any TextToSpeechPreviewing)
+    let previewers: [Candidate]
+    let voiceModelManager: any VoiceModelManaging
+
+    func playPreview(_ request: TextToSpeechRequest) async throws {
+        var lastError: Error?
+        var installAttemptedForModels: Set<VoiceModelID> = []
+        for candidate in previewers {
+            do {
+                try await candidate.runtime.playPreview(request)
+                return
+            } catch {
+                if error is CancellationError {
+                    throw error
+                }
+                if let modelMissingError = error as? TTSProviderError, case .modelMissing = modelMissingError,
+                   let model = ttsModelDescriptor(for: candidate.provider),
+                   !installAttemptedForModels.contains(model.id)
+                {
+                    installAttemptedForModels.insert(model.id)
+                    if await ensureModelInstalled(model) {
+                        do {
+                            try await candidate.runtime.playPreview(request)
+                            return
+                        } catch {
+                            if !previewerErrorIsRecoverable(error) {
+                                throw error
+                            }
+                            lastError = error
+                            continue
+                        }
+                    }
+                }
+                if !previewerErrorIsRecoverable(error) {
+                    throw error
+                }
+                lastError = error
+            }
+        }
+        throw lastError ?? TTSProviderError.unavailable("No text-to-speech provider succeeded.")
+    }
+
+    private func previewerErrorIsRecoverable(_ error: Error) -> Bool {
+        guard let ttsError = error as? TTSProviderError else {
+            return true
+        }
+        switch ttsError {
+        case .promptRejected:
+            return false
+        case .unavailable, .modelMissing, .synthesisFailed:
+            return true
+        }
+    }
+
+    private func ttsModelDescriptor(for provider: TTSProvider) -> VoiceModelDescriptor? {
+        switch provider {
+        case .localKokoro:
+            return VoiceModelCatalog.phase1Default.model(for: .kokoro82M)
+        case .systemSpeech:
+            return nil
+        }
+    }
+
+    private func ensureModelInstalled(_ model: VoiceModelDescriptor) async -> Bool {
+        switch voiceModelManager.status(for: model) {
+        case .installed:
+            return true
+        case .downloading:
+            return false
+        case .notInstalled, .failed, .corrupted:
+            do {
+                _ = try await voiceModelManager.install(model)
+                return true
+            } catch {
+                return false
+            }
+        }
+    }
+}
+
+private extension STTProviderError {
+    var isRecoverable: Bool {
+        switch self {
+        case .permissionDenied, .unavailable, .modelMissing, .transcriptionFailed:
+            true
+        }
     }
 }
