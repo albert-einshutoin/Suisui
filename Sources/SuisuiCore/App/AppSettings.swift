@@ -13,6 +13,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var aiProvider: AIProvider
     public var sttProvider: STTProvider
     public var ttsProvider: TTSProvider
+    public var sttRoutingPreference: VoiceRoutingPreference
+    public var ttsRoutingPreference: VoiceRoutingPreference
     public var notificationsEnabled: Bool
     public var notificationPreferences: NotificationPreferences
     public var isDeveloperModeEnabled: Bool
@@ -48,6 +50,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case aiProvider
         case sttProvider
         case ttsProvider
+        case sttRoutingPreference
+        case ttsRoutingPreference
         case notificationsEnabled
         case notificationPreferences
         case isDeveloperModeEnabled
@@ -81,6 +85,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         aiProvider: AIProvider = .openaiResponses,
         sttProvider: STTProvider = .openAITranscribe,
         ttsProvider: TTSProvider = .localKokoro,
+        sttRoutingPreference: VoiceRoutingPreference = .appleFirst,
+        ttsRoutingPreference: VoiceRoutingPreference = .appleFirst,
         notificationsEnabled: Bool = false,
         notificationPreferences: NotificationPreferences = .default,
         isDeveloperModeEnabled: Bool = false,
@@ -113,6 +119,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.aiProvider = aiProvider
         self.sttProvider = sttProvider
         self.ttsProvider = ttsProvider
+        self.sttRoutingPreference = sttRoutingPreference
+        self.ttsRoutingPreference = ttsRoutingPreference
         self.notificationsEnabled = notificationsEnabled
         self.notificationPreferences = notificationPreferences
         self.isDeveloperModeEnabled = isDeveloperModeEnabled
@@ -146,6 +154,18 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.aiProvider = try container.decode(AIProvider.self, forKey: .aiProvider)
         self.sttProvider = try container.decode(STTProvider.self, forKey: .sttProvider)
         self.ttsProvider = try container.decodeIfPresent(TTSProvider.self, forKey: .ttsProvider) ?? .localKokoro
+        if let rawSTTRoutingPreference = try container.decodeIfPresent(String.self, forKey: .sttRoutingPreference),
+           let routingPreference = VoiceRoutingPreference(rawValue: rawSTTRoutingPreference) {
+            self.sttRoutingPreference = routingPreference
+        } else {
+            self.sttRoutingPreference = .appleFirst
+        }
+        if let rawTTSRoutingPreference = try container.decodeIfPresent(String.self, forKey: .ttsRoutingPreference),
+           let routingPreference = VoiceRoutingPreference(rawValue: rawTTSRoutingPreference) {
+            self.ttsRoutingPreference = routingPreference
+        } else {
+            self.ttsRoutingPreference = .appleFirst
+        }
         self.notificationsEnabled = try container.decode(Bool.self, forKey: .notificationsEnabled)
         // Settings saved before quiet hours and lead-time preferences existed
         // have no notificationPreferences key; decode to defaults.
@@ -192,6 +212,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(aiProvider, forKey: .aiProvider)
         try container.encode(sttProvider, forKey: .sttProvider)
         try container.encode(ttsProvider, forKey: .ttsProvider)
+        try container.encode(sttRoutingPreference, forKey: .sttRoutingPreference)
+        try container.encode(ttsRoutingPreference, forKey: .ttsRoutingPreference)
         try container.encode(notificationsEnabled, forKey: .notificationsEnabled)
         try container.encode(notificationPreferences, forKey: .notificationPreferences)
         try container.encode(isDeveloperModeEnabled, forKey: .isDeveloperModeEnabled)
@@ -809,6 +831,20 @@ public enum TTSProvider: String, CaseIterable, Codable, Equatable, Sendable {
             "Uses voices installed in macOS."
         case .localKokoro:
             "Install the Kokoro model and configure the executable in Settings."
+        }
+    }
+}
+
+public enum VoiceRoutingPreference: String, CaseIterable, Codable, Equatable, Sendable {
+    case appleFirst
+    case localFirst
+
+    public var displayName: String {
+        switch self {
+        case .appleFirst:
+            "Apple first"
+        case .localFirst:
+            "Local first"
         }
     }
 }
@@ -2090,6 +2126,16 @@ public final class AppSettingsViewModel: ObservableObject {
         if provider == .appleSpeechAnalyzer {
             refreshAppleSpeechReadiness()
         }
+        clearMessages()
+    }
+
+    public func setSTTRoutingPreference(_ preference: VoiceRoutingPreference) {
+        settings.sttRoutingPreference = preference
+        clearMessages()
+    }
+
+    public func setTTSRoutingPreference(_ preference: VoiceRoutingPreference) {
+        settings.ttsRoutingPreference = preference
         clearMessages()
     }
 

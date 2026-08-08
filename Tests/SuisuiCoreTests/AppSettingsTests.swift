@@ -7,6 +7,11 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(AppSettings.default.validate().isEmpty)
     }
 
+    func testDefaultVoiceRoutingPreferencesAreAppleFirst() {
+        XCTAssertEqual(AppSettings.default.sttRoutingPreference, .appleFirst)
+        XCTAssertEqual(AppSettings.default.ttsRoutingPreference, .appleFirst)
+    }
+
     func testLowLatencyVoiceAgentDefaultsOffAndCloudFallbackDisabled() throws {
         XCTAssertFalse(AppSettings.default.isLowLatencyVoiceAgentModeEnabled)
         XCTAssertFalse(AppSettings.default.isLowLatencyVoiceAgentAlwaysOnRecordingEnabled)
@@ -961,6 +966,24 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(loaded.isLowLatencyVoiceAgentModeEnabled)
         XCTAssertTrue(loaded.isLowLatencyVoiceAgentCloudFallbackCostVisible)
         XCTAssertTrue(loaded.isLowLatencyVoiceAgentCloudFallbackEnabled)
+    }
+
+    @MainActor
+    func testAppSettingsViewModelPersistsVoiceRoutingPreferences() throws {
+        let suiteName = "Suisui.AppSettingsViewModelVoiceRouting.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        viewModel.setSTTRoutingPreference(.localFirst)
+        viewModel.setTTSRoutingPreference(.localFirst)
+        viewModel.saveSettings()
+
+        let loaded = try store.load()
+
+        XCTAssertEqual(loaded.sttRoutingPreference, .localFirst)
+        XCTAssertEqual(loaded.ttsRoutingPreference, .localFirst)
     }
 
     @MainActor
