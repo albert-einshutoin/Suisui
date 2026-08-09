@@ -924,6 +924,25 @@ struct SettingsPrivacyFeatureView: View {
                     TextField("City name", text: weatherCityBinding)
                         .textFieldStyle(.roundedBorder)
                         .accessibilityIdentifier("settings-weather-city")
+                    HStack {
+                        TextField(
+                            "Latitude",
+                            value: weatherLatitudeBinding,
+                            format: .number.precision(.fractionLength(0...6))
+                        )
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityIdentifier("settings-weather-latitude")
+                        TextField(
+                            "Longitude",
+                            value: weatherLongitudeBinding,
+                            format: .number.precision(.fractionLength(0...6))
+                        )
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityIdentifier("settings-weather-longitude")
+                    }
+                    Text("The city name is a label. Coordinates determine where weather is loaded.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 Text("Weather uses the selected source for Today and does not keep a location history.")
                     .font(.caption)
@@ -1066,8 +1085,12 @@ struct SettingsPrivacyFeatureView: View {
                 case "current":
                     settingsViewModel.setWeatherLocationPreference(.currentLocation)
                 case "manual":
-                    let label = settingsViewModel.settings.weatherLocationPreference.displayLabel
-                    settingsViewModel.setWeatherLocationPreference(.manual(cityLabel: label == "Not configured" ? "Tokyo" : label, latitude: 35.681236, longitude: 139.767125))
+                    if case .manual = settingsViewModel.settings.weatherLocationPreference {
+                        break
+                    }
+                    settingsViewModel.setWeatherLocationPreference(
+                        .manual(cityLabel: "Tokyo", latitude: 35.681236, longitude: 139.767125)
+                    )
                 default:
                     settingsViewModel.setWeatherLocationPreference(.unset)
                 }
@@ -1082,6 +1105,39 @@ struct SettingsPrivacyFeatureView: View {
                 let preference = settingsViewModel.settings.weatherLocationPreference
                 guard case let .manual(_, latitude, longitude) = preference else { return }
                 settingsViewModel.setWeatherLocationPreference(.manual(cityLabel: label, latitude: latitude, longitude: longitude))
+            }
+        )
+    }
+
+    private var manualWeatherLocation: (label: String, latitude: Double, longitude: Double) {
+        guard case let .manual(label, latitude, longitude) = settingsViewModel.settings.weatherLocationPreference else {
+            return ("Tokyo", 35.681236, 139.767125)
+        }
+        return (label, latitude, longitude)
+    }
+
+    private var weatherLatitudeBinding: Binding<Double> {
+        Binding(
+            get: { manualWeatherLocation.latitude },
+            set: { latitude in
+                guard (-90...90).contains(latitude) else { return }
+                let location = manualWeatherLocation
+                settingsViewModel.setWeatherLocationPreference(
+                    .manual(cityLabel: location.label, latitude: latitude, longitude: location.longitude)
+                )
+            }
+        )
+    }
+
+    private var weatherLongitudeBinding: Binding<Double> {
+        Binding(
+            get: { manualWeatherLocation.longitude },
+            set: { longitude in
+                guard (-180...180).contains(longitude) else { return }
+                let location = manualWeatherLocation
+                settingsViewModel.setWeatherLocationPreference(
+                    .manual(cityLabel: location.label, latitude: location.latitude, longitude: longitude)
+                )
             }
         )
     }

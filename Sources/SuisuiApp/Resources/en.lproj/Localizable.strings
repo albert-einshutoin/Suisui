@@ -2150,6 +2150,7 @@
 "Add a task to choose a focus for today." = "Add a task to choose a focus for today.";
 "Choose a city" = "Choose a city";
 "City name" = "City name";
+"The city name is a label. Coordinates determine where weather is loaded." = "The city name is a label. Coordinates determine where weather is loaded.";
 "Current location" = "Current location";
 "Latitude" = "Latitude";
 "Longitude" = "Longitude";
@@ -2158,4 +2159,7 @@
 "Use current location" = "Use current location";
 "Weather location" = "Weather location";
 "Weather uses the selected source for Today and does not keep a location history." = "Weather uses the selected source for Today and does not keep a location history.";
+"Opens Apple Weather attribution and legal information." = "Opens Apple Weather attribution and legal information.";
+"Retry weather" = "Retry weather";
+"Requests the latest weather for the selected location." = "Requests the latest weather for the selected location.";
 "Weather uses your choice only while showing Today and does not keep a location history." = "Weather uses your choice only while showing Today and does not keep a location history.";
