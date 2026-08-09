@@ -2,7 +2,7 @@ import Combine
 import Foundation
 import SuisuiCore
 #if canImport(CoreLocation)
-import CoreLocation
+@preconcurrency import CoreLocation
 #endif
 #if canImport(WeatherKit)
 import WeatherKit
@@ -22,11 +22,27 @@ public struct TodayWeatherValue: Equatable, Sendable {
     public let temperatureCelsius: Int
     public let location: String
     public let updatedAt: Date
+    public let condition: String?
+    public let highTemperatureCelsius: Int?
+    public let lowTemperatureCelsius: Int?
+    public let attributionURL: String?
 
-    public init(temperatureCelsius: Int, location: String, updatedAt: Date) {
+    public init(
+        temperatureCelsius: Int,
+        location: String,
+        updatedAt: Date,
+        condition: String? = nil,
+        highTemperatureCelsius: Int? = nil,
+        lowTemperatureCelsius: Int? = nil,
+        attributionURL: String? = nil
+    ) {
         self.temperatureCelsius = temperatureCelsius
         self.location = location
         self.updatedAt = updatedAt
+        self.condition = condition
+        self.highTemperatureCelsius = highTemperatureCelsius
+        self.lowTemperatureCelsius = lowTemperatureCelsius
+        self.attributionURL = attributionURL
     }
 }
 
@@ -34,6 +50,7 @@ public protocol TodayWeatherProviding: Sendable {
     func weather(for coordinate: TodayWeatherCoordinate) async throws -> TodayWeatherValue
 }
 
+@MainActor
 public protocol TodayLocationProviding: Sendable {
     func currentCoordinate() async throws -> TodayWeatherCoordinate
 }
@@ -90,14 +107,16 @@ public final class TodayWeatherModel: ObservableObject {
         // Keep the cache in the view model rather than UserDefaults: a weather
         // value can make a location inferable, so the privacy contract must not
         // turn a convenience refresh into a location history.
+        let hasMatchingCache = cachedEntry?.key == cacheKey
         if let cachedEntry, cachedEntry.key == cacheKey {
-            state = .available(
-                temperatureCelsius: cachedEntry.value.temperatureCelsius,
-                location: cachedEntry.value.location,
-                updatedAt: cachedEntry.value.updatedAt
-            )
+            state = state(for: cachedEntry.value)
         }
-        state = .loading
+        // Keep a cached reading visible while the refresh runs. Replacing it
+        // with a loading placeholder creates a misleading blank/oscillating
+        // header and discards the stale-data affordance.
+        if !hasMatchingCache {
+            state = .loading
+        }
         do {
             let coordinate: TodayWeatherCoordinate
             let locationLabel: String
@@ -121,25 +140,21 @@ public final class TodayWeatherModel: ObservableObject {
             let cacheValue = TodayWeatherValue(
                 temperatureCelsius: value.temperatureCelsius,
                 location: displayLocation,
-                updatedAt: value.updatedAt
+                updatedAt: value.updatedAt,
+                condition: value.condition,
+                highTemperatureCelsius: value.highTemperatureCelsius,
+                lowTemperatureCelsius: value.lowTemperatureCelsius,
+                attributionURL: value.attributionURL
             )
             cachedEntry = (cacheKey, cacheValue)
-            state = .available(
-                temperatureCelsius: cacheValue.temperatureCelsius,
-                location: cacheValue.location,
-                updatedAt: cacheValue.updatedAt
-            )
+            state = state(for: cacheValue)
         } catch TodayWeatherModelError.permissionDenied {
             guard isCurrentRefresh(generation) else { return }
-            state = .permissionPending
+            state = .permissionDenied
         } catch {
             guard isCurrentRefresh(generation) else { return }
             if let cachedEntry, cachedEntry.key == cacheKey {
-                state = .available(
-                    temperatureCelsius: cachedEntry.value.temperatureCelsius,
-                    location: cachedEntry.value.location,
-                    updatedAt: cachedEntry.value.updatedAt
-                )
+                state = state(for: cachedEntry.value)
             } else {
                 state = .failed
             }
@@ -148,6 +163,28 @@ public final class TodayWeatherModel: ObservableObject {
 
     private func isCurrentRefresh(_ generation: Int) -> Bool {
         refreshGeneration == generation
+    }
+
+    private func state(for value: TodayWeatherValue) -> TodayWeatherState {
+        if value.condition != nil
+            || value.highTemperatureCelsius != nil
+            || value.lowTemperatureCelsius != nil
+            || value.attributionURL != nil {
+            return .availableDetails(
+                temperatureCelsius: value.temperatureCelsius,
+                location: value.location,
+                updatedAt: value.updatedAt,
+                condition: value.condition,
+                highTemperatureCelsius: value.highTemperatureCelsius,
+                lowTemperatureCelsius: value.lowTemperatureCelsius,
+                attributionURL: value.attributionURL
+            )
+        }
+        return .available(
+            temperatureCelsius: value.temperatureCelsius,
+            location: value.location,
+            updatedAt: value.updatedAt
+        )
     }
 }
 
@@ -159,6 +196,7 @@ public struct UnavailableTodayWeatherProvider: TodayWeatherProviding {
     }
 }
 
+@MainActor
 public struct UnavailableTodayLocationProvider: TodayLocationProviding {
     public init() {}
 
@@ -181,10 +219,19 @@ public struct WeatherKitTodayProvider: TodayWeatherProviding {
         let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
         let weather = try await service.weather(for: location)
         let celsius = weather.currentWeather.temperature.converted(to: .celsius).value
+        let todayForecast = weather.dailyForecast.first
         return TodayWeatherValue(
             temperatureCelsius: Int(celsius.rounded()),
             location: "",
-            updatedAt: clock()
+            updatedAt: clock(),
+            condition: weather.currentWeather.condition.description,
+            highTemperatureCelsius: todayForecast.map {
+                Int($0.highTemperature.converted(to: .celsius).value.rounded())
+            },
+            lowTemperatureCelsius: todayForecast.map {
+                Int($0.lowTemperature.converted(to: .celsius).value.rounded())
+            },
+            attributionURL: "https://weatherkit.apple.com/legal-attribution.html"
         )
     }
 }
@@ -206,7 +253,7 @@ final class CoreLocationRequestCoordinator: @unchecked Sendable {
     }
 
     func currentCoordinate(
-        onRequest: @escaping () -> Void
+        onRequest: @escaping @Sendable () -> Void
     ) async throws -> TodayWeatherCoordinate {
         try Task.checkCancellation()
         guard reserve() else { throw TodayWeatherModelError.unavailable }
@@ -278,7 +325,8 @@ final class CoreLocationRequestCoordinator: @unchecked Sendable {
     }
 }
 
-public final class CoreLocationTodayProvider: NSObject, CLLocationManagerDelegate, TodayLocationProviding, @unchecked Sendable {
+@MainActor
+public final class CoreLocationTodayProvider: NSObject, CLLocationManagerDelegate, TodayLocationProviding {
     private let manager: CLLocationManager
     private let requestCoordinator = CoreLocationRequestCoordinator()
 
@@ -291,11 +339,18 @@ public final class CoreLocationTodayProvider: NSObject, CLLocationManagerDelegat
 
     public func currentCoordinate() async throws -> TodayWeatherCoordinate {
         try await requestCoordinator.currentCoordinate { [weak self] in
-            self?.requestCoordinate()
+            Task { @MainActor [weak self] in
+                self?.requestCoordinate()
+            }
         }
     }
 
-    static func permissionError(for authorizationStatus: CLAuthorizationStatus) -> TodayWeatherModelError? {
+    public func requestAuthorization() {
+        guard manager.authorizationStatus == .notDetermined else { return }
+        manager.requestWhenInUseAuthorization()
+    }
+
+    nonisolated static func permissionError(for authorizationStatus: CLAuthorizationStatus) -> TodayWeatherModelError? {
         switch authorizationStatus {
         case .denied, .restricted:
             .permissionDenied
@@ -304,12 +359,18 @@ public final class CoreLocationTodayProvider: NSObject, CLLocationManagerDelegat
         }
     }
 
-    public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        requestCoordinate()
+    nonisolated public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        // Core Location invokes its delegate on a framework-managed queue. Hop
+        // back to the provider's MainActor before touching CLLocationManager;
+        // the request coordinator itself remains thread-safe and is only used
+        // directly by the data callbacks below.
+        Task { @MainActor [weak self] in
+            self?.requestCoordinate()
+        }
     }
 
-    public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.first else { return }
+    nonisolated public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
         requestCoordinator.finish(.success(
             TodayWeatherCoordinate(
                 latitude: location.coordinate.latitude,
@@ -318,7 +379,7 @@ public final class CoreLocationTodayProvider: NSObject, CLLocationManagerDelegat
         ))
     }
 
-    public func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+    nonisolated public func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         requestCoordinator.finish(.failure(error))
     }
 

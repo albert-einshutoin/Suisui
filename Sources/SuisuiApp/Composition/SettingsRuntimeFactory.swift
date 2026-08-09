@@ -38,6 +38,13 @@ extension AppRuntimeFactory {
     }
 
     @MainActor
+    static func requestTodayWeatherLocationAuthorization() {
+#if canImport(WeatherKit) && canImport(CoreLocation)
+        TodayWeatherRuntime.subscription.requestAuthorization?()
+#endif
+    }
+
+    @MainActor
     static func observeTodayWeatherSettingsChanges(
         for model: TodayWeatherModel,
         notificationCenter: NotificationCenter = .default
@@ -55,13 +62,15 @@ extension AppRuntimeFactory {
 
     @MainActor
     private enum TodayWeatherRuntime {
-        static let subscription: (model: TodayWeatherModel, observer: NSObjectProtocol) = {
+        static let subscription: (model: TodayWeatherModel, observer: NSObjectProtocol, requestAuthorization: (@MainActor () -> Void)?) = {
 #if canImport(WeatherKit) && canImport(CoreLocation)
             let weatherProvider: any TodayWeatherProviding = WeatherKitTodayProvider()
-            let locationProvider: any TodayLocationProviding = CoreLocationTodayProvider()
+            let locationProvider = CoreLocationTodayProvider()
+            let requestAuthorization: (@MainActor () -> Void)? = { locationProvider.requestAuthorization() }
 #else
             let weatherProvider: any TodayWeatherProviding = UnavailableTodayWeatherProvider()
-            let locationProvider: any TodayLocationProviding = UnavailableTodayLocationProvider()
+            let locationProvider: UnavailableTodayLocationProvider? = nil
+            let requestAuthorization: (@MainActor () -> Void)? = nil
 #endif
             let model = TodayWeatherModel(
                 preferenceProvider: { loadRuntimeAppSettings().weatherLocationPreference },
@@ -70,7 +79,8 @@ extension AppRuntimeFactory {
             )
             return (
                 model,
-                observeTodayWeatherSettingsChanges(for: model)
+                observeTodayWeatherSettingsChanges(for: model),
+                requestAuthorization
             )
         }()
     }

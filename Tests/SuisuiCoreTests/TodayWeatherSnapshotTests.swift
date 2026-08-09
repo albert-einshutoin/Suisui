@@ -7,7 +7,7 @@ final class TodayWeatherSnapshotTests: XCTestCase {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
 
-        for state in [TodayWeatherState.notConfigured, .permissionPending, .loading, .failed] {
+        for state in [TodayWeatherState.notConfigured, .permissionPending, .permissionDenied, .loading, .failed] {
             let english = TodayWeatherSnapshotBuilder.make(
                 state: state,
                 now: date,
@@ -76,6 +76,29 @@ final class TodayWeatherSnapshotTests: XCTestCase {
         XCTAssertTrue(snapshot.isStale)
         XCTAssertTrue(snapshot.detail.hasSuffix(" · Stale"))
         XCTAssertTrue(snapshot.accessibilityLabel.contains("Stale"))
+    }
+
+    func testDetailedWeatherProjectionPreservesConditionRangeAndAttributionURL() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let snapshot = TodayWeatherSnapshotBuilder.make(
+            state: .availableDetails(
+                temperatureCelsius: 22,
+                location: "Tokyo",
+                updatedAt: now,
+                condition: "Partly cloudy",
+                highTemperatureCelsius: 26,
+                lowTemperatureCelsius: 18,
+                attributionURL: "https://example.invalid/weather-attribution"
+            ),
+            now: now,
+            calendar: Calendar(identifier: .gregorian),
+            locale: Locale(identifier: "en")
+        )
+
+        XCTAssertTrue(snapshot.detail.contains("Partly cloudy"))
+        XCTAssertTrue(snapshot.detail.contains("High 26°C / Low 18°C"))
+        XCTAssertEqual(snapshot.attributionURL, "https://example.invalid/weather-attribution")
+        XCTAssertTrue(snapshot.accessibilityLabel.contains("Partly cloudy"))
     }
 
     func testNotConfiguredWeatherDoesNotSuggestANonexistentSettingsRoute() {

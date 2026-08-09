@@ -579,6 +579,37 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testWeatherLocationKeepsManualDraftUntilSettingsSave() throws {
+        let suiteName = "Suisui.AppSettingsWeatherDraft.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        viewModel.setWeatherLocationPreference(
+            .manual(cityLabel: "", latitude: 35.681236, longitude: 139.767125)
+        )
+
+        guard case let .manual(label, latitude, longitude) = viewModel.settings.weatherLocationPreference else {
+            return XCTFail("A manual location draft must remain editable while its label is empty")
+        }
+        XCTAssertEqual(label, "")
+        XCTAssertEqual(latitude, 35.681236)
+        XCTAssertEqual(longitude, 139.767125)
+        XCTAssertEqual(try store.load().weatherLocationPreference, .unset)
+
+        viewModel.setWeatherLocationPreference(
+            .manual(cityLabel: "Tokyo", latitude: latitude, longitude: longitude)
+        )
+        viewModel.saveSettings()
+
+        XCTAssertEqual(
+            try store.load().weatherLocationPreference,
+            .manual(cityLabel: "Tokyo", latitude: latitude, longitude: longitude)
+        )
+    }
+
+    @MainActor
     func testOnboardingTodayPreferencesSaveOnlyWhenApplied() throws {
         let suiteName = "Suisui.OnboardingTodayPreferences.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

@@ -5,6 +5,7 @@ struct OnboardingWelcomeView: View {
     @ObservedObject var settingsViewModel: AppSettingsViewModel
     private let permissionSnapshotProvider: @Sendable () -> PermissionSnapshot
     private let sampleProjectAction: OnboardingSampleProjectAction?
+    private let requestCurrentLocationAuthorization: @MainActor () -> Void
     let onTrySuisui: (OnboardingSampleProjectEnsureResult) -> Void
     let onFinish: () -> Void
 
@@ -15,6 +16,8 @@ struct OnboardingWelcomeView: View {
     @State private var sampleProjectErrorMessage: String?
     @State private var todayPreferences: OnboardingTodayPreferences
     @State private var todayPreferencesSaveError: String?
+    @State private var manualLatitudeText: String
+    @State private var manualLongitudeText: String
     @Environment(\.openWindow) private var openWindow
 
     init(
@@ -22,16 +25,25 @@ struct OnboardingWelcomeView: View {
         permissionSnapshot: PermissionSnapshot,
         permissionSnapshotProvider: @escaping @Sendable () -> PermissionSnapshot,
         sampleProjectAction: OnboardingSampleProjectAction? = OnboardingSampleProjectFactory.makeAction(),
+        requestCurrentLocationAuthorization: @escaping @MainActor () -> Void = {},
         onTrySuisui: @escaping (OnboardingSampleProjectEnsureResult) -> Void,
         onFinish: @escaping () -> Void
     ) {
         self.settingsViewModel = settingsViewModel
         self.permissionSnapshotProvider = permissionSnapshotProvider
         self.sampleProjectAction = sampleProjectAction
+        self.requestCurrentLocationAuthorization = requestCurrentLocationAuthorization
         self.onTrySuisui = onTrySuisui
         self.onFinish = onFinish
         _permissionSnapshot = State(initialValue: permissionSnapshot)
         _todayPreferences = State(initialValue: OnboardingTodayPreferences(settings: settingsViewModel.settings))
+        if case let .manual(_, latitude, longitude) = settingsViewModel.settings.weatherLocationPreference {
+            _manualLatitudeText = State(initialValue: String(latitude))
+            _manualLongitudeText = State(initialValue: String(longitude))
+        } else {
+            _manualLatitudeText = State(initialValue: "35.681236")
+            _manualLongitudeText = State(initialValue: "139.767125")
+        }
     }
 
     var body: some View {
@@ -455,6 +467,7 @@ struct OnboardingWelcomeView: View {
                 switch mode {
                 case "current":
                     todayPreferences.weatherLocationPreference = .currentLocation
+                    requestCurrentLocationAuthorization()
                 case "manual":
                     let current = manualCoordinateValues
                     todayPreferences.weatherLocationPreference = .manual(
@@ -485,15 +498,23 @@ struct OnboardingWelcomeView: View {
 
     private var manualLatitudeBinding: Binding<String> {
         Binding(
-            get: { String(manualCoordinateValues.latitude) },
-            set: { updateManualPreference(label: manualCoordinateValues.label, latitude: Double($0) ?? manualCoordinateValues.latitude, longitude: manualCoordinateValues.longitude) }
+            get: { manualLatitudeText },
+            set: {
+                manualLatitudeText = $0
+                guard let latitude = Double($0) else { return }
+                updateManualPreference(label: manualCoordinateValues.label, latitude: latitude, longitude: manualCoordinateValues.longitude)
+            }
         )
     }
 
     private var manualLongitudeBinding: Binding<String> {
         Binding(
-            get: { String(manualCoordinateValues.longitude) },
-            set: { updateManualPreference(label: manualCoordinateValues.label, latitude: manualCoordinateValues.latitude, longitude: Double($0) ?? manualCoordinateValues.longitude) }
+            get: { manualLongitudeText },
+            set: {
+                manualLongitudeText = $0
+                guard let longitude = Double($0) else { return }
+                updateManualPreference(label: manualCoordinateValues.label, latitude: manualCoordinateValues.latitude, longitude: longitude)
+            }
         )
     }
 

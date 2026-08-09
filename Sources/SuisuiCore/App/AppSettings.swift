@@ -174,6 +174,81 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.managedAIBilling = managedAIBilling
     }
 
+    /// Source-compatible initializer retained for clients built against the
+    /// pre-Today settings surface. New Today preferences intentionally use
+    /// their canonical defaults when callers do not provide them.
+    @_disfavoredOverload
+    public init(
+        aiProvider: AIProvider = .openaiResponses,
+        sttProvider: STTProvider = .openAITranscribe,
+        ttsProvider: TTSProvider = .localKokoro,
+        sttRoutingPreference: VoiceRoutingPreference = .appleFirst,
+        ttsRoutingPreference: VoiceRoutingPreference = .appleFirst,
+        notificationsEnabled: Bool = false,
+        notificationPreferences: NotificationPreferences = .default,
+        isDeveloperModeEnabled: Bool = false,
+        defaultWorkspacePath: String? = nil,
+        timeZoneIdentifier: String = TimeZone.current.identifier,
+        googleCalendarID: String = "primary",
+        geminiModelID: String? = nil,
+        groqBaseURLString: String? = nil,
+        whisperCppExecutablePath: String? = nil,
+        kokoroExecutablePath: String? = nil,
+        ttsLanguageCode: String = "en",
+        ttsVoiceID: String = "af_heart",
+        openCodeExecutablePath: String? = nil,
+        openCodeWorkspacePath: String? = nil,
+        openCodeModelID: String? = nil,
+        isOpenCodeLocalExecutionApproved: Bool = false,
+        codexExecutablePath: String? = nil,
+        codexModelID: String? = nil,
+        isCodexLocalExecutionApproved: Bool = false,
+        approvedCodexExecutable: ApprovedCodexExecutable? = nil,
+        isLowLatencyVoiceAgentModeEnabled: Bool = false,
+        isLowLatencyVoiceAgentAlwaysOnRecordingEnabled: Bool = false,
+        isLowLatencyVoiceAgentCloudFallbackEnabled: Bool = false,
+        isLowLatencyVoiceAgentCloudFallbackCostVisible: Bool = false,
+        taskAutoExecution: TaskAutoExecutionSettings = .default,
+        managedAIBilling: ManagedAIBillingSettings = .default
+    ) {
+        self.init(
+            aiProvider: aiProvider,
+            sttProvider: sttProvider,
+            ttsProvider: ttsProvider,
+            sttRoutingPreference: sttRoutingPreference,
+            ttsRoutingPreference: ttsRoutingPreference,
+            notificationsEnabled: notificationsEnabled,
+            notificationPreferences: notificationPreferences,
+            isDeveloperModeEnabled: isDeveloperModeEnabled,
+            defaultWorkspacePath: defaultWorkspacePath,
+            profileDisplayName: nil,
+            dailyWorkCapacityMinutes: 480,
+            weatherLocationPreference: .unset,
+            timeZoneIdentifier: timeZoneIdentifier,
+            googleCalendarID: googleCalendarID,
+            geminiModelID: geminiModelID,
+            groqBaseURLString: groqBaseURLString,
+            whisperCppExecutablePath: whisperCppExecutablePath,
+            kokoroExecutablePath: kokoroExecutablePath,
+            ttsLanguageCode: ttsLanguageCode,
+            ttsVoiceID: ttsVoiceID,
+            openCodeExecutablePath: openCodeExecutablePath,
+            openCodeWorkspacePath: openCodeWorkspacePath,
+            openCodeModelID: openCodeModelID,
+            isOpenCodeLocalExecutionApproved: isOpenCodeLocalExecutionApproved,
+            codexExecutablePath: codexExecutablePath,
+            codexModelID: codexModelID,
+            isCodexLocalExecutionApproved: isCodexLocalExecutionApproved,
+            approvedCodexExecutable: approvedCodexExecutable,
+            isLowLatencyVoiceAgentModeEnabled: isLowLatencyVoiceAgentModeEnabled,
+            isLowLatencyVoiceAgentAlwaysOnRecordingEnabled: isLowLatencyVoiceAgentAlwaysOnRecordingEnabled,
+            isLowLatencyVoiceAgentCloudFallbackEnabled: isLowLatencyVoiceAgentCloudFallbackEnabled,
+            isLowLatencyVoiceAgentCloudFallbackCostVisible: isLowLatencyVoiceAgentCloudFallbackCostVisible,
+            taskAutoExecution: taskAutoExecution,
+            managedAIBilling: managedAIBilling
+        )
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.aiProvider = try container.decode(AIProvider.self, forKey: .aiProvider)
@@ -2229,7 +2304,10 @@ public final class AppSettingsViewModel: ObservableObject {
     }
 
     public func setWeatherLocationPreference(_ preference: WeatherLocationPreference) {
-        settings.weatherLocationPreference = preference.normalized
+        // Keep the manual editor as a draft. Normalizing an empty city label
+        // here changes the picker to `.unset` while the user is still typing.
+        // The persisted boundary below remains the single normalization point.
+        settings.weatherLocationPreference = preference
         clearMessages()
     }
 
@@ -2572,7 +2650,9 @@ public final class AppSettingsViewModel: ObservableObject {
             return
         }
 
-        settings.profileDisplayName = settings.normalizedForRuntime.profileDisplayName
+        let normalizedSettings = settings.normalizedForRuntime
+        settings.profileDisplayName = normalizedSettings.profileDisplayName
+        settings.weatherLocationPreference = normalizedSettings.weatherLocationPreference
         let issues = settings.validate().filter { $0.severity == .error }
         guard issues.isEmpty else {
             errorMessage = issues.map(\.message).joined(separator: " ")
@@ -2581,9 +2661,9 @@ public final class AppSettingsViewModel: ObservableObject {
         }
 
         do {
-            let weatherLocationChanged = settings.weatherLocationPreference != savedWeatherLocationPreference
-            try settingsStore.save(settings)
-            savedWeatherLocationPreference = settings.weatherLocationPreference
+            let weatherLocationChanged = normalizedSettings.weatherLocationPreference != savedWeatherLocationPreference
+            try settingsStore.save(normalizedSettings)
+            savedWeatherLocationPreference = normalizedSettings.weatherLocationPreference
             errorMessage = nil
             successMessage = "Settings saved."
             NotificationCenter.default.post(name: .suisuiGoogleCalendarReadinessDidChange, object: nil)

@@ -1100,7 +1100,12 @@ struct SettingsPrivacyFeatureView: View {
 
     private var weatherCityBinding: Binding<String> {
         Binding(
-            get: { settingsViewModel.settings.weatherLocationPreference.displayLabel },
+            get: {
+                guard case let .manual(label, _, _) = settingsViewModel.settings.weatherLocationPreference else {
+                    return ""
+                }
+                return label
+            },
             set: { label in
                 let preference = settingsViewModel.settings.weatherLocationPreference
                 guard case let .manual(_, latitude, longitude) = preference else { return }

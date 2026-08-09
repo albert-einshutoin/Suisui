@@ -25,7 +25,7 @@ final class TodayWeatherModelTests: XCTestCase {
     }
 
     @MainActor
-    func testCurrentLocationDeniedBecomesPermissionPending() async {
+    func testCurrentLocationDeniedIsDistinguishedFromPendingAuthorization() async {
         let model = TodayWeatherModel(
             preferenceProvider: { .currentLocation },
             weatherProvider: RecordingWeatherProvider(),
@@ -34,7 +34,7 @@ final class TodayWeatherModelTests: XCTestCase {
 
         await model.refresh()
 
-        XCTAssertEqual(model.state, .permissionPending)
+        XCTAssertEqual(model.state, .permissionDenied)
     }
 
     @MainActor
@@ -71,6 +71,37 @@ final class TodayWeatherModelTests: XCTestCase {
 
         XCTAssertEqual(model.state, .available(temperatureCelsius: 23, location: "Tokyo", updatedAt: Date(timeIntervalSince1970: 100)))
         XCTAssertEqual(weather.requestCount, 2)
+    }
+
+    @MainActor
+    func testRefreshKeepsCachedWeatherVisibleWhileNewRequestIsPending() async {
+        let weather = DeferredWeatherProvider()
+        let model = TodayWeatherModel(
+            preferenceProvider: { .manual(cityLabel: "Tokyo", latitude: 35.6, longitude: 139.7) },
+            weatherProvider: weather,
+            locationProvider: RecordingLocationProvider()
+        )
+
+        let first = Task { @MainActor in await model.refresh() }
+        await weather.waitForRequestCount(1)
+        await weather.resolveRequest(
+            at: 0,
+            with: TodayWeatherValue(temperatureCelsius: 23, location: "Tokyo", updatedAt: Date(timeIntervalSince1970: 100))
+        )
+        await first.value
+
+        let second = Task { @MainActor in await model.refresh() }
+        await weather.waitForRequestCount(2)
+        XCTAssertEqual(
+            model.state,
+            .available(temperatureCelsius: 23, location: "Tokyo", updatedAt: Date(timeIntervalSince1970: 100))
+        )
+
+        await weather.resolveRequest(
+            at: 0,
+            with: TodayWeatherValue(temperatureCelsius: 24, location: "Tokyo", updatedAt: Date(timeIntervalSince1970: 200))
+        )
+        await second.value
     }
 
     @MainActor
@@ -275,16 +306,22 @@ private final class SequenceWeatherProvider: TodayWeatherProviding, @unchecked S
 
 private actor DeferredWeatherProvider: TodayWeatherProviding {
     private var continuations: [CheckedContinuation<TodayWeatherValue, Error>] = []
+    private var requestCount = 0
 
     func weather(for coordinate: TodayWeatherCoordinate) async throws -> TodayWeatherValue {
-        try await withCheckedThrowingContinuation { continuation in
+        requestCount += 1
+        return try await withCheckedThrowingContinuation { continuation in
             continuations.append(continuation)
         }
     }
 
     func waitForRequestCount(_ expectedCount: Int) async {
-        while continuations.count < expectedCount {
-            await Task.yield()
+        while requestCount < expectedCount {
+            // A pure yield can keep this actor scheduled indefinitely and
+            // starve the MainActor task that must enter `weather(for:)`.
+            // Sleeping briefly gives the producer a scheduling opportunity
+            // while keeping the helper deterministic and CPU-light.
+            try? await Task.sleep(nanoseconds: 1_000_000)
         }
     }
 
@@ -310,6 +347,7 @@ private final class RecordingLocationProvider: TodayLocationProviding, @unchecke
         self.error = error
     }
 
+    @MainActor
     func currentCoordinate() async throws -> TodayWeatherCoordinate {
         requestCount += 1
         if let error { throw error }
