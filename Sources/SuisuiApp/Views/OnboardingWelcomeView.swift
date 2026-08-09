@@ -440,7 +440,7 @@ struct OnboardingWelcomeView: View {
             return
         }
         guard settingsViewModel.saveOnboardingTodayPreferences(todayPreferences) else {
-            todayPreferencesSaveError = String(localized: "Could not save your Today preferences.")
+            todayPreferencesSaveError = localizedDisplay("Could not save your Today preferences.")
             return
         }
         todayPreferencesSaveError = nil

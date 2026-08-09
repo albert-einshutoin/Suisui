@@ -20,7 +20,7 @@ func localizedDisplay(_ key: String) -> String {
     if let preference = AppLanguagePreference.environmentOverride
         ?? AppLanguagePreference(rawValue: UserDefaults.standard.string(forKey: AppLanguagePreference.storageKey) ?? ""),
        preference != .system,
-       let localizationPath = Bundle.main.path(forResource: preference.localeIdentifier, ofType: "lproj"),
+       let localizationPath = Bundle.module.path(forResource: preference.localeIdentifier, ofType: "lproj"),
        let localizationBundle = Bundle(path: localizationPath) {
         // Dynamic status strings do not inherit SwiftUI's environment locale.
         // Resolve them from the same explicit app preference so visible text,
