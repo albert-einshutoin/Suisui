@@ -7737,6 +7737,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(projectBoardCoreSource.contains("refreshGoogleCalendarSyncStatusOffMain"))
         XCTAssertTrue(projectBoardCoreSource.contains("Task.detached(priority: .utility)"))
         XCTAssertTrue(projectBoardCoreSource.contains("if hasLoadedBoardSnapshot"))
+        XCTAssertTrue(projectBoardCoreSource.contains("hasPreloadedGoogleCalendarSyncStatus"))
+        XCTAssertTrue(projectBoardCoreSource.contains("initialGoogleCalendarSyncStatus != nil"))
         XCTAssertFalse(dashboardViewSource.contains("makeTodayIntegrationStates"))
         XCTAssertFalse(dashboardViewSource.contains("migratedConnection"))
         XCTAssertFalse(workflowSource.contains("migratedConnection"))

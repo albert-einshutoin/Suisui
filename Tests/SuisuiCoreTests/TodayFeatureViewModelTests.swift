@@ -317,6 +317,31 @@ final class TodayFeatureViewModelTests: XCTestCase {
         XCTAssertEqual(board.googleCalendarSyncStatus.state, .ready)
         XCTAssertEqual(sync.statusReadCount, 0)
     }
+
+    @MainActor
+    func testInitialBoardLoadWithoutPreloadedReadinessRefreshesTodayIntegrationOffMain() async {
+        let board = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            googleCalendarSync: StaticGoogleCalendarSync(
+                status: GoogleCalendarRuntimeSyncStatus(plan: .pro, state: .ready)
+            )
+        )
+        let feature = TodayFeatureViewModel(board: board)
+        let publication = expectation(description: "Today receives unpreloaded Calendar readiness")
+        Task { @MainActor in
+            for _ in 0..<100 where feature.integrationStates.calendar != .connected {
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+            if feature.integrationStates.calendar == .connected {
+                publication.fulfill()
+            }
+        }
+
+        board.load()
+        await fulfillment(of: [publication], timeout: 1)
+
+        XCTAssertEqual(feature.integrationStates.calendar, .connected)
+    }
 }
 
 private struct StaticGoogleCalendarSync: GoogleCalendarRuntimeSyncing {
