@@ -74,6 +74,33 @@ final class TodayFeatureViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testAddingUnscheduledRecommendationToDraftUsesInjectedVisualEvidenceDay() throws {
+        let board = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        board.load()
+        let project = try XCTUnwrap(board.createProject(title: "Launch"))
+        let unscheduled = try XCTUnwrap(board.createTask(
+            title: "Schedule release",
+            projectID: project.id,
+            status: .planned,
+            priority: .high,
+            dueAt: nil
+        ))
+        let referenceDate = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-07-10T12:00:00Z"))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let feature = TodayFeatureViewModel(
+            board: board,
+            runtimeReferenceDate: { referenceDate },
+            runtimeCalendar: { calendar }
+        )
+
+        XCTAssertTrue(feature.addUnscheduledTaskToScheduleDraft(taskID: unscheduled.id))
+        let rawStartAt = try XCTUnwrap(board.scheduleDraft?.timeBlocks.first(where: { $0.task.id == unscheduled.id })?.startAt)
+        let startAt = try XCTUnwrap(ISO8601DateFormatter().date(from: rawStartAt))
+        XCTAssertTrue(calendar.isDate(startAt, inSameDayAs: referenceDate))
+    }
+
+    @MainActor
     func testRenamingAnotherTodayTasksProjectPublishesUpdatedFeatureOwnedTitle() async throws {
         let store = InMemoryProjectBoardStore()
         let board = ProjectBoardViewModel(store: store)

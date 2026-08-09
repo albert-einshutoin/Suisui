@@ -1943,6 +1943,9 @@
 "Mark incomplete" = "Mark incomplete";
 "Mark complete" = "Mark complete";
 "%d tasks planned" = "%d tasks planned";
+"%d task planned" = "%d task planned";
+"Selects this task and moves to the Daily Planning Review without changing task status or Calendar." = "Selects this task and moves to the Daily Planning Review without changing task status or Calendar.";
+"Adds this task to the local schedule draft without writing Calendar." = "Adds this task to the local schedule draft without writing Calendar.";
 "%d minutes available" = "%d minutes available";
 "Suisui Today" = "Suisui Today";
 "Suisui Assistant" = "Suisui Assistant";

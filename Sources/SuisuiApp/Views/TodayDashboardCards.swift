@@ -31,12 +31,29 @@ struct TodayDashboardRecommendationCards: View {
                     .disabled(recommendation.taskID == nil)
                     .soloCard()
                     .accessibilityLabel(String(format: String(localized: "Recommendation: %@. %@"), recommendation.title, recommendation.reason))
-                    .accessibilityHint(recommendation.taskID == nil ? "No focus task is available." : "Selects this task without changing task status or Calendar.")
+                    .accessibilityHint(accessibilityHint(for: recommendation))
                 }
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-recommendations")
+    }
+
+    private func accessibilityHint(for recommendation: TodayRecommendation) -> String {
+        guard recommendation.taskID != nil else {
+            return String(localized: "No focus task is available.")
+        }
+
+        switch recommendation.action {
+        case .startFocus:
+            return String(localized: "Starts local focus without changing task status or Calendar.")
+        case .openReview:
+            return String(localized: "Selects this task and moves to the Daily Planning Review without changing task status or Calendar.")
+        case .prepareScheduleDraft:
+            return String(localized: "Adds this task to the local schedule draft without writing Calendar.")
+        case .selectTask:
+            return String(localized: "Selects this task without changing task status or Calendar.")
+        }
     }
 }
 

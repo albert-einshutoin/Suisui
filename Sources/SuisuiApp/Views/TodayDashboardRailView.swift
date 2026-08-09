@@ -28,7 +28,7 @@ struct TodayDashboardRailView: View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
             Label("Workload", systemImage: "gauge.with.dots.needle.50percent")
                 .font(SuisuiTypography.sectionTitle)
-            Text(String(format: String(localized: "%d tasks planned"), dashboard.workload.plannedTaskCount))
+            Text(localizedCount(dashboard.workload.plannedTaskCount, one: "%d task planned", other: "%d tasks planned"))
                 .font(.headline.monospacedDigit())
             Text(String(format: String(localized: "%d minutes available"), dashboard.workload.dailyCapacityMinutes))
                 .font(.caption)

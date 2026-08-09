@@ -38,12 +38,20 @@ public final class TodayFeatureViewModel: ObservableObject {
     public var dailyPlanningReview: DailyPlanningReview? { state.dailyPlanningReview }
 
     private let board: ProjectBoardViewModel
+    private let runtimeReferenceDate: () -> Date
+    private let runtimeCalendar: () -> Calendar
     private var observations: Set<AnyCancellable> = []
     private var featureActionDepth = 0
     private var hasScheduledSynchronization = false
 
-    public init(board: ProjectBoardViewModel) {
+    public init(
+        board: ProjectBoardViewModel,
+        runtimeReferenceDate: @escaping () -> Date = { VisualEvidenceRuntimeContext.referenceDate() },
+        runtimeCalendar: @escaping () -> Calendar = { VisualEvidenceRuntimeContext.runtimeCalendar() }
+    ) {
         self.board = board
+        self.runtimeReferenceDate = runtimeReferenceDate
+        self.runtimeCalendar = runtimeCalendar
         self.state = Self.makeState(from: board)
 
         // Today subscribes only to the state it renders. Automation, receipt,
@@ -140,7 +148,13 @@ public final class TodayFeatureViewModel: ObservableObject {
 
     @discardableResult
     public func addUnscheduledTaskToScheduleDraft(taskID: Int64) -> Bool {
-        performFeatureAction { board.addUnscheduledTaskToScheduleDraft(taskID: taskID) }
+        let referenceDate = runtimeReferenceDate()
+        let calendar = runtimeCalendar()
+        // Capture rendering and draft placement use the same runtime context so
+        // visual-evidence runs cannot add a task to a different local day.
+        return performFeatureAction {
+            board.addUnscheduledTaskToScheduleDraft(taskID: taskID, on: referenceDate, calendar: calendar)
+        }
     }
 
     public func enqueueTodayReminderDraft(for taskID: Int64) {

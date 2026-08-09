@@ -1937,6 +1937,9 @@
 "Mark incomplete" = "未完了にする";
 "Mark complete" = "完了にする";
 "%d tasks planned" = "%d件を予定";
+"%d task planned" = "%d件を予定";
+"Selects this task and moves to the Daily Planning Review without changing task status or Calendar." = "このタスクを選択して、タスクの状態やカレンダーを変更せずに日次計画レビューへ移動します。";
+"Adds this task to the local schedule draft without writing Calendar." = "カレンダーへ書き込まずに、このタスクをローカルのスケジュール下書きへ追加します。";
 "%d minutes available" = "%d分利用可能";
 "Suisui Today" = "Suisuiの今日";
 "Suisui Assistant" = "Suisui Assistant";
