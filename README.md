@@ -107,6 +107,26 @@ Advanced connector and MCP foundations are present, but support depends on the c
 - Full-text RAG and large knowledge indexes are out of scope for the alpha.
 - Automatic email sending, Slack posting, and destructive file operations are not supported.
 - Local STT/TTS models must be installed separately.
+
+### Today integrations and permissions
+
+Today keeps external activity read-only and fail-closed. WeatherKit builds must
+ship the WeatherKit entitlement and the localized
+`NSLocationWhenInUseUsageDescription`; the app displays Apple Weather legal
+attribution and never persists a location history. A denied location request is
+shown separately from an authorization request that is still pending.
+
+Google Calendar OAuth currently exposes the existing approval-gated write
+boundary only. The required scope is
+`https://www.googleapis.com/auth/calendar.events`; tokens remain in Keychain,
+and no Calendar event is written without an explicit review approval. Today
+does not invent event titles or counts when a read provider is unavailable.
+
+Slack is intentionally not a supported runtime feed in this release. There is
+no Slack token, message-body ingestion, unread/mention read, allowlist, or
+rate-limit bypass in the product. The Today card therefore stays “Not
+connected” until a separately reviewed read-only provider with an explicit
+workspace allowlist and bounded polling policy is added.
 - AI-backed features require your provider credentials and network access.
 - Developer ID signing, notarization, and Sparkle publishing require release-machine credentials.
 - Automated accessibility checks do not replace the manual VoiceOver pass required for each release candidate.
