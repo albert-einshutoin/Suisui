@@ -14,6 +14,12 @@ public extension Notification.Name {
     static let suisuiGoogleCalendarReadinessDidChange = Notification.Name(
         "dev.suisui.googleCalendarReadinessDidChange"
     )
+
+    /// Signals that the persisted Today weather source changed. Weather
+    /// acquisition remains outside Settings and reloads through its runtime.
+    static let suisuiWeatherLocationDidChange = Notification.Name(
+        "dev.suisui.weatherLocationDidChange"
+    )
 }
 
 public struct AppSettings: Codable, Equatable, Sendable {
@@ -1373,6 +1379,7 @@ public final class AppSettingsViewModel: ObservableObject {
     private let secretReadinessReader: any ProviderSecretReadinessReading
     private let appleSpeechReadinessProvider: @Sendable () -> AppleSpeechReadinessSnapshot
     private let systemSpeechReadinessProvider: @Sendable () -> SystemSpeechReadinessSnapshot
+    private var savedWeatherLocationPreference: WeatherLocationPreference
     private var rejectedAIProvider: AIProvider?
     private static let settingsSaveFailureMessage = "App settings could not be saved."
     private static let apiKeySaveFailureMessage = "API key could not be saved to Keychain."
@@ -1465,11 +1472,13 @@ public final class AppSettingsViewModel: ObservableObject {
             loadedSettings = .default
             initialErrorMessage = "App settings could not be loaded. Defaults are shown until settings are saved again."
         }
-        self.settings = Self.normalizedSettings(
+        let normalizedSettings = Self.normalizedSettings(
             loadedSettings,
             voiceModelStatuses: initialVoiceModelStatuses,
             voiceModelCatalog: voiceModelCatalog
         )
+        self.settings = normalizedSettings
+        self.savedWeatherLocationPreference = normalizedSettings.weatherLocationPreference
         self.openAIAPIKeyInput = ""
         self.openAIAPIKeyStatusLabel = "Not configured"
         self.openAIAPIKeyReadinessState = .missing
@@ -2572,10 +2581,15 @@ public final class AppSettingsViewModel: ObservableObject {
         }
 
         do {
+            let weatherLocationChanged = settings.weatherLocationPreference != savedWeatherLocationPreference
             try settingsStore.save(settings)
+            savedWeatherLocationPreference = settings.weatherLocationPreference
             errorMessage = nil
             successMessage = "Settings saved."
             NotificationCenter.default.post(name: .suisuiGoogleCalendarReadinessDidChange, object: nil)
+            if weatherLocationChanged {
+                NotificationCenter.default.post(name: .suisuiWeatherLocationDidChange, object: nil)
+            }
         } catch {
             errorMessage = Self.settingsSaveFailureMessage
             successMessage = nil

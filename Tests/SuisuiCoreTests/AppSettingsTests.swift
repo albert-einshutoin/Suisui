@@ -430,6 +430,34 @@ final class AppSettingsTests: XCTestCase {
         await fulfillment(of: [notification], timeout: 1)
     }
 
+    @MainActor
+    func testSuccessfulSettingsSavePostsWeatherLocationInvalidation() async throws {
+        let suiteName = "Suisui.AppSettingsWeatherLocation.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore()
+        )
+        let notification = expectation(description: "Today weather reloads after Settings save")
+        let observer = NotificationCenter.default.addObserver(
+            forName: .suisuiWeatherLocationDidChange,
+            object: nil,
+            queue: nil
+        ) { _ in
+            notification.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        viewModel.setWeatherLocationPreference(
+            .manual(cityLabel: "Osaka", latitude: 34.6937, longitude: 135.5023)
+        )
+        viewModel.saveSettings()
+
+        XCTAssertEqual(viewModel.successMessage, "Settings saved.")
+        await fulfillment(of: [notification], timeout: 1)
+    }
+
     func testGoogleCalendarIDDefaultsAndNormalizesForRuntime() throws {
         let legacyData = Data("""
         {
