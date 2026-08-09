@@ -277,12 +277,98 @@ final class TodayFeatureViewModelTests: XCTestCase {
 
         XCTAssertEqual(feature.integrationStates.calendar, .connected)
     }
+
+    @MainActor
+    func testSettingsReadinessNotificationRefreshesTodayIntegrationOffMain() async {
+        let sync = MutableGoogleCalendarSync(
+            status: GoogleCalendarRuntimeSyncStatus(plan: .pro, state: .oauthDisconnected)
+        )
+        let board = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            googleCalendarSync: sync
+        )
+        let feature = TodayFeatureViewModel(board: board)
+        let publication = expectation(description: "Today publishes refreshed Calendar readiness")
+        let observation = feature.objectWillChange.sink {
+            publication.fulfill()
+        }
+
+        sync.setStatus(GoogleCalendarRuntimeSyncStatus(plan: .pro, state: .ready))
+        NotificationCenter.default.post(name: .suisuiGoogleCalendarReadinessDidChange, object: nil)
+        await fulfillment(of: [publication], timeout: 1)
+
+        XCTAssertEqual(feature.integrationStates.calendar, .connected)
+        withExtendedLifetime(observation) {}
+    }
+
+    @MainActor
+    func testInitialBoardLoadKeepsPreloadedCalendarReadinessWithoutRuntimeRead() {
+        let sync = CountingGoogleCalendarSync(
+            status: GoogleCalendarRuntimeSyncStatus(plan: .pro, state: .oauthDisconnected)
+        )
+        let board = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            googleCalendarSync: sync,
+            initialGoogleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus(plan: .pro, state: .ready)
+        )
+
+        board.load()
+
+        XCTAssertEqual(board.googleCalendarSyncStatus.state, .ready)
+        XCTAssertEqual(sync.statusReadCount, 0)
+    }
 }
 
 private struct StaticGoogleCalendarSync: GoogleCalendarRuntimeSyncing {
     let status: GoogleCalendarRuntimeSyncStatus
 
     func status(now: Date) throws -> GoogleCalendarRuntimeSyncStatus { status }
+
+    func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult {
+        GoogleCalendarTaskSyncResult()
+    }
+}
+
+private final class MutableGoogleCalendarSync: GoogleCalendarRuntimeSyncing, @unchecked Sendable {
+    private let lock = NSLock()
+    private var currentStatus: GoogleCalendarRuntimeSyncStatus
+
+    init(status: GoogleCalendarRuntimeSyncStatus) {
+        currentStatus = status
+    }
+
+    func setStatus(_ status: GoogleCalendarRuntimeSyncStatus) {
+        lock.lock()
+        defer { lock.unlock() }
+        currentStatus = status
+    }
+
+    func status(now: Date) throws -> GoogleCalendarRuntimeSyncStatus {
+        lock.lock()
+        defer { lock.unlock() }
+        return currentStatus
+    }
+
+    func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult {
+        GoogleCalendarTaskSyncResult()
+    }
+}
+
+private final class CountingGoogleCalendarSync: GoogleCalendarRuntimeSyncing, @unchecked Sendable {
+    private let lock = NSLock()
+    private let currentStatus: GoogleCalendarRuntimeSyncStatus
+    private(set) var statusReadCount = 0
+
+    init(status: GoogleCalendarRuntimeSyncStatus) {
+        currentStatus = status
+    }
+
+    func status(now: Date) throws -> GoogleCalendarRuntimeSyncStatus {
+        lock.lock()
+        defer { lock.unlock() }
+        statusReadCount += 1
+        return currentStatus
+    }
 
     func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult {
         GoogleCalendarTaskSyncResult()

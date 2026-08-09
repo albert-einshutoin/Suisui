@@ -7,6 +7,13 @@ public extension Notification.Name {
     static let suisuiCodexExecutionApprovalDidChange = Notification.Name(
         "dev.suisui.codexExecutionApprovalDidChange"
     )
+
+    /// Signals that Calendar settings or OAuth credentials changed. Project
+    /// Board refreshes its readiness off the main thread before republishing
+    /// the payload-free Today integration snapshot.
+    static let suisuiGoogleCalendarReadinessDidChange = Notification.Name(
+        "dev.suisui.googleCalendarReadinessDidChange"
+    )
 }
 
 public struct AppSettings: Codable, Equatable, Sendable {
@@ -2556,6 +2563,7 @@ public final class AppSettingsViewModel: ObservableObject {
             try settingsStore.save(settings)
             errorMessage = nil
             successMessage = "Settings saved."
+            NotificationCenter.default.post(name: .suisuiGoogleCalendarReadinessDidChange, object: nil)
         } catch {
             errorMessage = Self.settingsSaveFailureMessage
             successMessage = nil

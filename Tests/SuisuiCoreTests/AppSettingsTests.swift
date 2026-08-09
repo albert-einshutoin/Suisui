@@ -404,6 +404,32 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertNil(saved.workspaceCapCents)
     }
 
+    @MainActor
+    func testSuccessfulSettingsSavePostsCalendarReadinessInvalidation() async throws {
+        let suiteName = "Suisui.AppSettingsCalendarReadiness.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore()
+        )
+        let notification = expectation(description: "Calendar readiness is invalidated after Settings save")
+        let observer = NotificationCenter.default.addObserver(
+            forName: .suisuiGoogleCalendarReadinessDidChange,
+            object: nil,
+            queue: nil
+        ) { _ in
+            notification.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        viewModel.setGoogleCalendarID("team@example.com")
+        viewModel.saveSettings()
+
+        XCTAssertEqual(viewModel.successMessage, "Settings saved.")
+        await fulfillment(of: [notification], timeout: 1)
+    }
+
     func testGoogleCalendarIDDefaultsAndNormalizesForRuntime() throws {
         let legacyData = Data("""
         {

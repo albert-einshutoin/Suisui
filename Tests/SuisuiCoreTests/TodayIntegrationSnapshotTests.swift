@@ -86,4 +86,28 @@ final class TodayIntegrationSnapshotTests: XCTestCase {
             .failed(lastSyncedAt: nil, itemCount: 0, message: "safe error")
         )
     }
+
+    func testFailedPresentationSnapshotDiscardsRawProviderErrorPayload() {
+        let calendar = Calendar(identifier: .gregorian)
+        let rawError = "token=calendar-secret account=person@example.com"
+        let snapshot = TodayIntegrationSnapshotBuilder.make(
+            service: .calendar,
+            state: .failed(
+                lastSyncedAt: Date(timeIntervalSince1970: 0),
+                itemCount: 2,
+                message: rawError
+            ),
+            now: Date(timeIntervalSince1970: 0),
+            calendar: calendar,
+            locale: Locale(identifier: "en_US")
+        )
+
+        XCTAssertEqual(
+            snapshot.state,
+            .failed(lastSyncedAt: Date(timeIntervalSince1970: 0), itemCount: 2, category: .unavailable)
+        )
+        XCTAssertFalse(String(reflecting: snapshot).contains(rawError))
+        XCTAssertFalse(String(reflecting: snapshot).contains("calendar-secret"))
+        XCTAssertFalse(String(reflecting: snapshot).contains("person@example.com"))
+    }
 }

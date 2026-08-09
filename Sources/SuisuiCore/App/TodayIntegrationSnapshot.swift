@@ -29,6 +29,24 @@ public enum TodayIntegrationState: Equatable, Sendable {
     }
 }
 
+/// A safe failure category for presentation. Provider diagnostics are never
+/// retained in a snapshot because SwiftUI inspection can reflect its values.
+public enum TodayIntegrationFailureCategory: Equatable, Sendable {
+    case permissionNeeded
+    case unavailable
+}
+
+/// Read-only state exposed to Today UI. Unlike `TodayIntegrationState`, this
+/// value intentionally has no provider error payload.
+public enum TodayIntegrationPresentationState: Equatable, Sendable {
+    case notConnected
+    case permissionPending
+    case connected
+    case syncing
+    case synced(lastSyncedAt: Date?, itemCount: Int)
+    case failed(lastSyncedAt: Date?, itemCount: Int, category: TodayIntegrationFailureCategory)
+}
+
 public struct TodayIntegrationStates: Equatable, Sendable {
     public let calendar: TodayIntegrationState
     public let slack: TodayIntegrationState
@@ -43,14 +61,14 @@ public struct TodayIntegrationStates: Equatable, Sendable {
 
 public struct TodayIntegrationSnapshot: Equatable, Sendable {
     public let service: TodayIntegrationService
-    public let state: TodayIntegrationState
+    public let state: TodayIntegrationPresentationState
     public let title: String
     public let detail: String
     public let accessibilityLabel: String
 
     public init(
         service: TodayIntegrationService,
-        state: TodayIntegrationState,
+        state: TodayIntegrationPresentationState,
         title: String,
         detail: String,
         accessibilityLabel: String
@@ -99,8 +117,9 @@ public enum TodayIntegrationSnapshotBuilder {
         locale: Locale = .autoupdatingCurrent
     ) -> TodayIntegrationSnapshot {
         let title = localized(service == .calendar ? "Calendar" : "Slack", locale: locale)
+        let presentationState = presentationState(from: state)
         let detail: String
-        switch state {
+        switch presentationState {
         case .notConnected:
             detail = localized("Not connected", locale: locale)
         case .permissionPending:
@@ -111,15 +130,15 @@ public enum TodayIntegrationSnapshotBuilder {
             detail = localized("Syncing", locale: locale)
         case let .synced(lastSyncedAt, itemCount):
             detail = syncDetail(lastSyncedAt: lastSyncedAt, itemCount: itemCount, now: now, calendar: calendar, locale: locale)
-        case let .failed(lastSyncedAt, itemCount, message):
-            let failure = failureDetail(message: message, locale: locale)
+        case let .failed(lastSyncedAt, itemCount, category):
+            let failure = failureDetail(category: category, locale: locale)
             let context = syncDetail(lastSyncedAt: lastSyncedAt, itemCount: itemCount, now: now, calendar: calendar, locale: locale)
             detail = "\(failure) \(context)"
         }
         let accessibilityLabel = String(format: localized("%@: %@.", locale: locale), title, detail)
         return TodayIntegrationSnapshot(
             service: service,
-            state: state,
+            state: presentationState,
             title: title,
             detail: detail,
             accessibilityLabel: accessibilityLabel
@@ -154,17 +173,47 @@ public enum TodayIntegrationSnapshotBuilder {
         return String(format: localized("Last synced %@. %@", locale: locale), time, items)
     }
 
-    private static func failureDetail(message: String, locale: Locale) -> String {
+    private static func presentationState(from state: TodayIntegrationState) -> TodayIntegrationPresentationState {
+        switch state {
+        case .notConnected:
+            .notConnected
+        case .permissionPending:
+            .permissionPending
+        case .connected:
+            .connected
+        case .syncing:
+            .syncing
+        case let .synced(lastSyncedAt, itemCount):
+            .synced(lastSyncedAt: lastSyncedAt, itemCount: itemCount)
+        case let .failed(lastSyncedAt, itemCount, message):
+            .failed(
+                lastSyncedAt: lastSyncedAt,
+                itemCount: itemCount,
+                category: failureCategory(message: message)
+            )
+        }
+    }
+
+    private static func failureCategory(message: String) -> TodayIntegrationFailureCategory {
         let normalized = message.lowercased()
         if normalized.contains("permission")
             || normalized.contains("denied")
             || normalized.contains("scope")
             || normalized.contains("oauth") {
-            return localized("Permission needed", locale: locale)
+            return .permissionNeeded
         }
         // Provider error bodies can contain tokens, account IDs, or URLs. Today
-        // exposes only a stable category; detailed diagnostics stay outside UI.
-        return localized("Sync failed.", locale: locale)
+        // exposes only a stable category, then discards the diagnostic payload.
+        return .unavailable
+    }
+
+    private static func failureDetail(category: TodayIntegrationFailureCategory, locale: Locale) -> String {
+        switch category {
+        case .permissionNeeded:
+            localized("Permission needed", locale: locale)
+        case .unavailable:
+            localized("Sync failed.", locale: locale)
+        }
     }
 
     private static func localized(_ key: String, locale: Locale) -> String {

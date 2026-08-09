@@ -5,6 +5,11 @@ import os
 
 private let projectBoardRuntimeDiagnosticLogger = Logger(subsystem: "dev.suisui.app", category: "runtime")
 
+private enum GoogleCalendarReadinessRefreshResult: Sendable {
+    case success(GoogleCalendarRuntimeSyncStatus)
+    case failure(String)
+}
+
 public struct ProjectDevelopmentAutomationReadiness: Equatable, Sendable {
     public var projectID: Int64
     public var taskID: Int64?
@@ -690,6 +695,8 @@ public final class ProjectBoardViewModel: ObservableObject {
     private var failureRetryAction: ProjectBoardFailureRetryAction?
     private var failureTaskID: Int64?
     private var isSynchronizingFailure: Bool
+    private var googleCalendarReadinessRefreshRevision: UInt64
+    private var googleCalendarReadinessNotificationObservation: AnyCancellable?
 
     public init(
         store: any ProjectBoardStore,
@@ -773,6 +780,14 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.failureRetryAction = nil
         self.failureTaskID = nil
         self.isSynchronizingFailure = false
+        self.googleCalendarReadinessRefreshRevision = 0
+        self.googleCalendarReadinessNotificationObservation = NotificationCenter.default
+            .publisher(for: .suisuiGoogleCalendarReadinessDidChange)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.refreshGoogleCalendarSyncStatusOffMain()
+                }
+            }
     }
 
     public var fatalFailure: ProjectBoardFailure? {
@@ -6184,6 +6199,46 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    /// Settings changes can require SQLite or Keychain-backed readiness reads.
+    /// Keep that work away from Today rendering and publish only the completed
+    /// status on the MainActor, ignoring older overlapping refreshes.
+    public func refreshGoogleCalendarSyncStatusOffMain(
+        now: Date = VisualEvidenceRuntimeContext.referenceDate()
+    ) {
+        guard let googleCalendarSync = resolvedGoogleCalendarSync else {
+            googleCalendarSyncStatus = .runtimeNotConfigured
+            return
+        }
+        googleCalendarReadinessRefreshRevision &+= 1
+        let refreshRevision = googleCalendarReadinessRefreshRevision
+        let fallback = String(localized: "Google Calendar sync status is unavailable.")
+
+        Task { @MainActor [weak self] in
+            let result = await Task.detached(priority: .utility) {
+                do {
+                    return GoogleCalendarReadinessRefreshResult.success(
+                        try googleCalendarSync.status(now: now)
+                    )
+                } catch {
+                    return .failure(fallback)
+                }
+            }.value
+            guard let self, self.googleCalendarReadinessRefreshRevision == refreshRevision else {
+                return
+            }
+            switch result {
+            case let .success(status):
+                self.googleCalendarSyncStatus = status
+            case let .failure(message):
+                self.googleCalendarSyncStatus = GoogleCalendarRuntimeSyncStatus(
+                    plan: self.googleCalendarSyncStatus.plan,
+                    state: .failed(message: message)
+                )
+                self.recordFailure(.readinessCheckFailed(message), retryAction: .load)
+            }
+        }
+    }
+
     @discardableResult
     public func syncDueTasksToGoogleCalendar(approvalToken: String?) -> GoogleCalendarTaskSyncResult? {
         beginRecoverableOperation()
@@ -6439,7 +6494,13 @@ public final class ProjectBoardViewModel: ObservableObject {
             if selectedTaskID != nil, selectedTask == nil {
                 self.selectedTaskID = nil
             }
-            refreshGoogleCalendarSyncStatus()
+            // The runtime bundle provides initial readiness before the window
+            // is visible. Preserve that preloaded value on first load instead
+            // of repeating SQLite/Keychain work on the MainActor. Subsequent
+            // store reloads refresh through the detached notification path.
+            if hasLoadedBoardSnapshot {
+                refreshGoogleCalendarSyncStatusOffMain()
+            }
             if snapshotChanged || invalidationReason != nil || derivedReadModelReferenceDate == nil {
                 // A mutation followed by its own board-change notification can
                 // load the same snapshot twice. Rebuild only on the first load
