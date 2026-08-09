@@ -33,7 +33,7 @@ public enum TodayWeatherSnapshotBuilder {
     ) -> TodayWeatherSnapshot {
         switch state {
         case .notConfigured:
-            return unavailable(state, title: "Weather unavailable", detail: "Set a weather provider in Settings.", locale: locale)
+            return unavailable(state, title: "Weather unavailable", detail: "Weather is unavailable right now.", locale: locale)
         case .permissionPending:
             return unavailable(state, title: "Weather needs permission", detail: "Allow location access to show weather.", locale: locale)
         case .loading:

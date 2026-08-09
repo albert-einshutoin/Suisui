@@ -544,6 +544,22 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(try store.load().dailyWorkCapacityMinutes, 60)
     }
 
+    @MainActor
+    func testOnboardingTodayPreferencesRollBackRuntimeAndPersistedSettingsWhenSaveFails() throws {
+        let saved = AppSettings(profileDisplayName: "Ada", dailyWorkCapacityMinutes: 390)
+        let store = FailingSaveAppSettingsStore(initial: saved)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        XCTAssertFalse(viewModel.saveOnboardingTodayPreferences(
+            OnboardingTodayPreferences(displayName: "Grace", dailyWorkCapacityMinutes: 480)
+        ))
+
+        XCTAssertEqual(viewModel.settings.profileDisplayName, "Ada")
+        XCTAssertEqual(viewModel.settings.dailyWorkCapacityMinutes, 390)
+        XCTAssertEqual(try store.load().profileDisplayName, "Ada")
+        XCTAssertEqual(try store.load().dailyWorkCapacityMinutes, 390)
+    }
+
     func testUserDefaultsAppSettingsStoreCanUseRuntimeSuiteOverride() throws {
         let suiteName = "Suisui.AppSettingsRuntimeSuite.\(UUID().uuidString)"
         let defaults = UserDefaultsAppSettingsStore.defaultUserDefaults(environment: [
@@ -2193,8 +2209,14 @@ private final class RecordingTTSPreviewClient: TextToSpeechPreviewing, @unchecke
 }
 
 private struct FailingSaveAppSettingsStore: AppSettingsStore {
+    let initial: AppSettings
+
+    init(initial: AppSettings = .default) {
+        self.initial = initial
+    }
+
     func load() throws -> AppSettings {
-        .default
+        initial
     }
 
     func save(_ settings: AppSettings) throws {

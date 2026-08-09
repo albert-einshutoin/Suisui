@@ -1975,6 +1975,8 @@
 "Over capacity by %@." = "Over capacity by %@.";
 "Workload: %@ of %@ planned." = "Workload: %@ of %@ planned.";
 "%d h" = "%d h";
+"%d h %d m" = "%d h %d m";
+"%d m" = "%d m";
 "%.1f h" = "%.1f h";
 "Today task" = "Today task";
 "Suisui Today: %@. %@" = "Suisui Today: %@. %@";

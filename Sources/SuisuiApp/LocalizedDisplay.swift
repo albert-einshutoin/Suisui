@@ -47,6 +47,23 @@ func localizedCount(_ count: Int, one singularKey: String, other pluralKey: Stri
     localizedDisplay(count == 1 ? singularKey : pluralKey, count)
 }
 
+/// A capacity picker must expose every 30-minute step distinctly to both the
+/// visual label and VoiceOver; rounding to whole hours made adjacent values
+/// such as 60 and 90 minutes indistinguishable.
+func localizedDurationMinutes(_ minutes: Int) -> String {
+    let bounded = max(0, minutes)
+    let hours = bounded / 60
+    let remainingMinutes = bounded % 60
+    switch (hours, remainingMinutes) {
+    case (0, _):
+        return localizedDisplay("%d m", remainingMinutes)
+    case (_, 0):
+        return localizedDisplay("%d h", hours)
+    default:
+        return localizedDisplay("%d h %d m", hours, remainingMinutes)
+    }
+}
+
 func localizedTaskCount(_ count: Int) -> String {
     localizedCount(count, one: "%d task", other: "%d tasks")
 }

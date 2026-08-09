@@ -1969,6 +1969,8 @@
 "Over capacity by %@." = "容量を%@超過しています。";
 "Workload: %@ of %@ planned." = "ワークロード: %@ / %@を予定。";
 "%d h" = "%d時間";
+"%d h %d m" = "%d時間%d分";
+"%d m" = "%d分";
 "%.1f h" = "%.1f時間";
 "Today task" = "今日のタスク";
 "Suisui Today: %@. %@" = "Suisuiの今日: %@。%@";

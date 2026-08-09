@@ -7648,6 +7648,9 @@ final class AppExperienceSourceTests: XCTestCase {
     func testTodayWeatherAndOnboardingPreferencesRemainLocalAndAccessible() throws {
         let weatherSource = try readPackageFile("Sources/SuisuiCore/App/TodayWeatherSnapshot.swift")
         let dashboardSource = try readPackageFile("Sources/SuisuiCore/App/TodayDashboardSnapshot.swift")
+        let dashboardViewSource = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardView.swift")
+        let todayWorkflowSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift")
+        let localizedDisplaySource = try readPackageFile("Sources/SuisuiApp/LocalizedDisplay.swift")
         let headerSource = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardHeaderView.swift")
         let onboardingSource = try readPackageFile("Sources/SuisuiApp/Views/OnboardingWelcomeView.swift")
         let settingsSource = try readPackageFile("Sources/SuisuiCore/App/AppSettings.swift")
@@ -7658,13 +7661,21 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(weatherSource.contains("case available"))
         XCTAssertTrue(weatherSource.contains("case failed"))
         XCTAssertFalse(weatherSource.contains("URLSession"))
+        XCTAssertFalse(weatherSource.contains("weather provider in Settings"))
         XCTAssertTrue(dashboardSource.contains("public let weather: TodayWeatherSnapshot"))
+        XCTAssertTrue(dashboardViewSource.contains("let weatherState: TodayWeatherState"))
+        XCTAssertTrue(dashboardViewSource.contains("weatherState: weatherState"))
+        XCTAssertTrue(todayWorkflowSource.contains("dashboardWeatherState: TodayWeatherState = .notConfigured"))
         XCTAssertTrue(headerSource.contains("today-weather"))
         XCTAssertTrue(headerSource.contains("weather.accessibilityLabel"))
+        XCTAssertTrue(localizedDisplaySource.contains("func localizedDurationMinutes"))
         XCTAssertTrue(onboardingSource.contains("onboarding-profile-display-name"))
         XCTAssertTrue(onboardingSource.contains("onboarding-daily-work-capacity"))
         XCTAssertTrue(onboardingSource.contains("saveTodayPreferencesThen"))
+        XCTAssertTrue(onboardingSource.contains("guard settingsViewModel.saveOnboardingTodayPreferences(todayPreferences) else"))
         XCTAssertTrue(settingsSource.contains("saveOnboardingTodayPreferences"))
+        XCTAssertTrue(settingsSource.contains("let previousSettings = settings"))
+        XCTAssertTrue(settingsSource.contains("settings = previousSettings"))
     }
 
     func testProductionSettingsFactoryWiresURLSessionOllamaHealthChecker() throws {

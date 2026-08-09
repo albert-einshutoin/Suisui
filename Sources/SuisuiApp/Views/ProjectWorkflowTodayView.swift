@@ -10,6 +10,7 @@ struct TodayWorkflowView: View {
     var playDailyPlanningReadout: () -> Void = {}
     let dashboardDisplayName: String
     let dashboardDailyCapacityMinutes: Int
+    let dashboardWeatherState: TodayWeatherState
     let initiallyExpandsCatchUp: Bool
     var catchUpFocusRevision: Int? = nil
     var onCatchUpFocusConsumed: (Int) -> Bool = { _ in true }
@@ -24,6 +25,7 @@ struct TodayWorkflowView: View {
         playDailyPlanningReadout: @escaping () -> Void = {},
         dashboardDisplayName: String = "",
         dashboardDailyCapacityMinutes: Int = AppSettings.default.dailyWorkCapacityMinutes,
+        dashboardWeatherState: TodayWeatherState = .notConfigured,
         initiallyExpandsCatchUp: Bool = false,
         catchUpFocusRevision: Int? = nil,
         onCatchUpFocusConsumed: @escaping (Int) -> Bool = { _ in true }
@@ -34,6 +36,7 @@ struct TodayWorkflowView: View {
         self.playDailyPlanningReadout = playDailyPlanningReadout
         self.dashboardDisplayName = dashboardDisplayName
         self.dashboardDailyCapacityMinutes = dashboardDailyCapacityMinutes
+        self.dashboardWeatherState = dashboardWeatherState
         self.initiallyExpandsCatchUp = initiallyExpandsCatchUp
         self.catchUpFocusRevision = catchUpFocusRevision
         self.onCatchUpFocusConsumed = onCatchUpFocusConsumed
@@ -66,6 +69,7 @@ struct TodayWorkflowView: View {
             commandTitle: $commandTitle,
             displayName: dashboardDisplayName,
             dailyCapacityMinutes: dashboardDailyCapacityMinutes,
+            weatherState: dashboardWeatherState,
             selectTodayTask: selectTodayTask,
             openInspectorForTodayRailTask: openInspectorForTodayRailTask,
             playDailyPlanningReadout: playDailyPlanningReadout

@@ -31,7 +31,7 @@
 "Allow location access to show weather." = "Allow location access to show weather.";
 "Checking the latest conditions." = "Checking the latest conditions.";
 "Loading weather" = "Loading weather";
-"Set a weather provider in Settings." = "Set a weather provider in Settings.";
+"Weather is unavailable right now." = "Weather is unavailable right now.";
 "Updated %@" = "Updated %@";
 "Weather could not be loaded." = "Weather could not be loaded.";
 "Weather needs permission" = "Weather needs permission";

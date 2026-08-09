@@ -115,7 +115,7 @@ struct OnboardingWelcomeView: View {
                     )),
                     id: \.self
                 ) { minutes in
-                    Text(String(format: String(localized: "%d h"), minutes / 60)).tag(minutes)
+                    Text(localizedDurationMinutes(minutes)).tag(minutes)
                 }
             }
             .accessibilityIdentifier("onboarding-daily-work-capacity")

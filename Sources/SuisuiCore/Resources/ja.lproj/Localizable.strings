@@ -31,7 +31,7 @@
 "Allow location access to show weather." = "天気を表示するには位置情報へのアクセスを許可してください。";
 "Checking the latest conditions." = "最新の状況を確認しています。";
 "Loading weather" = "天気を読み込み中";
-"Set a weather provider in Settings." = "設定で天気プロバイダーを設定してください。";
+"Weather is unavailable right now." = "現在、天気を利用できません。";
 "Updated %@" = "%@更新";
 "Weather could not be loaded." = "天気を読み込めませんでした。";
 "Weather needs permission" = "天気に許可が必要です";

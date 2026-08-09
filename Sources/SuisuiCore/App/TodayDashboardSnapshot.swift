@@ -119,8 +119,8 @@ public struct TodayDashboardSnapshot: Equatable, Sendable {
         weather: TodayWeatherSnapshot = TodayWeatherSnapshot(
             state: .notConfigured,
             title: "Weather unavailable",
-            detail: "Set a weather provider in Settings.",
-            accessibilityLabel: "Weather: Weather unavailable. Set a weather provider in Settings."
+            detail: "Weather is unavailable right now.",
+            accessibilityLabel: "Weather: Weather unavailable. Weather is unavailable right now."
         )
     ) {
         self.init(

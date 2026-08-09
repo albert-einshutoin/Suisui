@@ -2209,9 +2209,14 @@ public final class AppSettingsViewModel: ObservableObject {
     /// cancelled sheet cannot overwrite an existing profile or capacity.
     @discardableResult
     public func saveOnboardingTodayPreferences(_ preferences: OnboardingTodayPreferences) -> Bool {
+        let previousSettings = settings
         settings = preferences.applying(to: settings)
         saveSettings()
-        return errorMessage == nil
+        guard errorMessage == nil else {
+            settings = previousSettings
+            return false
+        }
+        return true
     }
 
     public func setGoogleCalendarID(_ calendarID: String) {

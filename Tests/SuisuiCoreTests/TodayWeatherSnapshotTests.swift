@@ -58,4 +58,16 @@ final class TodayWeatherSnapshotTests: XCTestCase {
         XCTAssertEqual(japanese.detail, "10:30更新")
         XCTAssertEqual(japanese.accessibilityLabel, "天気: Tokyo、22°C。10:30更新。")
     }
+
+    func testNotConfiguredWeatherDoesNotSuggestANonexistentSettingsRoute() {
+        let snapshot = TodayWeatherSnapshotBuilder.make(
+            state: .notConfigured,
+            now: Date(timeIntervalSince1970: 0),
+            calendar: .current,
+            locale: Locale(identifier: "en")
+        )
+
+        XCTAssertEqual(snapshot.detail, "Weather is unavailable right now.")
+        XCTAssertFalse(snapshot.detail.contains("Settings"))
+    }
 }
