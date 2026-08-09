@@ -20,14 +20,34 @@ func localizedDisplay(_ key: String) -> String {
     if let preference = AppLanguagePreference.environmentOverride
         ?? AppLanguagePreference(rawValue: UserDefaults.standard.string(forKey: AppLanguagePreference.storageKey) ?? ""),
        preference != .system,
-       let localizationPath = Bundle.module.path(forResource: preference.localeIdentifier, ofType: "lproj"),
-       let localizationBundle = Bundle(path: localizationPath) {
+       let localizationBundle = localizedDisplayBundle(for: preference) {
         // Dynamic status strings do not inherit SwiftUI's environment locale.
         // Resolve them from the same explicit app preference so visible text,
         // help, and accessibility values cannot drift to the system language.
         return localizationBundle.localizedString(forKey: key, value: key, table: nil)
     }
     return String(localized: String.LocalizationValue(key))
+}
+
+func localizedDisplayBundle(
+    for preference: AppLanguagePreference,
+    appBundle: Bundle = .main
+) -> Bundle? {
+    if let packagedAppBundle = localizationBundle(for: preference, in: appBundle) {
+        return packagedAppBundle
+    }
+
+    // SwiftPM tests run with an XCTest host whose main bundle has no app
+    // localizations. Keep Bundle.module in this fallback branch: its generated
+    // accessor can fatal if evaluated in a packaged app without that sidecar.
+    return localizationBundle(for: preference, in: Bundle.module)
+}
+
+private func localizationBundle(for preference: AppLanguagePreference, in bundle: Bundle) -> Bundle? {
+    guard let localizationPath = bundle.path(forResource: preference.localeIdentifier, ofType: "lproj") else {
+        return nil
+    }
+    return Bundle(path: localizationPath)
 }
 
 func localizedDisplay(_ formatKey: String, _ arguments: CVarArg...) -> String {

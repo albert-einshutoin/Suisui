@@ -1569,7 +1569,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(languagePreferenceSource.contains("Locale(identifier: localeIdentifier)"))
         XCTAssertTrue(localizedDisplaySource.contains("AppLanguagePreference.environmentOverride"))
         XCTAssertTrue(localizedDisplaySource.contains("AppLanguagePreference.storageKey"))
-        XCTAssertTrue(localizedDisplaySource.contains("Bundle.module.path(forResource: preference.localeIdentifier, ofType: \"lproj\")"))
+        XCTAssertTrue(localizedDisplaySource.contains("return localizationBundle(for: preference, in: Bundle.module)"))
         XCTAssertTrue(localizedDisplaySource.contains("localizedString(forKey: key, value: key, table: nil)"))
         XCTAssertTrue(localizedDisplaySource.contains("func localizedDisplayLocale() -> Locale"))
         XCTAssertTrue(localizedDisplaySource.contains("return preference.locale"))
@@ -1612,6 +1612,25 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(japaneseStrings.contains("\"Language\" = \"言語\";"))
         XCTAssertTrue(japaneseStrings.contains("\"Japanese\" = \"日本語\";"))
         XCTAssertTrue(japaneseStrings.contains("\"Project Board\" = \"プロジェクトボード\";"))
+    }
+
+    func testLocalizedDisplayUsesPackagedAppResourcesBeforeSwiftPMFallback() throws {
+        let localizedDisplaySource = try readPackageFile("Sources/SuisuiApp/LocalizedDisplay.swift")
+        let buildScript = try readPackageFile("script/build_and_run.sh")
+        let mainBundleParameter = try XCTUnwrap(
+            localizedDisplaySource.range(of: "appBundle: Bundle = .main")
+        )
+        let mainLookup = try XCTUnwrap(
+            localizedDisplaySource.range(of: "localizationBundle(for: preference, in: appBundle)")
+        )
+        let moduleFallback = try XCTUnwrap(
+            localizedDisplaySource.range(of: "localizationBundle(for: preference, in: Bundle.module)")
+        )
+
+        XCTAssertLessThan(mainBundleParameter.lowerBound, mainLookup.lowerBound)
+        XCTAssertLessThan(mainLookup.lowerBound, moduleFallback.lowerBound)
+        XCTAssertTrue(buildScript.contains("copy_app_localizations"))
+        XCTAssertTrue(buildScript.contains("$APP_RESOURCES/$(basename \"$localization_dir\")"))
     }
 
     func testAppLocalizationsCoverStaticSwiftUILiterals() throws {

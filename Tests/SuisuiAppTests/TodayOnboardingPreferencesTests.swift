@@ -31,4 +31,52 @@ final class TodayOnboardingPreferencesTests: XCTestCase {
             "Todayの設定を保存できませんでした。"
         )
     }
+
+    func testPackagedAppLocalizationResolvesJapaneseWithoutSwiftPMResourceBundle() throws {
+        let appURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Suisui-localization-\(UUID().uuidString).app", isDirectory: true)
+        let resourcesURL = appURL.appendingPathComponent("Contents/Resources", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: appURL) }
+
+        try FileManager.default.createDirectory(
+            at: resourcesURL.appendingPathComponent("ja.lproj", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: appURL.appendingPathComponent("Contents/MacOS", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        let info = NSDictionary(dictionary: [
+            "CFBundleIdentifier": "dev.suisui.localization-test",
+            "CFBundleExecutable": "Suisui",
+            "CFBundlePackageType": "APPL"
+        ])
+        XCTAssertTrue(info.write(
+            to: appURL.appendingPathComponent("Contents/Info.plist"),
+            atomically: true
+        ))
+        try #""Could not save your Today preferences." = "Todayの設定を保存できませんでした。";"#
+            .write(
+                to: resourcesURL.appendingPathComponent("ja.lproj/Localizable.strings"),
+                atomically: true,
+                encoding: .utf8
+            )
+
+        let appBundle = try XCTUnwrap(Bundle(path: appURL.path))
+        let localizationBundle = try XCTUnwrap(
+            localizedDisplayBundle(for: .japanese, appBundle: appBundle)
+        )
+
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: resourcesURL.appendingPathComponent("Suisui_Suisui.bundle").path
+        ))
+        XCTAssertEqual(
+            localizationBundle.localizedString(
+                forKey: "Could not save your Today preferences.",
+                value: nil,
+                table: nil
+            ),
+            "Todayの設定を保存できませんでした。"
+        )
+    }
 }
