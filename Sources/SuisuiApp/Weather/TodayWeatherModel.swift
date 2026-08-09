@@ -52,6 +52,7 @@ public final class TodayWeatherModel: ObservableObject {
     private let locationProvider: any TodayLocationProviding
     private var hasAttemptedRefresh = false
     private var cachedEntry: (key: String, value: TodayWeatherValue)?
+    private var refreshGeneration = 0
 
     public init(
         initialState: TodayWeatherState = .notConfigured,
@@ -72,6 +73,8 @@ public final class TodayWeatherModel: ObservableObject {
     }
 
     public func refresh() async {
+        refreshGeneration += 1
+        let generation = refreshGeneration
         let preference = preferenceProvider().normalized
         let cacheKey = preference.sessionCacheKey
         switch preference {
@@ -109,7 +112,11 @@ public final class TodayWeatherModel: ObservableObject {
                 state = .notConfigured
                 return
             }
+            guard isCurrentRefresh(generation) else { return }
             let value = try await weatherProvider.weather(for: coordinate)
+            // Settings may start a newer refresh while location/weather awaits.
+            // Only the newest request is allowed to publish a Today state.
+            guard isCurrentRefresh(generation) else { return }
             let displayLocation = value.location.isEmpty ? locationLabel : value.location
             let cacheValue = TodayWeatherValue(
                 temperatureCelsius: value.temperatureCelsius,
@@ -123,8 +130,10 @@ public final class TodayWeatherModel: ObservableObject {
                 updatedAt: cacheValue.updatedAt
             )
         } catch TodayWeatherModelError.permissionDenied {
+            guard isCurrentRefresh(generation) else { return }
             state = .permissionPending
         } catch {
+            guard isCurrentRefresh(generation) else { return }
             if let cachedEntry, cachedEntry.key == cacheKey {
                 state = .available(
                     temperatureCelsius: cachedEntry.value.temperatureCelsius,
@@ -135,6 +144,10 @@ public final class TodayWeatherModel: ObservableObject {
                 state = .failed
             }
         }
+    }
+
+    private func isCurrentRefresh(_ generation: Int) -> Bool {
+        refreshGeneration == generation
     }
 }
 
@@ -176,9 +189,98 @@ public struct WeatherKitTodayProvider: TodayWeatherProviding {
     }
 }
 
+/// Serializes the one-shot CoreLocation continuation. CLLocationManager can
+/// deliver denial, failure, and cancellation on different turns, so reserving
+/// the request before installing its continuation prevents a later caller
+/// from orphaning the first waiter.
+final class CoreLocationRequestCoordinator: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isReserved = false
+    private var wasCancelled = false
+    private var continuation: CheckedContinuation<TodayWeatherCoordinate, Error>?
+
+    var hasPendingRequest: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return isReserved
+    }
+
+    func currentCoordinate(
+        onRequest: @escaping () -> Void
+    ) async throws -> TodayWeatherCoordinate {
+        try Task.checkCancellation()
+        guard reserve() else { throw TodayWeatherModelError.unavailable }
+
+        return try await withTaskCancellationHandler(operation: {
+            try await withCheckedThrowingContinuation { continuation in
+                guard install(continuation) else {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                onRequest()
+            }
+        }, onCancel: {
+            self.cancel()
+        })
+    }
+
+    func finish(_ result: Result<TodayWeatherCoordinate, Error>) {
+        let continuation = takeContinuation()
+        continuation?.resume(with: result)
+    }
+
+    private func reserve() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isReserved else { return false }
+        isReserved = true
+        wasCancelled = false
+        return true
+    }
+
+    private func install(_ continuation: CheckedContinuation<TodayWeatherCoordinate, Error>) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard isReserved, !wasCancelled else {
+            isReserved = false
+            wasCancelled = false
+            return false
+        }
+        self.continuation = continuation
+        return true
+    }
+
+    private func cancel() {
+        lock.lock()
+        guard isReserved else {
+            lock.unlock()
+            return
+        }
+        wasCancelled = true
+        let continuation = self.continuation
+        self.continuation = nil
+        if continuation != nil {
+            isReserved = false
+            wasCancelled = false
+        }
+        lock.unlock()
+        continuation?.resume(throwing: CancellationError())
+    }
+
+    private func takeContinuation() -> CheckedContinuation<TodayWeatherCoordinate, Error>? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard isReserved, let continuation else { return nil }
+        self.continuation = nil
+        isReserved = false
+        wasCancelled = false
+        return continuation
+    }
+}
+
 public final class CoreLocationTodayProvider: NSObject, CLLocationManagerDelegate, TodayLocationProviding, @unchecked Sendable {
     private let manager: CLLocationManager
-    private var continuation: CheckedContinuation<TodayWeatherCoordinate, Error>?
+    private let requestCoordinator = CoreLocationRequestCoordinator()
 
     public override init() {
         manager = CLLocationManager()
@@ -188,37 +290,52 @@ public final class CoreLocationTodayProvider: NSObject, CLLocationManagerDelegat
     }
 
     public func currentCoordinate() async throws -> TodayWeatherCoordinate {
-        try await withCheckedThrowingContinuation { continuation in
-            self.continuation = continuation
-            switch manager.authorizationStatus {
-            case .authorized, .authorizedAlways:
-                manager.requestLocation()
-            case .notDetermined:
-                manager.requestWhenInUseAuthorization()
-            default:
-                continuation.resume(throwing: TodayWeatherModelError.permissionDenied)
-                self.continuation = nil
-            }
+        try await requestCoordinator.currentCoordinate { [weak self] in
+            self?.requestCoordinate()
+        }
+    }
+
+    static func permissionError(for authorizationStatus: CLAuthorizationStatus) -> TodayWeatherModelError? {
+        switch authorizationStatus {
+        case .denied, .restricted:
+            .permissionDenied
+        default:
+            nil
         }
     }
 
     public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        guard manager.authorizationStatus == .authorized
-            || manager.authorizationStatus == .authorizedAlways,
-              continuation != nil else { return }
-        manager.requestLocation()
+        requestCoordinate()
     }
 
     public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.first, let continuation else { return }
-        self.continuation = nil
-        continuation.resume(returning: TodayWeatherCoordinate(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude))
+        guard let location = locations.first else { return }
+        requestCoordinator.finish(.success(
+            TodayWeatherCoordinate(
+                latitude: location.coordinate.latitude,
+                longitude: location.coordinate.longitude
+            )
+        ))
     }
 
     public func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        guard let continuation else { return }
-        self.continuation = nil
-        continuation.resume(throwing: error)
+        requestCoordinator.finish(.failure(error))
+    }
+
+    private func requestCoordinate() {
+        guard requestCoordinator.hasPendingRequest else { return }
+        if let error = Self.permissionError(for: manager.authorizationStatus) {
+            requestCoordinator.finish(.failure(error))
+            return
+        }
+        switch manager.authorizationStatus {
+        case .authorized, .authorizedAlways:
+            manager.requestLocation()
+        case .notDetermined:
+            manager.requestWhenInUseAuthorization()
+        default:
+            requestCoordinator.finish(.failure(TodayWeatherModelError.permissionDenied))
+        }
     }
 }
 #endif

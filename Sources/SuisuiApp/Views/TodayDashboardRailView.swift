@@ -44,6 +44,7 @@ struct TodayDashboardRailView: View {
             session: viewModel.focusSession,
             tasks: dashboard.tasks,
             suggestedTaskID: dashboard.recommendation?.taskID,
+            startFocusSession: viewModel.startFocusSession,
             openInspector: openInspector
         )
     }

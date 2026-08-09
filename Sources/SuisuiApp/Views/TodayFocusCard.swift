@@ -5,6 +5,7 @@ struct TodayFocusCard: View {
     @ObservedObject var session: TodayFocusSessionStore
     let tasks: [TodayTaskRowSnapshot]
     let suggestedTaskID: Int64?
+    let startFocusSession: (Int64, Int, Bool) -> Result<FocusSessionRecord, FocusSessionError>
     let openInspector: (Int64) -> Void
 
     @State private var durationMinutes = 25
@@ -48,7 +49,8 @@ struct TodayFocusCard: View {
         .accessibilityLabel(String(format: String(localized: "Focus: %@. %@ remaining."), stateLabel, timeLabel))
         .alert("Replace active Focus?", isPresented: $showsReplacementConfirmation) {
             Button("Replace", role: .destructive) {
-                _ = session.start(taskID: suggestedTaskID, durationSeconds: durationMinutes * 60, replaceExisting: true)
+                guard let taskID = suggestedTaskID else { return }
+                _ = startFocusSession(taskID, durationMinutes * 60, true)
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -69,6 +71,7 @@ struct TodayFocusCard: View {
         case .idle, .completed:
             Button("Start Focus") { start() }
                 .accessibilityIdentifier("today-focus-start")
+                .disabled(suggestedTaskID == nil)
         case .running:
             HStack {
                 Button("Pause") { _ = session.pause() }
@@ -106,10 +109,8 @@ struct TodayFocusCard: View {
     }
 
     private func start() {
-        if case .failure(.requiresReplacement) = session.start(
-            taskID: suggestedTaskID,
-            durationSeconds: durationMinutes * 60
-        ) {
+        guard let taskID = suggestedTaskID else { return }
+        if case .failure(.requiresReplacement) = startFocusSession(taskID, durationMinutes * 60, false) {
             showsReplacementConfirmation = true
         }
     }

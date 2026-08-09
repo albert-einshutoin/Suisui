@@ -311,6 +311,7 @@ private struct TodayBriefingPanel: View {
     let plan: TodayWorkflowPlan
     let recommendationChips: [TodayRecommendationChip]
     @ObservedObject var viewModel: TodayFeatureViewModel
+    @State private var focusTaskPendingReplacement: Int64?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -356,6 +357,28 @@ private struct TodayBriefingPanel: View {
         .accessibilityIdentifier("today-briefing-panel")
         .accessibilityLabel("Today briefing")
         .accessibilityHint("Captures work into Inbox and offers the next reviewed Today action.")
+        .alert(
+            "Replace active Focus?",
+            isPresented: Binding(
+                get: { focusTaskPendingReplacement != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        focusTaskPendingReplacement = nil
+                    }
+                }
+            )
+        ) {
+            Button("Replace", role: .destructive) {
+                guard let taskID = focusTaskPendingReplacement else { return }
+                _ = viewModel.startFocusSession(taskID: taskID, replaceExisting: true)
+                focusTaskPendingReplacement = nil
+            }
+            Button("Cancel", role: .cancel) {
+                focusTaskPendingReplacement = nil
+            }
+        } message: {
+            Text("Starting a new Focus ends the active local session. It does not change task status or Calendar.")
+        }
     }
 
     @ViewBuilder
@@ -363,7 +386,7 @@ private struct TodayBriefingPanel: View {
         switch primaryActionPresentation {
         case let .startFocus(taskID, title):
             Button {
-                viewModel.startFocus(taskID: taskID)
+                startFocus(taskID: taskID)
             } label: {
                 Label("Start Focus", systemImage: "play.circle.fill")
             }
@@ -439,7 +462,7 @@ private struct TodayBriefingPanel: View {
                 Divider()
                 ForEach(recommendationChips) { chip in
                     Button {
-                        viewModel.startFocus(taskID: chip.taskID)
+                        startFocus(taskID: chip.taskID)
                     } label: {
                         Label(chip.title, systemImage: chip.systemImage)
                     }
@@ -475,6 +498,12 @@ private struct TodayBriefingPanel: View {
         .accessibilityIdentifier("today-secondary-actions-menu")
         .accessibilityLabel("More Today actions")
         .accessibilityHint("Opens secondary actions after the recommended task and primary action.")
+    }
+
+    private func startFocus(taskID: Int64) {
+        if case .failure(.requiresReplacement) = viewModel.startFocusSession(taskID: taskID) {
+            focusTaskPendingReplacement = taskID
+        }
     }
 
     private func addInboxItem() {
