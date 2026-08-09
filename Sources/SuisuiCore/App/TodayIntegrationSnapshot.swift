@@ -132,8 +132,12 @@ public enum TodayIntegrationSnapshotBuilder {
             detail = syncDetail(lastSyncedAt: lastSyncedAt, itemCount: itemCount, now: now, calendar: calendar, locale: locale)
         case let .failed(lastSyncedAt, itemCount, category):
             let failure = failureDetail(category: category, locale: locale)
-            let context = syncDetail(lastSyncedAt: lastSyncedAt, itemCount: itemCount, now: now, calendar: calendar, locale: locale)
-            detail = "\(failure) \(context)"
+            if lastSyncedAt != nil || itemCount > 0 {
+                let context = syncDetail(lastSyncedAt: lastSyncedAt, itemCount: itemCount, now: now, calendar: calendar, locale: locale)
+                detail = "\(failure) \(context)"
+            } else {
+                detail = failure
+            }
         }
         let accessibilityLabel = String(format: localized("%@: %@.", locale: locale), title, detail)
         return TodayIntegrationSnapshot(

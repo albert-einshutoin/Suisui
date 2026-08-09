@@ -64,7 +64,7 @@ final class TodayIntegrationSnapshotTests: XCTestCase {
             calendar: calendar,
             locale: Locale(identifier: "en_US")
         )
-        XCTAssertEqual(permission.detail, "Permission needed 0 items synced")
+        XCTAssertEqual(permission.detail, "Permission needed")
         XCTAssertFalse(permission.accessibilityLabel.contains("account@example.com"))
     }
 

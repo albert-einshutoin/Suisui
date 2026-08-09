@@ -23,7 +23,9 @@ struct TodayDashboardHeaderView: View {
             Spacer(minLength: SuisuiSpacing.sm)
             TodayDashboardWeatherView(weather: weather)
         }
-        .accessibilityElement(children: .combine)
+        // Keep weather attribution/retry as separate VoiceOver controls. A
+        // combined parent would swallow those actions into the header label.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-dashboard-header")
         .accessibilityLabel(
             String(
@@ -58,7 +60,7 @@ private struct TodayDashboardWeatherView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if let attribution = weather.attribution,
-               let legalURL = URL(string: "https://weatherkit.apple.com/legal-attribution.html") {
+               let legalURL = URL(string: weather.attributionURL ?? "https://weatherkit.apple.com/legal-attribution.html") {
                 Link(destination: legalURL) {
                     Text(attribution)
                         .font(.caption2)

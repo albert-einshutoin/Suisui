@@ -10,7 +10,7 @@ struct TodayDashboardRecommendationCards: View {
             Label("Recommendations", systemImage: "sparkles")
                 .font(SuisuiTypography.sectionTitle)
             HStack(alignment: .top, spacing: SuisuiSpacing.sm) {
-                ForEach(recommendations, id: \.taskID) { recommendation in
+                ForEach(recommendations, id: \.id) { recommendation in
                     Button {
                         onAction(recommendation)
                     } label: {
@@ -28,7 +28,6 @@ struct TodayDashboardRecommendationCards: View {
                         .frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
                     }
                     .buttonStyle(.plain)
-                    .disabled(recommendation.taskID == nil)
                     .soloCard()
                     .accessibilityLabel(String(format: String(localized: "Recommendation: %@. %@"), recommendation.title, recommendation.reason))
                     .accessibilityHint(accessibilityHint(for: recommendation))
@@ -40,10 +39,6 @@ struct TodayDashboardRecommendationCards: View {
     }
 
     private func accessibilityHint(for recommendation: TodayRecommendation) -> String {
-        guard recommendation.taskID != nil else {
-            return String(localized: "No focus task is available.")
-        }
-
         switch recommendation.action {
         case .startFocus:
             return String(localized: "Starts local focus without changing task status or Calendar.")
@@ -53,6 +48,12 @@ struct TodayDashboardRecommendationCards: View {
             return String(localized: "Adds this task to the local schedule draft without writing Calendar.")
         case .selectTask:
             return String(localized: "Selects this task without changing task status or Calendar.")
+        case .addTask:
+            return String(localized: "Prefills the Today command field so you can add a local task.")
+        case .openCatchUp:
+            return String(localized: "Moves VoiceOver focus to the Catch Up review.")
+        case .suggestBreak:
+            return String(localized: "Moves VoiceOver focus to the review area for a short break.")
         }
     }
 }
@@ -107,7 +108,9 @@ struct TodayDashboardWeeklyScheduleCard: View {
             }
         }
         .soloCard()
-        .accessibilityElement(children: .combine)
+        // Weekly rows are independently addressable schedule items; do not
+        // flatten them into the card's summary element.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-weekly-schedule-card")
         .accessibilityLabel(String(format: String(localized: "This Week: %@"), localizedCount(schedule.scheduledTaskCount, one: "%d task scheduled", other: "%d tasks scheduled")))
         .accessibilityValue(localizedCount(schedule.unscheduledTaskCount, one: "%d task needs scheduling", other: "%d tasks need scheduling"))

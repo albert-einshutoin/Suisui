@@ -113,8 +113,17 @@ public final class TodayFocusSessionStore: ObservableObject {
     ) {
         self.clock = clock
         self.persistence = persistence
-        record = persistence.load() ?? .idle
+        let loadedRecord = persistence.load()
+        let repairedRecord = Self.repairedRecord(loadedRecord)
+        record = repairedRecord
         elapsedSeconds = 0
+        // A missing persisted record is already the canonical idle state; do
+        // not issue a redundant delete during construction. Persist only when
+        // an actual malformed record was repaired so normal state transitions
+        // retain their one-save-per-transition contract.
+        if let loadedRecord, loadedRecord != repairedRecord {
+            persistence.save(repairedRecord.state == .idle ? nil : repairedRecord)
+        }
         _ = restore()
     }
 
@@ -174,7 +183,12 @@ public final class TodayFocusSessionStore: ObservableObject {
     @discardableResult
     public func restore() -> FocusSessionRecord {
         guard record.state == .running else {
-            elapsedSeconds = record.accumulatedSeconds
+            let clampedElapsed = min(max(record.accumulatedSeconds, 0), record.durationSeconds)
+            if clampedElapsed != record.accumulatedSeconds {
+                record.accumulatedSeconds = clampedElapsed
+                persist()
+            }
+            elapsedSeconds = clampedElapsed
             return record
         }
         _ = pauseOrComplete(at: clock.now(), pausesWhenIncomplete: false)
@@ -219,5 +233,23 @@ public final class TodayFocusSessionStore: ObservableObject {
 
     private func persist() {
         persistence.save(record.state == .idle ? nil : record)
+    }
+
+    private static func repairedRecord(_ candidate: FocusSessionRecord?) -> FocusSessionRecord {
+        guard let candidate,
+              candidate.durationSeconds > 0,
+              candidate.accumulatedSeconds >= 0,
+              candidate.accumulatedSeconds <= candidate.durationSeconds else {
+            return .idle
+        }
+        switch candidate.state {
+        case .idle:
+            return .idle
+        case .running:
+            guard candidate.resumedAt?.timeIntervalSince1970.isFinite == true else { return .idle }
+        case .paused, .completed:
+            guard candidate.resumedAt == nil else { return .idle }
+        }
+        return candidate
     }
 }

@@ -792,6 +792,49 @@ public final class ProjectBoardViewModel: ObservableObject {
             }
     }
 
+    /// Compatibility overload for integrations that predate the injected
+    /// Calendar readiness snapshot. Such callers intentionally use the
+    /// runtime-not-configured state until the normal off-main refresh runs.
+    @_disfavoredOverload
+    public convenience init(
+        store: any ProjectBoardStore,
+        inboxCaptureStore: (any InboxCaptureStore)? = nil,
+        assistantQueueStore: (any AssistantQueueStore)? = nil,
+        assistantQueueExecutionCoordinator: AssistantQueueExecutionCoordinator? = nil,
+        assistantQueueExecutionCoordinatorFactory: (() -> AssistantQueueExecutionCoordinator?)? = nil,
+        executionReceiptStore: (any ExecutionReceiptStore)? = nil,
+        missedTaskReviewStateStore: any MissedTaskReviewStateStore = VolatileMissedTaskReviewStateStore(),
+        missedTaskFollowUpNotificationClient: (any NotificationClient)? = nil,
+        externalTaskLinkStore: (any ExternalTaskLinkStore)? = nil,
+        scheduleCalendarClient: (any CalendarClient)? = nil,
+        googleCalendarSync: (any GoogleCalendarRuntimeSyncing)? = nil,
+        googleCalendarSyncFactory: (() -> (any GoogleCalendarRuntimeSyncing)?)? = nil,
+        readModelNow: @escaping () -> Date = { VisualEvidenceRuntimeContext.referenceDate() },
+        readModelCalendar: @escaping () -> Calendar = { VisualEvidenceRuntimeContext.runtimeCalendar() },
+        snapshot: ProjectBoardSnapshot = .empty,
+        onChange: @escaping () -> Void = {}
+    ) {
+        self.init(
+            store: store,
+            inboxCaptureStore: inboxCaptureStore,
+            assistantQueueStore: assistantQueueStore,
+            assistantQueueExecutionCoordinator: assistantQueueExecutionCoordinator,
+            assistantQueueExecutionCoordinatorFactory: assistantQueueExecutionCoordinatorFactory,
+            executionReceiptStore: executionReceiptStore,
+            missedTaskReviewStateStore: missedTaskReviewStateStore,
+            missedTaskFollowUpNotificationClient: missedTaskFollowUpNotificationClient,
+            externalTaskLinkStore: externalTaskLinkStore,
+            scheduleCalendarClient: scheduleCalendarClient,
+            googleCalendarSync: googleCalendarSync,
+            initialGoogleCalendarSyncStatus: nil,
+            googleCalendarSyncFactory: googleCalendarSyncFactory,
+            readModelNow: readModelNow,
+            readModelCalendar: readModelCalendar,
+            snapshot: snapshot,
+            onChange: onChange
+        )
+    }
+
     public var fatalFailure: ProjectBoardFailure? {
         guard case .initialLoadFailed = failure else { return nil }
         return failure
@@ -4783,6 +4826,13 @@ public final class ProjectBoardViewModel: ObservableObject {
             todayCommandFeedback = String(format: String(localized: "Added \"%@\" to Inbox."), title)
         }
         return task
+    }
+
+    /// Records a local break suggestion for the Today review surface. This is
+    /// deliberately feedback-only: it does not create a task or write to any
+    /// Calendar/Reminder provider from a recommendation card.
+    public func suggestTodayBreak() {
+        todayCommandFeedback = String(localized: "Take a short break before the next task.")
     }
 
     public func todayRecommendationChips(

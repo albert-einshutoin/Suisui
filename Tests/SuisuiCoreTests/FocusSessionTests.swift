@@ -83,6 +83,26 @@ final class FocusSessionTests: XCTestCase {
         XCTAssertEqual(store.resume(), .success(FocusSessionRecord(taskID: 2, durationSeconds: 120, accumulatedSeconds: 0, resumedAt: clock.now(), state: .running)))
     }
 
+    func testRestoreRepairsMalformedPersistedRecordBeforePublishingIt() {
+        let clock = MutableFocusClock("2026-08-09T09:00:00Z")
+        let persistence = InMemoryFocusPersistence(
+            record: FocusSessionRecord(
+                taskID: 42,
+                durationSeconds: -60,
+                accumulatedSeconds: 999,
+                resumedAt: nil,
+                state: .paused
+            )
+        )
+
+        let store = TodayFocusSessionStore(clock: clock, persistence: persistence)
+
+        XCTAssertEqual(store.record, .idle)
+        XCTAssertEqual(store.elapsedSeconds, 0)
+        XCTAssertEqual(persistence.record, nil)
+        XCTAssertEqual(persistence.saveCount, 1)
+    }
+
     func testFeatureViewModelsShareOneFocusSessionAndRejectUnconfirmedReplacement() {
         let clock = MutableFocusClock("2026-08-09T09:00:00Z")
         let persistence = InMemoryFocusPersistence()

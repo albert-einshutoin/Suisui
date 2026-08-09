@@ -76,7 +76,11 @@ struct TodayWorkflowView: View {
             integrationsState: viewModel.integrationStates,
             selectTodayTask: selectTodayTask,
             openInspectorForTodayRailTask: openInspectorForTodayRailTask,
-            playDailyPlanningReadout: playDailyPlanningReadout
+            playDailyPlanningReadout: playDailyPlanningReadout,
+            openCatchUp: {
+                isCatchUpExpanded = true
+                isCatchUpFocused = true
+            }
         ) {
             catchUpSection
         }

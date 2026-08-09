@@ -20,6 +20,15 @@ public struct TodayRecommendation: Equatable, Sendable {
     public let reason: String
     public let action: TodayRecommendationAction
 
+    /// Stable identity for SwiftUI collections, including task-less actions
+    /// such as Add Task and Catch Up.
+    public var id: String {
+        if let taskID {
+            return "task-\(taskID)-\(action.rawValue)"
+        }
+        return "action-\(action.rawValue)-\(title)"
+    }
+
     public init(
         taskID: Int64?,
         title: String,
@@ -33,11 +42,14 @@ public struct TodayRecommendation: Equatable, Sendable {
     }
 }
 
-public enum TodayRecommendationAction: Equatable, Sendable {
+public enum TodayRecommendationAction: String, Equatable, Sendable {
     case startFocus
     case selectTask
     case openReview
     case prepareScheduleDraft
+    case addTask
+    case openCatchUp
+    case suggestBreak
 }
 
 public struct TodayTaskRowSnapshot: Equatable, Sendable {
@@ -188,7 +200,8 @@ public enum TodayDashboardSnapshotBuilder {
         calendar: Calendar,
         locale: Locale = .autoupdatingCurrent,
         weatherState: TodayWeatherState = .notConfigured,
-        integrationsState: TodayIntegrationStates = .notConfigured
+        integrationsState: TodayIntegrationStates = .notConfigured,
+        catchUpCount: Int = 0
     ) -> TodayDashboardSnapshot {
         let tasks = today.plan.tasks.map { task in
             TodayTaskRowSnapshot(
@@ -221,7 +234,8 @@ public enum TodayDashboardSnapshotBuilder {
             tasks: tasks,
             now: now,
             calendar: calendar,
-            locale: locale
+            locale: locale,
+            catchUpCount: catchUpCount
         )
         let integrations = TodayIntegrationSnapshotBuilder.make(
             states: integrationsState,
@@ -275,7 +289,7 @@ public enum TodayDashboardSnapshotBuilder {
             ?? plan.tasks.first
 
         guard let task else {
-            return TodayRecommendation(taskID: nil, title: localized("No recommendation", locale: locale), reason: localized("Add a task to plan your day.", locale: locale), action: .startFocus)
+            return TodayRecommendation(taskID: nil, title: localized("Add a task", locale: locale), reason: localized("Add a task to plan your day.", locale: locale), action: .addTask)
         }
         if plan.recommendedTask != nil {
             return TodayRecommendation(taskID: task.id, title: task.title, reason: localizedPlanReason(plan.recommendationReason, locale: locale), action: .startFocus)
@@ -332,23 +346,37 @@ public enum TodayDashboardSnapshotBuilder {
         tasks: [TodayTaskRowSnapshot],
         now: Date,
         calendar: Calendar,
-        locale: Locale
+        locale: Locale,
+        catchUpCount: Int
     ) -> [TodayRecommendation] {
         var recommendations: [TodayRecommendation] = []
         var usedTaskIDs = Set<Int64>()
 
         func append(_ recommendation: TodayRecommendation) {
-            guard recommendations.count < 3,
-                  let taskID = recommendation.taskID,
-                  usedTaskIDs.insert(taskID).inserted else {
-                return
+            guard recommendations.count < 3 else { return }
+            if let taskID = recommendation.taskID {
+                guard usedTaskIDs.insert(taskID).inserted else { return }
+            } else {
+                guard recommendation.action == .addTask
+                    || recommendation.action == .openCatchUp
+                    || recommendation.action == .suggestBreak,
+                    !recommendations.contains(where: { $0.action == recommendation.action }) else {
+                    return
+                }
             }
             recommendations.append(recommendation)
         }
 
-        append(primary)
+        // An empty plan's synthetic Add Task action should not displace a
+        // real unscheduled or review candidate. Append it after actionable
+        // task recommendations have had a chance to fill the three slots.
+        let deferredEmptyPlanAction = primary.taskID == nil && primary.action == .addTask
+        if !deferredEmptyPlanAction {
+            append(primary)
+        }
         for chip in chips {
-            append(TodayRecommendation(taskID: chip.taskID, title: chip.title, reason: chip.reason, action: .selectTask))
+            let localizedChip = localizedRecommendationChip(chip, locale: locale)
+            append(TodayRecommendation(taskID: chip.taskID, title: localizedChip.title, reason: localizedChip.reason, action: .selectTask))
         }
         for item in review?.focusItems ?? [] {
             append(TodayRecommendation(taskID: item.taskID, title: item.title, reason: item.reason, action: .openReview))
@@ -376,7 +404,61 @@ public enum TodayDashboardSnapshotBuilder {
                 )
             )
         }
+
+        if catchUpCount > 0 {
+            append(TodayRecommendation(
+                taskID: nil,
+                title: localized("Catch up", locale: locale),
+                reason: localizedCount(catchUpCount, one: "%d task needs follow-up", other: "%d tasks need follow-up", locale: locale),
+                action: .openCatchUp
+            ))
+        }
+        if deferredEmptyPlanAction {
+            append(primary)
+        } else if tasks.count < 2 || recommendations.isEmpty {
+            append(TodayRecommendation(
+                taskID: nil,
+                title: localized("Add a task", locale: locale),
+                reason: localized("Add a task to plan your day.", locale: locale),
+                action: .addTask
+            ))
+        }
+        if !tasks.isEmpty {
+            append(TodayRecommendation(
+                taskID: nil,
+                title: localized("Take a break", locale: locale),
+                reason: localized("Protect a short break before the next task.", locale: locale),
+                action: .suggestBreak
+            ))
+        }
         return recommendations
+    }
+
+    private static func localizedRecommendationChip(
+        _ chip: TodayRecommendationChip,
+        locale: Locale
+    ) -> (title: String, reason: String) {
+        switch chip.kind {
+        case .blocker:
+            return (
+                localized("Resolve blocker", locale: locale),
+                String(format: localized("%@ is blocking today's plan.", locale: locale), chip.taskTitle)
+            )
+        case .overdue:
+            return (
+                localized("Clear overdue", locale: locale),
+                String(format: localized("%@ is overdue.", locale: locale), chip.taskTitle)
+            )
+        case .highPriority:
+            return (
+                localized("High priority", locale: locale),
+                String(format: localized("%@ is high priority.", locale: locale), chip.taskTitle)
+            )
+        }
+    }
+
+    private static func localizedCount(_ count: Int, one: String, other: String, locale: Locale) -> String {
+        String(format: localized(count == 1 ? one : other, locale: locale), count)
     }
 
     private static func isHigherPriority(_ lhs: ProjectBoardTask, _ rhs: ProjectBoardTask) -> Bool {

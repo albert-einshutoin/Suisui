@@ -93,13 +93,14 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.recommendation?.reason, "Protect the release work.")
     }
 
-    func testRecommendationsAreEmptyWhenTodayHasNoActionableTasks() throws {
+    func testRecommendationsOfferAnAddTaskActionWhenTodayHasNoActionableTasks() throws {
         let calendar = fixedCalendar()
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))
         let snapshot = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: []), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "en_US"))
 
-        XCTAssertEqual(snapshot.recommendations, [])
+        XCTAssertEqual(snapshot.recommendations.count, 1)
         XCTAssertNil(snapshot.recommendation?.taskID)
+        XCTAssertEqual(snapshot.recommendation?.action, .addTask)
     }
 
     func testRecommendationsKeepPrimaryThenUniqueChipsThenRemainingTasks() throws {
@@ -130,7 +131,7 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         )
 
         XCTAssertEqual(snapshot.recommendations.map(\.taskID), [primary.id, second.id, third.id])
-        XCTAssertEqual(snapshot.recommendations.map(\.title), ["Primary", "Blocker", "Third"])
+        XCTAssertEqual(snapshot.recommendations.map(\.title), ["Primary", "Resolve blocker", "Third"])
         XCTAssertEqual(snapshot.recommendations.map(\.action), [.startFocus, .selectTask, .selectTask])
         XCTAssertEqual(snapshot.recommendation, snapshot.recommendations.first)
         XCTAssertEqual(snapshot.recommendations.count, 3)
@@ -142,7 +143,8 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         let primary = task(id: 1, title: "Only", priority: .high, dueAt: nil)
         let snapshot = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: [primary], recommendedTask: primary, recommendationReason: "Start here.", chips: [chip(task: primary, kind: .highPriority)]), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "en_US"))
 
-        XCTAssertEqual(snapshot.recommendations.map(\.taskID), [primary.id])
+        XCTAssertEqual(snapshot.recommendations.map(\.taskID), [primary.id, nil, nil])
+        XCTAssertEqual(snapshot.recommendations.map(\.action), [.startFocus, .addTask, .suggestBreak])
     }
 
     func testRecommendationsUseReviewFocusThenPrioritizedUnscheduledTasksWithoutDuplicates() throws {
@@ -203,9 +205,9 @@ final class TodayDashboardSnapshotTests: XCTestCase {
             locale: Locale(identifier: "en_US")
         )
 
-        XCTAssertEqual(snapshot.recommendations.map(\.taskID), [firstHigh.id, laterHigh.id])
-        XCTAssertEqual(snapshot.recommendations.map(\.action), [.prepareScheduleDraft, .prepareScheduleDraft])
-        XCTAssertEqual(snapshot.recommendations.map(\.reason), ["Needs scheduling", "Needs scheduling"])
+        XCTAssertEqual(snapshot.recommendations.map(\.taskID), [firstHigh.id, laterHigh.id, nil])
+        XCTAssertEqual(snapshot.recommendations.map(\.action), [.prepareScheduleDraft, .prepareScheduleDraft, .addTask])
+        XCTAssertEqual(snapshot.recommendations.map(\.reason), ["Needs scheduling", "Needs scheduling", "Add a task to plan your day."])
     }
 
     func testLocaleCalendarAndGreetingBoundariesAreExplicit() throws {
@@ -280,7 +282,7 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         let planned = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: [highTask], recommendedTask: highTask, recommendationReason: "High-priority work is the best first task."), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "ja_JP"))
 
         XCTAssertEqual(empty.header.greeting, "Suisui、おはようございます")
-        XCTAssertNil(empty.recommendation)
+        XCTAssertEqual(empty.recommendation?.action, .addTask)
         XCTAssertEqual(empty.review.message, "まだ振り返り項目はありません。")
         XCTAssertEqual(fallback.tasks[0].priorityLabel, "高")
         XCTAssertEqual(fallback.recommendation?.reason, "高優先度の作業を守りましょう。")

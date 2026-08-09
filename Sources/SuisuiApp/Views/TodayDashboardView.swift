@@ -30,6 +30,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
     let selectTodayTask: (ProjectBoardTask) -> Void
     let openInspectorForTodayRailTask: (Int64) -> Void
     let playDailyPlanningReadout: () -> Void
+    let openCatchUp: () -> Void
     @ViewBuilder let catchUpContent: () -> CatchUpContent
     @AccessibilityFocusState private var isReviewFocused: Bool
     @State private var focusTaskPendingReplacement: Int64?
@@ -44,7 +45,8 @@ struct TodayDashboardView<CatchUpContent: View>: View {
             calendar: calendar,
             locale: locale,
             weatherState: weatherState,
-            integrationsState: integrationsState
+            integrationsState: integrationsState,
+            catchUpCount: viewModel.catchUpCount
         )
     }
 
@@ -112,6 +114,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                 tasks: snapshot.plan.tasks,
                 rows: dashboard.tasks,
                 selectedTaskID: viewModel.selectedTaskID,
+                isWide: isWide,
                 toggleCompletion: viewModel.toggleTaskCompletion,
                 selectTask: selectTodayTask
             )
@@ -141,7 +144,22 @@ struct TodayDashboardView<CatchUpContent: View>: View {
     }
 
     private func performRecommendationAction(_ recommendation: TodayRecommendation) {
-        guard let taskID = recommendation.taskID else { return }
+        guard let taskID = recommendation.taskID else {
+            switch recommendation.action {
+            case .addTask:
+                commandTitle = String(localized: "New task: ")
+                isReviewFocused = true
+            case .openCatchUp:
+                openCatchUp()
+                isReviewFocused = true
+            case .suggestBreak:
+                viewModel.suggestBreak()
+                isReviewFocused = true
+            case .startFocus, .selectTask, .openReview, .prepareScheduleDraft:
+                break
+            }
+            return
+        }
         switch recommendation.action {
         case .startFocus:
             if case .failure(.requiresReplacement) = viewModel.startFocusSession(taskID: taskID) {
@@ -156,6 +174,8 @@ struct TodayDashboardView<CatchUpContent: View>: View {
             }
         case .prepareScheduleDraft:
             _ = viewModel.addUnscheduledTaskToScheduleDraft(taskID: taskID)
+        case .addTask, .openCatchUp, .suggestBreak:
+            break
         }
     }
 

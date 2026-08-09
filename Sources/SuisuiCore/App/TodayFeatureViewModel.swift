@@ -129,6 +129,18 @@ public final class TodayFeatureViewModel: ObservableObject {
             .store(in: &observations)
     }
 
+    /// Compatibility entry point for clients that only supplied the board.
+    /// Runtime date/calendar providers remain injectable through the primary
+    /// initializer used by the Today dashboard.
+    @_disfavoredOverload
+    public convenience init(board: ProjectBoardViewModel) {
+        self.init(
+            board: board,
+            runtimeReferenceDate: { VisualEvidenceRuntimeContext.referenceDate() },
+            runtimeCalendar: { VisualEvidenceRuntimeContext.runtimeCalendar() }
+        )
+    }
+
     public func projectTitle(for task: ProjectBoardTask) -> String {
         projectTitlesByTaskID[task.id] ?? "Unknown Project"
     }
@@ -167,6 +179,10 @@ public final class TodayFeatureViewModel: ObservableObject {
     @discardableResult
     public func submitCommand(_ title: String) -> ProjectBoardTask? {
         performFeatureAction { board.submitTodayCommand(title) }
+    }
+
+    public func suggestBreak() {
+        performFeatureAction { board.suggestTodayBreak() }
     }
 
     public func setShowsCompletedWorkflowTasks(_ isShown: Bool) {
