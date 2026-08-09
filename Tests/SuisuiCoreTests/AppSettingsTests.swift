@@ -424,6 +424,29 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(blank.googleCalendarID, "")
     }
 
+    func testDailyWorkCapacityDefaultsDecodesLegacyAndValidatesBounds() throws {
+        let legacyData = Data("""
+        {
+          "aiProvider": "openAIResponses",
+          "sttProvider": "openAITranscribe",
+          "notificationsEnabled": false,
+          "defaultWorkspacePath": null,
+          "timeZoneIdentifier": "UTC"
+        }
+        """.utf8)
+
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: legacyData)
+
+        XCTAssertEqual(AppSettings.default.dailyWorkCapacityMinutes, 480)
+        XCTAssertEqual(decoded.dailyWorkCapacityMinutes, 480)
+        XCTAssertEqual(AppSettings(dailyWorkCapacityMinutes: 390).normalizedForRuntime.dailyWorkCapacityMinutes, 390)
+        XCTAssertEqual(AppSettings(dailyWorkCapacityMinutes: 0).normalizedForRuntime.dailyWorkCapacityMinutes, 60)
+        XCTAssertEqual(AppSettings(dailyWorkCapacityMinutes: 24 * 60).normalizedForRuntime.dailyWorkCapacityMinutes, 16 * 60)
+        XCTAssertTrue(AppSettings(dailyWorkCapacityMinutes: 45).validate().contains {
+            $0.field == "dailyWorkCapacityMinutes" && $0.severity == .error
+        })
+    }
+
     func testProfileDisplayNameDefaultsToNilWhenDecodingLegacySettings() throws {
         let legacyData = Data("""
         {

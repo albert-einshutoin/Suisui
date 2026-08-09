@@ -20,6 +20,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var isDeveloperModeEnabled: Bool
     public var defaultWorkspacePath: String?
     public var profileDisplayName: String?
+    public var dailyWorkCapacityMinutes: Int
     public var timeZoneIdentifier: String
     public var googleCalendarID: String
     public var geminiModelID: String?
@@ -58,6 +59,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case isDeveloperModeEnabled
         case defaultWorkspacePath
         case profileDisplayName
+        case dailyWorkCapacityMinutes
         case timeZoneIdentifier
         case googleCalendarID
         case geminiModelID
@@ -94,6 +96,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         isDeveloperModeEnabled: Bool = false,
         defaultWorkspacePath: String? = nil,
         profileDisplayName: String? = nil,
+        dailyWorkCapacityMinutes: Int = 480,
         timeZoneIdentifier: String = TimeZone.current.identifier,
         googleCalendarID: String = "primary",
         geminiModelID: String? = nil,
@@ -129,6 +132,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.isDeveloperModeEnabled = isDeveloperModeEnabled
         self.defaultWorkspacePath = defaultWorkspacePath
         self.profileDisplayName = profileDisplayName
+        self.dailyWorkCapacityMinutes = dailyWorkCapacityMinutes
         self.timeZoneIdentifier = timeZoneIdentifier
         self.googleCalendarID = googleCalendarID
         self.geminiModelID = geminiModelID
@@ -180,6 +184,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.isDeveloperModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .isDeveloperModeEnabled) ?? false
         self.defaultWorkspacePath = try container.decodeIfPresent(String.self, forKey: .defaultWorkspacePath)
         self.profileDisplayName = try container.decodeIfPresent(String.self, forKey: .profileDisplayName)
+        self.dailyWorkCapacityMinutes = try container.decodeIfPresent(Int.self, forKey: .dailyWorkCapacityMinutes) ?? 480
         self.timeZoneIdentifier = try container.decode(String.self, forKey: .timeZoneIdentifier)
         self.googleCalendarID = try container.decodeIfPresent(String.self, forKey: .googleCalendarID) ?? "primary"
         self.geminiModelID = try container.decodeIfPresent(String.self, forKey: .geminiModelID)
@@ -224,6 +229,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(isDeveloperModeEnabled, forKey: .isDeveloperModeEnabled)
         try container.encodeIfPresent(defaultWorkspacePath, forKey: .defaultWorkspacePath)
         try container.encodeIfPresent(profileDisplayName, forKey: .profileDisplayName)
+        try container.encode(dailyWorkCapacityMinutes, forKey: .dailyWorkCapacityMinutes)
         try container.encode(timeZoneIdentifier, forKey: .timeZoneIdentifier)
         try container.encode(googleCalendarID, forKey: .googleCalendarID)
         try container.encodeIfPresent(geminiModelID, forKey: .geminiModelID)
@@ -250,6 +256,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
     }
 
     public static let `default` = AppSettings()
+    public static let minimumDailyWorkCapacityMinutes = 60
+    public static let maximumDailyWorkCapacityMinutes = 16 * 60
+    public static let dailyWorkCapacityStepMinutes = 30
+
+    public static func normalizedDailyWorkCapacityMinutes(_ minutes: Int) -> Int {
+        let bounded = min(max(minutes, minimumDailyWorkCapacityMinutes), maximumDailyWorkCapacityMinutes)
+        return (bounded / dailyWorkCapacityStepMinutes) * dailyWorkCapacityStepMinutes
+    }
 
     public var normalizedForRuntime: AppSettings {
         var copy = self
@@ -268,6 +282,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         if let profileDisplayName = copy.profileDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.profileDisplayName = profileDisplayName.isEmpty ? nil : String(profileDisplayName.prefix(80))
         }
+        copy.dailyWorkCapacityMinutes = Self.normalizedDailyWorkCapacityMinutes(copy.dailyWorkCapacityMinutes)
         // Google Calendar treats "primary" as the backward-compatible default,
         // while a user-entered blank must stay blank so runtime readiness can flag
         // the external write target instead of silently writing to the wrong calendar.
@@ -336,6 +351,17 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 ValidationIssue(
                     field: "timeZoneIdentifier",
                     message: "Unknown time zone identifier.",
+                    severity: .error
+                )
+            )
+        }
+
+        if !(Self.minimumDailyWorkCapacityMinutes...Self.maximumDailyWorkCapacityMinutes).contains(dailyWorkCapacityMinutes)
+            || dailyWorkCapacityMinutes % Self.dailyWorkCapacityStepMinutes != 0 {
+            issues.append(
+                ValidationIssue(
+                    field: "dailyWorkCapacityMinutes",
+                    message: "Daily work capacity must be between 1 and 16 hours in 30-minute steps.",
                     severity: .error
                 )
             )
@@ -2171,6 +2197,11 @@ public final class AppSettingsViewModel: ObservableObject {
         // Keep the editor draft verbatim so typing a space at the end does not
         // move the cursor or discard input before the user chooses Save.
         settings.profileDisplayName = name
+        clearMessages()
+    }
+
+    public func setDailyWorkCapacityMinutes(_ minutes: Int) {
+        settings.dailyWorkCapacityMinutes = minutes
         clearMessages()
     }
 

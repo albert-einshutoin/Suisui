@@ -56,16 +56,6 @@ public struct TodayTaskRowSnapshot: Equatable, Sendable {
     }
 }
 
-public struct TodayWorkloadSnapshot: Equatable, Sendable {
-    public let plannedTaskCount: Int
-    public let dailyCapacityMinutes: Int
-
-    public init(plannedTaskCount: Int, dailyCapacityMinutes: Int) {
-        self.plannedTaskCount = plannedTaskCount
-        self.dailyCapacityMinutes = dailyCapacityMinutes
-    }
-}
-
 public struct TodayWeeklyScheduleSnapshot: Equatable, Sendable {
     public let scheduledTaskCount: Int
     public let unscheduledTaskCount: Int
@@ -178,9 +168,11 @@ public enum TodayDashboardSnapshotBuilder {
             ),
             recommendations: recommendations,
             tasks: tasks,
-            workload: TodayWorkloadSnapshot(
-                plannedTaskCount: tasks.count,
-                dailyCapacityMinutes: dailyCapacityMinutes > 0 ? dailyCapacityMinutes : 480
+            workload: TodayWorkloadSnapshotBuilder.make(
+                timeBlocks: today.plan.timeBlocks,
+                focusTaskID: primaryRecommendation.taskID,
+                capacityMinutes: dailyCapacityMinutes == 0 ? AppSettings.default.dailyWorkCapacityMinutes : dailyCapacityMinutes,
+                plannedTaskCount: tasks.count
             ),
             weeklySchedule: TodayWeeklyScheduleSnapshot(
                 scheduledTaskCount: scheduledTaskCount,
