@@ -51,19 +51,29 @@ public struct FirstRunOnboardingFlow: Equatable, Sendable {
 public struct OnboardingTodayPreferences: Equatable, Sendable {
     public var displayName: String
     public var dailyWorkCapacityMinutes: Int
+    public var weatherLocationPreference: WeatherLocationPreference
     /// Captured from saved settings, not the editable draft, so typing a name
     /// cannot hide the form before the explicit continue action saves it.
     public let shouldAsk: Bool
 
-    public init(displayName: String = "", dailyWorkCapacityMinutes: Int = AppSettings.default.dailyWorkCapacityMinutes) {
+    public init(
+        displayName: String = "",
+        dailyWorkCapacityMinutes: Int = AppSettings.default.dailyWorkCapacityMinutes,
+        weatherLocationPreference: WeatherLocationPreference = .unset
+    ) {
         self.displayName = displayName
         self.dailyWorkCapacityMinutes = dailyWorkCapacityMinutes
+        self.weatherLocationPreference = weatherLocationPreference.normalized
         shouldAsk = true
     }
 
     public init(settings: AppSettings) {
         displayName = settings.profileDisplayName ?? ""
         dailyWorkCapacityMinutes = settings.dailyWorkCapacityMinutes
+        weatherLocationPreference = settings.weatherLocationPreference
+        // Existing profiles should not be interrupted by the new optional
+        // weather question; first-run users still see the location choice while
+        // the display-name draft is empty.
         shouldAsk = displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -71,6 +81,7 @@ public struct OnboardingTodayPreferences: Equatable, Sendable {
         var updated = settings
         updated.profileDisplayName = displayName
         updated.dailyWorkCapacityMinutes = dailyWorkCapacityMinutes
+        updated.weatherLocationPreference = weatherLocationPreference
         return updated.normalizedForRuntime
     }
 }

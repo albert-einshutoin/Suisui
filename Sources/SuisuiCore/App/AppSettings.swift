@@ -28,6 +28,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var defaultWorkspacePath: String?
     public var profileDisplayName: String?
     public var dailyWorkCapacityMinutes: Int
+    public var weatherLocationPreference: WeatherLocationPreference
     public var timeZoneIdentifier: String
     public var googleCalendarID: String
     public var geminiModelID: String?
@@ -67,6 +68,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case defaultWorkspacePath
         case profileDisplayName
         case dailyWorkCapacityMinutes
+        case weatherLocationPreference
         case timeZoneIdentifier
         case googleCalendarID
         case geminiModelID
@@ -104,6 +106,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         defaultWorkspacePath: String? = nil,
         profileDisplayName: String? = nil,
         dailyWorkCapacityMinutes: Int = 480,
+        weatherLocationPreference: WeatherLocationPreference = .unset,
         timeZoneIdentifier: String = TimeZone.current.identifier,
         googleCalendarID: String = "primary",
         geminiModelID: String? = nil,
@@ -140,6 +143,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.defaultWorkspacePath = defaultWorkspacePath
         self.profileDisplayName = profileDisplayName
         self.dailyWorkCapacityMinutes = dailyWorkCapacityMinutes
+        self.weatherLocationPreference = weatherLocationPreference.normalized
         self.timeZoneIdentifier = timeZoneIdentifier
         self.googleCalendarID = googleCalendarID
         self.geminiModelID = geminiModelID
@@ -192,6 +196,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.defaultWorkspacePath = try container.decodeIfPresent(String.self, forKey: .defaultWorkspacePath)
         self.profileDisplayName = try container.decodeIfPresent(String.self, forKey: .profileDisplayName)
         self.dailyWorkCapacityMinutes = try container.decodeIfPresent(Int.self, forKey: .dailyWorkCapacityMinutes) ?? 480
+        self.weatherLocationPreference = (try? container.decodeIfPresent(WeatherLocationPreference.self, forKey: .weatherLocationPreference)) ?? .unset
         self.timeZoneIdentifier = try container.decode(String.self, forKey: .timeZoneIdentifier)
         self.googleCalendarID = try container.decodeIfPresent(String.self, forKey: .googleCalendarID) ?? "primary"
         self.geminiModelID = try container.decodeIfPresent(String.self, forKey: .geminiModelID)
@@ -237,6 +242,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encodeIfPresent(defaultWorkspacePath, forKey: .defaultWorkspacePath)
         try container.encodeIfPresent(profileDisplayName, forKey: .profileDisplayName)
         try container.encode(dailyWorkCapacityMinutes, forKey: .dailyWorkCapacityMinutes)
+        try container.encode(weatherLocationPreference.normalized, forKey: .weatherLocationPreference)
         try container.encode(timeZoneIdentifier, forKey: .timeZoneIdentifier)
         try container.encode(googleCalendarID, forKey: .googleCalendarID)
         try container.encodeIfPresent(geminiModelID, forKey: .geminiModelID)
@@ -290,6 +296,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
             copy.profileDisplayName = profileDisplayName.isEmpty ? nil : String(profileDisplayName.prefix(80))
         }
         copy.dailyWorkCapacityMinutes = Self.normalizedDailyWorkCapacityMinutes(copy.dailyWorkCapacityMinutes)
+        copy.weatherLocationPreference = copy.weatherLocationPreference.normalized
         // Google Calendar treats "primary" as the backward-compatible default,
         // while a user-entered blank must stay blank so runtime readiness can flag
         // the external write target instead of silently writing to the wrong calendar.
@@ -2209,6 +2216,11 @@ public final class AppSettingsViewModel: ObservableObject {
 
     public func setDailyWorkCapacityMinutes(_ minutes: Int) {
         settings.dailyWorkCapacityMinutes = minutes
+        clearMessages()
+    }
+
+    public func setWeatherLocationPreference(_ preference: WeatherLocationPreference) {
+        settings.weatherLocationPreference = preference.normalized
         clearMessages()
     }
 
