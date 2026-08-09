@@ -31,15 +31,53 @@ final class ReleasePipelineTests: XCTestCase {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         XCTAssertEqual(englishSourceCommit, latestProductSourceCommit)
 
-        XCTAssertNoThrow(
-            try validateTodaySidebarRuntimeAccessibilityReceipt(
-                receipt,
-                serialized: receiptData,
-                expectedSourceCommit: englishSourceCommit
-            )
-        )
+        let captureManifestPaths = [
+            "docs/release/evidence/ui-screenshots/visual-baseline-capture-manifest.json",
+            "docs/release/evidence/ui-screenshots-ja/visual-baseline-capture-manifest.json"
+        ]
+        let captureManifests = try Dictionary(uniqueKeysWithValues: captureManifestPaths.map { path in
+            (path, try readJSONDictionary(path))
+        })
+        let sourceCommitDate = try sourceCommitTimestamp(englishSourceCommit)
 
-        var missingControl = receipt
+        XCTAssertEqual(receipt["status"] as? String, "blocked")
+        XCTAssertNoThrow(try validateBlockedTodaySidebarRuntimeAccessibilityReceipt(
+            receipt,
+            serialized: receiptData,
+            expectedSourceCommit: englishSourceCommit,
+            captureManifests: captureManifests
+        ))
+
+        let captureDates = try captureManifests.values.map {
+            try evidenceTimestamp($0["generatedAt"], field: "capture.generatedAt")
+        }
+        let activeGeneratedAt = ([sourceCommitDate] + captureDates).max()!.addingTimeInterval(1)
+        let activeGeneratedAtString = ISO8601DateFormatter().string(from: activeGeneratedAt)
+        var activeReceipt = receipt
+        activeReceipt["status"] = "partial"
+        activeReceipt["sourceCommit"] = englishSourceCommit
+        activeReceipt["generatedAt"] = activeGeneratedAtString
+        activeReceipt.removeValue(forKey: "releaseBlocker")
+        activeReceipt["artifact"] = [
+            "path": "dist/Suisui.app",
+            "status": "retained",
+            "sourceCommit": englishSourceCommit,
+            "builtAt": activeGeneratedAtString,
+            "sha256": String(repeating: "a", count: 64)
+        ]
+        var appearance = try XCTUnwrap(activeReceipt["appearance"] as? [String: Any])
+        appearance["sourceCommit"] = englishSourceCommit
+        activeReceipt["appearance"] = appearance
+
+        XCTAssertNoThrow(try validateTodaySidebarRuntimeAccessibilityReceipt(
+            activeReceipt,
+            serialized: try JSONSerialization.data(withJSONObject: activeReceipt),
+            expectedSourceCommit: englishSourceCommit,
+            expectedSourceCommitTimestamp: sourceCommitDate,
+            captureManifests: captureManifests
+        ))
+
+        var missingControl = activeReceipt
         var controls = try XCTUnwrap(missingControl["controls"] as? [[String: Any]])
         controls.removeLast()
         missingControl["controls"] = controls
@@ -47,19 +85,55 @@ final class ReleasePipelineTests: XCTestCase {
             try validateTodaySidebarRuntimeAccessibilityReceipt(
                 missingControl,
                 serialized: try JSONSerialization.data(withJSONObject: missingControl),
-                expectedSourceCommit: englishSourceCommit
+                expectedSourceCommit: englishSourceCommit,
+                expectedSourceCommitTimestamp: sourceCommitDate,
+                captureManifests: captureManifests
             )
         )
 
-        var mismatchedCommit = receipt
+        var mismatchedCommit = activeReceipt
         mismatchedCommit["sourceCommit"] = "0000000000000000000000000000000000000000"
         XCTAssertThrowsError(
             try validateTodaySidebarRuntimeAccessibilityReceipt(
                 mismatchedCommit,
                 serialized: try JSONSerialization.data(withJSONObject: mismatchedCommit),
-                expectedSourceCommit: englishSourceCommit
+                expectedSourceCommit: englishSourceCommit,
+                expectedSourceCommitTimestamp: sourceCommitDate,
+                captureManifests: captureManifests
             )
         )
+
+        var sourceOnlyRewrite = activeReceipt
+        sourceOnlyRewrite["generatedAt"] = receipt["generatedAt"]
+        XCTAssertThrowsError(try validateTodaySidebarRuntimeAccessibilityReceipt(
+            sourceOnlyRewrite,
+            serialized: try JSONSerialization.data(withJSONObject: sourceOnlyRewrite),
+            expectedSourceCommit: englishSourceCommit,
+            expectedSourceCommitTimestamp: sourceCommitDate,
+            captureManifests: captureManifests
+        ))
+
+        var missingArtifact = activeReceipt
+        missingArtifact.removeValue(forKey: "artifact")
+        XCTAssertThrowsError(try validateTodaySidebarRuntimeAccessibilityReceipt(
+            missingArtifact,
+            serialized: try JSONSerialization.data(withJSONObject: missingArtifact),
+            expectedSourceCommit: englishSourceCommit,
+            expectedSourceCommitTimestamp: sourceCommitDate,
+            captureManifests: captureManifests
+        ))
+
+        var mismatchedArtifactSource = activeReceipt
+        var artifact = try XCTUnwrap(mismatchedArtifactSource["artifact"] as? [String: Any])
+        artifact["sourceCommit"] = "0000000000000000000000000000000000000000"
+        mismatchedArtifactSource["artifact"] = artifact
+        XCTAssertThrowsError(try validateTodaySidebarRuntimeAccessibilityReceipt(
+            mismatchedArtifactSource,
+            serialized: try JSONSerialization.data(withJSONObject: mismatchedArtifactSource),
+            expectedSourceCommit: englishSourceCommit,
+            expectedSourceCommitTimestamp: sourceCommitDate,
+            captureManifests: captureManifests
+        ))
     }
 
     func testBuildAndRunBundlesCustomMacOSAppIcon() throws {
@@ -16480,10 +16554,153 @@ final class ReleasePipelineTests: XCTestCase {
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
+    private func readJSONDictionary(_ relativePath: String) throws -> [String: Any] {
+        let data = try Data(contentsOf: packageRoot().appendingPathComponent(relativePath))
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    private func sourceCommitTimestamp(_ commit: String) throws -> Date {
+        guard commit.range(of: #"^[0-9a-f]{40}$"#, options: .regularExpression) != nil else {
+            throw TodaySidebarReceiptContractError.invalid("sourceCommit")
+        }
+        let result = try runTool(["git", "show", "-s", "--format=%cI", commit])
+        guard result.exitCode == 0,
+              let date = ISO8601DateFormatter().date(
+                from: result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+              ) else {
+            throw TodaySidebarReceiptContractError.invalid("sourceCommit.timestamp")
+        }
+        return date
+    }
+
+    private func evidenceTimestamp(_ value: Any?, field: String) throws -> Date {
+        guard let rawValue = value as? String,
+              let date = ISO8601DateFormatter().date(from: rawValue) else {
+            throw TodaySidebarReceiptContractError.invalid(field)
+        }
+        return date
+    }
+
+    private func validateTodaySidebarReceiptProvenance(
+        _ receipt: [String: Any],
+        expectedSourceCommit: String,
+        expectedSourceCommitTimestamp: Date,
+        captureManifests: [String: [String: Any]]
+    ) throws {
+        func require(_ condition: @autoclosure () -> Bool, _ field: String) throws {
+            guard condition() else {
+                throw TodaySidebarReceiptContractError.invalid(field)
+            }
+        }
+
+        let generatedAt = try evidenceTimestamp(receipt["generatedAt"], field: "generatedAt")
+        try require(receipt["sourceCommit"] as? String == expectedSourceCommit, "sourceCommit")
+        try require(generatedAt >= expectedSourceCommitTimestamp, "generatedAt.sourceCommit")
+
+        guard let methodology = receipt["methodology"] as? [String: Any],
+              let artifact = receipt["artifact"] as? [String: Any] else {
+            throw TodaySidebarReceiptContractError.invalid("artifact")
+        }
+        try require(artifact["status"] as? String == "retained", "artifact.status")
+        try require(artifact["path"] as? String == methodology["appBundle"] as? String, "artifact.path")
+        try require(artifact["sourceCommit"] as? String == expectedSourceCommit, "artifact.sourceCommit")
+        let builtAt = try evidenceTimestamp(artifact["builtAt"], field: "artifact.builtAt")
+        try require(builtAt >= expectedSourceCommitTimestamp && builtAt <= generatedAt, "artifact.builtAt")
+        let sha256 = artifact["sha256"] as? String ?? ""
+        try require(sha256.range(of: #"^[0-9a-f]{64}$"#, options: .regularExpression) != nil, "artifact.sha256")
+
+        guard let appearance = receipt["appearance"] as? [String: Any],
+              let locales = appearance["locales"] as? [String: [String: Any]] else {
+            throw TodaySidebarReceiptContractError.invalid("appearance.locales")
+        }
+        try require(appearance["sourceCommit"] as? String == expectedSourceCommit, "appearance.sourceCommit")
+        for localeEvidence in locales.values {
+            guard let path = localeEvidence["manifest"] as? String,
+                  let captureManifest = captureManifests[path] else {
+                throw TodaySidebarReceiptContractError.invalid("appearance.locales.manifest")
+            }
+            try require(captureManifest["sourceCommit"] as? String == expectedSourceCommit, "capture.sourceCommit")
+            let capturedAt = try evidenceTimestamp(captureManifest["generatedAt"], field: "capture.generatedAt")
+            try require(capturedAt >= expectedSourceCommitTimestamp && capturedAt <= generatedAt, "capture.generatedAt")
+        }
+    }
+
+    private func validateBlockedTodaySidebarRuntimeAccessibilityReceipt(
+        _ receipt: [String: Any],
+        serialized: Data,
+        expectedSourceCommit: String,
+        captureManifests: [String: [String: Any]]
+    ) throws {
+        func require(_ condition: @autoclosure () -> Bool, _ field: String) throws {
+            guard condition() else {
+                throw TodaySidebarReceiptContractError.invalid(field)
+            }
+        }
+
+        try require(receipt["status"] as? String == "blocked", "status")
+        let receiptSourceCommit = receipt["sourceCommit"] as? String ?? ""
+        try require(!receiptSourceCommit.isEmpty && receiptSourceCommit != expectedSourceCommit, "sourceCommit.stale")
+        let generatedAt = try evidenceTimestamp(receipt["generatedAt"], field: "generatedAt")
+        let receiptSourceCommitTimestamp = try sourceCommitTimestamp(receiptSourceCommit)
+        try require(generatedAt >= receiptSourceCommitTimestamp, "generatedAt.sourceCommit")
+
+        guard let blocker = receipt["releaseBlocker"] as? [String: Any] else {
+            throw TodaySidebarReceiptContractError.invalid("releaseBlocker")
+        }
+        try require(blocker["status"] as? String == "blocked", "releaseBlocker.status")
+        try require(blocker["artifactStatus"] as? String == "not_retained", "releaseBlocker.artifactStatus")
+        let blockerRecordedAt = try evidenceTimestamp(blocker["recordedAt"], field: "releaseBlocker.recordedAt")
+        try require(blockerRecordedAt >= generatedAt, "releaseBlocker.recordedAt")
+        let requiredViewport = try evidenceDimensions(blocker["requiredViewport"], field: "releaseBlocker.requiredViewport")
+        let visibleFrame = try evidenceDimensions(blocker["runnerVisibleFrame"], field: "releaseBlocker.runnerVisibleFrame")
+        try require(visibleFrame.width < requiredViewport.width || visibleFrame.height < requiredViewport.height, "releaseBlocker.runnerCapacity")
+        try require(
+            Set(blocker["reasonCodes"] as? [String] ?? []) == Set([
+                "runtime_artifact_not_retained",
+                "receipt_source_is_stale",
+                "required_wide_viewport_unavailable"
+            ]),
+            "releaseBlocker.reasonCodes"
+        )
+
+        guard let appearance = receipt["appearance"] as? [String: Any],
+              appearance["sourceCommit"] as? String == receiptSourceCommit,
+              let locales = appearance["locales"] as? [String: [String: Any]] else {
+            throw TodaySidebarReceiptContractError.invalid("appearance")
+        }
+        for localeEvidence in locales.values {
+            guard let path = localeEvidence["manifest"] as? String,
+                  let captureManifest = captureManifests[path] else {
+                throw TodaySidebarReceiptContractError.invalid("appearance.locales.manifest")
+            }
+            let capturedAt = try evidenceTimestamp(captureManifest["generatedAt"], field: "capture.generatedAt")
+            try require(
+                captureManifest["sourceCommit"] as? String != receiptSourceCommit || capturedAt > generatedAt,
+                "capture.stale"
+            )
+        }
+        try validateTodaySidebarReceiptSerializedHygiene(serialized)
+    }
+
+    private func evidenceDimensions(_ value: Any?, field: String) throws -> (width: Int, height: Int) {
+        guard let value = value as? String else {
+            throw TodaySidebarReceiptContractError.invalid(field)
+        }
+        let parts = value.split(separator: "x", omittingEmptySubsequences: false)
+        guard parts.count == 2,
+              let width = Int(parts[0]), width > 0,
+              let height = Int(parts[1]), height > 0 else {
+            throw TodaySidebarReceiptContractError.invalid(field)
+        }
+        return (width, height)
+    }
+
     private func validateTodaySidebarRuntimeAccessibilityReceipt(
         _ receipt: [String: Any],
         serialized: Data,
-        expectedSourceCommit: String
+        expectedSourceCommit: String,
+        expectedSourceCommitTimestamp: Date,
+        captureManifests: [String: [String: Any]]
     ) throws {
         func require(_ condition: @autoclosure () -> Bool, _ field: String) throws {
             guard condition() else {
@@ -16507,7 +16724,12 @@ final class ReleasePipelineTests: XCTestCase {
 
         try require((receipt["schemaVersion"] as? NSNumber)?.intValue == 1, "schemaVersion")
         try require(receipt["status"] as? String == "partial", "status")
-        try require(receipt["sourceCommit"] as? String == expectedSourceCommit, "sourceCommit")
+        try validateTodaySidebarReceiptProvenance(
+            receipt,
+            expectedSourceCommit: expectedSourceCommit,
+            expectedSourceCommitTimestamp: expectedSourceCommitTimestamp,
+            captureManifests: captureManifests
+        )
 
         let methodology = try dictionary(receipt["methodology"], "methodology")
         try require(methodology["window"] as? String == "1024x676", "methodology.window")
@@ -16677,17 +16899,29 @@ final class ReleasePipelineTests: XCTestCase {
             try require(evidence["status"] as? String == "not_proven", "unsupportedConditions.\(condition).status")
         }
 
-        let serializedString = try XCTUnwrap(String(data: serialized, encoding: .utf8))
+        try validateTodaySidebarReceiptSerializedHygiene(serialized)
+    }
+
+    private func validateTodaySidebarReceiptSerializedHygiene(_ serialized: Data) throws {
+        guard let serializedString = String(data: serialized, encoding: .utf8) else {
+            throw TodaySidebarReceiptContractError.invalid("serialized.encoding")
+        }
         for forbiddenMarker in ["/Users/", "/Volumes/", ".tmp/"] {
-            try require(!serializedString.contains(forbiddenMarker), "serialized.\(forbiddenMarker)")
+            guard !serializedString.contains(forbiddenMarker) else {
+                throw TodaySidebarReceiptContractError.invalid("serialized.\(forbiddenMarker)")
+            }
         }
         let secretValuePattern = #"(?i)\"(?:api[_-]?key|secret|token|password|authorization)\"\s*:\s*\"[^\"]+\""#
         let secretValueRegex = try NSRegularExpression(pattern: secretValuePattern)
         let serializedRange = NSRange(serializedString.startIndex..<serializedString.endIndex, in: serializedString)
-        try require(secretValueRegex.firstMatch(in: serializedString, range: serializedRange) == nil, "serialized.secretLikeValue")
+        guard secretValueRegex.firstMatch(in: serializedString, range: serializedRange) == nil else {
+            throw TodaySidebarReceiptContractError.invalid("serialized.secretLikeValue")
+        }
         let embeddedSecretPattern = #"(?i)(super[-_]?secret|bearer\s+[A-Za-z0-9._-]+|sk-[A-Za-z0-9_-]{16,})"#
         let embeddedSecretRegex = try NSRegularExpression(pattern: embeddedSecretPattern)
-        try require(embeddedSecretRegex.firstMatch(in: serializedString, range: serializedRange) == nil, "serialized.embeddedSecret")
+        guard embeddedSecretRegex.firstMatch(in: serializedString, range: serializedRange) == nil else {
+            throw TodaySidebarReceiptContractError.invalid("serialized.embeddedSecret")
+        }
     }
 
     private enum TodaySidebarReceiptContractError: Error {
