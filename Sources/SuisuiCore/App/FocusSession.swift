@@ -77,6 +77,28 @@ public final class UserDefaultsFocusSessionPersistence: FocusSessionPersistence 
     }
 }
 
+/// Owns the one local Focus session for every Today scene in this process.
+/// UserDefaults provides restart recovery, while this registry prevents two
+/// independently constructed scene view models from racing to replace it.
+@MainActor
+public final class TodayFocusSessionStoreRegistry {
+    public static let shared = TodayFocusSessionStoreRegistry()
+
+    private let makeStore: () -> TodayFocusSessionStore
+    private var storedFocusSession: TodayFocusSessionStore?
+
+    public init(makeStore: @escaping () -> TodayFocusSessionStore = { TodayFocusSessionStore() }) {
+        self.makeStore = makeStore
+    }
+
+    public var focusSession: TodayFocusSessionStore {
+        if let storedFocusSession { return storedFocusSession }
+        let focusSession = makeStore()
+        storedFocusSession = focusSession
+        return focusSession
+    }
+}
+
 @MainActor
 public final class TodayFocusSessionStore: ObservableObject {
     @Published public private(set) var record: FocusSessionRecord
@@ -187,7 +209,12 @@ public final class TodayFocusSessionStore: ObservableObject {
             return record.accumulatedSeconds
         }
         // A backward wall-clock adjustment must not create negative Focus time.
-        return record.accumulatedSeconds + max(0, Int(now.timeIntervalSince(resumedAt)))
+        // Persisted records can outlive app updates and wall-clock changes, so
+        // never expose elapsed work beyond the session's requested capacity.
+        return min(
+            record.durationSeconds,
+            record.accumulatedSeconds + max(0, Int(now.timeIntervalSince(resumedAt)))
+        )
     }
 
     private func persist() {

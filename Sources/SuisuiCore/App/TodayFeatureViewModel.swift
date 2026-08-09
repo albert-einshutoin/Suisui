@@ -49,12 +49,12 @@ public final class TodayFeatureViewModel: ObservableObject {
         board: ProjectBoardViewModel,
         runtimeReferenceDate: @escaping () -> Date = { VisualEvidenceRuntimeContext.referenceDate() },
         runtimeCalendar: @escaping () -> Calendar = { VisualEvidenceRuntimeContext.runtimeCalendar() },
-        focusSession: TodayFocusSessionStore? = nil
+        focusSessionRegistry: TodayFocusSessionStoreRegistry = .shared
     ) {
         self.board = board
         self.runtimeReferenceDate = runtimeReferenceDate
         self.runtimeCalendar = runtimeCalendar
-        self.focusSession = focusSession ?? TodayFocusSessionStore()
+        self.focusSession = focusSessionRegistry.focusSession
         self.state = Self.makeState(from: board)
 
         // Today subscribes only to the state it renders. Automation, receipt,
