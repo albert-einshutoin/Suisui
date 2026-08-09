@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "generatedAt": "2026-08-08T15:30:11Z",
-  "sourceCommit": "83263bdad787923b8ae116771661f055b5d68a31",
+  "sourceCommit": "036f3996f824706c323c6694b6038daaba6d1a90",
   "status": "partial",
   "methodology": {
     "appBundle": "dist/Suisui.app",
@@ -170,7 +170,7 @@
     "automationActivity": {"marker": "automation-activity-workflow", "selectedDestinations": [], "status": "passed"}
   },
   "appearance": {
-    "sourceCommit": "83263bdad787923b8ae116771661f055b5d68a31",
+    "sourceCommit": "036f3996f824706c323c6694b6038daaba6d1a90",
     "locales": {
       "en-US": {"manifest": "docs/release/evidence/ui-screenshots/visual-baseline-capture-manifest.json", "capturedScreens": 39},
       "ja-JP": {"manifest": "docs/release/evidence/ui-screenshots-ja/visual-baseline-capture-manifest.json", "capturedScreens": 39}

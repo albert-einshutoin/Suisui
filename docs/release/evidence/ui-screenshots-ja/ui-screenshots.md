@@ -2,8 +2,8 @@
 
 Generated with `script/capture_ui_evidence.sh`.
 
-- Generated at: `2026-08-08T15:24:15Z`
-- Source commit: `83263bda`
+- Generated at: `2026-08-09T14:25:07Z`
+- Source commit: `036f3996`
 - App bundle: `dist/Suisui.app`
 - Visual baseline manifest: `docs/quality/visual-baseline-manifest-ja.json`
 - Viewport contract: `SUISUI_VISUAL_BASELINE_VIEWPORT=1024x676`, `SUISUI_SETTINGS_VISUAL_BASELINE_VIEWPORT=720x676`, `SUISUI_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT=760x640`
