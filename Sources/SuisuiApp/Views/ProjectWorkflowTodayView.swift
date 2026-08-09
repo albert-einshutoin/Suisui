@@ -3,15 +3,13 @@ import SuisuiCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-private enum TodayWorkflowLayoutMetrics {
-    static let twoColumnMinimumWidth: CGFloat = 900
-}
-
 struct TodayWorkflowView: View {
     @StateObject private var viewModel: TodayFeatureViewModel
     var selectTodayTask: (ProjectBoardTask) -> Void = { _ in }
     var openInspectorForTodayRailTask: (Int64) -> Void = { _ in }
     var playDailyPlanningReadout: () -> Void = {}
+    let dashboardDisplayName: String
+    let dashboardDailyCapacityMinutes: Int
     let initiallyExpandsCatchUp: Bool
     var catchUpFocusRevision: Int? = nil
     var onCatchUpFocusConsumed: (Int) -> Bool = { _ in true }
@@ -24,6 +22,8 @@ struct TodayWorkflowView: View {
         selectTodayTask: @escaping (ProjectBoardTask) -> Void = { _ in },
         openInspectorForTodayRailTask: @escaping (Int64) -> Void = { _ in },
         playDailyPlanningReadout: @escaping () -> Void = {},
+        dashboardDisplayName: String = "",
+        dashboardDailyCapacityMinutes: Int = 0,
         initiallyExpandsCatchUp: Bool = false,
         catchUpFocusRevision: Int? = nil,
         onCatchUpFocusConsumed: @escaping (Int) -> Bool = { _ in true }
@@ -32,6 +32,8 @@ struct TodayWorkflowView: View {
         self.selectTodayTask = selectTodayTask
         self.openInspectorForTodayRailTask = openInspectorForTodayRailTask
         self.playDailyPlanningReadout = playDailyPlanningReadout
+        self.dashboardDisplayName = dashboardDisplayName
+        self.dashboardDailyCapacityMinutes = dashboardDailyCapacityMinutes
         self.initiallyExpandsCatchUp = initiallyExpandsCatchUp
         self.catchUpFocusRevision = catchUpFocusRevision
         self.onCatchUpFocusConsumed = onCatchUpFocusConsumed
@@ -56,96 +58,47 @@ struct TodayWorkflowView: View {
 
     var body: some View {
         let snapshot = viewModel.snapshot
-        GeometryReader { proxy in
-            Group {
-                if proxy.size.width >= TodayWorkflowLayoutMetrics.twoColumnMinimumWidth {
-                    // The explicit threshold keeps the rail as a stable second
-                    // column while both columns have enough room to retain their
-                    // existing controls and accessibility order.
-                    HStack(alignment: .top, spacing: 0) {
-                        ScrollView(.vertical) {
-                            mainSurface(snapshot: snapshot, fillsAvailableHeight: false)
-                                .frame(maxWidth: .infinity, alignment: .topLeading)
-                        }
-                        todayAssistantRail(context: snapshot.assistantContext)
-                    }
-                } else {
-                    // A vertical scroll container is finite-height safe when
-                    // the detail column is narrow: the task surface must measure
-                    // to its content instead of requesting the scroll view's
-                    // unbounded height.
-                    ScrollView(.vertical) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            mainSurface(snapshot: snapshot, fillsAvailableHeight: false)
-                            todayAssistantRail(context: snapshot.assistantContext)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(.horizontal, 18)
-            .padding(.bottom, 18)
+        TodayDashboardView(
+            snapshot: snapshot,
+            schedule: viewModel.schedule,
+            projectTitlesByTaskID: viewModel.projectTitlesByTaskID,
+            viewModel: viewModel,
+            commandTitle: $commandTitle,
+            displayName: dashboardDisplayName,
+            dailyCapacityMinutes: dashboardDailyCapacityMinutes,
+            selectTodayTask: selectTodayTask,
+            openInspectorForTodayRailTask: openInspectorForTodayRailTask,
+            playDailyPlanningReadout: playDailyPlanningReadout
+        ) {
+            catchUpSection
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-workflow")
     }
 
-    private func mainSurface(
-        snapshot: TodayWorkflowSnapshot,
-        fillsAvailableHeight: Bool
-    ) -> some View {
-        WorkflowTaskSurface(
-            title: "Today",
-            subtitle: subtitle(for: snapshot),
-            systemImage: "sun.max",
-            tasks: snapshot.plan.tasks,
-            emptyTitle: "No tasks due today",
-            emptyDescription: "Captured work remains in Inbox until it is scheduled or moved to a project.",
-            viewModel: viewModel,
-            onSelectTask: selectTodayTask,
-            fillsAvailableHeight: fillsAvailableHeight,
-            headerAccessory: {
-                TodayCommandPanel(
-                    commandTitle: $commandTitle,
-                    plan: snapshot.plan,
-                    recommendationChips: snapshot.recommendationChips,
-                    viewModel: viewModel,
-                    dailyPlanningReview: viewModel.dailyPlanningReview ?? snapshot.dailyPlanningReviewPreview,
-                    playDailyPlanningReadout: playDailyPlanningReadout
-                )
-            },
-            footer: {
-                VStack(alignment: .leading, spacing: 12) {
-                    TodaySuggestionPanel(plan: snapshot.plan, viewModel: viewModel)
-                    if viewModel.catchUpCount > 0 {
-                        DisclosureGroup(isExpanded: $isCatchUpExpanded) {
+    private var catchUpSection: some View {
+        Group {
+            if viewModel.catchUpCount > 0 {
+                DisclosureGroup(isExpanded: $isCatchUpExpanded) {
                     CatchUpWorkflowView(viewModel: viewModel)
-                                .frame(minHeight: 360)
-                        } label: {
-                            Label {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(
-                                        String(
-                                            format: String(localized: "Catch Up (%d)"),
-                                            viewModel.catchUpCount
-                                        )
-                                    )
-                                    Text("Review overdue work, then complete, reschedule, or defer one item.")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            } icon: {
-                                Image(systemName: "clock.badge.exclamationmark")
-                            }
+                        .frame(minHeight: 360)
+                } label: {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(String(format: String(localized: "Catch Up (%d)"), viewModel.catchUpCount))
+                            Text("Review overdue work, then complete, reschedule, or defer one item.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        .accessibilityIdentifier("today-catch-up-section")
-                        .accessibilityHint("Expands overdue and missed work actions without leaving Today.")
-                        .accessibilityFocused($isCatchUpFocused)
+                    } icon: {
+                        Image(systemName: "clock.badge.exclamationmark")
                     }
                 }
+                .accessibilityIdentifier("today-catch-up-section")
+                .accessibilityHint("Expands overdue and missed work actions without leaving Today.")
+                .accessibilityFocused($isCatchUpFocused)
             }
-        )
+        }
         .onAppear {
             if initiallyExpandsCatchUp,
                viewModel.catchUpCount > 0 {
@@ -193,17 +146,6 @@ struct TodayWorkflowView: View {
         }
     }
 
-    private func todayAssistantRail(context: TodayAssistantRailContext) -> some View {
-        TodayAssistantRail(
-            commandTitle: $commandTitle,
-            context: context,
-            viewModel: viewModel,
-            openInspector: openInspectorForTodayRailTask
-        )
-        .frame(minWidth: 300, idealWidth: 320, maxWidth: 340)
-        .padding(.vertical, 18)
-        .padding(.trailing, 18)
-    }
 }
 
 private struct TodayDailyPlanningReviewPanel: View {
@@ -328,7 +270,7 @@ private struct TodayDailyPlanningReviewPanel: View {
     }
 }
 
-private struct TodayCommandPanel: View {
+struct TodayCommandPanel: View {
     @Binding var commandTitle: String
     let plan: TodayWorkflowPlan
     let recommendationChips: [TodayRecommendationChip]
@@ -545,7 +487,7 @@ private struct TodayBriefingPanel: View {
     }
 }
 
-private struct TodaySuggestionPanel: View {
+struct TodaySuggestionPanel: View {
     let plan: TodayWorkflowPlan
     @ObservedObject var viewModel: TodayFeatureViewModel
 
@@ -583,7 +525,7 @@ private struct TodaySuggestionPanel: View {
     }
 }
 
-private struct TodayAssistantRail: View {
+struct TodayAssistantRail: View {
     @Binding var commandTitle: String
     let context: TodayAssistantRailContext
     @ObservedObject var viewModel: TodayFeatureViewModel

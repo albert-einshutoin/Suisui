@@ -1157,7 +1157,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testTodayWorkflowViewUsesExplicitReviewBeforeSnapshotPreview() throws {
-        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift")
+        let source = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardView.swift")
 
         XCTAssertTrue(source.contains("viewModel.dailyPlanningReview ?? snapshot.dailyPlanningReviewPreview"))
     }
@@ -4144,7 +4144,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("public func prepareTodayScheduleDraft"))
         XCTAssertTrue(coreSource.contains("public func todayPlan("))
         let reviewPanelStart = try XCTUnwrap(workflowSource.range(of: "private struct TodayDailyPlanningReviewPanel"))
-        let commandPanelStart = try XCTUnwrap(workflowSource.range(of: "private struct TodayCommandPanel"))
+        let commandPanelStart = try XCTUnwrap(workflowSource.range(of: "struct TodayCommandPanel"))
         let reviewPanelSource = String(workflowSource[reviewPanelStart.lowerBound..<commandPanelStart.lowerBound])
         XCTAssertFalse(reviewPanelSource.contains("applyScheduleDraftToCalendar"))
         XCTAssertFalse(reviewPanelSource.contains("startFocus("))
@@ -4289,13 +4289,14 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testTodayViewReadsPrecomputedDailyPlanningReviewWithoutRenderPathFallback() throws {
         let workflowSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift")
+        let dashboardSource = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardView.swift")
         let panelStart = try XCTUnwrap(workflowSource.range(of: "private struct TodayDailyPlanningReviewPanel"))
-        let panelEnd = try XCTUnwrap(workflowSource.range(of: "private struct TodayCommandPanel"))
+        let panelEnd = try XCTUnwrap(workflowSource.range(of: "struct TodayCommandPanel"))
         let panelSource = String(workflowSource[panelStart.lowerBound..<panelEnd.lowerBound])
 
         XCTAssertFalse(panelSource.contains("makeDailyPlanningReview"))
         XCTAssertFalse(panelSource.contains("dailyWorkloadOverview"))
-        XCTAssertTrue(workflowSource.contains("viewModel.dailyPlanningReview ?? snapshot.dailyPlanningReviewPreview"))
+        XCTAssertTrue(dashboardSource.contains("viewModel.dailyPlanningReview ?? snapshot.dailyPlanningReviewPreview"))
     }
 
     func testVoiceInboxTriageBridgeUsesLocalProjectBoardInboxCommands() throws {
@@ -4360,9 +4361,8 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testTodayWorkflowUsesSampleInspiredBriefingAndFlowRail() throws {
         let workflowSource = try readProjectWorkflowSources()
-        let todayWorkflowStart = try XCTUnwrap(workflowSource.range(of: "struct TodayWorkflowView"))
-        let todayWorkflowEnd = try XCTUnwrap(workflowSource.range(of: "struct CatchUpWorkflowView"))
-        let todayWorkflowSource = String(workflowSource[todayWorkflowStart.lowerBound..<todayWorkflowEnd.lowerBound])
+        let todayWorkflowSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift")
+        let dashboardSource = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardView.swift")
 
         XCTAssertTrue(workflowSource.contains("TodayBriefingPanel"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-briefing-panel\")"))
@@ -4381,12 +4381,47 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(workflowSource.contains(".accessibilityIdentifier(\"today-ai-suggestion-card\")"))
         XCTAssertTrue(workflowSource.contains("TodayAssistantRail"))
         XCTAssertTrue(todayWorkflowSource.contains("let snapshot = viewModel.snapshot"))
-        XCTAssertTrue(todayWorkflowSource.contains("mainSurface(snapshot: snapshot, fillsAvailableHeight:"))
-        XCTAssertTrue(todayWorkflowSource.contains("TodayAssistantRail("))
+        XCTAssertTrue(todayWorkflowSource.contains("TodayDashboardView("))
         XCTAssertTrue(todayWorkflowSource.contains("commandTitle: $commandTitle"))
-        XCTAssertTrue(todayWorkflowSource.contains("context: snapshot.assistantContext"))
+        XCTAssertTrue(todayWorkflowSource.contains("snapshot: snapshot"))
+        XCTAssertTrue(dashboardSource.contains("assistantContext: snapshot.assistantContext"))
         XCTAssertFalse(todayWorkflowSource.contains("viewModel.todayPlan()"))
         XCTAssertFalse(todayWorkflowSource.contains("viewModel.todayAssistantRailContext()"))
+    }
+
+    func testTodayDashboardUsesReferenceHierarchyAndStableAccessibilityIdentifiers() throws {
+        let dashboard = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardView.swift")
+        let header = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardHeaderView.swift")
+        let cards = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardCards.swift")
+        let taskList = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardTaskListView.swift")
+        let rail = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardRailView.swift")
+        let todayWorkflow = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift")
+        let board = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(dashboard.contains("TodayDashboardSnapshotBuilder.make("))
+        XCTAssertTrue(dashboard.contains("displayName: displayName"))
+        XCTAssertTrue(dashboard.contains("dailyCapacityMinutes: dailyCapacityMinutes"))
+        XCTAssertTrue(todayWorkflow.contains("dashboardDisplayName: String = \"\""))
+        XCTAssertTrue(todayWorkflow.contains("dashboardDailyCapacityMinutes: Int = 0"))
+        XCTAssertTrue(board.contains("dashboardDisplayName: todaySettings.profileDisplayName ?? \"\""))
+        XCTAssertTrue(dashboard.contains("GeometryReader"))
+        XCTAssertTrue(dashboard.contains("TodayDashboardLayoutMetrics.twoColumnMinimumWidth"))
+        XCTAssertTrue(dashboard.contains("proxy.size.width - TodayDashboardLayoutMetrics.horizontalInsets"))
+        XCTAssertTrue(dashboard.contains("TodayDashboardHeaderView"))
+        XCTAssertTrue(dashboard.contains("TodayDashboardRecommendationCards"))
+        XCTAssertTrue(dashboard.contains("TodayDashboardTaskListView"))
+        XCTAssertTrue(dashboard.contains("TodayDashboardRailView"))
+        XCTAssertTrue(header.contains("today-dashboard-header"))
+        XCTAssertTrue(cards.contains("today-recommendations"))
+        XCTAssertTrue(cards.contains("prefix(3)"))
+        XCTAssertTrue(cards.contains("today-review-card"))
+        XCTAssertTrue(cards.contains("today-weekly-schedule-card"))
+        XCTAssertTrue(taskList.contains("today-task-list"))
+        XCTAssertTrue(rail.contains("today-workload-card"))
+        XCTAssertTrue(rail.contains("today-focus-card"))
+        XCTAssertTrue(rail.contains("today-assistant-card"))
+        XCTAssertTrue(rail.contains("Suisui Assistant"))
+        XCTAssertTrue(header.contains("Suisui"))
     }
 
     func testTodayWorkflowProvidesCommonQuickActionChipsAndLocalRailActions() throws {
@@ -4412,7 +4447,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-rail-schedule-block\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"today-rail-schedule-draft-status\")"))
         XCTAssertTrue(workflowSource.contains("!trimmedCommandTitle.hasSuffix(\":\")"))
-        XCTAssertTrue(workflowSource.contains("onSelectTask: selectTodayTask"))
+        XCTAssertTrue(workflowSource.contains("selectTask: selectTodayTask"))
         XCTAssertTrue(workflowSource.contains("openInspector(task.id)"))
         XCTAssertTrue(workflowSource.contains("commandTitle = String(format: String(localized: \"Subtask for %@: \"), task.title)"))
         XCTAssertTrue(boardSource.contains("isInspectorPresented = false"))
@@ -4424,14 +4459,13 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testTodayWorkflowUsesStableLayoutsForSizeFittingSensitiveScopes() throws {
         let todaySource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift")
+        let dashboardSource = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardView.swift")
         let sharedSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowSharedViews.swift")
 
-        let todayWorkflowStart = try XCTUnwrap(todaySource.range(of: "struct TodayWorkflowView"))
-        let todayWorkflowEnd = try XCTUnwrap(todaySource.range(of: "private struct TodayDailyPlanningReviewPanel"))
-        let todayWorkflowScope = String(todaySource[todayWorkflowStart.lowerBound..<todayWorkflowEnd.lowerBound])
+        let todayWorkflowScope = dashboardSource
 
         let todayBriefingStart = try XCTUnwrap(todaySource.range(of: "private struct TodayBriefingPanel"))
-        let todayBriefingEnd = try XCTUnwrap(todaySource.range(of: "private struct TodaySuggestionPanel"))
+        let todayBriefingEnd = try XCTUnwrap(todaySource.range(of: "struct TodaySuggestionPanel"))
         let todayBriefingScope = String(todaySource[todayBriefingStart.lowerBound..<todayBriefingEnd.lowerBound])
 
         let primaryActionStart = try XCTUnwrap(todaySource.range(of: "private var primaryAction: some View"))
@@ -4459,12 +4493,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(todayWorkflowScope.contains("LazyVGrid"))
         XCTAssertFalse(todayWorkflowScope.contains("GridItem(.adaptive"))
         XCTAssertTrue(todayWorkflowScope.contains("GeometryReader"))
-        XCTAssertTrue(todayWorkflowScope.contains("proxy.size.width >= TodayWorkflowLayoutMetrics.twoColumnMinimumWidth"))
+        XCTAssertTrue(todayWorkflowScope.contains("proxy.size.width - TodayDashboardLayoutMetrics.horizontalInsets >= TodayDashboardLayoutMetrics.twoColumnMinimumWidth"))
         XCTAssertTrue(todayWorkflowScope.contains("HStack(alignment: .top"))
         XCTAssertTrue(todayWorkflowScope.contains("ScrollView(.vertical)"))
-        XCTAssertFalse(todayWorkflowScope.contains("fillsAvailableHeight: true"))
-        XCTAssertTrue(todayWorkflowScope.contains("fillsAvailableHeight: false"))
-        XCTAssertTrue(todayWorkflowScope.contains("ScrollView(.vertical) {\n                            mainSurface(snapshot: snapshot, fillsAvailableHeight: false)"))
         XCTAssertTrue(sharedSource.contains("else if fillsAvailableHeight {\n                ScrollView {\n                    taskRows"))
         XCTAssertTrue(sharedSource.contains("} else {\n                taskRows"))
         XCTAssertTrue(sharedSource.contains("private var taskRows: some View"))
@@ -4512,24 +4543,25 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testTodayWorkflowKeepsTheRailReachableWithFiniteNarrowHeight() throws {
-        let todaySource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift")
+        let todaySource = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardView.swift")
+        let railSource = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardRailView.swift")
         let sharedSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowSharedViews.swift")
-        let workflowStart = try XCTUnwrap(todaySource.range(of: "struct TodayWorkflowView"))
-        let workflowEnd = try XCTUnwrap(todaySource.range(of: "private struct TodayDailyPlanningReviewPanel"))
-        let workflowScope = String(todaySource[workflowStart.lowerBound..<workflowEnd.lowerBound])
+        let workflowScope = todaySource
 
-        XCTAssertTrue(todaySource.contains("private enum TodayWorkflowLayoutMetrics"))
-        XCTAssertTrue(todaySource.contains("twoColumnMinimumWidth: CGFloat = 900"))
+        XCTAssertTrue(todaySource.contains("enum TodayDashboardLayoutMetrics"))
+        XCTAssertTrue(todaySource.contains("static let twoColumnMinimumWidth = primaryMinimumWidth + railMinimumWidth + columnSpacing"))
         XCTAssertTrue(workflowScope.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
         XCTAssertTrue(workflowScope.contains(".padding(.horizontal, 18)"))
         XCTAssertTrue(workflowScope.contains(".padding(.bottom, 18)"))
-        XCTAssertTrue(workflowScope.contains("TodayAssistantRail("))
+        XCTAssertTrue(workflowScope.contains("TodayDashboardRailView("))
+        XCTAssertTrue(railSource.contains("TodayAssistantRail("))
         XCTAssertTrue(sharedSource.contains("let fillsAvailableHeight: Bool"))
         XCTAssertTrue(sharedSource.contains("maxHeight: fillsAvailableHeight ? .infinity : nil"))
 
-        let mainSurfaceOffset = try XCTUnwrap(workflowScope.range(of: "mainSurface(snapshot:"))
-        let assistantRailOffset = try XCTUnwrap(workflowScope.range(of: "TodayAssistantRail("))
-        XCTAssertLessThan(mainSurfaceOffset.lowerBound, assistantRailOffset.lowerBound)
+        XCTAssertLessThan(
+            try XCTUnwrap(workflowScope.range(of: "mainContent")).lowerBound,
+            try XCTUnwrap(workflowScope.range(of: "rail\n                                .frame")).lowerBound
+        )
     }
 
     func testScheduleWorkflowIsReachableAndApprovalFirst() throws {
@@ -7833,6 +7865,11 @@ final class AppExperienceSourceTests: XCTestCase {
             "Sources/SuisuiApp/Views/ProjectWorkflowViews.swift",
             "Sources/SuisuiApp/Views/ProjectWorkflowSharedViews.swift",
             "Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift",
+            "Sources/SuisuiApp/Views/TodayDashboardView.swift",
+            "Sources/SuisuiApp/Views/TodayDashboardHeaderView.swift",
+            "Sources/SuisuiApp/Views/TodayDashboardCards.swift",
+            "Sources/SuisuiApp/Views/TodayDashboardTaskListView.swift",
+            "Sources/SuisuiApp/Views/TodayDashboardRailView.swift",
             "Sources/SuisuiApp/Views/ProjectWorkflowCatchUpView.swift",
             "Sources/SuisuiApp/Views/ProjectWorkflowScheduleView.swift",
             "Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift",

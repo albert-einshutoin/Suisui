@@ -1,0 +1,67 @@
+import SuisuiCore
+import SwiftUI
+
+struct TodayDashboardRailView: View {
+    let dashboard: TodayDashboardSnapshot
+    let assistantContext: TodayAssistantRailContext
+    @ObservedObject var viewModel: TodayFeatureViewModel
+    @Binding var commandTitle: String
+    let openInspector: (Int64) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.lg) {
+            workloadCard
+            focusCard
+            assistantCard
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var workloadCard: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
+            Label("Workload", systemImage: "gauge.with.dots.needle.50percent")
+                .font(SuisuiTypography.sectionTitle)
+            Text(String(format: String(localized: "%d tasks planned"), dashboard.workload.plannedTaskCount))
+                .font(.headline.monospacedDigit())
+            Text(String(format: String(localized: "%d minutes available"), dashboard.workload.dailyCapacityMinutes))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .soloCard()
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("today-workload-card")
+    }
+
+    private var focusCard: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
+            Label("Focus", systemImage: "target")
+                .font(SuisuiTypography.sectionTitle)
+            Text(dashboard.recommendation.title)
+                .font(.subheadline.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+            Text(dashboard.recommendation.reason)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .soloCard()
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("today-focus-card")
+    }
+
+    private var assistantCard: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
+            Label("Suisui Assistant", systemImage: "sparkles")
+                .font(SuisuiTypography.sectionTitle)
+            TodayAssistantRail(
+                commandTitle: $commandTitle,
+                context: assistantContext,
+                viewModel: viewModel,
+                openInspector: openInspector
+            )
+        }
+        .soloCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("today-assistant-card")
+    }
+}
