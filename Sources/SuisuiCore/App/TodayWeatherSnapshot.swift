@@ -15,12 +15,23 @@ public struct TodayWeatherSnapshot: Equatable, Sendable {
     public let title: String
     public let detail: String
     public let accessibilityLabel: String
+    public let isStale: Bool
+    public let attribution: String?
 
-    public init(state: TodayWeatherState, title: String, detail: String, accessibilityLabel: String) {
+    public init(
+        state: TodayWeatherState,
+        title: String,
+        detail: String,
+        accessibilityLabel: String,
+        isStale: Bool = false,
+        attribution: String? = nil
+    ) {
         self.state = state
         self.title = title
         self.detail = detail
         self.accessibilityLabel = accessibilityLabel
+        self.isStale = isStale
+        self.attribution = attribution
     }
 }
 
@@ -42,18 +53,31 @@ public enum TodayWeatherSnapshotBuilder {
             // Do not surface provider failures: they can contain endpoint or account details.
             return unavailable(state, title: "Weather unavailable", detail: "Weather could not be loaded.", locale: locale)
         case let .available(temperatureCelsius, location, updatedAt):
-            let place = location.trimmingCharacters(in: .whitespacesAndNewlines)
+            let rawPlace = location.trimmingCharacters(in: .whitespacesAndNewlines)
+            let place = rawPlace == "Current location"
+                ? localized("Current location", locale: locale)
+                : rawPlace
             let temperature = String(format: "%d°C", temperatureCelsius)
             let separator = locale.identifier.hasPrefix("ja") ? "・" : " · "
             let title = place.isEmpty ? temperature : "\(place)\(separator)\(temperature)"
+            let isStale = now.timeIntervalSince(updatedAt) >= 30 * 60
             let updateTime = calendar.isDate(updatedAt, inSameDayAs: now)
                 ? SuisuiTimestampDisplay.time(updatedAt, calendar: calendar, locale: locale)
                 : SuisuiTimestampDisplay.formatted(updatedAt, template: "MMMd HH:mm", calendar: calendar, locale: locale)
-            let detail = localized("Updated %@", updateTime, locale: locale)
+            let detail = isStale
+                ? localized("Updated %@ · Stale", updateTime, locale: locale)
+                : localized("Updated %@", updateTime, locale: locale)
             let accessibilityLabel = place.isEmpty
                 ? localized("Weather: %@. %@.", temperature, detail, locale: locale)
                 : localized("Weather: %@, %@. %@.", place, temperature, detail, locale: locale)
-            return TodayWeatherSnapshot(state: state, title: title, detail: detail, accessibilityLabel: accessibilityLabel)
+            return TodayWeatherSnapshot(
+                state: state,
+                title: title,
+                detail: detail,
+                accessibilityLabel: accessibilityLabel,
+                isStale: isStale,
+                attribution: localized("Weather data by Apple Weather", locale: locale)
+            )
         }
     }
 

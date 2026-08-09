@@ -57,6 +57,25 @@ private struct TodayDashboardWeatherView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if let attribution = weather.attribution,
+               let legalURL = URL(string: "https://weatherkit.apple.com/legal-attribution.html") {
+                Link(destination: legalURL) {
+                    Text(attribution)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .underline()
+                }
+                .accessibilityIdentifier("today-weather-attribution")
+                .accessibilityHint(String(localized: "Opens Apple Weather attribution and legal information."))
+            }
+            if weather.isStale || weather.state == .failed {
+                Button(String(localized: "Retry weather")) {
+                    NotificationCenter.default.post(name: .suisuiWeatherLocationDidChange, object: nil)
+                }
+                .buttonStyle(.link)
+                .accessibilityIdentifier("today-weather-retry")
+                .accessibilityHint(String(localized: "Requests the latest weather for the selected location."))
+            }
         }
         .multilineTextAlignment(.trailing)
         .accessibilityElement(children: .ignore)

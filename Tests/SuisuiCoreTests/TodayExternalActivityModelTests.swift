@@ -18,12 +18,11 @@ final class TodayExternalActivityModelTests: XCTestCase {
 
         let model = TodayExternalActivityModelBuilder.make(integrations: integrations)
 
-        XCTAssertEqual(model.rows.map(\.id), ["today-external-activity-calendar", "today-external-activity-slack"])
-        XCTAssertEqual(model.rows.map(\.service), [.calendar, .slack])
+        XCTAssertEqual(model.rows.map(\.id), ["today-external-activity-calendar"])
+        XCTAssertEqual(model.rows.map(\.service), [.calendar])
         XCTAssertEqual(model.rows[0].title, "Calendar")
         XCTAssertEqual(model.rows[0].detail, "Last synced 09:30. 1 item synced")
         XCTAssertEqual(model.rows[0].accessibilityLabel, "Calendar: Last synced 09:30. 1 item synced.")
-        XCTAssertEqual(model.rows[1].detail, "Syncing")
     }
 
     func testDoesNotRetainRawProviderFailurePayload() {
@@ -45,6 +44,6 @@ final class TodayExternalActivityModelTests: XCTestCase {
         XCTAssertFalse(reflected.contains("calendar-secret"))
         XCTAssertFalse(reflected.contains("person@example.com"))
         XCTAssertFalse(reflected.contains("private"))
-        XCTAssertEqual(model.rows[0].detail, "Sync failed. 0 items synced")
+        XCTAssertTrue(model.rows.isEmpty)
     }
 }

@@ -33,7 +33,10 @@
 "Loading weather" = "天気を読み込み中";
 "Weather is unavailable right now." = "現在、天気を利用できません。";
 "Updated %@" = "%@更新";
+"Updated %@ · Stale" = "%@更新・古いデータ";
+"Weather data by Apple Weather" = "Apple Weatherの天気データ";
 "Weather could not be loaded." = "天気を読み込めませんでした。";
+"Current location" = "現在地";
 "Weather needs permission" = "天気に許可が必要です";
 "Weather unavailable" = "天気を利用できません";
 "Weather: %@. %@" = "天気: %@。%@";

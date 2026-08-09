@@ -33,7 +33,10 @@
 "Loading weather" = "Loading weather";
 "Weather is unavailable right now." = "Weather is unavailable right now.";
 "Updated %@" = "Updated %@";
+"Updated %@ · Stale" = "Updated %@ · Stale";
+"Weather data by Apple Weather" = "Weather data by Apple Weather";
 "Weather could not be loaded." = "Weather could not be loaded.";
+"Current location" = "Current location";
 "Weather needs permission" = "Weather needs permission";
 "Weather unavailable" = "Weather unavailable";
 "Weather: %@. %@" = "Weather: %@. %@";
