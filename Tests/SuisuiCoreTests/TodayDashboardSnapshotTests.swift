@@ -16,7 +16,8 @@ final class TodayDashboardSnapshotTests: XCTestCase {
             displayName: "Shuto",
             dailyCapacityMinutes: 360,
             now: now,
-            calendar: calendar
+            calendar: calendar,
+            locale: Locale(identifier: "en_US")
         )
 
         XCTAssertEqual(snapshot.header.title, "Sunday, Aug 9")
@@ -43,6 +44,61 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         XCTAssertEqual(make(tasks: [task(id: 5, title: "First", priority: .low, dueAt: nil), high], now: now, calendar: calendar).recommendation.taskID, high.id)
         let fallback = task(id: 4, title: "Fallback", priority: .low, dueAt: nil)
         XCTAssertEqual(make(tasks: [fallback], now: now, calendar: calendar).recommendation.taskID, fallback.id)
+    }
+
+    func testPlanRecommendationWinsWhenTasksContainBlockedOverdueAndHighPriorityWork() throws {
+        let calendar = fixedCalendar()
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))
+        let high = task(id: 1, title: "High", priority: .high, dueAt: nil)
+        let overdue = task(id: 2, title: "Overdue", priority: .medium, dueAt: "2026-08-08")
+        let blocker = task(id: 3, title: "Blocker", status: .blocked, priority: .low, dueAt: nil)
+
+        let snapshot = TodayDashboardSnapshotBuilder.make(
+            today: workflowSnapshot(tasks: [blocker, overdue, high], recommendedTask: high, recommendationReason: "Protect the release work."),
+            schedule: .empty,
+            projectTitlesByTaskID: [:],
+            displayName: "",
+            dailyCapacityMinutes: 480,
+            now: now,
+            calendar: calendar,
+            locale: Locale(identifier: "en_US")
+        )
+
+        XCTAssertEqual(snapshot.recommendation.taskID, high.id)
+        XCTAssertEqual(snapshot.recommendation.reason, "Protect the release work.")
+    }
+
+    func testLocaleCalendarAndGreetingBoundariesAreExplicit() throws {
+        let utc = fixedCalendar()
+        let tokyo = calendar(timeZone: try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo")))
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T15:30:00Z"))
+        let due = task(id: 1, title: "Due", priority: .medium, dueAt: "2026-08-08")
+
+        let english = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: [due]), schedule: .empty, projectTitlesByTaskID: [:], displayName: "Suisui", dailyCapacityMinutes: 480, now: now, calendar: utc, locale: Locale(identifier: "en_US"))
+        let japanese = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: [due]), schedule: .empty, projectTitlesByTaskID: [:], displayName: "Suisui", dailyCapacityMinutes: 480, now: now, calendar: tokyo, locale: Locale(identifier: "ja_JP"))
+        let noon = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: []), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T12:00:00Z")), calendar: utc, locale: Locale(identifier: "en_US"))
+        let evening = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: []), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T18:00:00Z")), calendar: utc, locale: Locale(identifier: "en_US"))
+
+        XCTAssertEqual(english.header.title, "Sunday, Aug 9")
+        XCTAssertEqual(japanese.header.title, "月曜日, 8月 10")
+        XCTAssertTrue(japanese.tasks[0].timeLabel?.contains("8月") == true)
+        XCTAssertEqual(noon.header.greeting, "Good afternoon")
+        XCTAssertEqual(evening.header.greeting, "Good evening")
+        XCTAssertTrue(japanese.header.greeting.hasSuffix("Suisui"))
+    }
+
+    func testWeeklyScheduleCountsUniqueTasksAcrossBlocksAndUnscheduledWork() throws {
+        let calendar = fixedCalendar()
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))
+        let repeated = task(id: 1, title: "Repeated", priority: .medium, dueAt: nil)
+        let second = task(id: 2, title: "Second", priority: .medium, dueAt: nil)
+        let schedule = schedule(blocks: [repeated, repeated, second], unscheduled: [repeated])
+
+        let snapshot = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: []), schedule: schedule, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: now, calendar: calendar)
+
+        XCTAssertEqual(snapshot.weeklySchedule.scheduledTaskCount, 2)
+        XCTAssertEqual(snapshot.weeklySchedule.unscheduledTaskCount, 1)
+        XCTAssertEqual(snapshot.weeklySchedule.dayCount, 2)
     }
 
     func testZeroDataHasSafeDefaults() throws {
@@ -80,14 +136,18 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         )
     }
 
-    private func workflowSnapshot(tasks: [ProjectBoardTask]) -> TodayWorkflowSnapshot {
+    private func workflowSnapshot(
+        tasks: [ProjectBoardTask],
+        recommendedTask: ProjectBoardTask? = nil,
+        recommendationReason: String = ""
+    ) -> TodayWorkflowSnapshot {
         TodayWorkflowSnapshot(
             plan: TodayWorkflowPlan(
                 tasks: tasks,
                 overdueCount: 0,
                 dueTodayCount: 0,
-                recommendedTask: nil,
-                recommendationReason: "",
+                recommendedTask: recommendedTask,
+                recommendationReason: recommendationReason,
                 timeBlocks: []
             ),
             assistantContext: TodayAssistantRailContext(
@@ -110,8 +170,25 @@ final class TodayDashboardSnapshotTests: XCTestCase {
     }
 
     private func fixedCalendar() -> Calendar {
+        calendar(timeZone: try! XCTUnwrap(TimeZone(secondsFromGMT: 0)))
+    }
+
+    private func calendar(timeZone: TimeZone) -> Calendar {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = try! XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        calendar.timeZone = timeZone
         return calendar
+    }
+
+    private func schedule(blocks: [ProjectBoardTask], unscheduled: [ProjectBoardTask]) -> ProjectBoardScheduleReadModel {
+        let date = Date(timeIntervalSince1970: 0)
+        let workload = DailyWorkloadDay(date: date, dateKey: "1970-01-01", totalTaskCount: 0, openTaskCount: 0, inProgressTaskCount: 0, blockedTaskCount: 0, doneTaskCount: 0, overdueTaskCount: 0, progress: 0, projectContributions: [])
+        let day = WeeklyScheduleDay(date: date, dateKey: "1970-01-01", workload: workload, blocks: blocks.enumerated().map { index, task in
+            WeeklyScheduleBlock(id: "\(task.id)-\(index)", dayKey: "1970-01-01", task: task, projectTitle: "Suisui", source: .scheduleDraft, startAt: nil, endAt: nil, timeLabel: "09:00")
+        }, reminderProposalCount: 0, loadLevel: .open)
+        let nextDate = date.addingTimeInterval(86_400)
+        let nextDay = WeeklyScheduleDay(date: nextDate, dateKey: "1970-01-02", workload: workload, blocks: blocks.prefix(1).enumerated().map { index, task in
+            WeeklyScheduleBlock(id: "next-\(task.id)-\(index)", dayKey: "1970-01-02", task: task, projectTitle: "Suisui", source: .scheduleDraft, startAt: nil, endAt: nil, timeLabel: "09:00")
+        }, reminderProposalCount: 0, loadLevel: .open)
+        return ProjectBoardScheduleReadModel(workloadOverview: DailyWorkloadOverview(days: [workload], unscheduledTasks: unscheduled, inboxUntriagedCount: 0), weeklyCockpit: WeeklyScheduleCockpit(days: [day, nextDay], unscheduledTasks: unscheduled, agendaDay: day, focusForecast: WeeklyScheduleFocusForecast(state: .open, overloadedDayKeys: [], heavyDayKeys: [], reminderProposalCount: 0)), unscheduledTasks: unscheduled)
     }
 }

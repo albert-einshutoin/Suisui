@@ -103,26 +103,27 @@ public enum TodayDashboardSnapshotBuilder {
         displayName: String,
         dailyCapacityMinutes: Int,
         now: Date,
-        calendar: Calendar
+        calendar: Calendar,
+        locale: Locale = .autoupdatingCurrent
     ) -> TodayDashboardSnapshot {
         let tasks = today.plan.tasks.map { task in
             TodayTaskRowSnapshot(
                 taskID: task.id,
                 title: task.title,
                 projectTitle: projectTitlesByTaskID[task.id] ?? "",
-                priorityLabel: priorityLabel(for: task.priority),
-                timeLabel: task.todayDueDisplayLabel(on: now, calendar: calendar)
+                priorityLabel: task.priority.label,
+                timeLabel: task.todayDueDisplayLabel(on: now, calendar: calendar, locale: locale)
             )
         }
         let review = today.dailyPlanningReviewPreview
-        let scheduledTaskCount = schedule.weeklyCockpit.days.reduce(0) { $0 + $1.blocks.count }
+        let scheduledTaskCount = Set(schedule.weeklyCockpit.days.flatMap(\.blocks).map(\.task.id)).count
 
         return TodayDashboardSnapshot(
             header: TodayDashboardHeaderSnapshot(
-                title: dateTitle(for: now, calendar: calendar),
+                title: dateTitle(for: now, calendar: calendar, locale: locale),
                 greeting: greeting(displayName: displayName, now: now, calendar: calendar)
             ),
-            recommendation: recommendation(for: today.plan.tasks, now: now, calendar: calendar),
+            recommendation: recommendation(for: today.plan, now: now, calendar: calendar),
             tasks: tasks,
             workload: TodayWorkloadSnapshot(
                 plannedTaskCount: tasks.count,
@@ -134,56 +135,53 @@ public enum TodayDashboardSnapshotBuilder {
                 dayCount: schedule.weeklyCockpit.days.count
             ),
             review: TodayReviewSnapshot(
-                message: review?.headline ?? "No review items yet.",
+                message: review?.headline ?? String(localized: "No review items yet."),
                 isError: false
             )
         )
     }
 
-    private static func recommendation(for tasks: [ProjectBoardTask], now: Date, calendar: Calendar) -> TodayRecommendation {
-        // A stable priority order keeps the same inputs from reshuffling a user's next action.
-        let task = tasks.first(where: { $0.status == .blocked })
-            ?? tasks.first(where: { $0.isOverdueForToday(on: now, calendar: calendar) })
-            ?? tasks.first(where: { $0.priority == .high })
-            ?? tasks.first
+    private static func recommendation(for plan: TodayWorkflowPlan, now: Date, calendar: Calendar) -> TodayRecommendation {
+        // Keep fallback ordering stable only when the existing plan has no recommendation.
+        let task = plan.recommendedTask
+            ?? plan.tasks.first(where: { $0.status == .blocked })
+            ?? plan.tasks.first(where: { $0.isOverdueForToday(on: now, calendar: calendar) })
+            ?? plan.tasks.first(where: { $0.priority == .high })
+            ?? plan.tasks.first
 
         guard let task else {
-            return TodayRecommendation(taskID: nil, title: "No recommendation", reason: "Add a task to plan your day.")
+            return TodayRecommendation(taskID: nil, title: String(localized: "No recommendation"), reason: String(localized: "Add a task to plan your day."))
+        }
+        if plan.recommendedTask != nil {
+            return TodayRecommendation(taskID: task.id, title: task.title, reason: plan.recommendationReason)
         }
         let reason: String
         if task.status == .blocked {
-            reason = "Blocked work should be cleared first."
+            reason = String(localized: "Blocked work should be cleared first.")
         } else if task.isOverdueForToday(on: now, calendar: calendar) {
-            reason = "Overdue work needs attention."
+            reason = String(localized: "Overdue work needs attention.")
         } else if task.priority == .high {
-            reason = "High-priority work should be protected."
+            reason = String(localized: "High-priority work should be protected.")
         } else {
-            reason = "Start with the first planned task."
+            reason = String(localized: "Start with the first planned task.")
         }
         return TodayRecommendation(taskID: task.id, title: task.title, reason: reason)
     }
 
     private static func greeting(displayName: String, now: Date, calendar: Calendar) -> String {
         let hour = calendar.component(.hour, from: now)
-        let salutation = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"
+        let salutation = hour < 12 ? String(localized: "Good morning") : hour < 18 ? String(localized: "Good afternoon") : String(localized: "Good evening")
         let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? salutation : "\(salutation), \(name)"
+        return name.isEmpty ? salutation : String(format: String(localized: "%@, %@"), salutation, name)
     }
 
-    private static func dateTitle(for date: Date, calendar: Calendar) -> String {
+    private static func dateTitle(for date: Date, calendar: Calendar, locale: Locale) -> String {
         let formatter = DateFormatter()
         formatter.calendar = calendar
-        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.locale = locale
         formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "EEEE, MMM d"
         return formatter.string(from: date)
     }
 
-    private static func priorityLabel(for priority: ProjectTaskPriority) -> String {
-        switch priority {
-        case .low: "Low"
-        case .medium: "Medium"
-        case .high: "High"
-        }
-    }
 }
