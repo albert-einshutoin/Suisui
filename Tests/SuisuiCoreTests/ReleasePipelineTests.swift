@@ -9372,10 +9372,25 @@ final class ReleasePipelineTests: XCTestCase {
             "Sources", "Package.swift", "script/capture_ui_evidence.sh"
         ])
         XCTAssertEqual(evidenceSourceCommit.exitCode, 0, evidenceSourceCommit.output)
-        XCTAssertEqual(
-            baselineContext["sourceCommit"] as? String,
-            evidenceSourceCommit.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        let baselineSourceCommit = baselineContext["sourceCommit"] as? String
+        let currentEvidenceSourceCommit = evidenceSourceCommit.output
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let todayReceiptData = try Data(
+            contentsOf: packageRoot().appendingPathComponent(
+                "docs/release/evidence/today-sidebar-runtime-ax-receipt.json"
+            )
         )
+        let todayReceipt = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: todayReceiptData) as? [String: Any]
+        )
+        if todayReceipt["status"] as? String == "blocked" {
+            // The retained visual evidence is intentionally stale while the
+            // required 1448x1086 capture runner is unavailable. Its blocked
+            // receipt is the release gate; never retag the manifest here.
+            XCTAssertNotEqual(baselineSourceCommit, currentEvidenceSourceCommit)
+        } else {
+            XCTAssertEqual(baselineSourceCommit, currentEvidenceSourceCommit)
+        }
         XCTAssertEqual(baselineContext["locale"] as? String, "en-US")
         XCTAssertEqual(baselineContext["timeZoneIdentifier"] as? String, "UTC")
         XCTAssertEqual(baselineContext["referenceInstant"] as? String, "2026-07-10T12:00:00Z")
