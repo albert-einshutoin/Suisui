@@ -10,6 +10,15 @@
 "High-priority work should be protected." = "高優先度の作業を守りましょう。";
 "Low" = "低";
 "Medium" = "中";
+"Morning" = "朝";
+"Midday" = "昼";
+"Evening" = "夜";
+"Overdue %@" = "期限超過 %@";
+"Today" = "今日";
+"Today %@" = "今日 %@";
+"Due %@" = "期限 %@";
+"%@ focus review: %d tasks for %d minutes" = "%1$@の集中レビュー: %3$d分で%2$d件";
+"%@ daily planning review" = "%@のデイリープランニングレビュー";
 "No due work is scheduled for today." = "今日予定されている期限付きタスクはありません。";
 "No open tasks due today." = "今日が期限の未完了タスクはありません。";
 "No recommendation" = "おすすめはありません";

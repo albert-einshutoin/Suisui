@@ -10,6 +10,15 @@
 "High-priority work should be protected." = "High-priority work should be protected.";
 "Low" = "Low";
 "Medium" = "Medium";
+"Morning" = "Morning";
+"Midday" = "Midday";
+"Evening" = "Evening";
+"Overdue %@" = "Overdue %@";
+"Today" = "Today";
+"Today %@" = "Today %@";
+"Due %@" = "Due %@";
+"%@ focus review: %d tasks for %d minutes" = "%@ focus review: %d tasks for %d minutes";
+"%@ daily planning review" = "%@ daily planning review";
 "No due work is scheduled for today." = "No due work is scheduled for today.";
 "No open tasks due today." = "No open tasks due today.";
 "No recommendation" = "No recommendation";

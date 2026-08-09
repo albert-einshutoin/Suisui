@@ -104,10 +104,11 @@ final class TodayDashboardSnapshotTests: XCTestCase {
     func testJapaneseLocalizesGreetingFallbackReviewPriorityAndKnownPlanReason() throws {
         let calendar = fixedCalendar()
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))
-        let task = task(id: 1, title: "Suisui", priority: .high, dueAt: nil)
+        let highTask = task(id: 1, title: "Suisui", priority: .high, dueAt: nil)
+        let overdue = task(id: 2, title: "期限", priority: .low, dueAt: "2026-08-08")
         let empty = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: []), schedule: .empty, projectTitlesByTaskID: [:], displayName: "Suisui", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "ja_JP"))
-        let fallback = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: [task]), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "ja_JP"))
-        let planned = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: [task], recommendedTask: task, recommendationReason: "High-priority work is the best first task."), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "ja_JP"))
+        let fallback = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: [highTask]), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "ja_JP"))
+        let planned = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: [highTask], recommendedTask: highTask, recommendationReason: "High-priority work is the best first task."), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "ja_JP"))
 
         XCTAssertEqual(empty.header.greeting, "Suisui、おはようございます")
         XCTAssertEqual(empty.recommendation.title, "おすすめはありません")
@@ -116,6 +117,19 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         XCTAssertEqual(fallback.tasks[0].priorityLabel, "高")
         XCTAssertEqual(fallback.recommendation.reason, "高優先度の作業を守りましょう。")
         XCTAssertEqual(planned.recommendation.reason, "高優先度の作業から始めるのが最適です。")
+        XCTAssertEqual(overdue.todayDueDisplayLabel(on: now, calendar: calendar, locale: Locale(identifier: "ja_JP")), "期限超過 8月8日")
+    }
+
+    func testReviewTitleUsesSemanticFieldsInEnglishAndJapanese() throws {
+        let calendar = fixedCalendar()
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))
+        let morning = review(phase: .morning, minutes: 90, focusCount: 3)
+        let evening = review(phase: .evening, minutes: nil, focusCount: 1)
+        let en = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: [], review: morning), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "en_US"))
+        let ja = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: [], review: evening), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "ja_JP"))
+
+        XCTAssertEqual(en.review.message, "Morning focus review: 3 tasks for 90 minutes")
+        XCTAssertEqual(ja.review.message, "夜のデイリープランニングレビュー")
     }
 
     func testZeroDataHasSafeDefaults() throws {
@@ -158,7 +172,8 @@ final class TodayDashboardSnapshotTests: XCTestCase {
     private func workflowSnapshot(
         tasks: [ProjectBoardTask],
         recommendedTask: ProjectBoardTask? = nil,
-        recommendationReason: String = ""
+        recommendationReason: String = "",
+        review: DailyPlanningReview? = nil
     ) -> TodayWorkflowSnapshot {
         TodayWorkflowSnapshot(
             plan: TodayWorkflowPlan(
@@ -180,7 +195,8 @@ final class TodayDashboardSnapshotTests: XCTestCase {
                 subtaskSummary: "",
                 reminderSummary: ""
             ),
-            recommendationChips: []
+            recommendationChips: [],
+            dailyPlanningReviewPreview: review
         )
     }
 
@@ -209,5 +225,9 @@ final class TodayDashboardSnapshotTests: XCTestCase {
             WeeklyScheduleBlock(id: "next-\(task.id)-\(index)", dayKey: "1970-01-02", task: task, projectTitle: "Suisui", source: .scheduleDraft, startAt: nil, endAt: nil, timeLabel: "09:00")
         }, reminderProposalCount: 0, loadLevel: .open)
         return ProjectBoardScheduleReadModel(workloadOverview: DailyWorkloadOverview(days: [workload], unscheduledTasks: unscheduled, inboxUntriagedCount: 0), weeklyCockpit: WeeklyScheduleCockpit(days: [day, nextDay], unscheduledTasks: unscheduled, agendaDay: day, focusForecast: WeeklyScheduleFocusForecast(state: .open, overloadedDayKeys: [], heavyDayKeys: [], reminderProposalCount: 0)), unscheduledTasks: unscheduled)
+    }
+
+    private func review(phase: DailyPlanningReviewPhase, minutes: Int?, focusCount: Int) -> DailyPlanningReview {
+        DailyPlanningReview(sourceTranscript: "", phase: phase, requestedMinutes: minutes, headline: "English headline", spokenSummary: "", overdueCount: 0, dueTodayCount: 0, inboxUntriagedCount: 0, recommendedTaskID: nil, focusItems: (0..<focusCount).map { DailyPlanningFocusItem(taskID: Int64($0), title: "Task", reason: "") }, scheduleBlocks: [])
     }
 }

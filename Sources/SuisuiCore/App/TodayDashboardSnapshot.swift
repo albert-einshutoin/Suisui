@@ -135,7 +135,7 @@ public enum TodayDashboardSnapshotBuilder {
                 dayCount: schedule.weeklyCockpit.days.count
             ),
             review: TodayReviewSnapshot(
-                message: review?.headline ?? localized("No review items yet.", locale: locale),
+                message: review.map { reviewTitle(for: $0, locale: locale) } ?? localized("No review items yet.", locale: locale),
                 isError: false
             )
         )
@@ -203,6 +203,18 @@ public enum TodayDashboardSnapshotBuilder {
         default:
             reason
         }
+    }
+
+    private static func reviewTitle(for review: DailyPlanningReview, locale: Locale) -> String {
+        let phase = switch review.phase {
+        case .morning: localized("Morning", locale: locale)
+        case .midday: localized("Midday", locale: locale)
+        case .evening: localized("Evening", locale: locale)
+        }
+        if let minutes = review.requestedMinutes {
+            return String(format: localized("%@ focus review: %d tasks for %d minutes", locale: locale), phase, review.focusItems.count, minutes)
+        }
+        return String(format: localized("%@ daily planning review", locale: locale), phase)
     }
 
 }
