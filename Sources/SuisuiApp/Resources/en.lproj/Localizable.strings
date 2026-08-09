@@ -1982,6 +1982,12 @@
 "This Week: %d scheduled" = "This Week: %d scheduled";
 "Suisui Today: %@. %@. %d tasks today, %d scheduled" = "Suisui Today: %@. %@. %d tasks today, %d scheduled";
 "Suisui Today: %@. %@. %@ today, %@ scheduled" = "Suisui Today: %@. %@. %@ today, %@ scheduled";
+"Suisui Today: %@. %@. %@ today, %@ scheduled. %@" = "Suisui Today: %@. %@. %@ today, %@ scheduled. %@";
+"Could not save your Today preferences." = "Could not save your Today preferences.";
+"Daily capacity" = "Daily capacity";
+"Make Today yours" = "Make Today yours";
+"What should Suisui call you?" = "What should Suisui call you?";
+"You can change these later in Settings." = "You can change these later in Settings.";
 "Selects this task without changing task status or Calendar." = "Selects this task without changing task status or Calendar.";
 "Memo: %@" = "Memo: %@";
 "Create project" = "Create project";

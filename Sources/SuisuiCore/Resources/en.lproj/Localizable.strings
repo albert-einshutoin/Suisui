@@ -28,3 +28,14 @@
 "Overdue work should be cleared before new tasks." = "Overdue work should be cleared before new tasks.";
 "Start with the first planned task." = "Start with the first planned task.";
 "Needs scheduling" = "Needs scheduling";
+"Allow location access to show weather." = "Allow location access to show weather.";
+"Checking the latest conditions." = "Checking the latest conditions.";
+"Loading weather" = "Loading weather";
+"Set a weather provider in Settings." = "Set a weather provider in Settings.";
+"Updated %@" = "Updated %@";
+"Weather could not be loaded." = "Weather could not be loaded.";
+"Weather needs permission" = "Weather needs permission";
+"Weather unavailable" = "Weather unavailable";
+"Weather: %@. %@" = "Weather: %@. %@";
+"Weather: %@. %@." = "Weather: %@. %@.";
+"Weather: %@, %@. %@." = "Weather: %@, %@. %@.";

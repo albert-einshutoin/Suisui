@@ -80,6 +80,7 @@ public struct TodayReviewSnapshot: Equatable, Sendable {
 
 public struct TodayDashboardSnapshot: Equatable, Sendable {
     public let header: TodayDashboardHeaderSnapshot
+    public let weather: TodayWeatherSnapshot
     public let recommendations: [TodayRecommendation]
     public let tasks: [TodayTaskRowSnapshot]
     public let workload: TodayWorkloadSnapshot
@@ -88,6 +89,7 @@ public struct TodayDashboardSnapshot: Equatable, Sendable {
 
     public init(
         header: TodayDashboardHeaderSnapshot,
+        weather: TodayWeatherSnapshot,
         recommendations: [TodayRecommendation],
         tasks: [TodayTaskRowSnapshot],
         workload: TodayWorkloadSnapshot,
@@ -95,6 +97,7 @@ public struct TodayDashboardSnapshot: Equatable, Sendable {
         review: TodayReviewSnapshot
     ) {
         self.header = header
+        self.weather = weather
         self.recommendations = recommendations
         self.tasks = tasks
         self.workload = workload
@@ -112,10 +115,17 @@ public struct TodayDashboardSnapshot: Equatable, Sendable {
         tasks: [TodayTaskRowSnapshot],
         workload: TodayWorkloadSnapshot,
         weeklySchedule: TodayWeeklyScheduleSnapshot,
-        review: TodayReviewSnapshot
+        review: TodayReviewSnapshot,
+        weather: TodayWeatherSnapshot = TodayWeatherSnapshot(
+            state: .notConfigured,
+            title: "Weather unavailable",
+            detail: "Set a weather provider in Settings.",
+            accessibilityLabel: "Weather: Weather unavailable. Set a weather provider in Settings."
+        )
     ) {
         self.init(
             header: header,
+            weather: weather,
             recommendations: recommendation.taskID == nil ? [] : [recommendation],
             tasks: tasks,
             workload: workload,
@@ -134,7 +144,8 @@ public enum TodayDashboardSnapshotBuilder {
         dailyCapacityMinutes: Int,
         now: Date,
         calendar: Calendar,
-        locale: Locale = .autoupdatingCurrent
+        locale: Locale = .autoupdatingCurrent,
+        weatherState: TodayWeatherState = .notConfigured
     ) -> TodayDashboardSnapshot {
         let tasks = today.plan.tasks.map { task in
             TodayTaskRowSnapshot(
@@ -165,6 +176,12 @@ public enum TodayDashboardSnapshotBuilder {
                 greeting: greeting(displayName: displayName, now: now, calendar: calendar, locale: locale),
                 taskCount: tasks.count,
                 scheduledTaskCount: scheduledTaskCount
+            ),
+            weather: TodayWeatherSnapshotBuilder.make(
+                state: weatherState,
+                now: now,
+                calendar: calendar,
+                locale: locale
             ),
             recommendations: recommendations,
             tasks: tasks,

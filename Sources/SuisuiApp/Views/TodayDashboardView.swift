@@ -76,7 +76,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
 
     private func mainContent(dashboard: TodayDashboardSnapshot, isWide: Bool) -> some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.lg) {
-            TodayDashboardHeaderView(header: dashboard.header)
+            TodayDashboardHeaderView(header: dashboard.header, weather: dashboard.weather)
             TodayDashboardRecommendationCards(
                 recommendations: dashboard.recommendations,
                 onAction: performRecommendationAction

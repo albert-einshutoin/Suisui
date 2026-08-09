@@ -13,6 +13,8 @@ struct OnboardingWelcomeView: View {
     @State private var isRefreshingReadiness: Bool = false
     @State private var isCreatingSampleProject = false
     @State private var sampleProjectErrorMessage: String?
+    @State private var todayPreferences: OnboardingTodayPreferences
+    @State private var todayPreferencesSaveError: String?
     @Environment(\.openWindow) private var openWindow
 
     init(
@@ -29,6 +31,7 @@ struct OnboardingWelcomeView: View {
         self.onTrySuisui = onTrySuisui
         self.onFinish = onFinish
         _permissionSnapshot = State(initialValue: permissionSnapshot)
+        _todayPreferences = State(initialValue: OnboardingTodayPreferences(settings: settingsViewModel.settings))
     }
 
     var body: some View {
@@ -89,7 +92,46 @@ struct OnboardingWelcomeView: View {
                     .foregroundStyle(.red)
                     .accessibilityIdentifier("onboarding-create-sample-error")
             }
+
+            if todayPreferences.shouldAsk {
+                todayPreferencesForm
+            }
         }
+    }
+
+    private var todayPreferencesForm: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
+            Text("Make Today yours")
+                .font(.headline)
+            TextField("What should Suisui call you?", text: $todayPreferences.displayName)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("onboarding-profile-display-name")
+            Picker("Daily capacity", selection: $todayPreferences.dailyWorkCapacityMinutes) {
+                ForEach(
+                    Array(stride(
+                        from: AppSettings.minimumDailyWorkCapacityMinutes,
+                        through: AppSettings.maximumDailyWorkCapacityMinutes,
+                        by: AppSettings.dailyWorkCapacityStepMinutes
+                    )),
+                    id: \.self
+                ) { minutes in
+                    Text(String(format: String(localized: "%d h"), minutes / 60)).tag(minutes)
+                }
+            }
+            .accessibilityIdentifier("onboarding-daily-work-capacity")
+            Text("You can change these later in Settings.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let todayPreferencesSaveError {
+                Text(todayPreferencesSaveError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("onboarding-today-preferences-error")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .soloCard()
+        .accessibilityIdentifier("onboarding-today-preferences")
     }
 
     private var flowArrow: some View {
@@ -331,15 +373,17 @@ struct OnboardingWelcomeView: View {
 
             if flow.step == .welcome {
                 Button("Set up AI first") {
-                    flow.advance()
-                    Task { @MainActor in
-                        await refreshReadinessAsync()
+                    saveTodayPreferencesThen {
+                        flow.advance()
+                        Task { @MainActor in
+                            await refreshReadinessAsync()
+                        }
                     }
                 }
                 .accessibilityIdentifier("onboarding-set-up-ai")
 
                 Button("Try Suisui now") {
-                    createSampleProject()
+                    saveTodayPreferencesThen(createSampleProject)
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
@@ -388,6 +432,19 @@ struct OnboardingWelcomeView: View {
         } catch {
             sampleProjectErrorMessage = localizedDisplay("Could not create the sample project.")
         }
+    }
+
+    private func saveTodayPreferencesThen(_ action: () -> Void) {
+        guard todayPreferences.shouldAsk else {
+            action()
+            return
+        }
+        guard settingsViewModel.saveOnboardingTodayPreferences(todayPreferences) else {
+            todayPreferencesSaveError = String(localized: "Could not save your Today preferences.")
+            return
+        }
+        todayPreferencesSaveError = nil
+        action()
     }
 
     private func completeOnboarding() {

@@ -272,6 +272,27 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.review.message, "No review items yet.")
     }
 
+    func testDashboardCarriesTheWeatherProjectionWithoutNetworkAccess() throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T10:30:00Z"))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        let snapshot = TodayDashboardSnapshotBuilder.make(
+            today: workflowSnapshot(tasks: []),
+            schedule: .empty,
+            projectTitlesByTaskID: [:],
+            displayName: "",
+            dailyCapacityMinutes: 480,
+            now: now,
+            calendar: calendar,
+            locale: Locale(identifier: "en"),
+            weatherState: .available(temperatureCelsius: 22, location: "Tokyo", updatedAt: now)
+        )
+
+        XCTAssertEqual(snapshot.weather.title, "Tokyo · 22°C")
+        XCTAssertEqual(snapshot.weather.accessibilityLabel, "Weather: Tokyo, 22°C. Updated 10:30.")
+    }
+
     private func make(tasks: [ProjectBoardTask], now: Date, calendar: Calendar) -> TodayDashboardSnapshot {
         TodayDashboardSnapshotBuilder.make(
             today: workflowSnapshot(tasks: tasks),

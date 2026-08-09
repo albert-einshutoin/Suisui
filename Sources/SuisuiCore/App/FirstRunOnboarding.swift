@@ -46,6 +46,35 @@ public struct FirstRunOnboardingFlow: Equatable, Sendable {
     }
 }
 
+/// A local draft for the personal Today questions. It prevents a skipped or
+/// cancelled onboarding sheet from mutating existing settings before Save.
+public struct OnboardingTodayPreferences: Equatable, Sendable {
+    public var displayName: String
+    public var dailyWorkCapacityMinutes: Int
+    /// Captured from saved settings, not the editable draft, so typing a name
+    /// cannot hide the form before the explicit continue action saves it.
+    public let shouldAsk: Bool
+
+    public init(displayName: String = "", dailyWorkCapacityMinutes: Int = AppSettings.default.dailyWorkCapacityMinutes) {
+        self.displayName = displayName
+        self.dailyWorkCapacityMinutes = dailyWorkCapacityMinutes
+        shouldAsk = true
+    }
+
+    public init(settings: AppSettings) {
+        displayName = settings.profileDisplayName ?? ""
+        dailyWorkCapacityMinutes = settings.dailyWorkCapacityMinutes
+        shouldAsk = displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    public func applying(to settings: AppSettings) -> AppSettings {
+        var updated = settings
+        updated.profileDisplayName = displayName
+        updated.dailyWorkCapacityMinutes = dailyWorkCapacityMinutes
+        return updated.normalizedForRuntime
+    }
+}
+
 public enum OnboardingRequirement: String, Equatable, Sendable {
     case required
     case optional

@@ -524,6 +524,26 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(try store.load().profileDisplayName, "Ada")
     }
 
+    @MainActor
+    func testOnboardingTodayPreferencesSaveOnlyWhenApplied() throws {
+        let suiteName = "Suisui.OnboardingTodayPreferences.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+        let preferences = OnboardingTodayPreferences(
+            displayName: "  Grace Hopper  ",
+            dailyWorkCapacityMinutes: 75
+        )
+
+        XCTAssertNil(try store.load().profileDisplayName)
+        XCTAssertTrue(viewModel.saveOnboardingTodayPreferences(preferences))
+        XCTAssertEqual(viewModel.settings.profileDisplayName, "Grace Hopper")
+        XCTAssertEqual(viewModel.settings.dailyWorkCapacityMinutes, 60)
+        XCTAssertEqual(try store.load().profileDisplayName, "Grace Hopper")
+        XCTAssertEqual(try store.load().dailyWorkCapacityMinutes, 60)
+    }
+
     func testUserDefaultsAppSettingsStoreCanUseRuntimeSuiteOverride() throws {
         let suiteName = "Suisui.AppSettingsRuntimeSuite.\(UUID().uuidString)"
         let defaults = UserDefaultsAppSettingsStore.defaultUserDefaults(environment: [

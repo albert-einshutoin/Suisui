@@ -2205,6 +2205,15 @@ public final class AppSettingsViewModel: ObservableObject {
         clearMessages()
     }
 
+    /// Applies the onboarding draft only after the person continues, so a
+    /// cancelled sheet cannot overwrite an existing profile or capacity.
+    @discardableResult
+    public func saveOnboardingTodayPreferences(_ preferences: OnboardingTodayPreferences) -> Bool {
+        settings = preferences.applying(to: settings)
+        saveSettings()
+        return errorMessage == nil
+    }
+
     public func setGoogleCalendarID(_ calendarID: String) {
         settings.googleCalendarID = calendarID.trimmingCharacters(in: .whitespacesAndNewlines)
         clearMessages()

@@ -1976,6 +1976,12 @@
 "This Week: %d scheduled" = "今週: %d件を予定済み";
 "Suisui Today: %@. %@. %d tasks today, %d scheduled" = "Suisuiの今日: %@。%@。今日のタスク%d件、予定済み%d件";
 "Suisui Today: %@. %@. %@ today, %@ scheduled" = "Suisuiの今日: %@。%@。今日の%@、予定済み%@";
+"Suisui Today: %@. %@. %@ today, %@ scheduled. %@" = "Suisuiの今日: %@。%@。今日の%@、予定済み%@。%@";
+"Could not save your Today preferences." = "Todayの設定を保存できませんでした。";
+"Daily capacity" = "1日の作業時間";
+"Make Today yours" = "Todayを自分用に設定";
+"What should Suisui call you?" = "Suisuiからの呼び方";
+"You can change these later in Settings." = "これらは後から設定で変更できます。";
 "Selects this task without changing task status or Calendar." = "タスクの状態やカレンダーを変更せず、このタスクを選択します。";
 "Memo: %@" = "メモ: %@";
 "Transcript-only voice capture, duration %@, waveform preview" = "文字起こしのみの音声入力、長さ%@、波形プレビュー";

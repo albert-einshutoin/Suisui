@@ -7645,6 +7645,28 @@ final class AppExperienceSourceTests: XCTestCase {
         )
     }
 
+    func testTodayWeatherAndOnboardingPreferencesRemainLocalAndAccessible() throws {
+        let weatherSource = try readPackageFile("Sources/SuisuiCore/App/TodayWeatherSnapshot.swift")
+        let dashboardSource = try readPackageFile("Sources/SuisuiCore/App/TodayDashboardSnapshot.swift")
+        let headerSource = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardHeaderView.swift")
+        let onboardingSource = try readPackageFile("Sources/SuisuiApp/Views/OnboardingWelcomeView.swift")
+        let settingsSource = try readPackageFile("Sources/SuisuiCore/App/AppSettings.swift")
+
+        XCTAssertTrue(weatherSource.contains("case notConfigured"))
+        XCTAssertTrue(weatherSource.contains("case permissionPending"))
+        XCTAssertTrue(weatherSource.contains("case loading"))
+        XCTAssertTrue(weatherSource.contains("case available"))
+        XCTAssertTrue(weatherSource.contains("case failed"))
+        XCTAssertFalse(weatherSource.contains("URLSession"))
+        XCTAssertTrue(dashboardSource.contains("public let weather: TodayWeatherSnapshot"))
+        XCTAssertTrue(headerSource.contains("today-weather"))
+        XCTAssertTrue(headerSource.contains("weather.accessibilityLabel"))
+        XCTAssertTrue(onboardingSource.contains("onboarding-profile-display-name"))
+        XCTAssertTrue(onboardingSource.contains("onboarding-daily-work-capacity"))
+        XCTAssertTrue(onboardingSource.contains("saveTodayPreferencesThen"))
+        XCTAssertTrue(settingsSource.contains("saveOnboardingTodayPreferences"))
+    }
+
     func testProductionSettingsFactoryWiresURLSessionOllamaHealthChecker() throws {
         let factorySource = try readPackageFile("Sources/SuisuiApp/Composition/SettingsRuntimeFactory.swift")
         let coreSource = try readPackageFile("Sources/SuisuiCore/App/AppSettings.swift")
