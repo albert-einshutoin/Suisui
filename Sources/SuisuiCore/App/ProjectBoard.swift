@@ -6181,6 +6181,9 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     public func refreshGoogleCalendarSyncStatus(now: Date = Date()) {
+        // A synchronous user/approval refresh is newer than any detached
+        // readiness read already in flight, so invalidate it before publishing.
+        googleCalendarReadinessRefreshRevision &+= 1
         guard let googleCalendarSync = resolvedGoogleCalendarSync else {
             googleCalendarSyncStatus = .runtimeNotConfigured
             return

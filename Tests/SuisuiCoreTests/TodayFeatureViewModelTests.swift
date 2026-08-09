@@ -1,4 +1,5 @@
 import Combine
+import Foundation
 import SuisuiCore
 import XCTest
 
@@ -342,6 +343,30 @@ final class TodayFeatureViewModelTests: XCTestCase {
 
         XCTAssertEqual(feature.integrationStates.calendar, .connected)
     }
+
+    @MainActor
+    func testSynchronousReadinessRefreshInvalidatesAnOlderOffMainResult() async {
+        let sync = BlockingGoogleCalendarSync(
+            firstStatus: GoogleCalendarRuntimeSyncStatus(plan: .pro, state: .oauthDisconnected),
+            nextStatus: GoogleCalendarRuntimeSyncStatus(plan: .pro, state: .ready)
+        )
+        let board = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            googleCalendarSync: sync
+        )
+
+        board.refreshGoogleCalendarSyncStatusOffMain(now: Date(timeIntervalSince1970: 0))
+        await Task.yield()
+        XCTAssertEqual(sync.waitForFirstStatusStart(), .success)
+
+        board.refreshGoogleCalendarSyncStatus(now: Date(timeIntervalSince1970: 1))
+        XCTAssertEqual(board.googleCalendarSyncStatus.state, .ready)
+
+        sync.releaseFirstStatus()
+        try? await Task.sleep(for: .milliseconds(50))
+
+        XCTAssertEqual(board.googleCalendarSyncStatus.state, .ready)
+    }
 }
 
 private struct StaticGoogleCalendarSync: GoogleCalendarRuntimeSyncing {
@@ -393,6 +418,43 @@ private final class CountingGoogleCalendarSync: GoogleCalendarRuntimeSyncing, @u
         defer { lock.unlock() }
         statusReadCount += 1
         return currentStatus
+    }
+
+    func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult {
+        GoogleCalendarTaskSyncResult()
+    }
+}
+
+private final class BlockingGoogleCalendarSync: GoogleCalendarRuntimeSyncing, @unchecked Sendable {
+    private let lock = NSLock()
+    private let firstStatus: GoogleCalendarRuntimeSyncStatus
+    private let nextStatus: GoogleCalendarRuntimeSyncStatus
+    private let firstStatusStarted = DispatchSemaphore(value: 0)
+    private let firstStatusRelease = DispatchSemaphore(value: 0)
+    private var statusCallCount = 0
+
+    init(firstStatus: GoogleCalendarRuntimeSyncStatus, nextStatus: GoogleCalendarRuntimeSyncStatus) {
+        self.firstStatus = firstStatus
+        self.nextStatus = nextStatus
+    }
+
+    func waitForFirstStatusStart() -> DispatchTimeoutResult {
+        firstStatusStarted.wait(timeout: .now() + 1)
+    }
+
+    func releaseFirstStatus() {
+        firstStatusRelease.signal()
+    }
+
+    func status(now: Date) throws -> GoogleCalendarRuntimeSyncStatus {
+        lock.lock()
+        statusCallCount += 1
+        let call = statusCallCount
+        lock.unlock()
+        guard call == 1 else { return nextStatus }
+        firstStatusStarted.signal()
+        _ = firstStatusRelease.wait(timeout: .now() + 1)
+        return firstStatus
     }
 
     func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult {

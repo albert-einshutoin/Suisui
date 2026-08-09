@@ -7736,6 +7736,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(settingsSource.contains("NotificationCenter.default.post(name: .suisuiGoogleCalendarReadinessDidChange"))
         XCTAssertTrue(projectBoardCoreSource.contains("refreshGoogleCalendarSyncStatusOffMain"))
         XCTAssertTrue(projectBoardCoreSource.contains("Task.detached(priority: .utility)"))
+        XCTAssertTrue(projectBoardCoreSource.contains("A synchronous user/approval refresh is newer"))
         XCTAssertTrue(projectBoardCoreSource.contains("if hasLoadedBoardSnapshot"))
         XCTAssertTrue(projectBoardCoreSource.contains("hasPreloadedGoogleCalendarSyncStatus"))
         XCTAssertTrue(projectBoardCoreSource.contains("initialGoogleCalendarSyncStatus != nil"))
