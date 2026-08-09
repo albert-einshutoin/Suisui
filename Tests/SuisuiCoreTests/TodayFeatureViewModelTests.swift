@@ -246,4 +246,45 @@ final class TodayFeatureViewModelTests: XCTestCase {
         })
         withExtendedLifetime(observation) {}
     }
+
+    @MainActor
+    func testCalendarReadinessPublishesIntoTodayIntegrationStateWithoutViewRuntimeReads() async {
+        let board = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            googleCalendarSync: StaticGoogleCalendarSync(status: GoogleCalendarRuntimeSyncStatus(plan: .pro, state: .ready))
+        )
+        let feature = TodayFeatureViewModel(board: board)
+        let publication = expectation(description: "Today publishes injected Calendar readiness")
+        let observation = feature.objectWillChange.sink {
+            publication.fulfill()
+        }
+
+        board.refreshGoogleCalendarSyncStatus(now: Date(timeIntervalSince1970: 0))
+        await fulfillment(of: [publication], timeout: 1)
+
+        XCTAssertEqual(feature.integrationStates.calendar, .connected)
+        XCTAssertEqual(feature.integrationStates.slack, .notConnected)
+        withExtendedLifetime(observation) {}
+    }
+
+    @MainActor
+    func testPreloadedCalendarReadinessIsAvailableBeforeTodayRenders() {
+        let board = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            initialGoogleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus(plan: .pro, state: .ready)
+        )
+        let feature = TodayFeatureViewModel(board: board)
+
+        XCTAssertEqual(feature.integrationStates.calendar, .connected)
+    }
+}
+
+private struct StaticGoogleCalendarSync: GoogleCalendarRuntimeSyncing {
+    let status: GoogleCalendarRuntimeSyncStatus
+
+    func status(now: Date) throws -> GoogleCalendarRuntimeSyncStatus { status }
+
+    func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult {
+        GoogleCalendarTaskSyncResult()
+    }
 }

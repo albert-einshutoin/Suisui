@@ -568,7 +568,6 @@ struct ProjectBoardView: View {
                 playDailyPlanningReadout: playDailyPlanningReadoutFromSettings,
                 dashboardDisplayName: todaySettings.profileDisplayName ?? "",
                 dashboardDailyCapacityMinutes: todaySettings.dailyWorkCapacityMinutes,
-                dashboardIntegrationsState: AppRuntimeFactory.makeTodayIntegrationStates(),
                 initiallyExpandsCatchUp: activeBoardRouteFocus == .catchUp
                     || currentBoardRouteResolution.focus == .catchUp,
                 catchUpFocusRevision: catchUpFocusRevision > consumedCatchUpFocusRevision

@@ -44,7 +44,8 @@
 "Not connected" = "Not connected";
 "Permission needed" = "Permission needed";
 "Connected" = "Connected";
-"Sync failed. %@" = "Sync failed. %@";
+"Syncing" = "Syncing";
+"Sync failed." = "Sync failed.";
 "%d item synced" = "%d item synced";
 "%d items synced" = "%d items synced";
 "Last synced %@. %@" = "Last synced %@. %@";

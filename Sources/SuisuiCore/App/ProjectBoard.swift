@@ -703,6 +703,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         externalTaskLinkStore: (any ExternalTaskLinkStore)? = nil,
         scheduleCalendarClient: (any CalendarClient)? = nil,
         googleCalendarSync: (any GoogleCalendarRuntimeSyncing)? = nil,
+        initialGoogleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus = .runtimeNotConfigured,
         googleCalendarSyncFactory: (() -> (any GoogleCalendarRuntimeSyncing)?)? = nil,
         readModelNow: @escaping () -> Date = { VisualEvidenceRuntimeContext.referenceDate() },
         readModelCalendar: @escaping () -> Calendar = { VisualEvidenceRuntimeContext.runtimeCalendar() },
@@ -739,7 +740,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.dailyPlanningReview = nil
         self.scheduleDraft = nil
         self.scheduleApplyResult = nil
-        self.googleCalendarSyncStatus = .runtimeNotConfigured
+        self.googleCalendarSyncStatus = initialGoogleCalendarSyncStatus
         self.projectAssistantAnswer = nil
         self.projectAssistantReviewDraft = nil
         self.developmentAutomationReviewPlan = nil

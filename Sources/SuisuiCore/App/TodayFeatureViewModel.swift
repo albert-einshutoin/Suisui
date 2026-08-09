@@ -20,6 +20,7 @@ public struct TodayFeatureState: Equatable {
     public var commandFeedback: String?
     public var scheduleDraft: TodayScheduleDraft?
     public var dailyPlanningReview: DailyPlanningReview?
+    public var integrationStates: TodayIntegrationStates
 }
 
 @MainActor
@@ -36,6 +37,7 @@ public final class TodayFeatureViewModel: ObservableObject {
     public var commandFeedback: String? { state.commandFeedback }
     public var scheduleDraft: TodayScheduleDraft? { state.scheduleDraft }
     public var dailyPlanningReview: DailyPlanningReview? { state.dailyPlanningReview }
+    public var integrationStates: TodayIntegrationStates { state.integrationStates }
     public let focusSession: TodayFocusSessionStore
 
     private let board: ProjectBoardViewModel
@@ -111,6 +113,13 @@ public final class TodayFeatureViewModel: ObservableObject {
             }
             .store(in: &observations)
         board.$dailyPlanningReview
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.scheduleSynchronization()
+            }
+            .store(in: &observations)
+        board.$googleCalendarSyncStatus
             .removeDuplicates()
             .dropFirst()
             .sink { [weak self] _ in
@@ -226,7 +235,11 @@ public final class TodayFeatureViewModel: ObservableObject {
             selectedTaskID: board.selectedTaskID,
             commandFeedback: board.todayCommandFeedback,
             scheduleDraft: board.todayScheduleDraft,
-            dailyPlanningReview: board.dailyPlanningReview
+            dailyPlanningReview: board.dailyPlanningReview,
+            integrationStates: TodayIntegrationStates(
+                calendar: TodayIntegrationState.calendar(from: board.googleCalendarSyncStatus),
+                slack: .notConnected
+            )
         )
     }
 

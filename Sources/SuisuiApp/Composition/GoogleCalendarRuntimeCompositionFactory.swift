@@ -31,6 +31,23 @@ extension AppRuntimeFactory {
         }
         do {
             let connection = try migratedConnection()
+            return makeGoogleCalendarRuntimeSyncStatus(connection: connection)
+        } catch {
+            return GoogleCalendarRuntimeSyncStatus(
+                plan: .free,
+                state: .failed(message: UserFacingErrorMessageSanitizer.message(
+                    from: error,
+                    fallback: "Google Calendar sync status is unavailable."
+                ))
+            )
+        }
+    }
+
+    static func makeGoogleCalendarRuntimeSyncStatus(connection: SQLiteConnection) -> GoogleCalendarRuntimeSyncStatus {
+        guard isGoogleCalendarRuntimeEnabled() else {
+            return .runtimeNotConfigured
+        }
+        do {
             let secretStore = makeSecretStore()
             let runtimeSettings = loadRuntimeAppSettings()
             return try GoogleCalendarAppRuntimeFactory.syncStatus(
@@ -50,15 +67,6 @@ extension AppRuntimeFactory {
                 ))
             )
         }
-    }
-
-    static func makeTodayIntegrationStates() -> TodayIntegrationStates {
-        // This reuses the runtime's local readiness read. Today deliberately
-        // does not initiate OAuth, sync, Calendar writes, or Slack sends.
-        TodayIntegrationStates(
-            calendar: TodayIntegrationState.calendar(from: makeGoogleCalendarRuntimeSyncStatus()),
-            slack: .notConnected
-        )
     }
 
     @MainActor

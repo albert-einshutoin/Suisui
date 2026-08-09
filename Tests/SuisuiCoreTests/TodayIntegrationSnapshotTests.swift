@@ -34,16 +34,38 @@ final class TodayIntegrationSnapshotTests: XCTestCase {
 
         let japanese = TodayIntegrationSnapshotBuilder.make(
             service: .slack,
-            state: .failed(lastSyncedAt: now, itemCount: 2, message: "接続が切れました。"),
+            state: .failed(lastSyncedAt: now, itemCount: 2, message: "token=secret@example.com"),
             now: now,
             calendar: calendar,
             locale: Locale(identifier: "ja_JP")
         )
         XCTAssertEqual(japanese.title, "Slack")
-        XCTAssertTrue(japanese.detail.contains("接続が切れました。"))
+        XCTAssertTrue(japanese.detail.contains("同期に失敗しました。"))
+        XCTAssertFalse(japanese.detail.contains("token="))
+        XCTAssertFalse(japanese.accessibilityLabel.contains("secret@example.com"))
         XCTAssertTrue(japanese.detail.contains("最終同期"))
         XCTAssertTrue(japanese.detail.contains("2件を同期済み"))
         XCTAssertTrue(japanese.accessibilityLabel.contains("Slack"))
+
+        let japaneseSyncing = TodayIntegrationSnapshotBuilder.make(
+            service: .calendar,
+            state: .syncing,
+            now: now,
+            calendar: calendar,
+            locale: Locale(identifier: "ja_JP")
+        )
+        XCTAssertEqual(japaneseSyncing.detail, "同期中")
+        XCTAssertEqual(japaneseSyncing.accessibilityLabel, "カレンダー: 同期中。")
+
+        let permission = TodayIntegrationSnapshotBuilder.make(
+            service: .calendar,
+            state: .failed(lastSyncedAt: nil, itemCount: 0, message: "OAuth permission denied for account@example.com"),
+            now: now,
+            calendar: calendar,
+            locale: Locale(identifier: "en_US")
+        )
+        XCTAssertEqual(permission.detail, "Permission needed 0 items synced")
+        XCTAssertFalse(permission.accessibilityLabel.contains("account@example.com"))
     }
 
     func testCalendarRuntimeReadinessMapsToSafeTodayStates() {

@@ -112,7 +112,7 @@ public enum TodayIntegrationSnapshotBuilder {
         case let .synced(lastSyncedAt, itemCount):
             detail = syncDetail(lastSyncedAt: lastSyncedAt, itemCount: itemCount, now: now, calendar: calendar, locale: locale)
         case let .failed(lastSyncedAt, itemCount, message):
-            let failure = String(format: localized("Sync failed. %@", locale: locale), message)
+            let failure = failureDetail(message: message, locale: locale)
             let context = syncDetail(lastSyncedAt: lastSyncedAt, itemCount: itemCount, now: now, calendar: calendar, locale: locale)
             detail = "\(failure) \(context)"
         }
@@ -152,6 +152,19 @@ public enum TodayIntegrationSnapshotBuilder {
             ? SuisuiTimestampDisplay.time(lastSyncedAt, calendar: calendar, locale: locale)
             : SuisuiTimestampDisplay.formatted(lastSyncedAt, template: "MMMd HH:mm", calendar: calendar, locale: locale)
         return String(format: localized("Last synced %@. %@", locale: locale), time, items)
+    }
+
+    private static func failureDetail(message: String, locale: Locale) -> String {
+        let normalized = message.lowercased()
+        if normalized.contains("permission")
+            || normalized.contains("denied")
+            || normalized.contains("scope")
+            || normalized.contains("oauth") {
+            return localized("Permission needed", locale: locale)
+        }
+        // Provider error bodies can contain tokens, account IDs, or URLs. Today
+        // exposes only a stable category; detailed diagnostics stay outside UI.
+        return localized("Sync failed.", locale: locale)
     }
 
     private static func localized(_ key: String, locale: Locale) -> String {

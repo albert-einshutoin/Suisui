@@ -7,7 +7,8 @@ enum ProjectBoardRuntimeBundle: @unchecked Sendable {
         projectBoardStore: SQLiteProjectBoardStore,
         externalTaskLinkStore: SQLiteExternalTaskLinkStore,
         assistantQueueStore: SQLiteAssistantQueueStore,
-        executionReceiptStore: (any ExecutionReceiptStore)?
+        executionReceiptStore: (any ExecutionReceiptStore)?,
+        googleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus
     )
     case unavailable(Error)
 }
@@ -38,7 +39,8 @@ extension AppRuntimeFactory {
                 projectBoardStore: SQLiteProjectBoardStore(connection: connection),
                 externalTaskLinkStore: SQLiteExternalTaskLinkStore(connection: connection),
                 assistantQueueStore: SQLiteAssistantQueueStore(connection: connection),
-                executionReceiptStore: try? makeExecutionReceiptStore()
+                executionReceiptStore: try? makeExecutionReceiptStore(),
+                googleCalendarSyncStatus: makeGoogleCalendarRuntimeSyncStatus(connection: connection)
             )
         } catch {
             signposter.endInterval("DatabaseOpenMigrate", migrateState)
@@ -54,7 +56,7 @@ extension AppRuntimeFactory {
     @MainActor
     static func makeProjectBoardViewModel(runtime: ProjectBoardRuntimeBundle) -> ProjectBoardViewModel {
         switch runtime {
-        case let .available(connection, projectBoardStore, externalTaskLinkStore, assistantQueueStore, executionReceiptStore):
+        case let .available(connection, projectBoardStore, externalTaskLinkStore, assistantQueueStore, executionReceiptStore, googleCalendarSyncStatus):
             return ProjectBoardViewModel(
                 store: projectBoardStore,
                 inboxCaptureStore: SQLiteInboxCaptureStore(connection: connection),
@@ -70,6 +72,7 @@ extension AppRuntimeFactory {
                 missedTaskReviewStateStore: SQLiteMissedTaskReviewStateStore(connection: connection),
                 missedTaskFollowUpNotificationClient: UserNotificationsNotificationClient(),
                 externalTaskLinkStore: externalTaskLinkStore,
+                initialGoogleCalendarSyncStatus: googleCalendarSyncStatus,
                 googleCalendarSyncFactory: {
                     guard isGoogleCalendarRuntimeEnabled() else {
                         return nil
