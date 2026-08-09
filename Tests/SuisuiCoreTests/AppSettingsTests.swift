@@ -424,6 +424,65 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(blank.googleCalendarID, "")
     }
 
+    func testProfileDisplayNameDefaultsToNilWhenDecodingLegacySettings() throws {
+        let legacyData = Data("""
+        {
+          "aiProvider": "openAIResponses",
+          "sttProvider": "openAITranscribe",
+          "notificationsEnabled": false,
+          "defaultWorkspacePath": null,
+          "timeZoneIdentifier": "UTC"
+        }
+        """.utf8)
+
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: legacyData)
+
+        XCTAssertNil(decoded.profileDisplayName)
+    }
+
+    func testProfileDisplayNameTrimsWhitespaceAndTreatsEmptyValueAsNil() {
+        XCTAssertEqual(
+            AppSettings(profileDisplayName: "  Ada Lovelace \n").normalizedForRuntime.profileDisplayName,
+            "Ada Lovelace"
+        )
+        XCTAssertNil(AppSettings(profileDisplayName: " \n\t ").normalizedForRuntime.profileDisplayName)
+    }
+
+    func testProfileDisplayNameLimitsToEightyUserPerceivedCharacters() {
+        let name = String(repeating: "👩🏽‍💻", count: 81)
+
+        let normalized = AppSettings(profileDisplayName: name).normalizedForRuntime.profileDisplayName
+
+        XCTAssertEqual(normalized?.count, 80)
+        XCTAssertEqual(normalized, String(name.prefix(80)))
+    }
+
+    func testProfileDisplayNameRoundTripsThroughSettingsEncoding() throws {
+        let settings = AppSettings(profileDisplayName: "Ada Lovelace")
+
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+
+        XCTAssertEqual(decoded.profileDisplayName, "Ada Lovelace")
+    }
+
+    @MainActor
+    func testAppSettingsViewModelKeepsProfileDisplayNameInMemoryUntilSettingsSave() throws {
+        let suiteName = "Suisui.AppSettingsProfileDisplayName.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        viewModel.setProfileDisplayName(" Ada Lovelace ")
+
+        XCTAssertEqual(viewModel.settings.profileDisplayName, "Ada Lovelace")
+        XCTAssertNil(try store.load().profileDisplayName)
+
+        viewModel.saveSettings()
+
+        XCTAssertEqual(try store.load().profileDisplayName, "Ada Lovelace")
+    }
+
     func testUserDefaultsAppSettingsStoreCanUseRuntimeSuiteOverride() throws {
         let suiteName = "Suisui.AppSettingsRuntimeSuite.\(UUID().uuidString)"
         let defaults = UserDefaultsAppSettingsStore.defaultUserDefaults(environment: [

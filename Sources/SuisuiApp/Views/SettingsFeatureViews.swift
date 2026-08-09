@@ -883,6 +883,16 @@ struct SettingsPrivacyFeatureView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
+                TextField(
+                    "Display Name",
+                    text: Binding(
+                        get: { settingsViewModel.settings.profileDisplayName ?? "" },
+                        set: { settingsViewModel.setProfileDisplayName($0) }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("settings-profile-display-name")
+                .accessibilityHint("Sets the optional name used by the Today greeting. Save Settings to persist it locally.")
                 LocalPathSelectionField(
                     title: "Workspace",
                     text: Binding(

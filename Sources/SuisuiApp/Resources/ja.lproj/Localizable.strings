@@ -388,6 +388,7 @@
 "Denied" = "拒否";
 "Detail" = "詳細";
 "Display Name" = "表示名";
+"Sets the optional name used by the Today greeting. Save Settings to persist it locally." = "Todayの挨拶に使う任意の名前を設定します。設定を保存するとこのMacにローカル保存されます。";
 "Drag to another status column" = "別のステータス列へドラッグ";
 "Due" = "期限";
 "Edit" = "編集";

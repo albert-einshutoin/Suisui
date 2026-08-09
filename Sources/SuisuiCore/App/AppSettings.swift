@@ -19,6 +19,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var notificationPreferences: NotificationPreferences
     public var isDeveloperModeEnabled: Bool
     public var defaultWorkspacePath: String?
+    public var profileDisplayName: String?
     public var timeZoneIdentifier: String
     public var googleCalendarID: String
     public var geminiModelID: String?
@@ -56,6 +57,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case notificationPreferences
         case isDeveloperModeEnabled
         case defaultWorkspacePath
+        case profileDisplayName
         case timeZoneIdentifier
         case googleCalendarID
         case geminiModelID
@@ -91,6 +93,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         notificationPreferences: NotificationPreferences = .default,
         isDeveloperModeEnabled: Bool = false,
         defaultWorkspacePath: String? = nil,
+        profileDisplayName: String? = nil,
         timeZoneIdentifier: String = TimeZone.current.identifier,
         googleCalendarID: String = "primary",
         geminiModelID: String? = nil,
@@ -125,6 +128,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.notificationPreferences = notificationPreferences
         self.isDeveloperModeEnabled = isDeveloperModeEnabled
         self.defaultWorkspacePath = defaultWorkspacePath
+        self.profileDisplayName = profileDisplayName
         self.timeZoneIdentifier = timeZoneIdentifier
         self.googleCalendarID = googleCalendarID
         self.geminiModelID = geminiModelID
@@ -175,6 +179,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         ) ?? .default
         self.isDeveloperModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .isDeveloperModeEnabled) ?? false
         self.defaultWorkspacePath = try container.decodeIfPresent(String.self, forKey: .defaultWorkspacePath)
+        self.profileDisplayName = try container.decodeIfPresent(String.self, forKey: .profileDisplayName)
         self.timeZoneIdentifier = try container.decode(String.self, forKey: .timeZoneIdentifier)
         self.googleCalendarID = try container.decodeIfPresent(String.self, forKey: .googleCalendarID) ?? "primary"
         self.geminiModelID = try container.decodeIfPresent(String.self, forKey: .geminiModelID)
@@ -218,6 +223,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(notificationPreferences, forKey: .notificationPreferences)
         try container.encode(isDeveloperModeEnabled, forKey: .isDeveloperModeEnabled)
         try container.encodeIfPresent(defaultWorkspacePath, forKey: .defaultWorkspacePath)
+        try container.encodeIfPresent(profileDisplayName, forKey: .profileDisplayName)
         try container.encode(timeZoneIdentifier, forKey: .timeZoneIdentifier)
         try container.encode(googleCalendarID, forKey: .googleCalendarID)
         try container.encodeIfPresent(geminiModelID, forKey: .geminiModelID)
@@ -258,6 +264,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         }
         if let groqBaseURLString = copy.groqBaseURLString?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.groqBaseURLString = groqBaseURLString.isEmpty ? nil : groqBaseURLString
+        }
+        if let profileDisplayName = copy.profileDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            copy.profileDisplayName = profileDisplayName.isEmpty ? nil : String(profileDisplayName.prefix(80))
         }
         // Google Calendar treats "primary" as the backward-compatible default,
         // while a user-entered blank must stay blank so runtime readiness can flag
@@ -2155,6 +2164,12 @@ public final class AppSettingsViewModel: ObservableObject {
     public func setDefaultWorkspacePath(_ path: String) {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.defaultWorkspacePath = trimmed.isEmpty ? nil : trimmed
+        clearMessages()
+    }
+
+    public func setProfileDisplayName(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.profileDisplayName = trimmed.isEmpty ? nil : String(trimmed.prefix(80))
         clearMessages()
     }
 

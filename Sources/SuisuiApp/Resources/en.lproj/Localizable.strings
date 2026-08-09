@@ -391,6 +391,7 @@
 "Denied" = "Denied";
 "Detail" = "Detail";
 "Display Name" = "Display Name";
+"Sets the optional name used by the Today greeting. Save Settings to persist it locally." = "Sets the optional name used by the Today greeting. Save Settings to persist it locally.";
 "Drag to another status column" = "Drag to another status column";
 "Due" = "Due";
 "Edit" = "Edit";
