@@ -80,7 +80,7 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         let evening = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: []), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T18:00:00Z")), calendar: utc, locale: Locale(identifier: "en_US"))
 
         XCTAssertEqual(english.header.title, "Sunday, Aug 9")
-        XCTAssertEqual(japanese.header.title, "月曜日, 8月 10")
+        XCTAssertEqual(japanese.header.title, "8月10日 月曜日")
         XCTAssertTrue(japanese.tasks[0].timeLabel?.contains("8月") == true)
         XCTAssertEqual(noon.header.greeting, "Good afternoon")
         XCTAssertEqual(evening.header.greeting, "Good evening")

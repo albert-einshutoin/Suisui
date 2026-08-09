@@ -176,12 +176,12 @@ public enum TodayDashboardSnapshotBuilder {
     }
 
     private static func dateTitle(for date: Date, calendar: Calendar, locale: Locale) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.locale = locale
-        formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = "EEEE, MMM d"
-        return formatter.string(from: date)
+        SuisuiTimestampDisplay.formatted(
+            date,
+            template: "EEEEMMMd",
+            calendar: calendar,
+            locale: locale
+        )
     }
 
 }
