@@ -40,6 +40,28 @@ final class AppBundleMetadataTests: XCTestCase {
         XCTAssertEqual(plist["com.apple.developer.weatherkit"] as? Bool, true)
     }
 
+    func testPackagedLocationPermissionHasEnglishAndJapaneseInfoPlistStrings() throws {
+        let root = packageRoot()
+        let english = try String(
+            contentsOf: root.appendingPathComponent("Sources/SuisuiApp/Resources/en.lproj/InfoPlist.strings"),
+            encoding: .utf8
+        )
+        let japanese = try String(
+            contentsOf: root.appendingPathComponent("Sources/SuisuiApp/Resources/ja.lproj/InfoPlist.strings"),
+            encoding: .utf8
+        )
+        let buildScript = try String(
+            contentsOf: root.appendingPathComponent("script/build_and_run.sh"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(english.contains("NSLocationUsageDescription"))
+        XCTAssertTrue(english.contains("only while Today weather is being shown"))
+        XCTAssertTrue(japanese.contains("NSLocationUsageDescription"))
+        XCTAssertTrue(japanese.contains("Todayの天気を表示している間だけ現在地を使用します"))
+        XCTAssertTrue(buildScript.contains("InfoPlist.strings"))
+    }
+
     private func loadMetadata() throws -> [String: String] {
         let url = packageRoot().appendingPathComponent("packaging/app_metadata.env")
         let contents = try String(contentsOf: url, encoding: .utf8)

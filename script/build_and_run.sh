@@ -293,6 +293,14 @@ copy_app_localizations() {
   while IFS= read -r -d '' localization_dir; do
     /usr/bin/ditto "$localization_dir" "$APP_RESOURCES/$(basename "$localization_dir")"
   done < <(find "$APP_LOCALIZATION_SOURCE" -maxdepth 1 -type d -name "*.lproj" -print0)
+
+  local required_locale
+  for required_locale in en ja; do
+    if [[ ! -f "$APP_RESOURCES/$required_locale.lproj/InfoPlist.strings" ]]; then
+      echo "BLOCKER: packaged app is missing $required_locale InfoPlist.strings" >&2
+      return 1
+    fi
+  done
 }
 
 xml_escape() {
