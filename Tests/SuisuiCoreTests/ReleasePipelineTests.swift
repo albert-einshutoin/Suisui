@@ -96,7 +96,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(bundleMetadataVerifier.contains("CFBundleIconFile"))
         XCTAssertTrue(bundleMetadataVerifier.contains("missing bundled app icon"))
         XCTAssertTrue(bundleMetadataVerifier.contains("com.apple.security.device.audio-input"))
-        XCTAssertTrue(bundleMetadataVerifier.contains("assert_eq \"$ENTITLEMENT_KEY_COUNT\" \"1\""))
+        XCTAssertTrue(bundleMetadataVerifier.contains("assert_eq \"$ENTITLEMENT_KEY_COUNT\" \"2\""))
         XCTAssertTrue(artifactSizeGate.contains("SUISUI_MAX_ZIP_ARTIFACT_BYTES:-8388608"))
         XCTAssertTrue(packageSizePolicy.contains("視覚上十分な512px相当に最適化"))
     }
