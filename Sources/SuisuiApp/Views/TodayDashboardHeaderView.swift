@@ -78,7 +78,10 @@ private struct TodayDashboardWeatherView: View {
             }
         }
         .multilineTextAlignment(.trailing)
-        .accessibilityElement(children: .ignore)
+        // Keep the weather summary as a labeled container while retaining the
+        // attribution link and retry button as independently discoverable
+        // controls for VoiceOver.
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(weather.accessibilityLabel)
         .accessibilityIdentifier("today-weather")
     }
