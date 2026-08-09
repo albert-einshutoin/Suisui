@@ -28,15 +28,16 @@ final class AppBundleMetadataTests: XCTestCase {
 
     // Keep the production entitlement surface explicit so future capabilities cannot
     // silently broaden the app sandbox boundary during release packaging.
-    func testEntitlementsGrantOnlyHardenedRuntimeAudioInput() throws {
+    func testEntitlementsGrantAudioInputAndWeatherKitOnly() throws {
         let entitlementsURL = packageRoot().appendingPathComponent("packaging/Suisui.entitlements")
         let data = try Data(contentsOf: entitlementsURL)
         let plist = try XCTUnwrap(
             PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any]
         )
 
-        XCTAssertEqual(Set(plist.keys), ["com.apple.security.device.audio-input"])
+        XCTAssertEqual(Set(plist.keys), ["com.apple.security.device.audio-input", "com.apple.developer.weatherkit"])
         XCTAssertEqual(plist["com.apple.security.device.audio-input"] as? Bool, true)
+        XCTAssertEqual(plist["com.apple.developer.weatherkit"] as? Bool, true)
     }
 
     private func loadMetadata() throws -> [String: String] {

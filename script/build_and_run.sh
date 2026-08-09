@@ -435,6 +435,8 @@ done < <(find "$BUILD_DIR" -maxdepth 1 -type f -name "*.dylib" -print0)
   printf '%s\n' '  <false/>'
   printf '%s\n' '  <key>NSMicrophoneUsageDescription</key>'
   printf '%s\n' '  <string>Suisui uses the microphone when you explicitly start voice capture.</string>'
+  printf '%s\n' '  <key>NSLocationUsageDescription</key>'
+  printf '%s\n' '  <string>Suisui uses your location only while Today weather is being shown.</string>'
   printf '%s\n' '  <key>NSSpeechRecognitionUsageDescription</key>'
   printf '%s\n' '  <string>Suisui transcribes audio only after you explicitly record a voice command.</string>'
   printf '%s\n' '  <key>SuisuiLocalLicensePublicKey</key>'

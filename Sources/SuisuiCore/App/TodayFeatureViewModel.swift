@@ -60,8 +60,9 @@ public final class TodayFeatureViewModel: ObservableObject {
         self.state = Self.makeState(from: board)
 
         // Today subscribes only to the state it renders. Automation, receipt,
-        // MCP, and integration publications remain on the compatibility board
-        // facade and cannot invalidate the Today root.
+        // and MCP publications remain on the compatibility board facade, while
+        // Calendar readiness is intentionally observed so Settings changes
+        // refresh the read-only integration card without render-path I/O.
         board.$derivedReadModels
             .map { [weak board] readModels in
                 TodayFeatureReadState(

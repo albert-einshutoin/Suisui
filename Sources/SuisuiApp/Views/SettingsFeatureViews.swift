@@ -914,6 +914,20 @@ struct SettingsPrivacyFeatureView: View {
                 }
                 .accessibilityIdentifier("settings-daily-work-capacity")
                 .accessibilityHint("Sets Today workload capacity in 30-minute steps. Save Settings to persist it locally.")
+                Picker("Weather location", selection: weatherLocationModeBinding) {
+                    Text("Not configured").tag("unset")
+                    Text("Current location").tag("current")
+                    Text("Manual city").tag("manual")
+                }
+                .accessibilityIdentifier("settings-weather-location")
+                if weatherLocationMode == "manual" {
+                    TextField("City name", text: weatherCityBinding)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("settings-weather-city")
+                }
+                Text("Weather uses the selected source for Today and does not keep a location history.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 LocalPathSelectionField(
                     title: "Workspace",
                     text: Binding(
@@ -1034,6 +1048,42 @@ struct SettingsPrivacyFeatureView: View {
             return localizedCount(minutes / 60, one: "%d hour", other: "%d hours")
         }
         return String(format: String(localized: "%.1f h"), Double(minutes) / 60)
+    }
+
+    private var weatherLocationMode: String {
+        switch settingsViewModel.settings.weatherLocationPreference {
+        case .unset: "unset"
+        case .currentLocation: "current"
+        case .manual: "manual"
+        }
+    }
+
+    private var weatherLocationModeBinding: Binding<String> {
+        Binding(
+            get: { weatherLocationMode },
+            set: { mode in
+                switch mode {
+                case "current":
+                    settingsViewModel.setWeatherLocationPreference(.currentLocation)
+                case "manual":
+                    let label = settingsViewModel.settings.weatherLocationPreference.displayLabel
+                    settingsViewModel.setWeatherLocationPreference(.manual(cityLabel: label == "Not configured" ? "Tokyo" : label, latitude: 35.681236, longitude: 139.767125))
+                default:
+                    settingsViewModel.setWeatherLocationPreference(.unset)
+                }
+            }
+        )
+    }
+
+    private var weatherCityBinding: Binding<String> {
+        Binding(
+            get: { settingsViewModel.settings.weatherLocationPreference.displayLabel },
+            set: { label in
+                let preference = settingsViewModel.settings.weatherLocationPreference
+                guard case let .manual(_, latitude, longitude) = preference else { return }
+                settingsViewModel.setWeatherLocationPreference(.manual(cityLabel: label, latitude: latitude, longitude: longitude))
+            }
+        )
     }
 }
 

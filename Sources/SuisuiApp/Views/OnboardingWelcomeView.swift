@@ -119,6 +119,27 @@ struct OnboardingWelcomeView: View {
                 }
             }
             .accessibilityIdentifier("onboarding-daily-work-capacity")
+            Picker("Weather location", selection: weatherLocationModeBinding) {
+                Text("Not now").tag("unset")
+                Text("Use current location").tag("current")
+                Text("Choose a city").tag("manual")
+            }
+            .accessibilityIdentifier("onboarding-weather-location")
+            if weatherLocationMode == "manual" {
+                TextField("City name", text: manualCityLabelBinding)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("onboarding-weather-city")
+                HStack(spacing: SuisuiSpacing.sm) {
+                    TextField("Latitude", text: manualLatitudeBinding)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Longitude", text: manualLongitudeBinding)
+                        .textFieldStyle(.roundedBorder)
+                }
+                .accessibilityIdentifier("onboarding-weather-coordinates")
+            }
+            Text("Weather uses your choice only while showing Today and does not keep a location history.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Text("You can change these later in Settings.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -417,6 +438,71 @@ struct OnboardingWelcomeView: View {
 
     private var selectedProviderRow: AIProviderReadinessRow? {
         settingsViewModel.providerReadinessRows.first(where: { $0.isSelected })
+    }
+
+    private var weatherLocationMode: String {
+        switch todayPreferences.weatherLocationPreference {
+        case .unset: "unset"
+        case .currentLocation: "current"
+        case .manual: "manual"
+        }
+    }
+
+    private var weatherLocationModeBinding: Binding<String> {
+        Binding(
+            get: { weatherLocationMode },
+            set: { mode in
+                switch mode {
+                case "current":
+                    todayPreferences.weatherLocationPreference = .currentLocation
+                case "manual":
+                    let current = manualCoordinateValues
+                    todayPreferences.weatherLocationPreference = .manual(
+                        cityLabel: current.label,
+                        latitude: current.latitude,
+                        longitude: current.longitude
+                    ).normalized
+                default:
+                    todayPreferences.weatherLocationPreference = .unset
+                }
+            }
+        )
+    }
+
+    private var manualCoordinateValues: (label: String, latitude: Double, longitude: Double) {
+        if case let .manual(label, latitude, longitude) = todayPreferences.weatherLocationPreference {
+            return (label, latitude, longitude)
+        }
+        return ("Tokyo", 35.681236, 139.767125)
+    }
+
+    private var manualCityLabelBinding: Binding<String> {
+        Binding(
+            get: { manualCoordinateValues.label },
+            set: { updateManualPreference(label: $0, latitude: manualCoordinateValues.latitude, longitude: manualCoordinateValues.longitude) }
+        )
+    }
+
+    private var manualLatitudeBinding: Binding<String> {
+        Binding(
+            get: { String(manualCoordinateValues.latitude) },
+            set: { updateManualPreference(label: manualCoordinateValues.label, latitude: Double($0) ?? manualCoordinateValues.latitude, longitude: manualCoordinateValues.longitude) }
+        )
+    }
+
+    private var manualLongitudeBinding: Binding<String> {
+        Binding(
+            get: { String(manualCoordinateValues.longitude) },
+            set: { updateManualPreference(label: manualCoordinateValues.label, latitude: manualCoordinateValues.latitude, longitude: Double($0) ?? manualCoordinateValues.longitude) }
+        )
+    }
+
+    private func updateManualPreference(label: String, latitude: Double, longitude: Double) {
+        todayPreferences.weatherLocationPreference = .manual(
+            cityLabel: label,
+            latitude: latitude,
+            longitude: longitude
+        )
     }
 
     private func createSampleProject() {

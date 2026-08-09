@@ -493,6 +493,7 @@ final class ReleasePipelineTests: XCTestCase {
         let signingScript = try readPackageFile("script/sign_app.sh")
 
         XCTAssertEqual(entitlements["com.apple.security.device.audio-input"] as? Bool, true)
+        XCTAssertEqual(entitlements["com.apple.developer.weatherkit"] as? Bool, true)
         XCTAssertTrue(signingScript.contains("NESTED_CODESIGN_ARGS=("))
         XCTAssertTrue(signingScript.contains("APP_CODESIGN_ARGS=("))
         XCTAssertTrue(signingScript.contains("codesign \"${NESTED_CODESIGN_ARGS[@]}\" \"$nested_code\""))

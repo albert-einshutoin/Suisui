@@ -2148,3 +2148,14 @@
 "Prioritizes Apple or local speech engines when STT retries after a recoverable failure." = "Prioritizes Apple or local speech engines when STT retries after a recoverable failure.";
 "Prioritizes Apple or local speech engines when TTS retries after a recoverable failure." = "Prioritizes Apple or local speech engines when TTS retries after a recoverable failure.";
 "Add a task to choose a focus for today." = "Add a task to choose a focus for today.";
+"Choose a city" = "Choose a city";
+"City name" = "City name";
+"Current location" = "Current location";
+"Latitude" = "Latitude";
+"Longitude" = "Longitude";
+"Manual city" = "Manual city";
+"Not now" = "Not now";
+"Use current location" = "Use current location";
+"Weather location" = "Weather location";
+"Weather uses the selected source for Today and does not keep a location history." = "Weather uses the selected source for Today and does not keep a location history.";
+"Weather uses your choice only while showing Today and does not keep a location history." = "Weather uses your choice only while showing Today and does not keep a location history.";

@@ -33,6 +33,22 @@ extension AppRuntimeFactory {
     }
 
     @MainActor
+    static func makeTodayWeatherModel() -> TodayWeatherModel {
+#if canImport(WeatherKit) && canImport(CoreLocation)
+        let weatherProvider: any TodayWeatherProviding = WeatherKitTodayProvider()
+        let locationProvider: any TodayLocationProviding = CoreLocationTodayProvider()
+#else
+        let weatherProvider: any TodayWeatherProviding = UnavailableTodayWeatherProvider()
+        let locationProvider: any TodayLocationProviding = UnavailableTodayLocationProvider()
+#endif
+        return TodayWeatherModel(
+            preferenceProvider: { loadRuntimeAppSettings().weatherLocationPreference },
+            weatherProvider: weatherProvider,
+            locationProvider: locationProvider
+        )
+    }
+
+    @MainActor
     static func makeLaunchAtLoginSettingsViewModel() -> LaunchAtLoginSettingsViewModel {
         LaunchAtLoginSettingsViewModel(client: SMAppServiceLaunchAtLoginClient())
     }

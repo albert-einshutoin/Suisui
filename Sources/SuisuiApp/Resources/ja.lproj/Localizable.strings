@@ -2148,3 +2148,14 @@
 "Prioritizes Apple or local speech engines when STT retries after a recoverable failure." = "復旧可能な失敗後にSTTを再試行する際、Appleまたはローカルの音声エンジンを優先します。";
 "Prioritizes Apple or local speech engines when TTS retries after a recoverable failure." = "復旧可能な失敗後にTTSを再試行する際、Appleまたはローカルの音声エンジンを優先します。";
 "Add a task to choose a focus for today." = "今日のフォーカスを選ぶにはタスクを追加してください。";
+"Choose a city" = "都市を選択";
+"City name" = "都市名";
+"Current location" = "現在地";
+"Latitude" = "緯度";
+"Longitude" = "経度";
+"Manual city" = "手動で都市を選択";
+"Not now" = "今は設定しない";
+"Use current location" = "現在地を使用";
+"Weather location" = "天気の場所";
+"Weather uses the selected source for Today and does not keep a location history." = "天気はTodayの表示中だけ選択した情報源を使い、位置履歴を保存しません。";
+"Weather uses your choice only while showing Today and does not keep a location history." = "天気はTodayの表示中だけ選択した場所を使い、位置履歴を保存しません。";

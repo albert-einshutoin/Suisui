@@ -5,12 +5,13 @@ import UniformTypeIdentifiers
 
 struct TodayWorkflowView: View {
     @StateObject private var viewModel: TodayFeatureViewModel
+    @StateObject private var weatherModel: TodayWeatherModel
     var selectTodayTask: (ProjectBoardTask) -> Void = { _ in }
     var openInspectorForTodayRailTask: (Int64) -> Void = { _ in }
     var playDailyPlanningReadout: () -> Void = {}
     let dashboardDisplayName: String
     let dashboardDailyCapacityMinutes: Int
-    let dashboardWeatherState: TodayWeatherState
+    let dashboardWeatherState: TodayWeatherState?
     let initiallyExpandsCatchUp: Bool
     var catchUpFocusRevision: Int? = nil
     var onCatchUpFocusConsumed: (Int) -> Bool = { _ in true }
@@ -25,12 +26,14 @@ struct TodayWorkflowView: View {
         playDailyPlanningReadout: @escaping () -> Void = {},
         dashboardDisplayName: String = "",
         dashboardDailyCapacityMinutes: Int = AppSettings.default.dailyWorkCapacityMinutes,
-        dashboardWeatherState: TodayWeatherState = .notConfigured,
+        dashboardWeatherState: TodayWeatherState? = nil,
+        weatherModel: TodayWeatherModel? = nil,
         initiallyExpandsCatchUp: Bool = false,
         catchUpFocusRevision: Int? = nil,
         onCatchUpFocusConsumed: @escaping (Int) -> Bool = { _ in true }
     ) {
         _viewModel = StateObject(wrappedValue: TodayFeatureViewModel(board: viewModel))
+        _weatherModel = StateObject(wrappedValue: weatherModel ?? AppRuntimeFactory.makeTodayWeatherModel())
         self.selectTodayTask = selectTodayTask
         self.openInspectorForTodayRailTask = openInspectorForTodayRailTask
         self.playDailyPlanningReadout = playDailyPlanningReadout
@@ -69,13 +72,16 @@ struct TodayWorkflowView: View {
             commandTitle: $commandTitle,
             displayName: dashboardDisplayName,
             dailyCapacityMinutes: dashboardDailyCapacityMinutes,
-            weatherState: dashboardWeatherState,
+            weatherState: dashboardWeatherState ?? weatherModel.state,
             integrationsState: viewModel.integrationStates,
             selectTodayTask: selectTodayTask,
             openInspectorForTodayRailTask: openInspectorForTodayRailTask,
             playDailyPlanningReadout: playDailyPlanningReadout
         ) {
             catchUpSection
+        }
+        .task {
+            await weatherModel.refreshIfNeeded()
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-workflow")
