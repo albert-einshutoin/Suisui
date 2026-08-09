@@ -18,12 +18,26 @@ public struct TodayRecommendation: Equatable, Sendable {
     public let taskID: Int64?
     public let title: String
     public let reason: String
+    public let action: TodayRecommendationAction
 
-    public init(taskID: Int64?, title: String, reason: String) {
+    public init(
+        taskID: Int64?,
+        title: String,
+        reason: String,
+        action: TodayRecommendationAction = .selectTask
+    ) {
         self.taskID = taskID
         self.title = title
         self.reason = reason
+        self.action = action
     }
+}
+
+public enum TodayRecommendationAction: Equatable, Sendable {
+    case startFocus
+    case selectTask
+    case openReview
+    case prepareScheduleDraft
 }
 
 public struct TodayTaskRowSnapshot: Equatable, Sendable {
@@ -150,6 +164,8 @@ public enum TodayDashboardSnapshotBuilder {
             review: today.dailyPlanningReviewPreview,
             unscheduledTasks: schedule.unscheduledTasks,
             tasks: tasks,
+            now: now,
+            calendar: calendar,
             locale: locale
         )
 
@@ -187,10 +203,10 @@ public enum TodayDashboardSnapshotBuilder {
             ?? plan.tasks.first
 
         guard let task else {
-            return TodayRecommendation(taskID: nil, title: localized("No recommendation", locale: locale), reason: localized("Add a task to plan your day.", locale: locale))
+            return TodayRecommendation(taskID: nil, title: localized("No recommendation", locale: locale), reason: localized("Add a task to plan your day.", locale: locale), action: .startFocus)
         }
         if plan.recommendedTask != nil {
-            return TodayRecommendation(taskID: task.id, title: task.title, reason: localizedPlanReason(plan.recommendationReason, locale: locale))
+            return TodayRecommendation(taskID: task.id, title: task.title, reason: localizedPlanReason(plan.recommendationReason, locale: locale), action: .startFocus)
         }
         let reason: String
         if task.status == .blocked {
@@ -202,7 +218,7 @@ public enum TodayDashboardSnapshotBuilder {
         } else {
             reason = localized("Start with the first planned task.", locale: locale)
         }
-        return TodayRecommendation(taskID: task.id, title: task.title, reason: reason)
+        return TodayRecommendation(taskID: task.id, title: task.title, reason: reason, action: .startFocus)
     }
 
     private static func recommendations(
@@ -211,6 +227,8 @@ public enum TodayDashboardSnapshotBuilder {
         review: DailyPlanningReview?,
         unscheduledTasks: [ProjectBoardTask],
         tasks: [TodayTaskRowSnapshot],
+        now: Date,
+        calendar: Calendar,
         locale: Locale
     ) -> [TodayRecommendation] {
         var recommendations: [TodayRecommendation] = []
@@ -227,16 +245,20 @@ public enum TodayDashboardSnapshotBuilder {
 
         append(primary)
         for chip in chips {
-            append(TodayRecommendation(taskID: chip.taskID, title: chip.title, reason: chip.reason))
+            append(TodayRecommendation(taskID: chip.taskID, title: chip.title, reason: chip.reason, action: .selectTask))
         }
         for item in review?.focusItems ?? [] {
-            append(TodayRecommendation(taskID: item.taskID, title: item.title, reason: item.reason))
+            append(TodayRecommendation(taskID: item.taskID, title: item.title, reason: item.reason, action: .openReview))
         }
-        for task in unscheduledTasks.sorted(by: isHigherPriority) {
+        let unscheduledCandidates = unscheduledTasks
+            .filter { isUnscheduledRecommendationCandidate($0, now: now, calendar: calendar) }
+            .sorted(by: isHigherPriority)
+        for task in unscheduledCandidates {
             append(TodayRecommendation(
                 taskID: task.id,
                 title: task.title,
-                reason: localized("Start with the first planned task.", locale: locale)
+                reason: localized("Needs scheduling", locale: locale),
+                action: .prepareScheduleDraft
             ))
         }
         for task in tasks {
@@ -246,7 +268,8 @@ public enum TodayDashboardSnapshotBuilder {
                     title: task.title,
                     reason: task.timeLabel ?? (task.projectTitle.isEmpty
                         ? localized("Start with the first planned task.", locale: locale)
-                        : task.projectTitle)
+                        : task.projectTitle),
+                    action: .selectTask
                 )
             )
         }
@@ -254,7 +277,19 @@ public enum TodayDashboardSnapshotBuilder {
     }
 
     private static func isHigherPriority(_ lhs: ProjectBoardTask, _ rhs: ProjectBoardTask) -> Bool {
-        priorityRank(lhs.priority) < priorityRank(rhs.priority)
+        let lhsRank = priorityRank(lhs.priority)
+        let rhsRank = priorityRank(rhs.priority)
+        return lhsRank == rhsRank ? lhs.id < rhs.id : lhsRank < rhsRank
+    }
+
+    private static func isUnscheduledRecommendationCandidate(
+        _ task: ProjectBoardTask,
+        now: Date,
+        calendar: Calendar
+    ) -> Bool {
+        task.priority == .high
+            || task.status == .blocked
+            || task.isOverdueForToday(on: now, calendar: calendar)
     }
 
     private static func priorityRank(_ priority: ProjectTaskPriority) -> Int {

@@ -3,7 +3,7 @@ import SwiftUI
 
 struct TodayDashboardRecommendationCards: View {
     let recommendations: [TodayRecommendation]
-    let selectTaskID: (Int64) -> Void
+    let onAction: (TodayRecommendation) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
@@ -12,7 +12,7 @@ struct TodayDashboardRecommendationCards: View {
             HStack(alignment: .top, spacing: SuisuiSpacing.sm) {
                 ForEach(recommendations, id: \.taskID) { recommendation in
                     Button {
-                        if let taskID = recommendation.taskID { selectTaskID(taskID) }
+                        onAction(recommendation)
                     } label: {
                         VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
                             Image(systemName: "sparkles")
@@ -47,17 +47,17 @@ struct TodayDashboardWeeklyScheduleCard: View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
             Label("This Week", systemImage: "calendar")
                 .font(SuisuiTypography.sectionTitle)
-            Text(String(format: String(localized: "%d tasks scheduled"), schedule.scheduledTaskCount))
+            Text(localizedCount(schedule.scheduledTaskCount, one: "%d task scheduled", other: "%d tasks scheduled"))
                 .font(.headline.monospacedDigit())
-            Text(String(format: String(localized: "%d tasks need scheduling"), schedule.unscheduledTaskCount))
+            Text(localizedCount(schedule.unscheduledTaskCount, one: "%d task needs scheduling", other: "%d tasks need scheduling"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .soloCard()
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("today-weekly-schedule-card")
-        .accessibilityLabel(String(format: String(localized: "This Week: %d scheduled"), schedule.scheduledTaskCount))
-        .accessibilityValue(String(format: String(localized: "%d tasks need scheduling"), schedule.unscheduledTaskCount))
+        .accessibilityLabel(String(format: String(localized: "This Week: %@"), localizedCount(schedule.scheduledTaskCount, one: "%d task scheduled", other: "%d tasks scheduled")))
+        .accessibilityValue(localizedCount(schedule.unscheduledTaskCount, one: "%d task needs scheduling", other: "%d tasks need scheduling"))
     }
 }
 

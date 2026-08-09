@@ -19,11 +19,11 @@ struct TodayDashboardHeaderView: View {
         .accessibilityIdentifier("today-dashboard-header")
         .accessibilityLabel(
             String(
-                format: String(localized: "Suisui Today: %@. %@. %d tasks today, %d scheduled"),
+                format: String(localized: "Suisui Today: %@. %@. %@ today, %@ scheduled"),
                 header.title,
                 header.greeting,
-                header.taskCount,
-                header.scheduledTaskCount
+                localizedTaskCount(header.taskCount),
+                localizedTaskCount(header.scheduledTaskCount)
             )
         )
     }

@@ -4,10 +4,12 @@ import SwiftUI
 
 enum TodayDashboardLayoutMetrics {
     // Main needs room for task metadata and rail needs room for assistant actions.
-    static let primaryMinimumWidth: CGFloat = 680
+    static let primaryMinimumWidth: CGFloat = 880
     static let railMinimumWidth: CGFloat = 320
     static let columnSpacing: CGFloat = 16
     static let horizontalInsets: CGFloat = 36
+    // 900pt windows leave 864pt after the dashboard's horizontal insets.
+    static let compactRailCardsMinimumWidth: CGFloat = 864
     static let twoColumnMinimumWidth = primaryMinimumWidth + railMinimumWidth + columnSpacing
 }
 
@@ -23,6 +25,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
     let openInspectorForTodayRailTask: (Int64) -> Void
     let playDailyPlanningReadout: () -> Void
     @ViewBuilder let catchUpContent: () -> CatchUpContent
+    @AccessibilityFocusState private var isReviewFocused: Bool
     private func makeDashboard(now: Date, calendar: Calendar, locale: Locale) -> TodayDashboardSnapshot {
         TodayDashboardSnapshotBuilder.make(
             today: snapshot,
@@ -44,7 +47,9 @@ struct TodayDashboardView<CatchUpContent: View>: View {
         )
         GeometryReader { proxy in
             ScrollView(.vertical) {
-                let isWide = proxy.size.width - TodayDashboardLayoutMetrics.horizontalInsets >= TodayDashboardLayoutMetrics.twoColumnMinimumWidth
+                let availableWidth = proxy.size.width - TodayDashboardLayoutMetrics.horizontalInsets
+                let isWide = availableWidth >= TodayDashboardLayoutMetrics.twoColumnMinimumWidth
+                let presentsCompactRailCardsHorizontally = !isWide && availableWidth >= TodayDashboardLayoutMetrics.compactRailCardsMinimumWidth
                 let layout: AnyLayout = isWide
                     ? AnyLayout(HStackLayout(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing))
                     : AnyLayout(VStackLayout(alignment: .leading, spacing: SuisuiSpacing.lg))
@@ -55,7 +60,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                             maxWidth: .infinity,
                             alignment: .topLeading
                         )
-                    rail(dashboard: dashboard)
+                    rail(dashboard: dashboard, presentsCardsHorizontally: presentsCompactRailCardsHorizontally)
                         .frame(width: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : nil)
                     }
                 .padding(.horizontal, 18)
@@ -70,7 +75,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
             TodayDashboardHeaderView(header: dashboard.header)
             TodayDashboardRecommendationCards(
                 recommendations: dashboard.recommendations,
-                selectTaskID: viewModel.selectTask
+                onAction: performRecommendationAction
             )
             TodayDashboardTaskListView(
                 tasks: snapshot.plan.tasks,
@@ -98,18 +103,37 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                     catchUpContent()
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
+                .accessibilityFocused($isReviewFocused)
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    private func rail(dashboard: TodayDashboardSnapshot) -> some View {
+    private func performRecommendationAction(_ recommendation: TodayRecommendation) {
+        guard let taskID = recommendation.taskID else { return }
+        switch recommendation.action {
+        case .startFocus:
+            viewModel.startFocus(taskID: taskID)
+        case .selectTask:
+            viewModel.selectTask(id: taskID)
+        case .openReview:
+            viewModel.selectTask(id: taskID)
+            DispatchQueue.main.async {
+                isReviewFocused = true
+            }
+        case .prepareScheduleDraft:
+            _ = viewModel.prepareTodayScheduleDraft(prioritizing: taskID)
+        }
+    }
+
+    private func rail(dashboard: TodayDashboardSnapshot, presentsCardsHorizontally: Bool) -> some View {
         TodayDashboardRailView(
             dashboard: dashboard,
             assistantContext: snapshot.assistantContext,
             viewModel: viewModel,
             commandTitle: $commandTitle,
-            openInspector: openInspectorForTodayRailTask
+            openInspector: openInspectorForTodayRailTask,
+            presentsCardsHorizontally: presentsCardsHorizontally
         )
     }
 }

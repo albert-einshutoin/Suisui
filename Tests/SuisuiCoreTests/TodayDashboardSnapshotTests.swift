@@ -108,6 +108,7 @@ final class TodayDashboardSnapshotTests: XCTestCase {
 
         XCTAssertEqual(snapshot.recommendations.map(\.taskID), [primary.id, second.id, third.id])
         XCTAssertEqual(snapshot.recommendations.map(\.title), ["Primary", "Blocker", "Third"])
+        XCTAssertEqual(snapshot.recommendations.map(\.action), [.startFocus, .selectTask, .selectTask])
         XCTAssertEqual(snapshot.recommendation, snapshot.recommendations.first)
         XCTAssertEqual(snapshot.recommendations.count, 3)
     }
@@ -157,6 +158,31 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         )
 
         XCTAssertEqual(snapshot.recommendations.map(\.taskID), [primary.id, reviewFocus.id, highUnscheduled.id])
+        XCTAssertEqual(snapshot.recommendations.map(\.action), [.startFocus, .openReview, .prepareScheduleDraft])
+    }
+
+    func testUnscheduledRecommendationsOnlyIncludeActionableCandidatesInStableOrder() throws {
+        let calendar = fixedCalendar()
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))
+        let low = task(id: 1, title: "Low", priority: .low, dueAt: nil)
+        let medium = task(id: 2, title: "Medium", priority: .medium, dueAt: nil)
+        let laterHigh = task(id: 9, title: "Later high", priority: .high, dueAt: nil)
+        let firstHigh = task(id: 3, title: "First high", priority: .high, dueAt: nil)
+
+        let snapshot = TodayDashboardSnapshotBuilder.make(
+            today: workflowSnapshot(tasks: []),
+            schedule: schedule(blocks: [], unscheduled: [laterHigh, medium, low, firstHigh]),
+            projectTitlesByTaskID: [:],
+            displayName: "",
+            dailyCapacityMinutes: 480,
+            now: now,
+            calendar: calendar,
+            locale: Locale(identifier: "en_US")
+        )
+
+        XCTAssertEqual(snapshot.recommendations.map(\.taskID), [firstHigh.id, laterHigh.id])
+        XCTAssertEqual(snapshot.recommendations.map(\.action), [.prepareScheduleDraft, .prepareScheduleDraft])
+        XCTAssertEqual(snapshot.recommendations.map(\.reason), ["Needs scheduling", "Needs scheduling"])
     }
 
     func testLocaleCalendarAndGreetingBoundariesAreExplicit() throws {

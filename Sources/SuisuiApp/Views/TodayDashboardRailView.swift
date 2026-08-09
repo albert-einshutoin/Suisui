@@ -7,12 +7,19 @@ struct TodayDashboardRailView: View {
     @ObservedObject var viewModel: TodayFeatureViewModel
     @Binding var commandTitle: String
     let openInspector: (Int64) -> Void
+    let presentsCardsHorizontally: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: SuisuiSpacing.lg) {
+        let layout: AnyLayout = presentsCardsHorizontally
+            ? AnyLayout(HStackLayout(alignment: .top, spacing: SuisuiSpacing.lg))
+            : AnyLayout(VStackLayout(alignment: .leading, spacing: SuisuiSpacing.lg))
+        layout {
             workloadCard
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             focusCard
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             assistantCard
+                .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }

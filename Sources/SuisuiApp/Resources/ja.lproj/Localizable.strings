@@ -1930,6 +1930,9 @@
 "This Week" = "今週";
 "%d tasks scheduled" = "%d件を予定済み";
 "%d tasks need scheduling" = "%d件の予定を調整";
+"%d task scheduled" = "%d件を予定済み";
+"%d task needs scheduling" = "%d件の予定を調整";
+"This Week: %@" = "今週: %@";
 "Starts local focus without changing task status or Calendar." = "タスクの状態やカレンダーを変更せず、ローカルの集中を開始します。";
 "Mark incomplete" = "未完了にする";
 "Mark complete" = "完了にする";
@@ -1942,6 +1945,7 @@
 "Recommendation: %@. %@" = "おすすめ: %@。%@";
 "This Week: %d scheduled" = "今週: %d件を予定済み";
 "Suisui Today: %@. %@. %d tasks today, %d scheduled" = "Suisuiの今日: %@。%@。今日のタスク%d件、予定済み%d件";
+"Suisui Today: %@. %@. %@ today, %@ scheduled" = "Suisuiの今日: %@。%@。今日の%@、予定済み%@";
 "Selects this task without changing task status or Calendar." = "タスクの状態やカレンダーを変更せず、このタスクを選択します。";
 "Memo: %@" = "メモ: %@";
 "Transcript-only voice capture, duration %@, waveform preview" = "文字起こしのみの音声入力、長さ%@、波形プレビュー";

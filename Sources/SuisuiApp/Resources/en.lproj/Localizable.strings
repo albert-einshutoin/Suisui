@@ -1936,6 +1936,9 @@
 "This Week" = "This Week";
 "%d tasks scheduled" = "%d tasks scheduled";
 "%d tasks need scheduling" = "%d tasks need scheduling";
+"%d task scheduled" = "%d task scheduled";
+"%d task needs scheduling" = "%d task needs scheduling";
+"This Week: %@" = "This Week: %@";
 "Starts local focus without changing task status or Calendar." = "Starts local focus without changing task status or Calendar.";
 "Mark incomplete" = "Mark incomplete";
 "Mark complete" = "Mark complete";
@@ -1948,6 +1951,7 @@
 "Recommendation: %@. %@" = "Recommendation: %@. %@";
 "This Week: %d scheduled" = "This Week: %d scheduled";
 "Suisui Today: %@. %@. %d tasks today, %d scheduled" = "Suisui Today: %@. %@. %d tasks today, %d scheduled";
+"Suisui Today: %@. %@. %@ today, %@ scheduled" = "Suisui Today: %@. %@. %@ today, %@ scheduled";
 "Selects this task without changing task status or Calendar." = "Selects this task without changing task status or Calendar.";
 "Memo: %@" = "Memo: %@";
 "Create project" = "Create project";
