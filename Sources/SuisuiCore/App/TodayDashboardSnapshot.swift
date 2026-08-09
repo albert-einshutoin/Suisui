@@ -73,10 +73,29 @@ public struct TodayReviewSnapshot: Equatable, Sendable {
 public struct TodayDashboardSnapshot: Equatable, Sendable {
     public let header: TodayDashboardHeaderSnapshot
     public let recommendation: TodayRecommendation
+    public let recommendations: [TodayRecommendation]
     public let tasks: [TodayTaskRowSnapshot]
     public let workload: TodayWorkloadSnapshot
     public let weeklySchedule: TodayWeeklyScheduleSnapshot
     public let review: TodayReviewSnapshot
+
+    public init(
+        header: TodayDashboardHeaderSnapshot,
+        recommendation: TodayRecommendation,
+        recommendations: [TodayRecommendation],
+        tasks: [TodayTaskRowSnapshot],
+        workload: TodayWorkloadSnapshot,
+        weeklySchedule: TodayWeeklyScheduleSnapshot,
+        review: TodayReviewSnapshot
+    ) {
+        self.header = header
+        self.recommendation = recommendation
+        self.recommendations = recommendations
+        self.tasks = tasks
+        self.workload = workload
+        self.weeklySchedule = weeklySchedule
+        self.review = review
+    }
 
     public init(
         header: TodayDashboardHeaderSnapshot,
@@ -86,12 +105,15 @@ public struct TodayDashboardSnapshot: Equatable, Sendable {
         weeklySchedule: TodayWeeklyScheduleSnapshot,
         review: TodayReviewSnapshot
     ) {
-        self.header = header
-        self.recommendation = recommendation
-        self.tasks = tasks
-        self.workload = workload
-        self.weeklySchedule = weeklySchedule
-        self.review = review
+        self.init(
+            header: header,
+            recommendation: recommendation,
+            recommendations: recommendation.taskID == nil ? [] : [recommendation],
+            tasks: tasks,
+            workload: workload,
+            weeklySchedule: weeklySchedule,
+            review: review
+        )
     }
 }
 
@@ -117,13 +139,21 @@ public enum TodayDashboardSnapshotBuilder {
         }
         let review = today.dailyPlanningReviewPreview
         let scheduledTaskCount = Set(schedule.weeklyCockpit.days.flatMap(\.blocks).map(\.task.id)).count
+        let primaryRecommendation = recommendation(for: today.plan, now: now, calendar: calendar, locale: locale)
+        let recommendations = recommendations(
+            primary: primaryRecommendation,
+            chips: today.recommendationChips,
+            tasks: tasks,
+            locale: locale
+        )
 
         return TodayDashboardSnapshot(
             header: TodayDashboardHeaderSnapshot(
                 title: dateTitle(for: now, calendar: calendar, locale: locale),
                 greeting: greeting(displayName: displayName, now: now, calendar: calendar, locale: locale)
             ),
-            recommendation: recommendation(for: today.plan, now: now, calendar: calendar, locale: locale),
+            recommendation: primaryRecommendation,
+            recommendations: recommendations,
             tasks: tasks,
             workload: TodayWorkloadSnapshot(
                 plannedTaskCount: tasks.count,
@@ -166,6 +196,42 @@ public enum TodayDashboardSnapshotBuilder {
             reason = localized("Start with the first planned task.", locale: locale)
         }
         return TodayRecommendation(taskID: task.id, title: task.title, reason: reason)
+    }
+
+    private static func recommendations(
+        primary: TodayRecommendation,
+        chips: [TodayRecommendationChip],
+        tasks: [TodayTaskRowSnapshot],
+        locale: Locale
+    ) -> [TodayRecommendation] {
+        var recommendations: [TodayRecommendation] = []
+        var usedTaskIDs = Set<Int64>()
+
+        func append(_ recommendation: TodayRecommendation) {
+            guard recommendations.count < 3,
+                  let taskID = recommendation.taskID,
+                  usedTaskIDs.insert(taskID).inserted else {
+                return
+            }
+            recommendations.append(recommendation)
+        }
+
+        append(primary)
+        for chip in chips {
+            append(TodayRecommendation(taskID: chip.taskID, title: chip.title, reason: chip.reason))
+        }
+        for task in tasks {
+            append(
+                TodayRecommendation(
+                    taskID: task.taskID,
+                    title: task.title,
+                    reason: task.timeLabel ?? (task.projectTitle.isEmpty
+                        ? localized("Start with the first planned task.", locale: locale)
+                        : task.projectTitle)
+                )
+            )
+        }
+        return recommendations
     }
 
     private static func greeting(displayName: String, now: Date, calendar: Calendar, locale: Locale) -> String {

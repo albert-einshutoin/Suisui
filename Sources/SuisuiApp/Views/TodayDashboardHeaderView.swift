@@ -17,6 +17,8 @@ struct TodayDashboardHeaderView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("today-dashboard-header")
-        .accessibilityLabel("Suisui Today")
+        .accessibilityLabel(
+            String(format: String(localized: "Suisui Today: %@. %@"), header.title, header.greeting)
+        )
     }
 }

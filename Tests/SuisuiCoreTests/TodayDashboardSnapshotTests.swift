@@ -68,6 +68,57 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.recommendation.reason, "Protect the release work.")
     }
 
+    func testRecommendationsAreEmptyWhenTodayHasNoActionableTasks() throws {
+        let calendar = fixedCalendar()
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))
+        let snapshot = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: []), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "en_US"))
+
+        XCTAssertEqual(snapshot.recommendations, [])
+        XCTAssertNil(snapshot.recommendation.taskID)
+    }
+
+    func testRecommendationsKeepPrimaryThenUniqueChipsThenRemainingTasks() throws {
+        let calendar = fixedCalendar()
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))
+        let primary = task(id: 1, title: "Primary", priority: .high, dueAt: nil)
+        let second = task(id: 2, title: "Second", priority: .medium, dueAt: nil)
+        let third = task(id: 3, title: "Third", priority: .low, dueAt: nil)
+        let fourth = task(id: 4, title: "Fourth", priority: .low, dueAt: nil)
+        let snapshot = TodayDashboardSnapshotBuilder.make(
+            today: workflowSnapshot(
+                tasks: [primary, second, third, fourth],
+                recommendedTask: primary,
+                recommendationReason: "Start here.",
+                chips: [
+                    chip(task: primary, kind: .highPriority),
+                    chip(task: second, kind: .blocker),
+                    chip(task: second, kind: .overdue),
+                ]
+            ),
+            schedule: .empty,
+            projectTitlesByTaskID: [third.id: "Suisui"],
+            displayName: "",
+            dailyCapacityMinutes: 480,
+            now: now,
+            calendar: calendar,
+            locale: Locale(identifier: "en_US")
+        )
+
+        XCTAssertEqual(snapshot.recommendations.map(\.taskID), [primary.id, second.id, third.id])
+        XCTAssertEqual(snapshot.recommendations.map(\.title), ["Primary", "Blocker", "Third"])
+        XCTAssertEqual(snapshot.recommendation, snapshot.recommendations.first)
+        XCTAssertEqual(snapshot.recommendations.count, 3)
+    }
+
+    func testRecommendationsKeepOnePrimaryWhenNoUniqueChipOrRemainingTaskExists() throws {
+        let calendar = fixedCalendar()
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))
+        let primary = task(id: 1, title: "Only", priority: .high, dueAt: nil)
+        let snapshot = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: [primary], recommendedTask: primary, recommendationReason: "Start here.", chips: [chip(task: primary, kind: .highPriority)]), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "en_US"))
+
+        XCTAssertEqual(snapshot.recommendations.map(\.taskID), [primary.id])
+    }
+
     func testLocaleCalendarAndGreetingBoundariesAreExplicit() throws {
         let utc = fixedCalendar()
         let tokyo = calendar(timeZone: try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo")))
@@ -173,6 +224,7 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         tasks: [ProjectBoardTask],
         recommendedTask: ProjectBoardTask? = nil,
         recommendationReason: String = "",
+        chips: [TodayRecommendationChip] = [],
         review: DailyPlanningReview? = nil
     ) -> TodayWorkflowSnapshot {
         TodayWorkflowSnapshot(
@@ -195,13 +247,17 @@ final class TodayDashboardSnapshotTests: XCTestCase {
                 subtaskSummary: "",
                 reminderSummary: ""
             ),
-            recommendationChips: [],
+            recommendationChips: chips,
             dailyPlanningReviewPreview: review
         )
     }
 
     private func task(id: Int64, title: String, status: ProjectTaskStatus = .planned, priority: ProjectTaskPriority, dueAt: String?) -> ProjectBoardTask {
         ProjectBoardTask(id: id, projectID: 1, title: title, detail: "", status: status, priority: priority, dueAt: dueAt)
+    }
+
+    private func chip(task: ProjectBoardTask, kind: TodayRecommendationKind) -> TodayRecommendationChip {
+        TodayRecommendationChip(kind: kind, taskID: task.id, taskTitle: task.title, title: kind == .blocker ? "Blocker" : "Chip", systemImage: "sparkles", reason: "Reason for \(task.title)")
     }
 
     private func fixedCalendar() -> Calendar {

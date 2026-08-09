@@ -1938,6 +1938,9 @@
 "Suisui Today" = "Suisuiの今日";
 "Suisui Assistant" = "Suisui Assistant";
 "Today task" = "今日のタスク";
+"Suisui Today: %@. %@" = "Suisuiの今日: %@。%@";
+"Recommendation: %@. %@" = "おすすめ: %@。%@";
+"This Week: %d scheduled" = "今週: %d件を予定済み";
 "Memo: %@" = "メモ: %@";
 "Transcript-only voice capture, duration %@, waveform preview" = "文字起こしのみの音声入力、長さ%@、波形プレビュー";
 "Create project" = "プロジェクトを作成";

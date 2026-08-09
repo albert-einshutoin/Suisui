@@ -1944,6 +1944,9 @@
 "Suisui Today" = "Suisui Today";
 "Suisui Assistant" = "Suisui Assistant";
 "Today task" = "Today task";
+"Suisui Today: %@. %@" = "Suisui Today: %@. %@";
+"Recommendation: %@. %@" = "Recommendation: %@. %@";
+"This Week: %d scheduled" = "This Week: %d scheduled";
 "Memo: %@" = "Memo: %@";
 "Create project" = "Create project";
 "Update project" = "Update project";

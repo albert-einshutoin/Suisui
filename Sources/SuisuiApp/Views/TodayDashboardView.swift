@@ -26,34 +26,35 @@ struct TodayDashboardView<CatchUpContent: View>: View {
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
 
-    private var dashboard: TodayDashboardSnapshot {
+    private func makeDashboard(now: Date) -> TodayDashboardSnapshot {
         TodayDashboardSnapshotBuilder.make(
             today: snapshot,
             schedule: schedule,
             projectTitlesByTaskID: projectTitlesByTaskID,
             displayName: displayName,
             dailyCapacityMinutes: dailyCapacityMinutes,
-            now: Date(),
+            now: now,
             calendar: calendar,
             locale: locale
         )
     }
 
     var body: some View {
+        let dashboard = makeDashboard(now: Date())
         GeometryReader { proxy in
             ScrollView(.vertical) {
                 Group {
                     if proxy.size.width - TodayDashboardLayoutMetrics.horizontalInsets >= TodayDashboardLayoutMetrics.twoColumnMinimumWidth {
                         HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
-                            mainContent
+                            mainContent(dashboard: dashboard)
                                 .frame(minWidth: TodayDashboardLayoutMetrics.primaryMinimumWidth, maxWidth: .infinity, alignment: .topLeading)
-                            rail
+                            rail(dashboard: dashboard)
                                 .frame(width: TodayDashboardLayoutMetrics.railMinimumWidth)
                         }
                     } else {
                         VStack(alignment: .leading, spacing: SuisuiSpacing.lg) {
-                            mainContent
-                            rail
+                            mainContent(dashboard: dashboard)
+                            rail(dashboard: dashboard)
                         }
                     }
                 }
@@ -64,13 +65,11 @@ struct TodayDashboardView<CatchUpContent: View>: View {
         }
     }
 
-    private var mainContent: some View {
+    private func mainContent(dashboard: TodayDashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.lg) {
             TodayDashboardHeaderView(header: dashboard.header)
             TodayDashboardRecommendationCards(
-                recommendation: dashboard.recommendation,
-                chips: snapshot.recommendationChips,
-                tasks: dashboard.tasks,
+                recommendations: dashboard.recommendations,
                 startFocus: viewModel.startFocus
             )
             TodayDashboardTaskListView(
@@ -97,7 +96,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    private var rail: some View {
+    private func rail(dashboard: TodayDashboardSnapshot) -> some View {
         TodayDashboardRailView(
             dashboard: dashboard,
             assistantContext: snapshot.assistantContext,

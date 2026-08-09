@@ -4399,6 +4399,9 @@ final class AppExperienceSourceTests: XCTestCase {
         let board = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
 
         XCTAssertTrue(dashboard.contains("TodayDashboardSnapshotBuilder.make("))
+        XCTAssertTrue(dashboard.contains("let dashboard = makeDashboard(now: Date())"))
+        XCTAssertTrue(dashboard.contains("mainContent(dashboard: dashboard)"))
+        XCTAssertTrue(dashboard.contains("rail(dashboard: dashboard)"))
         XCTAssertTrue(dashboard.contains("displayName: displayName"))
         XCTAssertTrue(dashboard.contains("dailyCapacityMinutes: dailyCapacityMinutes"))
         XCTAssertTrue(todayWorkflow.contains("dashboardDisplayName: String = \"\""))
@@ -4412,10 +4415,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(dashboard.contains("TodayDashboardTaskListView"))
         XCTAssertTrue(dashboard.contains("TodayDashboardRailView"))
         XCTAssertTrue(header.contains("today-dashboard-header"))
+        XCTAssertTrue(header.contains("Suisui Today: %@. %@"))
         XCTAssertTrue(cards.contains("today-recommendations"))
-        XCTAssertTrue(cards.contains("prefix(3)"))
+        XCTAssertTrue(cards.contains("let recommendations: [TodayRecommendation]"))
+        XCTAssertTrue(cards.contains("Recommendation: %@. %@"))
         XCTAssertTrue(cards.contains("today-review-card"))
         XCTAssertTrue(cards.contains("today-weekly-schedule-card"))
+        XCTAssertTrue(cards.contains("This Week: %d scheduled"))
         XCTAssertTrue(taskList.contains("today-task-list"))
         XCTAssertTrue(rail.contains("today-workload-card"))
         XCTAssertTrue(rail.contains("today-focus-card"))
@@ -4560,7 +4566,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertLessThan(
             try XCTUnwrap(workflowScope.range(of: "mainContent")).lowerBound,
-            try XCTUnwrap(workflowScope.range(of: "rail\n                                .frame")).lowerBound
+            try XCTUnwrap(workflowScope.range(of: "rail(dashboard: dashboard)\n                                .frame")).lowerBound
         )
     }
 
