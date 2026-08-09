@@ -60,6 +60,7 @@ final class AppBundleMetadataTests: XCTestCase {
         XCTAssertTrue(japanese.contains("NSLocationUsageDescription"))
         XCTAssertTrue(japanese.contains("Todayの天気を表示している間だけ現在地を使用します"))
         XCTAssertTrue(buildScript.contains("InfoPlist.strings"))
+        XCTAssertTrue(buildScript.contains("BLOCKER: missing app localization source"))
     }
 
     private func loadMetadata() throws -> [String: String] {

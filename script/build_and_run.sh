@@ -286,7 +286,8 @@ stop_existing_dist_apps_for_mode() {
 
 copy_app_localizations() {
   if [[ ! -d "$APP_LOCALIZATION_SOURCE" ]]; then
-    return
+    echo "BLOCKER: missing app localization source: $APP_LOCALIZATION_SOURCE" >&2
+    return 1
   fi
 
   mkdir -p "$APP_RESOURCES"
