@@ -52,6 +52,15 @@ extension AppRuntimeFactory {
         }
     }
 
+    static func makeTodayIntegrationStates() -> TodayIntegrationStates {
+        // This reuses the runtime's local readiness read. Today deliberately
+        // does not initiate OAuth, sync, Calendar writes, or Slack sends.
+        TodayIntegrationStates(
+            calendar: TodayIntegrationState.calendar(from: makeGoogleCalendarRuntimeSyncStatus()),
+            slack: .notConnected
+        )
+    }
+
     @MainActor
     static func makeGoogleCalendarOAuthConnector() -> (any GoogleCalendarOAuthConnecting)? {
         guard isGoogleCalendarRuntimeEnabled() else {

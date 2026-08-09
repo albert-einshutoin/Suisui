@@ -26,6 +26,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
     let displayName: String
     let dailyCapacityMinutes: Int
     let weatherState: TodayWeatherState
+    let integrationsState: TodayIntegrationStates
     let selectTodayTask: (ProjectBoardTask) -> Void
     let openInspectorForTodayRailTask: (Int64) -> Void
     let playDailyPlanningReadout: () -> Void
@@ -41,7 +42,8 @@ struct TodayDashboardView<CatchUpContent: View>: View {
             now: now,
             calendar: calendar,
             locale: locale,
-            weatherState: weatherState
+            weatherState: weatherState,
+            integrationsState: integrationsState
         )
     }
 

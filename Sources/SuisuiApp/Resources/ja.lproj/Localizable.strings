@@ -506,6 +506,7 @@
 "Open" = "未完了";
 "Open Details" = "詳細を開く";
 "Open Settings" = "設定を開く";
+"Opens Settings to manage this connection. It does not start sync or send messages." = "この連携を管理する設定を開きます。同期やメッセージ送信は開始しません。";
 "Open Task" = "タスクを開く";
 "Open a task card, use status controls, or move tasks between columns." = "タスクカードを開く、ステータス操作を使う、または列間でタスクを移動します。";
 "Open the highest-signal task and decide its next move in the inspector." = "最も重要なタスクを開き、インスペクタで次の動きを決めます。";

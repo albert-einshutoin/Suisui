@@ -34,6 +34,29 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.recommendation?.reason, "Blocked work should be cleared first.")
     }
 
+    func testProjectsInjectedCalendarAndSlackStatesIntoOneDashboardSnapshot() throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))
+        let snapshot = TodayDashboardSnapshotBuilder.make(
+            today: workflowSnapshot(tasks: []),
+            schedule: .empty,
+            projectTitlesByTaskID: [:],
+            displayName: "",
+            dailyCapacityMinutes: 480,
+            now: now,
+            calendar: fixedCalendar(),
+            locale: Locale(identifier: "en_US"),
+            integrationsState: TodayIntegrationStates(
+                calendar: .syncing,
+                slack: .synced(lastSyncedAt: now, itemCount: 2)
+            )
+        )
+
+        XCTAssertEqual(snapshot.integrations.calendar.state, .syncing)
+        XCTAssertEqual(snapshot.integrations.calendar.detail, "Syncing")
+        XCTAssertEqual(snapshot.integrations.slack.state, .synced(lastSyncedAt: now, itemCount: 2))
+        XCTAssertTrue(snapshot.integrations.slack.accessibilityLabel.contains("2 items synced"))
+    }
+
     func testRecommendationOrderIsDeterministicAndFallsBackToFirstTask() throws {
         let calendar = fixedCalendar()
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))

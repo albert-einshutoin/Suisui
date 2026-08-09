@@ -7699,6 +7699,36 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(settingsSource.contains("settings = previousSettings"))
     }
 
+    func testTodayIntegrationRailUsesInjectedReadOnlyConnectionSnapshots() throws {
+        let integrationSource = try readPackageFile("Sources/SuisuiCore/App/TodayIntegrationSnapshot.swift")
+        let dashboardSource = try readPackageFile("Sources/SuisuiCore/App/TodayDashboardSnapshot.swift")
+        let workflowSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift")
+        let dashboardViewSource = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardView.swift")
+        let railSource = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardRailView.swift")
+        let runtimeFactorySource = try readPackageFile("Sources/SuisuiApp/Composition/GoogleCalendarRuntimeCompositionFactory.swift")
+        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+
+        XCTAssertTrue(integrationSource.contains("public enum TodayIntegrationState"))
+        XCTAssertTrue(integrationSource.contains("case notConnected"))
+        XCTAssertTrue(integrationSource.contains("case permissionPending"))
+        XCTAssertTrue(integrationSource.contains("case connected"))
+        XCTAssertTrue(integrationSource.contains("case syncing"))
+        XCTAssertTrue(integrationSource.contains("case synced"))
+        XCTAssertTrue(integrationSource.contains("case failed"))
+        XCTAssertTrue(runtimeFactorySource.contains("TodayIntegrationState.calendar(from: makeGoogleCalendarRuntimeSyncStatus())"))
+        XCTAssertFalse(integrationSource.contains("URLSession"))
+        XCTAssertTrue(dashboardSource.contains("public let integrations: TodayIntegrationsSnapshot"))
+        XCTAssertTrue(dashboardSource.contains("integrationsState: TodayIntegrationStates"))
+        XCTAssertTrue(workflowSource.contains("dashboardIntegrationsState: TodayIntegrationStates"))
+        XCTAssertTrue(dashboardViewSource.contains("integrationsState: integrationsState"))
+        XCTAssertTrue(boardSource.contains("dashboardIntegrationsState: AppRuntimeFactory.makeTodayIntegrationStates()"))
+        XCTAssertTrue(railSource.contains("today-calendar-card"))
+        XCTAssertTrue(railSource.contains("today-slack-card"))
+        XCTAssertTrue(railSource.contains("SettingsLink"))
+        XCTAssertTrue(railSource.contains("It does not start sync or send messages."))
+        XCTAssertFalse(railSource.contains("URLSession"))
+    }
+
     func testProductionSettingsFactoryWiresURLSessionOllamaHealthChecker() throws {
         let factorySource = try readPackageFile("Sources/SuisuiApp/Composition/SettingsRuntimeFactory.swift")
         let coreSource = try readPackageFile("Sources/SuisuiCore/App/AppSettings.swift")

@@ -81,6 +81,7 @@ public struct TodayReviewSnapshot: Equatable, Sendable {
 public struct TodayDashboardSnapshot: Equatable, Sendable {
     public let header: TodayDashboardHeaderSnapshot
     public let weather: TodayWeatherSnapshot
+    public let integrations: TodayIntegrationsSnapshot
     public let recommendations: [TodayRecommendation]
     public let tasks: [TodayTaskRowSnapshot]
     public let workload: TodayWorkloadSnapshot
@@ -90,6 +91,7 @@ public struct TodayDashboardSnapshot: Equatable, Sendable {
     public init(
         header: TodayDashboardHeaderSnapshot,
         weather: TodayWeatherSnapshot,
+        integrations: TodayIntegrationsSnapshot,
         recommendations: [TodayRecommendation],
         tasks: [TodayTaskRowSnapshot],
         workload: TodayWorkloadSnapshot,
@@ -98,6 +100,7 @@ public struct TodayDashboardSnapshot: Equatable, Sendable {
     ) {
         self.header = header
         self.weather = weather
+        self.integrations = integrations
         self.recommendations = recommendations
         self.tasks = tasks
         self.workload = workload
@@ -126,6 +129,7 @@ public struct TodayDashboardSnapshot: Equatable, Sendable {
         self.init(
             header: header,
             weather: weather,
+            integrations: .notConfigured,
             recommendations: recommendation.taskID == nil ? [] : [recommendation],
             tasks: tasks,
             workload: workload,
@@ -145,7 +149,8 @@ public enum TodayDashboardSnapshotBuilder {
         now: Date,
         calendar: Calendar,
         locale: Locale = .autoupdatingCurrent,
-        weatherState: TodayWeatherState = .notConfigured
+        weatherState: TodayWeatherState = .notConfigured,
+        integrationsState: TodayIntegrationStates = .notConfigured
     ) -> TodayDashboardSnapshot {
         let tasks = today.plan.tasks.map { task in
             TodayTaskRowSnapshot(
@@ -179,6 +184,12 @@ public enum TodayDashboardSnapshotBuilder {
             ),
             weather: TodayWeatherSnapshotBuilder.make(
                 state: weatherState,
+                now: now,
+                calendar: calendar,
+                locale: locale
+            ),
+            integrations: TodayIntegrationSnapshotBuilder.make(
+                states: integrationsState,
                 now: now,
                 calendar: calendar,
                 locale: locale

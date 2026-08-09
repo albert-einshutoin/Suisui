@@ -509,6 +509,7 @@
 "Open" = "Open";
 "Open Details" = "Open Details";
 "Open Settings" = "Open Settings";
+"Opens Settings to manage this connection. It does not start sync or send messages." = "Opens Settings to manage this connection. It does not start sync or send messages.";
 "Open Task" = "Open Task";
 "Open a task card, use status controls, or move tasks between columns." = "Open a task card, use status controls, or move tasks between columns.";
 "Open the highest-signal task and decide its next move in the inspector." = "Open the highest-signal task and decide its next move in the inspector.";

@@ -39,3 +39,13 @@
 "Weather: %@. %@" = "天気: %@。%@";
 "Weather: %@. %@." = "天気: %@。%@。";
 "Weather: %@, %@. %@." = "天気: %@、%@。%@。";
+"Calendar" = "カレンダー";
+"Slack" = "Slack";
+"Not connected" = "未接続";
+"Permission needed" = "許可が必要です";
+"Connected" = "接続済み";
+"Sync failed. %@" = "同期に失敗しました。%@";
+"%d item synced" = "%d件を同期済み";
+"%d items synced" = "%d件を同期済み";
+"Last synced %@. %@" = "最終同期 %@。%@";
+"%@: %@." = "%1$@: %2$@。";

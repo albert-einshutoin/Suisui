@@ -10,14 +10,25 @@ struct TodayDashboardRailView: View {
     let presentsCardsHorizontally: Bool
 
     var body: some View {
-        let layout: AnyLayout = presentsCardsHorizontally
+        let primaryLayout: AnyLayout = presentsCardsHorizontally
             ? AnyLayout(HStackLayout(alignment: .top, spacing: SuisuiSpacing.lg))
             : AnyLayout(VStackLayout(alignment: .leading, spacing: SuisuiSpacing.lg))
-        layout {
-            workloadCard
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-            focusCard
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+        let integrationLayout: AnyLayout = presentsCardsHorizontally
+            ? AnyLayout(HStackLayout(alignment: .top, spacing: SuisuiSpacing.lg))
+            : AnyLayout(VStackLayout(alignment: .leading, spacing: SuisuiSpacing.lg))
+        VStack(alignment: .leading, spacing: SuisuiSpacing.lg) {
+            primaryLayout {
+                workloadCard
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                focusCard
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            integrationLayout {
+                TodayIntegrationCard(integration: dashboard.integrations.calendar)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                TodayIntegrationCard(integration: dashboard.integrations.slack)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
             assistantCard
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
@@ -51,6 +62,52 @@ struct TodayDashboardRailView: View {
         .soloCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-assistant-card")
+    }
+}
+
+private struct TodayIntegrationCard: View {
+    let integration: TodayIntegrationSnapshot
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
+            Label(integration.title, systemImage: systemImage)
+                .font(SuisuiTypography.sectionTitle)
+            Text(integration.detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            SettingsLink {
+                Label("Open Settings", systemImage: "gearshape")
+            }
+            .buttonStyle(.borderless)
+            .font(.caption.weight(.semibold))
+            .accessibilityHint("Opens Settings to manage this connection. It does not start sync or send messages.")
+        }
+        .soloCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(integration.accessibilityLabel)
+        .accessibilityIdentifier(accessibilityIdentifier)
+    }
+
+    private var accessibilityIdentifier: String {
+        integration.service == .calendar ? "today-calendar-card" : "today-slack-card"
+    }
+
+    private var systemImage: String {
+        switch integration.state {
+        case .notConnected:
+            integration.service == .calendar ? "calendar.badge.exclamationmark" : "bubble.left.and.bubble.right"
+        case .permissionPending:
+            "lock.badge.clock"
+        case .connected:
+            "checkmark.circle"
+        case .syncing:
+            "arrow.triangle.2.circlepath"
+        case .synced:
+            "checkmark.circle"
+        case .failed:
+            "exclamationmark.triangle"
+        }
     }
 }
 
