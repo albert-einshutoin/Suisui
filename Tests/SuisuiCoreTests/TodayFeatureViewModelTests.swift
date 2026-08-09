@@ -56,6 +56,24 @@ final class TodayFeatureViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testAddingUnscheduledRecommendationToDraftUsesTheLocalScheduleDraft() throws {
+        let board = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        board.load()
+        let project = try XCTUnwrap(board.createProject(title: "Launch"))
+        let unscheduled = try XCTUnwrap(board.createTask(
+            title: "Schedule release",
+            projectID: project.id,
+            status: .planned,
+            priority: .high,
+            dueAt: nil
+        ))
+        let feature = TodayFeatureViewModel(board: board)
+
+        XCTAssertTrue(feature.addUnscheduledTaskToScheduleDraft(taskID: unscheduled.id))
+        XCTAssertTrue(board.scheduleDraft?.timeBlocks.contains { $0.task.id == unscheduled.id } == true)
+    }
+
+    @MainActor
     func testRenamingAnotherTodayTasksProjectPublishesUpdatedFeatureOwnedTitle() async throws {
         let store = InMemoryProjectBoardStore()
         let board = ProjectBoardViewModel(store: store)

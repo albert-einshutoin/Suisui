@@ -4,13 +4,17 @@ import SwiftUI
 
 enum TodayDashboardLayoutMetrics {
     // Main needs room for task metadata and rail needs room for assistant actions.
-    static let primaryMinimumWidth: CGFloat = 880
+    static let primaryMinimumWidth: CGFloat = 840
     static let railMinimumWidth: CGFloat = 320
     static let columnSpacing: CGFloat = 16
     static let horizontalInsets: CGFloat = 36
     // 900pt windows leave 864pt after the dashboard's horizontal insets.
     static let compactRailCardsMinimumWidth: CGFloat = 864
     static let twoColumnMinimumWidth = primaryMinimumWidth + railMinimumWidth + columnSpacing
+
+    static func isWide(availableWidth: CGFloat) -> Bool {
+        availableWidth >= twoColumnMinimumWidth
+    }
 }
 
 struct TodayDashboardView<CatchUpContent: View>: View {
@@ -48,7 +52,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
         GeometryReader { proxy in
             ScrollView(.vertical) {
                 let availableWidth = proxy.size.width - TodayDashboardLayoutMetrics.horizontalInsets
-                let isWide = availableWidth >= TodayDashboardLayoutMetrics.twoColumnMinimumWidth
+                let isWide = TodayDashboardLayoutMetrics.isWide(availableWidth: availableWidth)
                 let presentsCompactRailCardsHorizontally = !isWide && availableWidth >= TodayDashboardLayoutMetrics.compactRailCardsMinimumWidth
                 let layout: AnyLayout = isWide
                     ? AnyLayout(HStackLayout(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing))
@@ -122,7 +126,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                 isReviewFocused = true
             }
         case .prepareScheduleDraft:
-            _ = viewModel.prepareTodayScheduleDraft(prioritizing: taskID)
+            _ = viewModel.addUnscheduledTaskToScheduleDraft(taskID: taskID)
         }
     }
 

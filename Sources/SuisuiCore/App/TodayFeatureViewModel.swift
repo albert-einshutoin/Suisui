@@ -138,6 +138,11 @@ public final class TodayFeatureViewModel: ObservableObject {
         performFeatureAction { board.prepareTodayScheduleDraft(prioritizing: taskID) }
     }
 
+    @discardableResult
+    public func addUnscheduledTaskToScheduleDraft(taskID: Int64) -> Bool {
+        performFeatureAction { board.addUnscheduledTaskToScheduleDraft(taskID: taskID) }
+    }
+
     public func enqueueTodayReminderDraft(for taskID: Int64) {
         _ = performFeatureAction { board.enqueueTodayReminderDraft(for: taskID) }
     }
