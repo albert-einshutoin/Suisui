@@ -46,6 +46,15 @@ readonly PRODUCT_LAYOUT_WINDOW_STANDARD_WIDTH_FLOOR=1180
 readonly PRODUCT_LAYOUT_WINDOW_STANDARD_HEIGHT_FLOOR=760
 readonly PRODUCT_LAYOUT_WINDOW_WIDE_WIDTH_FLOOR=1420
 readonly PRODUCT_LAYOUT_WINDOW_WIDE_HEIGHT_FLOOR=860
+# The custom sidebar starts below the 28px title bar, 10px outer padding,
+# 32px brand row, 10px gap, 36px Search button, and another 10px gap. Its
+# 32px destination buttons use 2px spacing, matching the approved today.png
+# rhythm. Keep the fallback aimed at each Button center when AXPress is absent.
+# The 180px minimum sidebar leaves the Button hit region from x=10 through x=170; x=112
+# stays well inside those bounds, left of trailing count badges and away from the split divider.
+readonly SIDEBAR_DESTINATION_ROW_CENTER_X_OFFSET_PX=112
+readonly SIDEBAR_DESTINATION_FIRST_ROW_CENTER_Y_OFFSET_PX=142
+readonly SIDEBAR_DESTINATION_ROW_STRIDE_PX=34
 LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH="${SUISUI_LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH:-0}"
 LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT="${SUISUI_LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT:-0}"
 LAYOUT_STABILITY_AX_COLLECTION_TIMEOUT_SECONDS="${SUISUI_LAYOUT_STABILITY_AX_COLLECTION_TIMEOUT_SECONDS:-8}"
@@ -662,23 +671,26 @@ click_ax_identifier() {
 }
 click_sidebar_destination_by_coordinate() {
   local destination_identifier="$1"
-  local window_id window_x window_y window_width window_height destination_offset target_x target_y
+  local window_id window_x window_y window_width window_height destination_index target_x target_y
 
   wait_for_window_metadata
   read -r window_id window_x window_y window_width window_height <"$WINDOW_METADATA_FILE"
 
   case "$destination_identifier" in
-    sidebar-destination-today)
-      destination_offset=76
-      ;;
     sidebar-destination-inbox)
-      destination_offset=108
+      destination_index=0
+      ;;
+    sidebar-destination-today)
+      destination_index=1
       ;;
     sidebar-destination-projects)
-      destination_offset=140
+      destination_index=2
       ;;
-    sidebar-destination-review)
-      destination_offset=172
+    sidebar-destination-schedule)
+      destination_index=3
+      ;;
+    sidebar-destination-completed)
+      destination_index=4
       ;;
     *)
       echo "BLOCKER: no coordinate fallback for sidebar destination: $destination_identifier" >&2
@@ -686,11 +698,10 @@ click_sidebar_destination_by_coordinate() {
       ;;
   esac
 
-  # SwiftUI List rows do not always expose destination AX identifiers through
-  # System Events even when the row is visible. The fallback clicks within the
-  # measured window bounds so the smoke still exercises the real running app.
-  target_x=$((window_x + 112))
-  target_y=$((window_y + destination_offset))
+  # AXPress remains primary. The fallback uses measured window bounds plus the
+  # fixed custom-sidebar geometry so it cannot silently target removed List rows.
+  target_x=$((window_x + SIDEBAR_DESTINATION_ROW_CENTER_X_OFFSET_PX))
+  target_y=$((window_y + SIDEBAR_DESTINATION_FIRST_ROW_CENTER_Y_OFFSET_PX + destination_index * SIDEBAR_DESTINATION_ROW_STRIDE_PX))
   /usr/bin/osascript - "$app_pid" "$target_x" "$target_y" <<'APPLESCRIPT' >/dev/null
 on run argv
   set appPID to item 1 of argv as integer
@@ -1294,7 +1305,8 @@ set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_WIDE_WIDTH" "$LAYOUT_STA
 assert_layout_stable "window-wide"
 
 assert_sidebar_destination_window_size_stable "destination-inbox" "sidebar-destination-inbox" "Inbox" "inbox-workflow"
-assert_sidebar_destination_window_size_stable "destination-review" "sidebar-destination-review" "Review" "review-hub"
+assert_sidebar_destination_window_size_stable "destination-schedule" "sidebar-destination-schedule" "Schedule" "schedule-workflow"
+assert_sidebar_destination_window_size_stable "destination-completed" "sidebar-destination-completed" "Completed" "done-workflow"
 assert_ax_destination_window_size_stable "destination-review-assistant-queue" "review-destination-assistant-queue" "assistant-queue-workflow"
 assert_sidebar_destination_window_size_stable "destination-today" "sidebar-destination-today" "Today" "today-workflow"
 

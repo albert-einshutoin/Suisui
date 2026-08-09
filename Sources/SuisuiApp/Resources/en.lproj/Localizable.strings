@@ -2,6 +2,7 @@
 "Add Project" = "Add Project";
 "Add Server" = "Add Server";
 "Add Task" = "Add Task";
+"Quick Actions" = "Quick Actions";
 "Advanced" = "Advanced";
 "Advanced AI Options" = "Advanced AI Options";
 "AI" = "AI";
@@ -963,7 +964,6 @@
 "%@ permission is available; writes still require approval." = "%@ permission is available; writes still require approval.";
 "%@ permission is denied in System Settings." = "%@ permission is denied in System Settings.";
 "%@ permission is restricted on this Mac." = "%@ permission is restricted on this Mac.";
-"Permission denied" = "Permission denied";
 "System Speech" = "System Speech";
 "Voice Models" = "Voice Models";
 "Manages the cached local voice model file." = "Manages the cached local voice model file.";
@@ -1758,6 +1758,16 @@
 "Add a task for today" = "Add a task for today";
 "Capture with Voice" = "Capture with Voice";
 
+/* Today sidebar navigation and quick actions */
+"Add by Voice" = "Add by Voice";
+"Block Time" = "Block Time";
+"Navigate work or open a quick action." = "Navigate work or open a quick action.";
+"Opens the command palette." = "Opens the command palette.";
+"Opens this section." = "Opens this section.";
+"No items today" = "No items today";
+"No scheduled items" = "No scheduled items";
+"No completed items" = "No completed items";
+
 /* Voice workspace Q&A */
 "Searching your workspace" = "Searching your workspace";
 "Composing answer" = "Composing answer";
@@ -2071,3 +2081,5 @@
 "Default" = "Default";
 "Enhanced" = "Enhanced";
 "Premium" = "Premium";
+"Prioritizes Apple or local speech engines when STT retries after a recoverable failure." = "Prioritizes Apple or local speech engines when STT retries after a recoverable failure.";
+"Prioritizes Apple or local speech engines when TTS retries after a recoverable failure." = "Prioritizes Apple or local speech engines when TTS retries after a recoverable failure.";

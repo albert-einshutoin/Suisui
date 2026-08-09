@@ -7,9 +7,36 @@ struct InboxWorkflowView: View {
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var viewModel: ProjectBoardViewModel
     var selectInboxTask: (ProjectBoardTask) -> Void = { _ in }
+    let requestsQuickAddFocus: Bool
+    let onQuickAddFocusConsumed: () -> Void
     @State private var quickTitle = ""
     @State private var voiceMemoDraft = ""
     @State private var voiceMemoCaptureID: Int64?
+    @FocusState private var isQuickAddFocused: Bool
+
+    init(
+        viewModel: ProjectBoardViewModel,
+        selectInboxTask: @escaping (ProjectBoardTask) -> Void = { _ in },
+        requestsQuickAddFocus: Bool,
+        onQuickAddFocusConsumed: @escaping () -> Void
+    ) {
+        _viewModel = ObservedObject(wrappedValue: viewModel)
+        self.selectInboxTask = selectInboxTask
+        self.requestsQuickAddFocus = requestsQuickAddFocus
+        self.onQuickAddFocusConsumed = onQuickAddFocusConsumed
+    }
+
+    init(
+        viewModel: ProjectBoardViewModel,
+        selectInboxTask: @escaping (ProjectBoardTask) -> Void = { _ in }
+    ) {
+        self.init(
+            viewModel: viewModel,
+            selectInboxTask: selectInboxTask,
+            requestsQuickAddFocus: false,
+            onQuickAddFocusConsumed: {}
+        )
+    }
 
     private var tasks: [ProjectBoardTask] {
         viewModel.filteredInboxTasks
@@ -68,6 +95,10 @@ struct InboxWorkflowView: View {
         .accessibilityIdentifier("inbox-workflow")
         .onAppear {
             viewModel.ensureSelectedInboxTaskIsVisible()
+            consumeQuickAddFocusRequestIfNeeded()
+        }
+        .onChange(of: requestsQuickAddFocus) { _, _ in
+            consumeQuickAddFocusRequestIfNeeded()
         }
         .onChange(of: tasks.map(\.id)) { _, _ in
             viewModel.ensureSelectedInboxTaskIsVisible()
@@ -103,7 +134,12 @@ struct InboxWorkflowView: View {
                 viewModel.inboxTriageSummary(for: task)
             },
             headerAccessory: {
-                InboxHeaderControls(quickTitle: $quickTitle, viewModel: viewModel, addInboxTask: addInboxTask)
+                InboxHeaderControls(
+                    quickTitle: $quickTitle,
+                    viewModel: viewModel,
+                    isQuickAddFocused: $isQuickAddFocused,
+                    addInboxTask: addInboxTask
+                )
             },
             footer: {
                 EmptyView()
@@ -119,11 +155,20 @@ struct InboxWorkflowView: View {
         _ = viewModel.createTask(title: title, projectID: inboxID, status: .backlog)
         quickTitle = ""
     }
+
+    private func consumeQuickAddFocusRequestIfNeeded() {
+        guard requestsQuickAddFocus else {
+            return
+        }
+        isQuickAddFocused = true
+        onQuickAddFocusConsumed()
+    }
 }
 
 private struct InboxHeaderControls: View {
     @Binding var quickTitle: String
     @ObservedObject var viewModel: ProjectBoardViewModel
+    @FocusState.Binding var isQuickAddFocused: Bool
     let addInboxTask: () -> Void
 
     var body: some View {
@@ -132,6 +177,7 @@ private struct InboxHeaderControls: View {
                 WorkflowDoneToggle(viewModel: viewModel)
                 TextField("Capture an inbox item", text: $quickTitle)
                     .textFieldStyle(.roundedBorder)
+                    .focused($isQuickAddFocused)
                     .onSubmit(addInboxTask)
                     .accessibilityIdentifier("inbox-quick-add-title")
                     .accessibilityLabel("Inbox quick add title")

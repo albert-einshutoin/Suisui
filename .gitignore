@@ -4,6 +4,7 @@
 /.worktrees/
 /.devloop/
 /.codex/hooks.json
+/.superpowers/
 /.opencode/
 /DerivedData/
 /dist/

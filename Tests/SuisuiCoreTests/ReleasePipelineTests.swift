@@ -6,6 +6,62 @@ import ImageIO
 import XCTest
 
 final class ReleasePipelineTests: XCTestCase {
+    func testTodaySidebarRuntimeAccessibilityReceiptContract() throws {
+        let receiptURL = packageRoot()
+            .appendingPathComponent("docs/release/evidence/today-sidebar-runtime-ax-receipt.json")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: receiptURL.path))
+        let receiptData = try Data(contentsOf: receiptURL)
+        let receipt = try XCTUnwrap(JSONSerialization.jsonObject(with: receiptData) as? [String: Any])
+
+        let englishManifest = try visualBaselineManifest(named: "visual-baseline-manifest.json")
+        let japaneseManifest = try visualBaselineManifest(named: "visual-baseline-manifest-ja.json")
+        let englishSourceCommit = try XCTUnwrap(
+            (englishManifest["baselineContext"] as? [String: Any])?["sourceCommit"] as? String
+        )
+        let japaneseSourceCommit = try XCTUnwrap(
+            (japaneseManifest["baselineContext"] as? [String: Any])?["sourceCommit"] as? String
+        )
+        XCTAssertEqual(englishSourceCommit, japaneseSourceCommit)
+        let latestProductSourceResult = try runTool([
+            "git", "log", "-1", "--format=%H", "--",
+            "Sources", "packaging", "script", "Package.swift"
+        ])
+        XCTAssertEqual(latestProductSourceResult.exitCode, 0, latestProductSourceResult.output)
+        let latestProductSourceCommit = latestProductSourceResult.output
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        XCTAssertEqual(englishSourceCommit, latestProductSourceCommit)
+
+        XCTAssertNoThrow(
+            try validateTodaySidebarRuntimeAccessibilityReceipt(
+                receipt,
+                serialized: receiptData,
+                expectedSourceCommit: englishSourceCommit
+            )
+        )
+
+        var missingControl = receipt
+        var controls = try XCTUnwrap(missingControl["controls"] as? [[String: Any]])
+        controls.removeLast()
+        missingControl["controls"] = controls
+        XCTAssertThrowsError(
+            try validateTodaySidebarRuntimeAccessibilityReceipt(
+                missingControl,
+                serialized: try JSONSerialization.data(withJSONObject: missingControl),
+                expectedSourceCommit: englishSourceCommit
+            )
+        )
+
+        var mismatchedCommit = receipt
+        mismatchedCommit["sourceCommit"] = "0000000000000000000000000000000000000000"
+        XCTAssertThrowsError(
+            try validateTodaySidebarRuntimeAccessibilityReceipt(
+                mismatchedCommit,
+                serialized: try JSONSerialization.data(withJSONObject: mismatchedCommit),
+                expectedSourceCommit: englishSourceCommit
+            )
+        )
+    }
+
     func testBuildAndRunBundlesCustomMacOSAppIcon() throws {
         let script = try readPackageFile("script/build_and_run.sh")
         let generator = try readPackageFile("script/generate_app_icon.sh")
@@ -7376,6 +7432,31 @@ final class ReleasePipelineTests: XCTestCase {
         let resizeWindowHelper = try readPackageFile("script/ui_evidence_ax_resize_window.swift")
         let windowMetadataHelper = try readPackageFile("script/ui_evidence_window_metadata.swift")
         let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
+        let coordinateFallbackStart = try XCTUnwrap(
+            script.range(of: "click_sidebar_destination_by_coordinate() {")
+        )
+        let coordinateFallbackEnd = try XCTUnwrap(
+            script.range(
+                of: "\n}\n\nassert_sidebar_destination_window_size_stable()",
+                range: coordinateFallbackStart.upperBound..<script.endIndex
+            )
+        )
+        let coordinateFallbackSource = String(
+            script[coordinateFallbackStart.lowerBound..<coordinateFallbackEnd.upperBound]
+        )
+        let mappingStart = try XCTUnwrap(
+            coordinateFallbackSource.range(of: "case \"$destination_identifier\" in")
+        )
+        let mappingEnd = try XCTUnwrap(
+            coordinateFallbackSource.range(
+                of: "    *)",
+                range: mappingStart.upperBound..<coordinateFallbackSource.endIndex
+            )
+        )
+        let mappingLines = coordinateFallbackSource[mappingStart.lowerBound..<mappingEnd.lowerBound]
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
 
         XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
         XCTAssertTrue(script.contains("AX_FRAME_HELPER=\"${AX_FRAME_HELPER:-$ROOT_DIR/script/ui_evidence_ax_frame_dump.swift}\""))
@@ -7483,11 +7564,33 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("inspector-wide-open"))
         XCTAssertTrue(script.contains("window-wide"))
         XCTAssertTrue(script.contains("destination-inbox"))
-        XCTAssertTrue(script.contains("destination-review"))
+        XCTAssertTrue(script.contains("destination-schedule"))
+        XCTAssertTrue(script.contains("destination-completed"))
         XCTAssertTrue(script.contains("destination-review-assistant-queue"))
         XCTAssertTrue(script.contains("destination-today"))
         XCTAssertTrue(script.contains("sidebar-destination-inbox"))
-        XCTAssertTrue(script.contains("sidebar-destination-review"))
+        XCTAssertTrue(script.contains("sidebar-destination-schedule"))
+        XCTAssertTrue(script.contains("sidebar-destination-completed"))
+        XCTAssertFalse(script.contains("sidebar-destination-review"))
+        XCTAssertTrue(script.contains("readonly SIDEBAR_DESTINATION_FIRST_ROW_CENTER_Y_OFFSET_PX=142"))
+        XCTAssertTrue(script.contains("readonly SIDEBAR_DESTINATION_ROW_STRIDE_PX=34"))
+        XCTAssertTrue(script.contains("readonly SIDEBAR_DESTINATION_ROW_CENTER_X_OFFSET_PX=112"))
+        XCTAssertTrue(script.contains("180px minimum sidebar leaves the Button hit region from x=10 through x=170; x=112"))
+        XCTAssertEqual(
+            mappingLines,
+            [
+                "case \"$destination_identifier\" in",
+                "sidebar-destination-inbox)", "destination_index=0", ";;",
+                "sidebar-destination-today)", "destination_index=1", ";;",
+                "sidebar-destination-projects)", "destination_index=2", ";;",
+                "sidebar-destination-schedule)", "destination_index=3", ";;",
+                "sidebar-destination-completed)", "destination_index=4", ";;",
+            ]
+        )
+        XCTAssertTrue(coordinateFallbackSource.contains("target_x=$((window_x + SIDEBAR_DESTINATION_ROW_CENTER_X_OFFSET_PX))"))
+        XCTAssertTrue(coordinateFallbackSource.contains("target_y=$((window_y + SIDEBAR_DESTINATION_FIRST_ROW_CENTER_Y_OFFSET_PX + destination_index * SIDEBAR_DESTINATION_ROW_STRIDE_PX))"))
+        XCTAssertTrue(script.contains("assert_sidebar_destination_window_size_stable \"destination-schedule\" \"sidebar-destination-schedule\" \"Schedule\" \"schedule-workflow\""))
+        XCTAssertTrue(script.contains("assert_sidebar_destination_window_size_stable \"destination-completed\" \"sidebar-destination-completed\" \"Completed\" \"done-workflow\""))
         XCTAssertTrue(script.contains("review-destination-assistant-queue"))
         XCTAssertTrue(script.contains("sidebar-destination-today"))
         XCTAssertTrue(script.contains("BLOCKER: Project Board window size changed after selecting"))
@@ -7589,9 +7692,75 @@ final class ReleasePipelineTests: XCTestCase {
                 range: destinationActivation.lowerBound..<script.endIndex
             )
         )
+        let destinationLoopEnd = try XCTUnwrap(
+            script.range(
+                of: "\ndone\n\n",
+                range: destinationLoop.upperBound..<script.endIndex
+            )
+        )
+        let destinationDeclarations = String(script[sidebarReady.upperBound..<destinationLoop.lowerBound])
+        let destinationSampleLoop = String(
+            script[destinationLoop.lowerBound..<destinationLoopEnd.upperBound]
+        )
+        let destinationAggregationStart = try XCTUnwrap(
+            script.range(
+                of: "median_destination_inbox_ms=",
+                range: destinationLoopEnd.upperBound..<script.endIndex
+            )
+        ).lowerBound
+        let destinationAggregationEnd = try XCTUnwrap(
+            script.range(
+                of: "\nprintf '\\nStatus: passed\\n'",
+                range: destinationAggregationStart..<script.endIndex
+            )
+        )
+        let destinationAggregation = String(
+            script[destinationAggregationStart..<destinationAggregationEnd.lowerBound]
+        )
+        let scheduleMeasure = "measure_destination \"destination-schedule\" \"$sample_index\" \"sidebar-destination-schedule\" \"Schedule\" \"schedule-workflow\""
+        let scheduleAppend = "DESTINATION_SCHEDULE_SAMPLES+=(\"$LAST_DESTINATION_ELAPSED_MS\")"
+        let scheduleMedian = "median_destination_schedule_ms=\"$(median_elapsed_ms \"${DESTINATION_SCHEDULE_SAMPLES[@]}\")\""
+        let scheduleRecord = "record_elapsed_sample \"destination-schedule\" \"$median_destination_schedule_ms\" \"$MAX_DESTINATION_SWITCH_MS\""
         XCTAssertLessThan(sidebarReady.lowerBound, destinationLoop.lowerBound)
-        XCTAssertTrue(script.contains("measure_destination \"destination-inbox\" \"$sample_index\" \"sidebar-destination-inbox\" \"Inbox\" \"inbox-workflow\""))
-        XCTAssertTrue(script.contains("measure_destination \"destination-review\" \"$sample_index\" \"sidebar-destination-review\" \"Review\" \"review-hub\""))
+        XCTAssertTrue(destinationDeclarations.contains("DESTINATION_SCHEDULE_SAMPLES=()"))
+        let sampleOrder = try orderedShellStatementIndices(
+            [scheduleMeasure, scheduleAppend],
+            in: destinationSampleLoop
+        )
+        XCTAssertLessThan(sampleOrder[0], sampleOrder[1])
+        let aggregationOrder = try orderedShellStatementIndices(
+            [scheduleMedian, scheduleRecord],
+            in: destinationAggregation
+        )
+        XCTAssertLessThan(aggregationOrder[0], aggregationOrder[1])
+        let phaseOrder = try orderedShellStatementIndices(
+            [
+                "DESTINATION_SCHEDULE_SAMPLES=()",
+                scheduleMeasure,
+                scheduleAppend,
+                scheduleMedian,
+                scheduleRecord,
+            ],
+            in: destinationDeclarations + destinationSampleLoop + destinationAggregation
+        )
+        for pair in zip(phaseOrder, phaseOrder.dropFirst()) {
+            XCTAssertLessThan(pair.0, pair.1)
+        }
+        let inboxValueMutation = destinationSampleLoop.replacingOccurrences(
+            of: "  \(scheduleMeasure)\n  \(scheduleAppend)",
+            with: "  \(scheduleAppend)\n  \(scheduleMeasure)"
+        )
+        XCTAssertNotEqual(inboxValueMutation, destinationSampleLoop)
+        XCTAssertThrowsError(
+            try orderedShellStatementIndices(
+                [scheduleMeasure, scheduleAppend],
+                in: inboxValueMutation
+            )
+        )
+        XCTAssertFalse(script.contains("sidebar-destination-review"))
+        XCTAssertFalse(script.contains("DESTINATION_REVIEW_SAMPLES"))
+        XCTAssertFalse(script.contains("median_destination_review_ms"))
+        XCTAssertFalse(script.contains("record_elapsed_sample \"destination-review\""))
         let measureDestinationStart = try XCTUnwrap(script.range(of: "measure_destination() {"))
         let measureDestinationEnd = try XCTUnwrap(
             script.range(
@@ -16305,6 +16474,225 @@ final class ReleasePipelineTests: XCTestCase {
         return try String(contentsOf: url, encoding: .utf8)
     }
 
+    private func visualBaselineManifest(named name: String) throws -> [String: Any] {
+        let data = try Data(contentsOf: packageRoot().appendingPathComponent("docs/quality/\(name)"))
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    private func validateTodaySidebarRuntimeAccessibilityReceipt(
+        _ receipt: [String: Any],
+        serialized: Data,
+        expectedSourceCommit: String
+    ) throws {
+        func require(_ condition: @autoclosure () -> Bool, _ field: String) throws {
+            guard condition() else {
+                throw TodaySidebarReceiptContractError.invalid(field)
+            }
+        }
+
+        func dictionary(_ value: Any?, _ field: String) throws -> [String: Any] {
+            guard let dictionary = value as? [String: Any] else {
+                throw TodaySidebarReceiptContractError.invalid(field)
+            }
+            return dictionary
+        }
+
+        func arrayOfDictionaries(_ value: Any?, _ field: String) throws -> [[String: Any]] {
+            guard let dictionaries = value as? [[String: Any]] else {
+                throw TodaySidebarReceiptContractError.invalid(field)
+            }
+            return dictionaries
+        }
+
+        try require((receipt["schemaVersion"] as? NSNumber)?.intValue == 1, "schemaVersion")
+        try require(receipt["status"] as? String == "partial", "status")
+        try require(receipt["sourceCommit"] as? String == expectedSourceCommit, "sourceCommit")
+
+        let methodology = try dictionary(receipt["methodology"], "methodology")
+        try require(methodology["window"] as? String == "1024x676", "methodology.window")
+        try require(methodology["pointerFallback"] as? Bool == false, "methodology.pointerFallback")
+        try require(methodology["singleIsolatedProcess"] as? Bool == true, "methodology.singleIsolatedProcess")
+        try require(
+            methodology["activation"] as? String == "AXUIElementPerformAction(element, kAXPressAction)",
+            "methodology.activation"
+        )
+
+        let expectedControlIDs = Set([
+            "sidebar-open-search",
+            "sidebar-destination-inbox",
+            "sidebar-destination-today",
+            "sidebar-destination-projects",
+            "sidebar-destination-schedule",
+            "sidebar-destination-completed",
+            "sidebar-action-voice-command",
+            "sidebar-action-settings",
+            "sidebar-quick-add-task",
+            "sidebar-quick-add-by-voice",
+            "sidebar-quick-block-time"
+        ])
+        let controls = try arrayOfDictionaries(receipt["controls"], "controls")
+        let controlIDs = try controls.map { control -> String in
+            guard let identifier = control["id"] as? String else {
+                throw TodaySidebarReceiptContractError.invalid("controls.id")
+            }
+            return identifier
+        }
+        try require(controls.count == 11, "controls.count")
+        try require(Set(controlIDs).count == controlIDs.count, "controls.uniqueIDs")
+        try require(Set(controlIDs) == expectedControlIDs, "controls.identifiers")
+
+        var controlsByID = [String: [String: Any]]()
+        for control in controls {
+            guard let identifier = control["id"] as? String else {
+                throw TodaySidebarReceiptContractError.invalid("controls.id")
+            }
+            try require(control["role"] as? String == "AXButton", "\(identifier).role")
+            try require((control["actions"] as? [String])?.contains("AXPress") == true, "\(identifier).actions")
+            let expectedStatus = identifier == "sidebar-action-settings" ? "passed_with_retry" : "passed"
+            try require(control["status"] as? String == expectedStatus, "\(identifier).status")
+            let frame = try dictionary(control["frame"], "\(identifier).frame")
+            try require(frame["visible"] as? Bool == true, "\(identifier).frame.visible")
+            try require((frame["width"] as? NSNumber)?.intValue ?? 0 > 0, "\(identifier).frame.width")
+            try require((frame["height"] as? NSNumber)?.intValue ?? 0 > 0, "\(identifier).frame.height")
+            guard let pressResults = control["pressResults"] as? [NSNumber] else {
+                throw TodaySidebarReceiptContractError.invalid("\(identifier).pressResults")
+            }
+            try require(pressResults.contains { $0.intValue == 0 }, "\(identifier).pressResults")
+            controlsByID[identifier] = control
+        }
+
+        func outcome(for identifier: String) throws -> [String: Any] {
+            try dictionary(controlsByID[identifier]?["outcome"], "\(identifier).outcome")
+        }
+
+        let search = try outcome(for: "sidebar-open-search")
+        try require(search["marker"] as? String == "command-palette-input", "search.marker")
+        try require(search["routeUnchanged"] as? String == "projects", "search.routeUnchanged")
+
+        let destinationOutcomes = [
+            "sidebar-destination-inbox": ("inbox-workflow", "inbox"),
+            "sidebar-destination-today": ("today-workflow", "today"),
+            "sidebar-destination-projects": ("projects-portfolio-overview", "projects"),
+            "sidebar-destination-schedule": ("schedule-workflow", "schedule"),
+            "sidebar-destination-completed": ("done-workflow", "completed")
+        ]
+        for (identifier, expected) in destinationOutcomes {
+            let destination = try outcome(for: identifier)
+            try require(destination["marker"] as? String == expected.0, "\(identifier).marker")
+            try require(destination["selectedDestination"] as? String == expected.1, "\(identifier).selection")
+            try require(destination["otherDestinationsSelected"] as? Bool == false, "\(identifier).falseSelection")
+        }
+
+        let voice = try outcome(for: "sidebar-action-voice-command")
+        try require(voice["marker"] as? String == "voice-command-quick-command-tab", "voice.marker")
+        try require(voice["window"] as? String == "Voice Command", "voice.window")
+        try require(voice["routeUnchanged"] as? String == "projects", "voice.routeUnchanged")
+
+        let settings = try outcome(for: "sidebar-action-settings")
+        try require(settings["window"] as? String == "Overview", "settings.window")
+        try require(settings["routeUnchanged"] as? String == "projects", "settings.routeUnchanged")
+        try require(settings["boundedRetrySucceeded"] as? Bool == true, "settings.boundedRetrySucceeded")
+
+        let addTask = try outcome(for: "sidebar-quick-add-task")
+        try require(addTask["marker"] as? String == "inbox-workflow", "addTask.marker")
+        try require(addTask["focusedIdentifier"] as? String == "inbox-quick-add-title", "addTask.focus")
+        try require(addTask["selectedDestination"] as? String == "inbox", "addTask.selection")
+
+        let addByVoice = try outcome(for: "sidebar-quick-add-by-voice")
+        try require(addByVoice["marker"] as? String == "voice-command-quick-command-tab", "addByVoice.marker")
+        try require(addByVoice["window"] as? String == "Voice Command", "addByVoice.window")
+        try require(addByVoice["routeUnchanged"] as? String == "projects", "addByVoice.routeUnchanged")
+
+        let blockTime = try outcome(for: "sidebar-quick-block-time")
+        try require(blockTime["marker"] as? String == "schedule-workflow", "blockTime.marker")
+        try require(blockTime["selectedDestination"] as? String == "schedule", "blockTime.selection")
+        try require(blockTime["draftVisible"] as? Bool == true, "blockTime.draftVisible")
+        let databaseBefore = try dictionary(blockTime["databaseBefore"], "blockTime.databaseBefore")
+        let databaseAfter = try dictionary(blockTime["databaseAfter"], "blockTime.databaseAfter")
+        for key in ["calendarLinks", "assistantQueueItems", "externalSideEffectJournal", "approvalExecutionNonces"] {
+            try require((databaseBefore[key] as? NSNumber)?.intValue == 0, "blockTime.databaseBefore.\(key)")
+            try require((databaseAfter[key] as? NSNumber)?.intValue == 0, "blockTime.databaseAfter.\(key)")
+        }
+        try require((databaseBefore["tasks"] as? NSNumber)?.intValue == 1, "blockTime.databaseBefore.tasks")
+        try require((databaseAfter["tasks"] as? NSNumber)?.intValue == 1, "blockTime.databaseAfter.tasks")
+
+        let keyboard = try dictionary(receipt["keyboard"], "keyboard")
+        try require(Set(keyboard.keys) == Set(["Command-K", "Command-1", "Command-2", "Command-3", "Command-4"]), "keyboard.keys")
+        for key in keyboard.keys {
+            let shortcut = try dictionary(keyboard[key], "keyboard.\(key)")
+            try require(shortcut["status"] as? String == "passed", "keyboard.\(key).status")
+        }
+        let keyboardK = try dictionary(keyboard["Command-K"], "keyboard.Command-K")
+        try require(keyboardK["marker"] as? String == "command-palette-input", "keyboard.Command-K.marker")
+        try require(keyboardK["routeUnchanged"] as? String == "projects", "keyboard.Command-K.routeUnchanged")
+        let keyboardDestinations = [
+            "Command-1": ("today-workflow", "today"),
+            "Command-2": ("inbox-workflow", "inbox"),
+            "Command-3": ("projects-portfolio-overview", "projects")
+        ]
+        for (key, expected) in keyboardDestinations {
+            let shortcut = try dictionary(keyboard[key], "keyboard.\(key)")
+            try require(shortcut["marker"] as? String == expected.0, "keyboard.\(key).marker")
+            try require(shortcut["selectedDestination"] as? String == expected.1, "keyboard.\(key).selection")
+        }
+        let keyboardReview = try dictionary(keyboard["Command-4"], "keyboard.Command-4")
+        try require(keyboardReview["marker"] as? String == "review-hub", "keyboard.Command-4.marker")
+        try require((keyboardReview["selectedDestinations"] as? [String])?.isEmpty == true, "keyboard.Command-4.selection")
+
+        let falseSelection = try dictionary(receipt["falseSelection"], "falseSelection")
+        try require(Set(falseSelection.keys) == Set(["assistantQueue", "automationActivity"]), "falseSelection.keys")
+        let falseSelectionMarkers = [
+            "assistantQueue": "assistant-queue-workflow",
+            "automationActivity": "automation-activity-workflow"
+        ]
+        for (route, marker) in falseSelectionMarkers {
+            let result = try dictionary(falseSelection[route], "falseSelection.\(route)")
+            try require(result["status"] as? String == "passed", "falseSelection.\(route).status")
+            try require(result["marker"] as? String == marker, "falseSelection.\(route).marker")
+            try require((result["selectedDestinations"] as? [String])?.isEmpty == true, "falseSelection.\(route).selection")
+        }
+
+        let appearance = try dictionary(receipt["appearance"], "appearance")
+        try require(appearance["sourceCommit"] as? String == expectedSourceCommit, "appearance.sourceCommit")
+        let themes = try dictionary(appearance["themes"], "appearance.themes")
+        for theme in ["light", "dark", "system"] {
+            try require(themes[theme] as? String == "passed", "appearance.themes.\(theme)")
+        }
+        let locales = try dictionary(appearance["locales"], "appearance.locales")
+        try require(Set(locales.keys) == Set(["en-US", "ja-JP"]), "appearance.locales.keys")
+        let localeManifests = [
+            "en-US": "docs/release/evidence/ui-screenshots/visual-baseline-capture-manifest.json",
+            "ja-JP": "docs/release/evidence/ui-screenshots-ja/visual-baseline-capture-manifest.json"
+        ]
+        for (locale, manifest) in localeManifests {
+            let evidence = try dictionary(locales[locale], "appearance.locales.\(locale)")
+            try require((evidence["capturedScreens"] as? NSNumber)?.intValue == 39, "appearance.locales.\(locale).capturedScreens")
+            try require(evidence["manifest"] as? String == manifest, "appearance.locales.\(locale).manifest")
+        }
+
+        let unsupportedConditions = try dictionary(receipt["unsupportedConditions"], "unsupportedConditions")
+        for condition in ["increaseContrast", "reduceMotion"] {
+            let evidence = try dictionary(unsupportedConditions[condition], "unsupportedConditions.\(condition)")
+            try require(evidence["status"] as? String == "not_proven", "unsupportedConditions.\(condition).status")
+        }
+
+        let serializedString = try XCTUnwrap(String(data: serialized, encoding: .utf8))
+        for forbiddenMarker in ["/Users/", "/Volumes/", ".tmp/"] {
+            try require(!serializedString.contains(forbiddenMarker), "serialized.\(forbiddenMarker)")
+        }
+        let secretValuePattern = #"(?i)\"(?:api[_-]?key|secret|token|password|authorization)\"\s*:\s*\"[^\"]+\""#
+        let secretValueRegex = try NSRegularExpression(pattern: secretValuePattern)
+        let serializedRange = NSRange(serializedString.startIndex..<serializedString.endIndex, in: serializedString)
+        try require(secretValueRegex.firstMatch(in: serializedString, range: serializedRange) == nil, "serialized.secretLikeValue")
+        let embeddedSecretPattern = #"(?i)(super[-_]?secret|bearer\s+[A-Za-z0-9._-]+|sk-[A-Za-z0-9_-]{16,})"#
+        let embeddedSecretRegex = try NSRegularExpression(pattern: embeddedSecretPattern)
+        try require(embeddedSecretRegex.firstMatch(in: serializedString, range: serializedRange) == nil, "serialized.embeddedSecret")
+    }
+
+    private enum TodaySidebarReceiptContractError: Error {
+        case invalid(String)
+    }
+
     private func accessibilitySourceAnchorCount(in output: String) throws -> Int {
         let pattern = #"OK: accessibility source anchors are present \(([0-9]+) anchors\)"#
         let regex = try NSRegularExpression(pattern: pattern)
@@ -16420,7 +16808,7 @@ final class ReleasePipelineTests: XCTestCase {
         HELPER_DELAY_SECONDS="$7"
         HELPER_IGNORES_TERM="$8"
         EXPECTED_APP_PID="$APP_PID"
-        EXPECTED_DESTINATION_IDENTIFIER="sidebar-destination-review"
+        EXPECTED_DESTINATION_IDENTIFIER="sidebar-destination-schedule"
         export HELPER_COUNTER_FILE SUCCEED_ON_ATTEMPT HELPER_DELAY_SECONDS HELPER_IGNORES_TERM
         export EXPECTED_APP_PID EXPECTED_DESTINATION_IDENTIFIER
         ax_process_matches_identity() {
@@ -16450,7 +16838,7 @@ final class ReleasePipelineTests: XCTestCase {
         activate_app() { :; }
         sleep() { :; }
         \(functionSource)
-        if click_destination_until_available "sidebar-destination-review" "Review"; then
+        if click_destination_until_available "sidebar-destination-schedule" "Schedule"; then
           exit 0
         else
           exit $?
@@ -16570,6 +16958,34 @@ final class ReleasePipelineTests: XCTestCase {
         // reports. Draining while the child is running prevents the child bash
         // process from blocking on a full stdout/stderr pipe.
         return (process.terminationStatus, String(data: outputBuffer.data, encoding: .utf8) ?? "")
+    }
+
+    private func orderedShellStatementIndices(
+        _ expectedStatements: [String],
+        in source: String
+    ) throws -> [Int] {
+        let executableLines = source
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+        let indices = try expectedStatements.map { statement in
+            let matchingIndices = executableLines.indices.filter {
+                executableLines[$0] == statement
+            }
+            guard matchingIndices.count == 1, let index = matchingIndices.first else {
+                throw ShellStatementOrderError.missingOrDuplicate(statement)
+            }
+            return index
+        }
+        guard zip(indices, indices.dropFirst()).allSatisfy({ $0.0 < $0.1 }) else {
+            throw ShellStatementOrderError.outOfOrder(expectedStatements)
+        }
+        return indices
+    }
+
+    private enum ShellStatementOrderError: Error {
+        case missingOrDuplicate(String)
+        case outOfOrder([String])
     }
 
     private final class ProcessOutputBuffer: @unchecked Sendable {

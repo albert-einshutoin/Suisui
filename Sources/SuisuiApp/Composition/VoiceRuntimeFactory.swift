@@ -311,12 +311,13 @@ extension AppRuntimeFactory {
             for: normalizedSettings.sttProvider,
             routingPreference: normalizedSettings.sttRoutingPreference
         )
-        let fallbackProviders = providers.compactMap { provider in
-            Self.makeSpeechToTextProvider(
+        let fallbackProviders = providers.map { provider in
+            let runtime = Self.makeSpeechToTextProvider(
                 provider,
                 settings: normalizedSettings,
                 secretStore: secretStore
-            ).map { (provider: provider, runtime: $0) }
+            )
+            return (provider: provider, runtime: runtime)
         }
         guard !fallbackProviders.isEmpty else {
             return OpenAITranscribeProvider(secretStore: secretStore)
@@ -446,7 +447,7 @@ enum AppTextToSpeechRuntimeFactory {
         settings: AppSettings,
         temporaryDirectory: URL,
         outputFilename: String?
-    ) -> any TextToSpeechPreviewing? {
+    ) -> (any TextToSpeechPreviewing)? {
         let providerOutputFilename = outputFilename
             ?? (provider == .systemSpeech ? "preview.caf" : "preview.wav")
         let outputURL = temporaryDirectory.appendingPathComponent(providerOutputFilename, isDirectory: false)
@@ -476,7 +477,7 @@ private struct FallbackSpeechToTextProvider: SpeechToTextProvider, @unchecked Se
     }
 
     var availability: STTProviderAvailability {
-        let selectedAvailability = providers.first(where: { $0.id == selectedProviderID })?.availability
+        let selectedAvailability = providers.first(where: { $0.runtime.id == selectedProviderID })?.runtime.availability
         return selectedAvailability ?? STTProviderAvailability(providerID: selectedProviderID, isAvailable: !providers.isEmpty)
     }
 

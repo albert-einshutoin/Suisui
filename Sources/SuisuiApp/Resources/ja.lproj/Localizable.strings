@@ -1,7 +1,8 @@
 "Add" = "追加";
 "Add Project" = "プロジェクト追加";
 "Add Server" = "サーバー追加";
-"Add Task" = "タスク追加";
+"Add Task" = "タスクを追加";
+"Quick Actions" = "クイックアクション";
 "Advanced" = "詳細";
 "Advanced AI Options" = "AIの詳細オプション";
 "AI" = "AI";
@@ -143,7 +144,6 @@
 "Required" = "必須";
 "Run Setup Again" = "セットアップを再実行";
 "Setup needs attention" = "セットアップに対応が必要です";
-"Suisui can open now, but planning is not ready yet. Review the required item below or finish setup later from Settings." = "Suisuiは今すぐ開けますが、プラン作成の準備ができていません。下の必須項目を確認するか、Settingsから後でセットアップしてください。";
 "Status unknown" = "状態不明";
 "Unavailable: %@" = "利用不可: %@";
 "This permission is restricted by macOS." = "この権限はmacOSによって制限されています。";
@@ -176,7 +176,7 @@
 "Update Suisui runtime configuration" = "Suisuiランタイム設定を更新";
 "Upgrade to Pro before OAuth authorization" = "OAuth認証前にProへアップグレード";
 "In Progress" = "進行中";
-"Inbox" = "インボックス";
+"Inbox" = "受信箱";
 "Import Tasks" = "タスクをインポート";
 "Integrations" = "連携";
 "Integrations: import, export, and sync task data" = "連携: タスクデータのインポート、エクスポート、同期";
@@ -301,7 +301,6 @@
 "Review the command before choosing Inbox capture or an approval-gated plan." = "Inboxキャプチャまたは承認付きプランを選ぶ前に、コマンドを確認してください。";
 "Wait for download" = "ダウンロード完了を待機";
 "Watcher" = "監視";
-"Welcome to Suisui" = "Suisuiへようこそ";
 "whisper.cpp executable path is required for offline speech to text." = "オフライン音声認識にはwhisper.cpp実行ファイルのパスが必要です。";
 "whisper.cpp model metadata is not registered." = "whisper.cppモデルのメタデータが登録されていません。";
 "Changes the appearance for all Suisui windows." = "すべてのSuisuiウィンドウの表示を変更します。";
@@ -323,7 +322,6 @@
 "Active" = "アクティブ";
 "Add a project" = "プロジェクトを追加";
 "Add this item to Inbox" = "この項目をインボックスに追加";
-"Add to Inbox" = "インボックスに追加";
 "Adds an expected artifact link to the selected project in the local Suisui database." = "選択したプロジェクトに期待成果物リンクをローカルSuisuiデータベースへ追加します。";
 "Adds the typed item to the local Inbox." = "入力した項目をローカルのインボックスに追加します。";
 "All tasks are done. Complete the project to keep active views focused." = "すべてのタスクが完了しています。アクティブ表示を絞るため、プロジェクトを完了してください。";
@@ -360,7 +358,7 @@
 "Command" = "コマンド";
 "Complete Project" = "プロジェクトを完了";
 "Complete task" = "タスクを完了";
-"Completed" = "完了済み";
+"Completed" = "完了";
 "Completes the selected project in the local Suisui database" = "選択中のプロジェクトをローカルSuisuiデータベースで完了にします";
 "Completes the selected project in the local Suisui database." = "選択中のプロジェクトをローカルSuisuiデータベースで完了にします。";
 "Configured" = "設定済み";
@@ -607,7 +605,6 @@
 "Shows archived projects in the sidebar without deleting local data." = "ローカルデータを削除せず、サイドバーにアーカイブ済みプロジェクトを表示します。";
 "Shows the recommended focus task, due counts, and local time blocks." = "推奨集中タスク、期限数、ローカル時間ブロックを表示します。";
 "Skipped" = "スキップ";
-"Suisui" = "Suisui";
 "Speech to Text" = "音声文字起こし";
 "Status" = "ステータス";
 "Source" = "入力元";
@@ -670,7 +667,6 @@
 "%d inbox item" = "Inbox項目 %d 件";
 "Start with %@ in %@" = "%2$@ の %1$@ から始める";
 "%d task" = "タスク %d 件";
-"%d tasks" = "タスク %d 件";
 "%d duplicate" = "重複 %d 件";
 "%d duplicates" = "重複 %d 件";
 "%@ is blocked. Resolve it before adding more work." = "%@ はブロック中です。作業を増やす前に解消してください。";
@@ -764,7 +760,7 @@
 "Focus" = "集中";
 "Starts local focus without changing task status." = "タスクステータスを変えずにローカル集中を開始します。";
 "Schedule Block" = "時間枠を作成";
-"Creates a local schedule draft without writing Calendar." = "Calendarへ書き込まずにローカル予定ドラフトを作成します。";
+"Creates a local schedule draft without writing Calendar." = "カレンダーへ書き込まず、ローカルのスケジュール下書きを作成します。";
 "Opens the selected task in the inspector for manual edits." = "選択中タスクを手動編集用のInspectorで開きます。";
 "Add Subtask" = "サブタスク追加";
 "Subtask for %@: " = "%@ のサブタスク: ";
@@ -883,7 +879,7 @@
 "Prepare suggested action for review" = "提案アクションを確認用に準備";
 "Prepares the local assistant suggestion for review without writing task status." = "タスクステータスを書き込まず、ローカルアシスタント提案を確認用に準備します。";
 "Prepares the suggested blocked task action for review without writing task status." = "タスクステータスを書き込まず、提案されたブロック中タスクのアクションを確認用に準備します。";
-"Schedule" = "予定";
+"Schedule" = "スケジュール";
 "Stale" = "停滞";
 "Generate Draft" = "ドラフトを生成";
 "Draft Blocks" = "ドラフト枠";
@@ -903,7 +899,6 @@
 "Calendar is not configured." = "カレンダーは未設定です。";
 "Create a schedule draft first." = "先に予定ドラフトを作成してください。";
 "External Calendar writes require review approval." = "外部カレンダーへの書き込みには確認と承認が必要です。";
-"Suisui will create Google Calendar events for due, unfinished tasks. Existing linked tasks are skipped." = "Suisuiは期限付きの未完了タスクをGoogleカレンダーの予定として作成します。既にリンク済みのタスクはスキップされます。";
 "Sync due tasks to Google Calendar?" = "期限付きタスクをGoogleカレンダーへ同期しますか?";
 "Prepared schedule draft with %d time blocks and %d unscheduled tasks." = "%d件の時間枠と%d件の未スケジュールタスクで予定ドラフトを作成しました。";
 "Schedule review approval is required before Calendar write." = "カレンダーへ書き込む前に予定レビューの承認が必要です。";
@@ -944,7 +939,6 @@
 "Tasks appear here after they are completed." = "タスクを完了するとここに表示されます。";
 "%@ completed at %@" = "%@ で %@ に完了";
 "%@ completed" = "%@ で完了";
-"Reopen" = "再開";
 "Done analytics uses local completed_at history; reopened tasks remain visible in completion history." = "Done分析はローカルのcompleted_at履歴を使います。再開したタスクも完了履歴に残ります。";
 "STT" = "音声入力";
 "TTS" = "読み上げ";
@@ -965,7 +959,6 @@
 "%@ permission is available; writes still require approval." = "%@ の権限は利用可能です。書き込みには引き続き承認が必要です。";
 "%@ permission is denied in System Settings." = "%@ の権限がシステム設定で拒否されています。";
 "%@ permission is restricted on this Mac." = "%@ の権限はこのMacで制限されています。";
-"Permission denied" = "権限拒否";
 "System Speech" = "システム読み上げ";
 "Voice Models" = "音声モデル";
 "Manages the cached local voice model file." = "キャッシュされたローカル音声モデルファイルを管理します。";
@@ -1112,11 +1105,9 @@
 "Estimated cost" = "推定コスト";
 "Cost unknown" = "コスト不明";
 "Cost unavailable" = "コスト対象外";
-"%d tokens" = "%dトークン";
 "%d tokens estimated" = "%dトークン推定";
 "Review-only" = "確認専用";
 "Voice command confidence" = "音声コマンドの信頼度";
-"Create task" = "タスク作成";
 "Triage tasks" = "タスク整理";
 "Plan schedule" = "予定作成";
 "Draft brief" = "資料下書き";
@@ -1200,7 +1191,6 @@
 "No scheduled tasks for this day." = "この日に予定されたタスクはありません。";
 "Open Today Review" = "今日のレビューを開く";
 "Opening a local Today review. No provider, Calendar, Reminder, connector, or file write is run." = "ローカルのTodayレビューを開きます。プロバイダー、カレンダー、リマインダー、コネクター、ファイル書き込みは実行しません。";
-"Creates an Assistant Queue approval item; no tasks are created until approval." = "Assistant Queueの承認アイテムを作成します。承認されるまでタスクは作成されません。";
 "Agenda" = "予定";
 "All day" = "終日";
 "Due task" = "期限付きタスク";
@@ -1530,8 +1520,6 @@
 "Completed in Assistant Queue" = "Assistant Queueで完了しています";
 "Rejected in Assistant Queue" = "Assistant Queueで却下されています";
 "Waiting for review approval" = "レビュー承認待ちです";
-"Execution receipts are unavailable, so Suisui cannot confirm which development approval comes next." = "実行receiptを利用できないため、次の開発承認を確認できません。";
-"Execution receipts could not be read, so Suisui cannot confirm which development approval comes next." = "実行receiptを読み取れないため、次の開発承認を確認できません。";
 "Review the pull request execution receipt before queueing." = "キューへ追加する前にPull Request実行receiptを確認してください。";
 "Resolve development automation setup" = "開発自動化の設定を解消";
 "Pull request lifecycle complete" = "Pull Requestライフサイクル完了";
@@ -1626,10 +1614,6 @@
 "Schedule View" = "スケジュール表示";
 "Switches the visible schedule detail while preserving the selected week and day." = "選択中の週と日付を保ったまま、表示するスケジュール詳細を切り替えます。";
 "Commit changes" = "変更をコミット";
-"Push branch" = "ブランチをpush";
-"Create pull request" = "Pull Requestを作成";
-"Review pull request" = "Pull Requestをレビュー";
-"Merge pull request" = "Pull Requestをマージ";
 "Development tool" = "開発ツール";
 "Add to Draft" = "下書きに追加";
 "Add %@ to Draft" = "%@を下書きに追加";
@@ -1662,14 +1646,13 @@
 "Opening Project Board" = "Project Boardを開いています";
 "Preparing local project data for the visible window." = "表示ウィンドウ用にローカルプロジェクトデータを準備しています。";
 "Portfolio Watchlist" = "ポートフォリオ監視リスト";
-"No projects" = "プロジェクトがありません";
+"No projects" = "プロジェクトはありません";
 "Open tasks" = "未完了タスク";
 "Developer Mode" = "開発者モード";
 "Developer Mode exposes local shell and repository automation controls after explicit approval." = "開発者モードでは、明示承認後にローカルシェルとリポジトリ自動化コントロールを表示します。";
 "Developer Mode is enabled. Local shell execution requires explicit approval and starts in %@." = "開発者モードが有効です。ローカルシェル実行には明示承認が必要で、%@ で開始します。";
 "Transcript only" = "文字起こしのみ";
 "Voice transcript preview" = "音声文字起こしプレビュー";
-"Transcript-only voice capture, duration %@, waveform preview" = "文字起こしのみの音声キャプチャ、長さ %@、波形プレビュー";
 "%lld connector policies stay out of Settings until connect, check, revoke, and audit UI is complete. %lld connector send paths remain Assistant Queue draft-only." = "%lld件のコネクターポリシーは、接続・確認・取り消し・監査UIが完成するまで設定に表示しません。%lld件のコネクター送信経路はAssistant Queue下書き専用のままです。";
 "Loading MCP settings..." = "MCP設定を読み込み中...";
 "Loading Sync settings..." = "Sync設定を読み込み中...";
@@ -1762,6 +1745,16 @@
 "Choose a Suisui backup file to restore" = "復元するSuisuiバックアップファイルを選択してください";
 "Add a task for today" = "今日のタスクを追加";
 "Capture with Voice" = "音声でキャプチャ";
+
+/* Today sidebar navigation and quick actions */
+"Add by Voice" = "音声で追加";
+"Block Time" = "時間をブロック";
+"Navigate work or open a quick action." = "作業画面へ移動するか、クイックアクションを開きます。";
+"Opens the command palette." = "コマンドパレットを開きます。";
+"Opens this section." = "このセクションを開きます。";
+"No items today" = "今日の項目はありません";
+"No scheduled items" = "予定項目はありません";
+"No completed items" = "完了済みの項目はありません";
 
 /* Voice workspace Q&A */
 "Searching your workspace" = "ワークスペースを検索中";
@@ -1895,8 +1888,8 @@
 "Suisui currently supports only Option + Space." = "現在Suisuiが対応するグローバルショートカットはOption + Spaceのみです。";
 
 /* Suisui public brand. Internal Suisui compatibility keys remain for stored data and configuration. */
-"Suisui" = "すいすい";
-"Welcome to Suisui" = "すいすいへようこそ";
+"Suisui" = "Suisui";
+"Welcome to Suisui" = "Suisuiへようこそ";
 "Speak it. Review it. Move it." = "声から、仕事がすいすい進む。";
 "Talk to Suisui. Review the draft, then move your work forward." = "Suisuiに話すだけ。あとは確認して、仕事を前へ。";
 "Suisui can open now, but planning is not ready yet. Review the required item below or finish setup later from Settings." = "Suisuiは今すぐ開けますが、プラン作成の準備ができていません。下の必須項目を確認するか、設定から後でセットアップしてください。";
@@ -2088,3 +2081,5 @@
 "Default" = "標準";
 "Enhanced" = "拡張";
 "Premium" = "プレミアム";
+"Prioritizes Apple or local speech engines when STT retries after a recoverable failure." = "復旧可能な失敗後にSTTを再試行する際、Appleまたはローカルの音声エンジンを優先します。";
+"Prioritizes Apple or local speech engines when TTS retries after a recoverable failure." = "復旧可能な失敗後にTTSを再試行する際、Appleまたはローカルの音声エンジンを優先します。";

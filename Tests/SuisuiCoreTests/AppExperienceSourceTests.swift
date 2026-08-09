@@ -8,15 +8,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".frame(width: 680, height: 584)"))
     }
 
-    func testProjectBoardPrimaryNavigationUsesExactlyFourTopLevelRows() throws {
+    func testProjectBoardSidebarMatchesApprovedTodaySampleStructure() throws {
         let sidebarSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift"
         )
         let requiredMarkers = [
-            "sidebar-destination-today",
             "sidebar-destination-inbox",
+            "sidebar-destination-today",
             "sidebar-destination-projects",
-            "sidebar-destination-review"
+            "sidebar-destination-schedule",
+            "sidebar-destination-completed",
+            "sidebar-action-voice-command",
+            "sidebar-action-settings",
         ]
 
         for marker in requiredMarkers {
@@ -26,14 +29,584 @@ final class AppExperienceSourceTests: XCTestCase {
                 "Expected exactly one top-level marker for \(marker)"
             )
         }
-        XCTAssertFalse(sidebarSource.contains("sidebar-destination-catch-up"))
-        XCTAssertFalse(sidebarSource.contains("sidebar-destination-schedule"))
-        XCTAssertFalse(sidebarSource.contains("sidebar-destination-done"))
-        XCTAssertFalse(sidebarSource.contains("sidebar-destination-assistant-queue"))
+        let markerRanges = try requiredMarkers.map { marker in
+            try XCTUnwrap(sidebarSource.range(of: marker))
+        }
+        for (leading, trailing) in zip(markerRanges, markerRanges.dropFirst()) {
+            XCTAssertLessThan(leading.lowerBound, trailing.lowerBound)
+        }
 
+        let searchStart = try XCTUnwrap(sidebarSource.range(of: "Button(action: onOpenSearch)"))
+        let searchEnd = try XCTUnwrap(
+            sidebarSource.range(
+                of: "ScrollView {",
+                range: searchStart.lowerBound..<sidebarSource.endIndex
+            )
+        )
+        let searchButton = String(sidebarSource[searchStart.lowerBound..<searchEnd.lowerBound])
+        XCTAssertTrue(searchButton.contains(".padding(.horizontal, 10)"))
+        XCTAssertTrue(
+            searchButton.contains(
+                ".frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36, alignment: .leading)"
+            )
+        )
+        XCTAssertTrue(
+            searchButton.contains(
+                ".background(.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))"
+            )
+        )
+        XCTAssertTrue(searchButton.contains(".stroke(Color.secondary.opacity(0.22), lineWidth: 1)"))
+        XCTAssertTrue(searchButton.contains(".contentShape(Rectangle())"))
+
+        let quickActionStart = try XCTUnwrap(sidebarSource.range(of: "private func quickAction("))
+        let quickActionEnd = try XCTUnwrap(
+            sidebarSource.range(
+                of: "private func perform",
+                range: quickActionStart.lowerBound..<sidebarSource.endIndex
+            )
+        )
+        let quickAction = String(sidebarSource[quickActionStart.lowerBound..<quickActionEnd.lowerBound])
+        XCTAssertTrue(quickAction.contains(".contentShape(Rectangle())"))
+
+        XCTAssertTrue(sidebarSource.contains("NSApplication.shared.applicationIconImage"))
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: packageRoot()
+                    .appendingPathComponent("packaging/Suisui-AppIcon-1024.png")
+                    .path
+            )
+        )
+        XCTAssertTrue(sidebarSource.contains("sidebar-open-search"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-quick-add-task"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-quick-add-by-voice"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-quick-block-time"))
+        XCTAssertFalse(sidebarSource.contains("sidebar-destination-review"))
+    }
+
+    func testProjectBoardSidebarButtonsPreserveNativeAccessibilityActions() throws {
+        let sidebarSource = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift"
+        )
+
+        let searchStart = try XCTUnwrap(sidebarSource.range(of: "Button(action: onOpenSearch)"))
+        let searchEnd = try XCTUnwrap(
+            sidebarSource.range(
+                of: "ScrollView {",
+                range: searchStart.lowerBound..<sidebarSource.endIndex
+            )
+        )
+        let sidebarRowStart = try XCTUnwrap(
+            sidebarSource.range(of: "private func sidebarRowButton(")
+        )
+        let sidebarRowEnd = try XCTUnwrap(
+            sidebarSource.range(
+                of: "private func quickAction(",
+                range: sidebarRowStart.lowerBound..<sidebarSource.endIndex
+            )
+        )
+        let quickActionStart = sidebarRowEnd
+        let quickActionEnd = try XCTUnwrap(
+            sidebarSource.range(
+                of: "private func perform",
+                range: quickActionStart.lowerBound..<sidebarSource.endIndex
+            )
+        )
+
+        let buttonBlocks = [
+            String(sidebarSource[searchStart.lowerBound..<searchEnd.lowerBound]),
+            String(sidebarSource[sidebarRowStart.lowerBound..<sidebarRowEnd.lowerBound]),
+            String(sidebarSource[quickActionStart.lowerBound..<quickActionEnd.lowerBound]),
+        ]
+        for block in buttonBlocks {
+            XCTAssertTrue(block.contains("Button"))
+            XCTAssertTrue(block.contains(".accessibilityHidden(true)"))
+            XCTAssertTrue(block.contains(".accessibilityLabel("))
+            XCTAssertTrue(block.contains(".contentShape(Rectangle())"))
+            XCTAssertFalse(
+                block.contains(".accessibilityElement(children: .ignore)"),
+                "Replacing a native Button AX element removes its AXPress action"
+            )
+        }
+        XCTAssertFalse(sidebarSource.contains(".accessibilityAddTraits(.isButton)"))
+    }
+
+    func testProjectBoardConnectsSidebarCountsAndActionsToProductBehavior() throws {
+        let boardSource = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectBoardView.swift"
+        )
+        let sidebarSource = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift"
+        )
+
+        XCTAssertTrue(boardSource.contains("today: sidebarMetrics.todayCount"))
+        XCTAssertTrue(boardSource.contains("inbox: sidebarMetrics.inboxCount"))
+        XCTAssertTrue(boardSource.contains("projects: sidebarMetrics.projectsCount"))
+        XCTAssertTrue(boardSource.contains("schedule: sidebarMetrics.scheduleCount"))
+        XCTAssertTrue(boardSource.contains("completed: sidebarMetrics.doneCount"))
+        XCTAssertTrue(boardSource.contains("onOpenSearch: { isCommandPaletteVisible = true }"))
+        XCTAssertTrue(boardSource.contains("onOpenSettings: { openSettings() }"))
+        XCTAssertTrue(boardSource.contains("onAddTask: beginInboxQuickAddFromSidebar"))
+        XCTAssertTrue(boardSource.contains("onBlockTime: prepareScheduleDraftFromSidebar"))
+        XCTAssertTrue(boardSource.contains("private func prepareScheduleDraftFromSidebar()"))
+        XCTAssertFalse(sidebarSource.contains("review: Int?"))
+        XCTAssertFalse(
+            boardSource.contains("review: viewModel.assistantQueueSnapshot.needsAttentionCount")
+        )
+        XCTAssertFalse(sidebarSource.contains("@escaping () -> Void = {}"))
+    }
+
+    func testTodaySidebarLabelsAreLocalizedAndAccessible() throws {
+        let english = try readPackageFile(
+            "Sources/SuisuiApp/Resources/en.lproj/Localizable.strings"
+        )
+        let japanese = try readPackageFile(
+            "Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings"
+        )
+        let expectedEnglish = [
+            "Suisui": "Suisui",
+            "Welcome to Suisui": "Welcome to Suisui",
+            "Inbox": "Inbox",
+            "Schedule": "Schedule",
+            "Add Task": "Add Task",
+            "Quick Actions": "Quick Actions",
+            "Search": "Search",
+            "Completed": "Completed",
+            "Add by Voice": "Add by Voice",
+            "Block Time": "Block Time",
+            "Navigate work or open a quick action.": "Navigate work or open a quick action.",
+            "Opens the command palette.": "Opens the command palette.",
+            "Creates a local schedule draft without writing Calendar.":
+                "Creates a local schedule draft without writing Calendar.",
+            "No items today": "No items today",
+            "No projects": "No projects",
+            "No scheduled items": "No scheduled items",
+            "No completed items": "No completed items",
+            "Opens this section.": "Opens this section.",
+        ]
+        let expectedJapanese = [
+            "Suisui": "Suisui",
+            "Welcome to Suisui": "Suisuiへようこそ",
+            "Inbox": "受信箱",
+            "Schedule": "スケジュール",
+            "Add Task": "タスクを追加",
+            "Quick Actions": "クイックアクション",
+            "Search": "検索",
+            "Completed": "完了",
+            "Add by Voice": "音声で追加",
+            "Block Time": "時間をブロック",
+            "Navigate work or open a quick action.":
+                "作業画面へ移動するか、クイックアクションを開きます。",
+            "Opens the command palette.": "コマンドパレットを開きます。",
+            "Creates a local schedule draft without writing Calendar.":
+                "カレンダーへ書き込まず、ローカルのスケジュール下書きを作成します。",
+            "No items today": "今日の項目はありません",
+            "No projects": "プロジェクトはありません",
+            "No scheduled items": "予定項目はありません",
+            "No completed items": "完了済みの項目はありません",
+            "Opens this section.": "このセクションを開きます。",
+        ]
+
+        for (key, value) in expectedEnglish {
+            let entry = "\"\(key)\" = \"\(value)\";"
+            XCTAssertEqual(
+                english.components(separatedBy: "\"\(key)\" =").count - 1,
+                1,
+                "Expected one English localization key for \(key)"
+            )
+            XCTAssertTrue(english.contains(entry), "Unexpected English localization for \(key)")
+        }
+        for (key, value) in expectedJapanese {
+            let entry = "\"\(key)\" = \"\(value)\";"
+            XCTAssertEqual(
+                japanese.components(separatedBy: "\"\(key)\" =").count - 1,
+                1,
+                "Expected one Japanese localization key for \(key)"
+            )
+            XCTAssertTrue(japanese.contains(entry), "Unexpected Japanese localization for \(key)")
+        }
+
+        let sidebar = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift"
+        )
+        let brand = try sourceBlock(
+            in: sidebar,
+            from: "HStack(spacing: 8) {\n                Image(nsImage:",
+            to: "Button(action: onOpenSearch)"
+        )
+        let search = try sourceBlock(
+            in: sidebar,
+            from: "Button(action: onOpenSearch)",
+            to: "ScrollView {"
+        )
+        let root = try sourceBlock(
+            in: sidebar,
+            from: ".accessibilityIdentifier(\"project-board-sidebar\")",
+            to: "private func sidebarRow("
+        )
+        let destinationRow = try sourceBlock(
+            in: sidebar,
+            from: "private func destinationSidebarRow(",
+            to: "private func utilitySidebarRow("
+        )
+        let utilityRow = try sourceBlock(
+            in: sidebar,
+            from: "private func utilitySidebarRow(",
+            to: "private func sidebarRowButton("
+        )
+        let sidebarRow = try sourceBlock(
+            in: sidebar,
+            from: "private func sidebarRowButton(",
+            to: "private func quickAction("
+        )
+        let quickAction = try sourceBlock(
+            in: sidebar,
+            from: "private func quickAction(",
+            to: "private func perform"
+        )
+        let hintHelpers = try sourceBlock(
+            in: sidebar,
+            from: "private func utilityAccessibilityHintKey(",
+            to: "private func accessibilityIdentifier("
+        )
+        let countValue = try sourceBlock(
+            in: sidebar,
+            from: "private func countAccessibilityValue(",
+            to: "private func utilityAccessibilityHintKey("
+        )
+        let brandText = try sourceBlock(
+            in: brand,
+            from: "Text(LocalizedStringKey(\"Suisui\"))",
+            to: ".accessibilityElement(children: .ignore)"
+        )
+        let searchText = try sourceBlock(
+            in: search,
+            from: "Text(LocalizedStringKey(\"Search\"))",
+            to: "Spacer()"
+        )
+        let sidebarRowText = try sourceBlock(
+            in: sidebarRow,
+            from: "Text(LocalizedStringKey(item.title))",
+            to: "Spacer(minLength: 8)"
+        )
+        let quickActionText = try sourceBlock(
+            in: quickAction,
+            from: "Text(LocalizedStringKey(action.title))",
+            to: "Spacer(minLength: 8)"
+        )
+
+        XCTAssertTrue(brand.contains("NSApplication.shared.applicationIconImage"))
+        XCTAssertTrue(brand.contains(".accessibilityHidden(true)"))
+        XCTAssertFalse(brandText.contains(".accessibilityHidden(true)"))
+        XCTAssertTrue(brandText.contains(".foregroundStyle(Color.accentColor)"))
+
+        XCTAssertTrue(search.contains("Image(systemName: \"magnifyingglass\")"))
+        XCTAssertTrue(search.contains(".accessibilityHidden(true)"))
+        XCTAssertFalse(searchText.contains(".accessibilityHidden(true)"))
+        XCTAssertTrue(search.contains(".accessibilityLabel(Text(LocalizedStringKey(\"Search\")))"))
+        XCTAssertTrue(
+            search.contains(
+                ".accessibilityHint(Text(LocalizedStringKey(\"Opens the command palette.\")))"
+            )
+        )
+        XCTAssertTrue(search.contains(".help(LocalizedStringKey(\"Opens the command palette.\"))"))
+
+        XCTAssertTrue(root.contains(".accessibilityLabel(Text(LocalizedStringKey(\"Project navigation\")))"))
+        XCTAssertTrue(
+            root.contains(
+                ".accessibilityHint(Text(LocalizedStringKey(\"Navigate work or open a quick action.\")))"
+            )
+        )
+
+        XCTAssertTrue(destinationRow.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
+        XCTAssertTrue(
+            destinationRow.contains(
+                "hintKey: \"Opens this section.\""
+            )
+        )
+        XCTAssertEqual(sidebar.components(separatedBy: "\"Opens this section.\"").count - 1, 1)
+        XCTAssertFalse(destinationRow.contains("Navigate work or open a quick action."))
+        XCTAssertFalse(utilityRow.contains(".accessibilityAddTraits"))
+        XCTAssertTrue(
+            utilityRow.contains(
+                "if let hintKey = utilityAccessibilityHintKey(for: item.behavior)"
+            )
+        )
+        XCTAssertTrue(utilityRow.contains("hintKey: hintKey"))
+        XCTAssertTrue(hintHelpers.contains(") -> String?"))
+        XCTAssertTrue(hintHelpers.contains("case .route:\n            nil"))
+        XCTAssertFalse(sidebar.contains("preconditionFailure"))
+        XCTAssertFalse(sidebarRow.contains(".accessibilityAddTraits"))
+        XCTAssertEqual(sidebar.components(separatedBy: ".accessibilityAddTraits").count - 1, 1)
+
+        XCTAssertTrue(sidebarRow.contains("Image(systemName: item.systemImage)"))
+        XCTAssertTrue(sidebarRow.contains(".accessibilityHidden(true)"))
+        XCTAssertFalse(sidebarRowText.contains(".accessibilityHidden(true)"))
+        XCTAssertTrue(sidebarRow.contains(".accessibilityLabel(Text(LocalizedStringKey(item.title)))"))
+        XCTAssertTrue(sidebarRow.contains(".accessibilityValue(countAccessibilityValue(for: item.id))"))
+        XCTAssertTrue(sidebarRow.contains(".accessibilityIdentifier(accessibilityIdentifier(for: item.id))"))
+        XCTAssertTrue(sidebarRow.contains(".accessibilityHint(Text(LocalizedStringKey(hintKey)))"))
+        XCTAssertTrue(sidebarRow.contains(".help(LocalizedStringKey(hintKey))"))
+        XCTAssertTrue(sidebarRow.contains(".foregroundStyle(isSelected ? Color.white : Color.primary)"))
+        XCTAssertTrue(sidebarRow.contains(".fill(isSelected ? Color.accentColor : .clear)"))
+
+        XCTAssertTrue(quickAction.contains("Image(systemName: action.systemImage)"))
+        XCTAssertTrue(quickAction.contains("Image(systemName: \"plus\")"))
+        XCTAssertTrue(quickAction.contains(".accessibilityHidden(true)"))
+        XCTAssertFalse(quickActionText.contains(".accessibilityHidden(true)"))
+        XCTAssertFalse(quickAction.contains(".accessibilityElement(children: .ignore)"))
+        XCTAssertTrue(quickAction.contains(".accessibilityLabel(Text(LocalizedStringKey(action.title)))"))
+        XCTAssertTrue(
+            quickAction.contains(
+                ".accessibilityHint(Text(LocalizedStringKey(accessibilityHintKey(for: action))))"
+            )
+        )
+        XCTAssertTrue(quickAction.contains(".help(LocalizedStringKey(accessibilityHintKey(for: action)))"))
+        XCTAssertFalse(quickAction.contains(".accessibilityAddTraits"))
+        XCTAssertTrue(sidebar.contains("Text(LocalizedStringKey(\"Quick Actions\"))"))
+        XCTAssertTrue(sidebar.contains(".stroke(Color.secondary.opacity(0.18), lineWidth: 1)"))
+
+        XCTAssertTrue(
+            hintHelpers.contains(
+                "case .blockTime:\n            \"Creates a local schedule draft without writing Calendar.\""
+            )
+        )
+        for mapping in [
+            "case .inbox: localizedDisplay(\"No pending items\")",
+            "case .today: localizedDisplay(\"No items today\")",
+            "case .projects: localizedDisplay(\"No projects\")",
+            "case .schedule: localizedDisplay(\"No scheduled items\")",
+            "case .completed: localizedDisplay(\"No completed items\")",
+        ] {
+            XCTAssertTrue(countValue.contains(mapping), "Missing zero-count mapping: \(mapping)")
+        }
+        XCTAssertTrue(
+            countValue.contains("localizedCount(count, one: \"%d item\", other: \"%d items\")")
+        )
+    }
+
+    func testAppLocalizationsContainNoDuplicateKeys() throws {
+        for path in [
+            "Sources/SuisuiApp/Resources/en.lproj/Localizable.strings",
+            "Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings",
+        ] {
+            let occurrences = try localizableKeyOccurrences(in: path)
+            let duplicateKeys = occurrences
+                .filter { $0.value > 1 }
+                .map(\.key)
+                .sorted()
+
+            XCTAssertEqual(duplicateKeys, [], "Duplicate localization keys in \(path)")
+        }
+    }
+
+    func testSidebarVoiceEntrypointsShareSelectedBoardConversationContext() throws {
+        let boardSource = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectBoardView.swift"
+        )
+        let sidebarCallStart = try XCTUnwrap(
+            boardSource.range(of: "ProjectBoardSidebarView(")
+        )
+        let sidebarCallEnd = try XCTUnwrap(
+            boardSource.range(
+                of: ".id(toolbarLayoutRefreshToken)",
+                range: sidebarCallStart.upperBound..<boardSource.endIndex
+            )
+        )
+        let sidebarCall = String(
+            boardSource[sidebarCallStart.lowerBound..<sidebarCallEnd.lowerBound]
+        )
+        let toolbarCallStart = try XCTUnwrap(
+            boardSource.range(of: "ProjectBoardToolbarContent(")
+        )
+        let toolbarCallEnd = try XCTUnwrap(
+            boardSource.range(
+                of: "onToggleInspector:",
+                range: toolbarCallStart.upperBound..<boardSource.endIndex
+            )
+        )
+        let toolbarCall = String(
+            boardSource[toolbarCallStart.lowerBound..<toolbarCallEnd.lowerBound]
+        )
+        let helperStart = try XCTUnwrap(
+            boardSource.range(of: "private func openVoiceCommandFromBoardContext()")
+        )
+        let helperEnd = try XCTUnwrap(
+            boardSource.range(
+                of: "private func ",
+                range: helperStart.upperBound..<boardSource.endIndex
+            )
+        )
+        let helper = String(boardSource[helperStart.lowerBound..<helperEnd.lowerBound])
+
+        XCTAssertTrue(helper.contains("let task = viewModel.selectedTask"))
+        XCTAssertTrue(
+            helper.contains("let projectID = task?.projectID ?? viewModel.selectedProject?.id")
+        )
+        XCTAssertTrue(
+            helper.contains("viewModel.snapshot.projects.first { $0.id == projectID }")
+        )
+        XCTAssertTrue(helper.contains("projectID: projectID"))
+        XCTAssertTrue(helper.contains("projectName: project?.title"))
+        XCTAssertTrue(helper.contains("taskID: task?.id"))
+        XCTAssertTrue(helper.contains("taskName: task?.title"))
+        let store = try XCTUnwrap(
+            helper.range(of: "SuisuiVoiceConversationScopeBridge.store(")
+        )
+        let openWindow = try XCTUnwrap(
+            helper.range(of: "openWindow(id: \"voice-capture\")")
+        )
+        XCTAssertLessThan(store.lowerBound, openWindow.lowerBound)
+        XCTAssertTrue(
+            helper.contains("name: .suisuiVoiceConversationScopeRequested")
+        )
+        XCTAssertTrue(helper.contains("NotificationCenter.default.post("))
+        XCTAssertTrue(
+            toolbarCall.contains("onOpenVoiceCommand: openVoiceCommandFromBoardContext")
+        )
+        XCTAssertTrue(
+            sidebarCall.contains("onOpenVoiceCommand: openVoiceCommandFromBoardContext")
+        )
+        XCTAssertTrue(
+            sidebarCall.contains("onAddByVoice: openVoiceCommandFromBoardContext")
+        )
+        XCTAssertEqual(
+            boardSource.components(
+                separatedBy: "onOpenVoiceCommand: openVoiceCommandFromBoardContext"
+            ).count - 1,
+            2
+        )
+        XCTAssertEqual(
+            boardSource.components(
+                separatedBy: "onAddByVoice: openVoiceCommandFromBoardContext"
+            ).count - 1,
+            1
+        )
+    }
+
+    func testSidebarAddTaskRequestsFocusBeforeNavigatingToInbox() throws {
+        let boardSource = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectBoardView.swift"
+        )
+        let helperStart = try XCTUnwrap(
+            boardSource.range(of: "private func beginInboxQuickAddFromSidebar()")
+        )
+        let helperEnd = try XCTUnwrap(
+            boardSource.range(
+                of: "private func ",
+                range: helperStart.upperBound..<boardSource.endIndex
+            )
+        )
+        let helper = String(boardSource[helperStart.lowerBound..<helperEnd.lowerBound])
+        let focusRequest = try XCTUnwrap(
+            helper.range(of: "requestsInboxQuickAddFocus = true")
+        )
+        let navigation = try XCTUnwrap(
+            helper.range(of: "navigateWithinScene(to: .primary(.inbox))")
+        )
+
+        XCTAssertLessThan(focusRequest.lowerBound, navigation.lowerBound)
+    }
+
+    func testSidebarBlockTimeOnlyPreparesALocalScheduleDraft() throws {
+        let boardSource = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectBoardView.swift"
+        )
+        let start = try XCTUnwrap(
+            boardSource.range(of: "private func prepareScheduleDraftFromSidebar()")
+        )
+        let end = try XCTUnwrap(
+            boardSource.range(
+                of: "private func ",
+                range: start.upperBound..<boardSource.endIndex
+            )
+        )
+        let helper = String(boardSource[start.lowerBound..<end.lowerBound])
+
+        XCTAssertTrue(helper.contains("navigateWithinScene(to: .review(.schedule))"))
+        XCTAssertTrue(
+            helper.contains(
+                "viewModel.prepareScheduleDraft(on: VisualEvidenceRuntimeContext.referenceDate())"
+            )
+        )
+        XCTAssertEqual(
+            helper.components(separatedBy: "viewModel.prepareScheduleDraft(").count - 1,
+            1
+        )
+        XCTAssertEqual(helper.components(separatedBy: "viewModel.").count - 1, 1)
+        XCTAssertFalse(helper.contains("enqueueScheduleDraftCalendarApply"))
+        XCTAssertFalse(helper.contains("applyScheduleDraftToCalendar"))
+    }
+
+    func testInboxQuickAddFocusRequestIsConsumedExactlyOnce() throws {
+        let boardSource = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectBoardView.swift"
+        )
+        let inboxSource = try readPackageFile(
+            "Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift"
+        )
+
+        XCTAssertTrue(boardSource.contains("@State private var requestsInboxQuickAddFocus = false"))
+        XCTAssertTrue(boardSource.contains("requestsQuickAddFocus: requestsInboxQuickAddFocus"))
+        XCTAssertTrue(boardSource.contains("requestsInboxQuickAddFocus = true"))
+        XCTAssertTrue(boardSource.contains("requestsInboxQuickAddFocus = false"))
+
+        XCTAssertTrue(inboxSource.contains("let requestsQuickAddFocus: Bool"))
+        XCTAssertTrue(inboxSource.contains("let onQuickAddFocusConsumed: () -> Void"))
+        XCTAssertTrue(inboxSource.contains("@FocusState private var isQuickAddFocused: Bool"))
+        XCTAssertTrue(inboxSource.contains(".focused($isQuickAddFocused)"))
+
+        let helperStart = try XCTUnwrap(
+            inboxSource.range(of: "private func consumeQuickAddFocusRequestIfNeeded()")
+        )
+        let helperEnd = try XCTUnwrap(
+            inboxSource.range(
+                of: "\n}\n\nprivate struct InboxHeaderControls",
+                range: helperStart.upperBound..<inboxSource.endIndex
+            )
+        )
+        let helper = String(inboxSource[helperStart.lowerBound..<helperEnd.lowerBound])
+        XCTAssertTrue(helper.contains("guard requestsQuickAddFocus else"))
+        let focus = try XCTUnwrap(helper.range(of: "isQuickAddFocused = true"))
+        let consume = try XCTUnwrap(helper.range(of: "onQuickAddFocusConsumed()"))
+        XCTAssertLessThan(focus.lowerBound, consume.lowerBound)
+        XCTAssertEqual(
+            helper.components(separatedBy: "onQuickAddFocusConsumed()").count - 1,
+            1
+        )
+        XCTAssertFalse(helper.contains("private struct InboxHeaderControls"))
+
+        let onAppearStart = try XCTUnwrap(inboxSource.range(of: ".onAppear {"))
+        let onAppearEnd = try XCTUnwrap(
+            inboxSource.range(
+                of: ".onChange(of: requestsQuickAddFocus)",
+                range: onAppearStart.upperBound..<inboxSource.endIndex
+            )
+        )
+        let onAppear = String(inboxSource[onAppearStart.lowerBound..<onAppearEnd.lowerBound])
+        XCTAssertEqual(
+            onAppear.components(separatedBy: "consumeQuickAddFocusRequestIfNeeded()").count - 1,
+            1
+        )
+
+        let onChangeStart = onAppearEnd
+        let onChangeEnd = try XCTUnwrap(
+            inboxSource.range(
+                of: ".onChange(of: tasks.map(\\.id))",
+                range: onChangeStart.upperBound..<inboxSource.endIndex
+            )
+        )
+        let onChange = String(inboxSource[onChangeStart.lowerBound..<onChangeEnd.lowerBound])
+        XCTAssertEqual(
+            onChange.components(separatedBy: "consumeQuickAddFocusRequestIfNeeded()").count - 1,
+            1
+        )
+    }
+
+    func testTodayCatchUpDisplayExpansionAndAccessibilityFocusContract() throws {
         let todaySource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift"
         )
+
         XCTAssertTrue(todaySource.contains("viewModel.catchUpCount > 0"))
         XCTAssertTrue(todaySource.contains("today-catch-up-section"))
         XCTAssertTrue(todaySource.contains("@AccessibilityFocusState private var isCatchUpFocused"))
@@ -487,19 +1060,47 @@ final class AppExperienceSourceTests: XCTestCase {
     func testTodayProductionRouteSmokeCoversNormalBoardDestinationMatrix() throws {
         let script = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
         let appSource = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
+        let normalRoutesStart = try XCTUnwrap(script.range(of: "run_normal_routes() {"))
+        let normalRoutesEnd = try XCTUnwrap(
+            script.range(
+                of: "\n}\n\ncpu_percent_for_app()",
+                range: normalRoutesStart.upperBound..<script.endIndex
+            )
+        )
+        let normalRoutesSource = String(script[normalRoutesStart.lowerBound..<normalRoutesEnd.upperBound])
+        let routesStart = try XCTUnwrap(normalRoutesSource.range(of: "local routes=("))
+        let routesEnd = try XCTUnwrap(
+            normalRoutesSource.range(
+                of: "\n  )",
+                range: routesStart.upperBound..<normalRoutesSource.endIndex
+            )
+        )
+        let routesSource = String(normalRoutesSource[routesStart.upperBound..<routesEnd.lowerBound])
+        let routeRows = try bashArrayStringPayloads(in: routesSource)
 
         XCTAssertTrue(script.contains("run_route()"))
-        XCTAssertTrue(script.contains("routes=("))
-        XCTAssertTrue(script.contains("inbox|inbox|sidebar-destination-inbox|inbox-workflow"))
-        XCTAssertTrue(script.contains("today|today|sidebar-destination-today|today-workflow"))
-        XCTAssertTrue(script.contains("projects|projects|sidebar-destination-projects|projects-portfolio-overview"))
-        XCTAssertTrue(script.contains("review|primary:review|sidebar-destination-review|review-hub"))
-        XCTAssertTrue(script.contains("review-schedule|review:schedule|sidebar-destination-review|schedule-workflow"))
-        XCTAssertTrue(script.contains("review-completed|review:completed|sidebar-destination-review|done-workflow"))
-        XCTAssertTrue(script.contains("review-automation|review:automation|sidebar-destination-review|automation-activity-workflow"))
+        XCTAssertEqual(
+            routeRows,
+            [
+                "inbox|inbox|sidebar-destination-inbox|inbox-workflow",
+                "today|today|sidebar-destination-today|today-workflow",
+                "review|primary:review|sidebar-destination-schedule|review-hub",
+                "review-schedule|review:schedule|sidebar-destination-schedule|schedule-workflow",
+                "review-completed|review:completed|sidebar-destination-completed|done-workflow",
+                "review-automation|review:automation|sidebar-destination-schedule|automation-activity-workflow",
+                "review-assistant-queue|review:assistant-queue|sidebar-destination-schedule|assistant-queue-workflow",
+                "projects|projects|sidebar-destination-projects|projects-portfolio-overview",
+            ]
+        )
+        XCTAssertEqual(routeRows.count, 8)
+        XCTAssertThrowsError(try bashArrayStringPayloads(in: routesSource + "\n  unquoted-extra"))
+        XCTAssertEqual(
+            try bashArrayStringPayloads(in: #"  "route-with-\"escaped-quote\"""#),
+            [#"route-with-\"escaped-quote\""#]
+        )
         XCTAssertTrue(script.contains(#"review-automation:en) printf '%s' "Automation Activity""#))
         XCTAssertTrue(script.contains(#"review-automation:ja) printf '%s' "自動化アクティビティ""#))
-        XCTAssertTrue(script.contains("review-assistant-queue|review:assistant-queue|sidebar-destination-review|assistant-queue-workflow"))
+        XCTAssertFalse(routeRows.contains { $0.contains("sidebar-destination-review") })
         XCTAssertTrue(script.contains("navigate_to_seed_project()"))
         XCTAssertTrue(script.contains("\"project:$seed_project_id\""))
         XCTAssertTrue(script.contains("\"sidebar-destination-projects\""))
@@ -1457,7 +2058,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("inspector-explicit-close"))
         XCTAssertTrue(script.contains("inspector-wide-stays-closed"))
         XCTAssertFalse(script.contains("inspector-wide-restored"))
-        XCTAssertTrue(script.contains("\"sidebar-destination-review\" \"Review\" \"review-hub\""))
+        XCTAssertTrue(script.contains("\"sidebar-destination-schedule\" \"Schedule\" \"schedule-workflow\""))
+        XCTAssertTrue(script.contains("\"sidebar-destination-completed\" \"Completed\" \"done-workflow\""))
+        XCTAssertFalse(script.contains("sidebar-destination-review"))
         XCTAssertTrue(script.contains("\"review-destination-assistant-queue\" \"assistant-queue-workflow\""))
         XCTAssertTrue(script.contains("LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX:-0"))
     }
@@ -2185,7 +2788,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("public func refreshScheduleReadModel("))
         XCTAssertTrue(boardSource.contains("let sidebarMetrics = viewModel.derivedReadModels.sidebarMetrics"))
         XCTAssertTrue(boardSource.contains("today: sidebarMetrics.todayCount"))
-        XCTAssertTrue(boardSource.contains("review: viewModel.assistantQueueSnapshot.needsAttentionCount"))
+        XCTAssertTrue(boardSource.contains("schedule: sidebarMetrics.scheduleCount"))
+        XCTAssertTrue(boardSource.contains("completed: sidebarMetrics.doneCount"))
         XCTAssertTrue(boardSource.contains("viewModel.derivedReadModels.projectPortfolioSummaries"))
         XCTAssertFalse(boardSource.contains("count: viewModel.todayTasks().count"))
         XCTAssertFalse(boardSource.contains("count: viewModel.missedTaskReview().newlyMissedCount"))
@@ -2640,7 +3244,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("sidebar-destination-inbox"))
         XCTAssertTrue(source.contains("sidebar-destination-today"))
         XCTAssertTrue(source.contains("sidebar-destination-projects"))
-        XCTAssertTrue(source.contains("sidebar-destination-review"))
+        XCTAssertTrue(source.contains("sidebar-destination-schedule"))
+        XCTAssertTrue(source.contains("sidebar-destination-completed"))
+        XCTAssertFalse(source.contains("sidebar-destination-review"))
         XCTAssertFalse(
             try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift")
                 .contains("sidebar-destination-catch-up")
@@ -2679,20 +3285,24 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(persistenceSource.contains("availableProjects.contains(where: { $0.id == projectID }) else {\n                    return .today"))
     }
 
-    func testPhase12SidebarShowsWorkflowDestinationsBeforeProjectRows() throws {
+    func testSidebarShowsApprovedDestinationsInSampleOrder() throws {
         let sidebarSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift"
         )
 
-        let todayRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-today"))
         let inboxRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-inbox"))
+        let todayRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-today"))
         let projectsRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-projects"))
-        let reviewRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-review"))
+        let scheduleRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-schedule"))
+        let completedRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-completed"))
 
-        XCTAssertLessThan(todayRow.lowerBound, inboxRow.lowerBound)
-        XCTAssertLessThan(inboxRow.lowerBound, projectsRow.lowerBound)
-        XCTAssertLessThan(projectsRow.lowerBound, reviewRow.lowerBound)
+        XCTAssertLessThan(inboxRow.lowerBound, todayRow.lowerBound)
+        XCTAssertLessThan(todayRow.lowerBound, projectsRow.lowerBound)
+        XCTAssertLessThan(projectsRow.lowerBound, scheduleRow.lowerBound)
+        XCTAssertLessThan(scheduleRow.lowerBound, completedRow.lowerBound)
         XCTAssertFalse(sidebarSource.contains("project-sidebar-row-"))
+        XCTAssertFalse(sidebarSource.contains("sidebar-destination-catch-up"))
+        XCTAssertFalse(sidebarSource.contains("sidebar-destination-assistant-queue"))
         let projectsSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift"
         )
@@ -2933,7 +3543,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
         let workflowSource = try readProjectWorkflowSources()
 
-        XCTAssertTrue(boardSource.contains("InboxWorkflowView(viewModel: viewModel, selectInboxTask: selectInboxTask)"))
+        XCTAssertTrue(boardSource.contains("InboxWorkflowView("))
+        XCTAssertTrue(boardSource.contains("selectInboxTask: selectInboxTask"))
         XCTAssertTrue(boardSource.contains("route: currentBoardRoute"))
         XCTAssertTrue(boardSource.contains("private func selectInboxTask(_ task: ProjectBoardTask)"))
         XCTAssertTrue(boardSource.contains("allowsCompactInspectorPresentation = false"))
@@ -3312,10 +3923,16 @@ final class AppExperienceSourceTests: XCTestCase {
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
 
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-sidebar\")"))
-        XCTAssertTrue(boardSource.contains(".accessibilityLabel(\"Project navigation\")"))
-        XCTAssertTrue(boardSource.contains(".accessibilityHint(\"Select Today, Inbox, Projects, or Review.\")"))
+        XCTAssertTrue(
+            boardSource.contains(
+                ".accessibilityLabel(Text(LocalizedStringKey(\"Project navigation\")))"
+            )
+        )
+        XCTAssertTrue(boardSource.contains("LocalizedStringKey(\"Navigate work or open a quick action.\")"))
         XCTAssertTrue(boardSource.contains("sidebar-destination-today"))
-        XCTAssertTrue(boardSource.contains("sidebar-destination-review"))
+        XCTAssertTrue(boardSource.contains("sidebar-destination-schedule"))
+        XCTAssertTrue(boardSource.contains("sidebar-destination-completed"))
+        XCTAssertFalse(boardSource.contains("sidebar-destination-review"))
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-sidebar-row-\\(project.id)\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityLabel(project.accessibilityProjectsHubLabel)"))
         XCTAssertTrue(boardSource.contains(".tag(BoardRoute.project(project.id))"))
@@ -5535,7 +6152,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(factorySource.contains("case .localWhisperCpp:"))
         XCTAssertTrue(factorySource.contains("WhisperCppLocalSTTConfiguration("))
-        XCTAssertTrue(factorySource.contains("normalizedSettings.whisperCppExecutablePath ?? \"\""))
+        XCTAssertTrue(factorySource.contains("settings.whisperCppExecutablePath ?? \"\""))
         XCTAssertTrue(factorySource.contains("WhisperCppLocalSTTProvider(configuration: configuration)"))
         XCTAssertFalse(factorySource.contains(".openAITranscribe, .appleSpeechAnalyzer, .localWhisperKit, .localWhisperCpp"))
     }
@@ -7197,6 +7814,20 @@ final class AppExperienceSourceTests: XCTestCase {
         })
     }
 
+    private func localizableKeyOccurrences(in relativePath: String) throws -> [String: Int] {
+        let source = try readPackageFile(relativePath)
+        let pattern = #""((?:[^"\\]|\\.)*)"\s*="#
+        let regex = try NSRegularExpression(pattern: pattern)
+        let range = NSRange(source.startIndex..<source.endIndex, in: source)
+
+        return regex.matches(in: source, range: range).reduce(into: [:]) { occurrences, match in
+            guard let keyRange = Range(match.range(at: 1), in: source) else {
+                return
+            }
+            occurrences[String(source[keyRange]), default: 0] += 1
+        }
+    }
+
     private func readProjectWorkflowSources() throws -> String {
         try [
             "Sources/SuisuiApp/Views/ProjectWorkflowViews.swift",
@@ -7269,6 +7900,49 @@ final class AppExperienceSourceTests: XCTestCase {
             "task-"
         ]
         return !nonLocalizedPrefixes.contains { key.hasPrefix($0) }
+    }
+
+    private func bashArrayStringPayloads(in source: String) throws -> [String] {
+        var payloads: [String] = []
+
+        for (lineIndex, rawLine) in source.split(
+            separator: "\n",
+            omittingEmptySubsequences: false
+        ).enumerated() {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty, !line.hasPrefix("#") else {
+                continue
+            }
+            guard line.count >= 2, line.first == "\"", line.last == "\"" else {
+                throw BashArrayStringParseError.invalidElement(line: lineIndex + 1, value: line)
+            }
+
+            let payload = line.dropFirst().dropLast()
+            var backslashEscaped = false
+            for character in payload {
+                if character == "\"", !backslashEscaped {
+                    throw BashArrayStringParseError.invalidElement(line: lineIndex + 1, value: line)
+                }
+                if character == "\\" {
+                    backslashEscaped.toggle()
+                } else {
+                    backslashEscaped = false
+                }
+            }
+            guard !backslashEscaped else {
+                throw BashArrayStringParseError.invalidElement(line: lineIndex + 1, value: line)
+            }
+
+            // Removing only the boundary quotes preserves Bash escapes verbatim;
+            // replacing quote text here could silently change a route payload.
+            payloads.append(String(payload))
+        }
+
+        return payloads
+    }
+
+    private enum BashArrayStringParseError: Error {
+        case invalidElement(line: Int, value: String)
     }
 
     private func packageRoot() -> URL {

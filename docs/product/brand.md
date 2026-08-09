@@ -3,7 +3,7 @@
 ## Identity
 
 - Product name: `Suisui`
-- Japanese notation: `すいすい`
+- Japanese notation: `Suisui`
 - English notation: `Suisui`
 - Category: AIパーソナルプロジェクトマネージャー
 - Japanese tagline: 声から、仕事がすいすい進む。
