@@ -111,7 +111,7 @@ public enum TodayDashboardSnapshotBuilder {
                 taskID: task.id,
                 title: task.title,
                 projectTitle: projectTitlesByTaskID[task.id] ?? "",
-                priorityLabel: task.priority.label,
+                priorityLabel: localized(task.priority.label, locale: locale),
                 timeLabel: task.todayDueDisplayLabel(on: now, calendar: calendar, locale: locale)
             )
         }
@@ -121,9 +121,9 @@ public enum TodayDashboardSnapshotBuilder {
         return TodayDashboardSnapshot(
             header: TodayDashboardHeaderSnapshot(
                 title: dateTitle(for: now, calendar: calendar, locale: locale),
-                greeting: greeting(displayName: displayName, now: now, calendar: calendar)
+                greeting: greeting(displayName: displayName, now: now, calendar: calendar, locale: locale)
             ),
-            recommendation: recommendation(for: today.plan, now: now, calendar: calendar),
+            recommendation: recommendation(for: today.plan, now: now, calendar: calendar, locale: locale),
             tasks: tasks,
             workload: TodayWorkloadSnapshot(
                 plannedTaskCount: tasks.count,
@@ -135,13 +135,13 @@ public enum TodayDashboardSnapshotBuilder {
                 dayCount: schedule.weeklyCockpit.days.count
             ),
             review: TodayReviewSnapshot(
-                message: review?.headline ?? String(localized: "No review items yet."),
+                message: review?.headline ?? localized("No review items yet.", locale: locale),
                 isError: false
             )
         )
     }
 
-    private static func recommendation(for plan: TodayWorkflowPlan, now: Date, calendar: Calendar) -> TodayRecommendation {
+    private static func recommendation(for plan: TodayWorkflowPlan, now: Date, calendar: Calendar, locale: Locale) -> TodayRecommendation {
         // Keep fallback ordering stable only when the existing plan has no recommendation.
         let task = plan.recommendedTask
             ?? plan.tasks.first(where: { $0.status == .blocked })
@@ -150,29 +150,29 @@ public enum TodayDashboardSnapshotBuilder {
             ?? plan.tasks.first
 
         guard let task else {
-            return TodayRecommendation(taskID: nil, title: String(localized: "No recommendation"), reason: String(localized: "Add a task to plan your day."))
+            return TodayRecommendation(taskID: nil, title: localized("No recommendation", locale: locale), reason: localized("Add a task to plan your day.", locale: locale))
         }
         if plan.recommendedTask != nil {
-            return TodayRecommendation(taskID: task.id, title: task.title, reason: plan.recommendationReason)
+            return TodayRecommendation(taskID: task.id, title: task.title, reason: localizedPlanReason(plan.recommendationReason, locale: locale))
         }
         let reason: String
         if task.status == .blocked {
-            reason = String(localized: "Blocked work should be cleared first.")
+            reason = localized("Blocked work should be cleared first.", locale: locale)
         } else if task.isOverdueForToday(on: now, calendar: calendar) {
-            reason = String(localized: "Overdue work needs attention.")
+            reason = localized("Overdue work needs attention.", locale: locale)
         } else if task.priority == .high {
-            reason = String(localized: "High-priority work should be protected.")
+            reason = localized("High-priority work should be protected.", locale: locale)
         } else {
-            reason = String(localized: "Start with the first planned task.")
+            reason = localized("Start with the first planned task.", locale: locale)
         }
         return TodayRecommendation(taskID: task.id, title: task.title, reason: reason)
     }
 
-    private static func greeting(displayName: String, now: Date, calendar: Calendar) -> String {
+    private static func greeting(displayName: String, now: Date, calendar: Calendar, locale: Locale) -> String {
         let hour = calendar.component(.hour, from: now)
-        let salutation = hour < 12 ? String(localized: "Good morning") : hour < 18 ? String(localized: "Good afternoon") : String(localized: "Good evening")
+        let salutation = hour < 12 ? localized("Good morning", locale: locale) : hour < 18 ? localized("Good afternoon", locale: locale) : localized("Good evening", locale: locale)
         let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? salutation : String(format: String(localized: "%@, %@"), salutation, name)
+        return name.isEmpty ? salutation : String(format: localized("%@, %@", locale: locale), salutation, name)
     }
 
     private static func dateTitle(for date: Date, calendar: Calendar, locale: Locale) -> String {
@@ -182,6 +182,27 @@ public enum TodayDashboardSnapshotBuilder {
             calendar: calendar,
             locale: locale
         )
+    }
+
+    private static func localized(_ key: String, locale: Locale) -> String {
+        let language = locale.identifier.hasPrefix("ja") ? "ja" : "en"
+        let bundle = Bundle.module.url(forResource: language, withExtension: "lproj")
+            .flatMap(Bundle.init(url:)) ?? .module
+        return String(localized: String.LocalizationValue(key), bundle: bundle, locale: locale)
+    }
+
+    private static func localizedPlanReason(_ reason: String, locale: Locale) -> String {
+        switch reason {
+        case "No open tasks due today.",
+             "No due work is scheduled for today.",
+             "Overdue high-priority work should be cleared first.",
+             "Overdue work should be cleared before new tasks.",
+             "High-priority work is the best first task.",
+             "Earliest due task keeps today on track.":
+            localized(reason, locale: locale)
+        default:
+            reason
+        }
     }
 
 }

@@ -84,7 +84,7 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         XCTAssertTrue(japanese.tasks[0].timeLabel?.contains("8月") == true)
         XCTAssertEqual(noon.header.greeting, "Good afternoon")
         XCTAssertEqual(evening.header.greeting, "Good evening")
-        XCTAssertTrue(japanese.header.greeting.hasSuffix("Suisui"))
+        XCTAssertTrue(japanese.header.greeting.contains("Suisui"))
     }
 
     func testWeeklyScheduleCountsUniqueTasksAcrossBlocksAndUnscheduledWork() throws {
@@ -101,6 +101,23 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.weeklySchedule.dayCount, 2)
     }
 
+    func testJapaneseLocalizesGreetingFallbackReviewPriorityAndKnownPlanReason() throws {
+        let calendar = fixedCalendar()
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))
+        let task = task(id: 1, title: "Suisui", priority: .high, dueAt: nil)
+        let empty = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: []), schedule: .empty, projectTitlesByTaskID: [:], displayName: "Suisui", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "ja_JP"))
+        let fallback = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: [task]), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "ja_JP"))
+        let planned = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: [task], recommendedTask: task, recommendationReason: "High-priority work is the best first task."), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "ja_JP"))
+
+        XCTAssertEqual(empty.header.greeting, "Suisui、おはようございます")
+        XCTAssertEqual(empty.recommendation.title, "おすすめはありません")
+        XCTAssertEqual(empty.recommendation.reason, "今日の計画にタスクを追加してください。")
+        XCTAssertEqual(empty.review.message, "まだ振り返り項目はありません。")
+        XCTAssertEqual(fallback.tasks[0].priorityLabel, "高")
+        XCTAssertEqual(fallback.recommendation.reason, "高優先度の作業を守りましょう。")
+        XCTAssertEqual(planned.recommendation.reason, "高優先度の作業から始めるのが最適です。")
+    }
+
     func testZeroDataHasSafeDefaults() throws {
         let calendar = fixedCalendar()
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))
@@ -112,7 +129,8 @@ final class TodayDashboardSnapshotTests: XCTestCase {
             displayName: "   ",
             dailyCapacityMinutes: 0,
             now: now,
-            calendar: calendar
+            calendar: calendar,
+            locale: Locale(identifier: "en_US")
         )
 
         XCTAssertEqual(snapshot.header.greeting, "Good morning")
@@ -132,7 +150,8 @@ final class TodayDashboardSnapshotTests: XCTestCase {
             displayName: "",
             dailyCapacityMinutes: 480,
             now: now,
-            calendar: calendar
+            calendar: calendar,
+            locale: Locale(identifier: "en_US")
         )
     }
 
