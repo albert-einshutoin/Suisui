@@ -25,43 +25,16 @@ struct TodayDashboardRailView: View {
     }
 
     private var workloadCard: some View {
-        VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
-            Label("Workload", systemImage: "gauge.with.dots.needle.50percent")
-                .font(SuisuiTypography.sectionTitle)
-            Text(localizedCount(dashboard.workload.plannedTaskCount, one: "%d task planned", other: "%d tasks planned"))
-                .font(.headline.monospacedDigit())
-            Text(String(format: String(localized: "%d minutes available"), dashboard.workload.dailyCapacityMinutes))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .soloCard()
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("today-workload-card")
+        TodayWorkloadCard(workload: dashboard.workload)
     }
 
     private var focusCard: some View {
-        VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
-            Label("Focus", systemImage: "target")
-                .font(SuisuiTypography.sectionTitle)
-            if let recommendation = dashboard.recommendation {
-                Text(recommendation.title)
-                    .font(.subheadline.weight(.semibold))
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(recommendation.reason)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("No focus task")
-                    .font(.subheadline.weight(.semibold))
-                Text("Add a task to choose a focus for today.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .soloCard()
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("today-focus-card")
+        TodayFocusCard(
+            session: viewModel.focusSession,
+            tasks: dashboard.tasks,
+            suggestedTaskID: dashboard.recommendation?.taskID,
+            openInspector: openInspector
+        )
     }
 
     private var assistantCard: some View {
@@ -78,5 +51,63 @@ struct TodayDashboardRailView: View {
         .soloCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-assistant-card")
+    }
+}
+
+private struct TodayWorkloadCard: View {
+    let workload: TodayWorkloadSnapshot
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
+            Label("Workload", systemImage: "gauge.with.dots.needle.50percent")
+                .font(SuisuiTypography.sectionTitle)
+            HStack(spacing: SuisuiSpacing.md) {
+                ZStack {
+                    Circle()
+                        .stroke(.quaternary, lineWidth: 8)
+                    Circle()
+                        .trim(from: 0, to: min(workload.ratio, 1))
+                        .stroke(workload.isOverCapacity ? .orange : SuisuiBrand.soloBlue, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                    Text("\(Int(workload.ratio * 100))%")
+                        .font(.caption.monospacedDigit())
+                }
+                .frame(width: 54, height: 54)
+                .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
+                    Text("\(hours(workload.plannedMinutes)) / \(hours(workload.capacityMinutes))")
+                        .font(.headline.monospacedDigit())
+                    Text(localizedCount(workload.plannedTaskCount, one: "%d task planned", other: "%d tasks planned"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Label(String(format: String(localized: "Scheduled: %@"), hours(workload.scheduledMinutes)), systemImage: "calendar")
+                .font(.caption)
+            Label(String(format: String(localized: "Focus blocks: %@"), hours(workload.focusTaskBlockMinutes)), systemImage: "target")
+                .font(.caption)
+            if workload.isOverCapacity {
+                Label(
+                    String(format: String(localized: "Over capacity by %@."), hours(workload.plannedMinutes - workload.capacityMinutes)),
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+            }
+        }
+        .soloCard()
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("today-workload-card")
+        .accessibilityLabel(String(format: String(localized: "Workload: %@ of %@ planned."), hours(workload.plannedMinutes), hours(workload.capacityMinutes)))
+        .accessibilityValue(workload.isOverCapacity
+            ? String(format: String(localized: "Over capacity by %@."), hours(workload.plannedMinutes - workload.capacityMinutes))
+            : String(format: String(localized: "Scheduled: %@. Focus blocks: %@."), hours(workload.scheduledMinutes), hours(workload.focusTaskBlockMinutes)))
+    }
+
+    private func hours(_ minutes: Int) -> String {
+        if minutes.isMultiple(of: 60) {
+            return String(format: String(localized: "%d h"), minutes / 60)
+        }
+        return String(format: String(localized: "%.1f h"), Double(minutes) / 60)
     }
 }

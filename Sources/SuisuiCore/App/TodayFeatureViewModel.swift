@@ -36,6 +36,7 @@ public final class TodayFeatureViewModel: ObservableObject {
     public var commandFeedback: String? { state.commandFeedback }
     public var scheduleDraft: TodayScheduleDraft? { state.scheduleDraft }
     public var dailyPlanningReview: DailyPlanningReview? { state.dailyPlanningReview }
+    public let focusSession: TodayFocusSessionStore
 
     private let board: ProjectBoardViewModel
     private let runtimeReferenceDate: () -> Date
@@ -47,11 +48,13 @@ public final class TodayFeatureViewModel: ObservableObject {
     public init(
         board: ProjectBoardViewModel,
         runtimeReferenceDate: @escaping () -> Date = { VisualEvidenceRuntimeContext.referenceDate() },
-        runtimeCalendar: @escaping () -> Calendar = { VisualEvidenceRuntimeContext.runtimeCalendar() }
+        runtimeCalendar: @escaping () -> Calendar = { VisualEvidenceRuntimeContext.runtimeCalendar() },
+        focusSession: TodayFocusSessionStore? = nil
     ) {
         self.board = board
         self.runtimeReferenceDate = runtimeReferenceDate
         self.runtimeCalendar = runtimeCalendar
+        self.focusSession = focusSession ?? TodayFocusSessionStore()
         self.state = Self.makeState(from: board)
 
         // Today subscribes only to the state it renders. Automation, receipt,

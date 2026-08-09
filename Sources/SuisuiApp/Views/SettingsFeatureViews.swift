@@ -893,6 +893,27 @@ struct SettingsPrivacyFeatureView: View {
                 .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("settings-profile-display-name")
                 .accessibilityHint("Sets the optional name used by the Today greeting. Save Settings to persist it locally.")
+                Picker(
+                    "Daily work capacity",
+                    selection: Binding(
+                        get: { settingsViewModel.settings.dailyWorkCapacityMinutes },
+                        set: { settingsViewModel.setDailyWorkCapacityMinutes($0) }
+                    )
+                ) {
+                    ForEach(
+                        Array(stride(
+                            from: AppSettings.minimumDailyWorkCapacityMinutes,
+                            through: AppSettings.maximumDailyWorkCapacityMinutes,
+                            by: AppSettings.dailyWorkCapacityStepMinutes
+                        )),
+                        id: \.self
+                    ) { minutes in
+                        Text(dailyWorkCapacityLabel(minutes))
+                            .tag(minutes)
+                    }
+                }
+                .accessibilityIdentifier("settings-daily-work-capacity")
+                .accessibilityHint("Sets Today workload capacity in 30-minute steps. Save Settings to persist it locally.")
                 LocalPathSelectionField(
                     title: "Workspace",
                     text: Binding(
@@ -1006,6 +1027,13 @@ struct SettingsPrivacyFeatureView: View {
         } message: {
             Text(context.backupRestoreConfirmationMessage)
         }
+    }
+
+    private func dailyWorkCapacityLabel(_ minutes: Int) -> String {
+        if minutes.isMultiple(of: 60) {
+            return localizedCount(minutes / 60, one: "%d hour", other: "%d hours")
+        }
+        return String(format: String(localized: "%.1f h"), Double(minutes) / 60)
     }
 }
 

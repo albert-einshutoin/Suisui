@@ -23,7 +23,7 @@ struct TodayWorkflowView: View {
         openInspectorForTodayRailTask: @escaping (Int64) -> Void = { _ in },
         playDailyPlanningReadout: @escaping () -> Void = {},
         dashboardDisplayName: String = "",
-        dashboardDailyCapacityMinutes: Int = 0,
+        dashboardDailyCapacityMinutes: Int = AppSettings.default.dailyWorkCapacityMinutes,
         initiallyExpandsCatchUp: Bool = false,
         catchUpFocusRevision: Int? = nil,
         onCatchUpFocusConsumed: @escaping (Int) -> Bool = { _ in true }

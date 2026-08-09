@@ -567,6 +567,7 @@ struct ProjectBoardView: View {
                 openInspectorForTodayRailTask: openInspectorForTodayRailTask,
                 playDailyPlanningReadout: playDailyPlanningReadoutFromSettings,
                 dashboardDisplayName: todaySettings.profileDisplayName ?? "",
+                dashboardDailyCapacityMinutes: todaySettings.dailyWorkCapacityMinutes,
                 initiallyExpandsCatchUp: activeBoardRouteFocus == .catchUp
                     || currentBoardRouteResolution.focus == .catchUp,
                 catchUpFocusRevision: catchUpFocusRevision > consumedCatchUpFocusRevision
