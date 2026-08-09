@@ -2168,8 +2168,9 @@ public final class AppSettingsViewModel: ObservableObject {
     }
 
     public func setProfileDisplayName(_ name: String) {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        settings.profileDisplayName = trimmed.isEmpty ? nil : String(trimmed.prefix(80))
+        // Keep the editor draft verbatim so typing a space at the end does not
+        // move the cursor or discard input before the user chooses Save.
+        settings.profileDisplayName = name
         clearMessages()
     }
 
@@ -2498,6 +2499,7 @@ public final class AppSettingsViewModel: ObservableObject {
             return
         }
 
+        settings.profileDisplayName = settings.normalizedForRuntime.profileDisplayName
         let issues = settings.validate().filter { $0.severity == .error }
         guard issues.isEmpty else {
             errorMessage = issues.map(\.message).joined(separator: " ")

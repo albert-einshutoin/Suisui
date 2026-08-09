@@ -1947,6 +1947,8 @@
 "Suisui Today: %@. %@" = "Suisui Today: %@. %@";
 "Recommendation: %@. %@" = "Recommendation: %@. %@";
 "This Week: %d scheduled" = "This Week: %d scheduled";
+"Suisui Today: %@. %@. %d tasks today, %d scheduled" = "Suisui Today: %@. %@. %d tasks today, %d scheduled";
+"Selects this task without changing task status or Calendar." = "Selects this task without changing task status or Calendar.";
 "Memo: %@" = "Memo: %@";
 "Create project" = "Create project";
 "Update project" = "Update project";
@@ -2099,3 +2101,4 @@
 "Premium" = "Premium";
 "Prioritizes Apple or local speech engines when STT retries after a recoverable failure." = "Prioritizes Apple or local speech engines when STT retries after a recoverable failure.";
 "Prioritizes Apple or local speech engines when TTS retries after a recoverable failure." = "Prioritizes Apple or local speech engines when TTS retries after a recoverable failure.";
+"Add a task to choose a focus for today." = "Add a task to choose a focus for today.";

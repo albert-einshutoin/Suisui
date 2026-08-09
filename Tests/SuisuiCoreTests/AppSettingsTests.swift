@@ -475,12 +475,30 @@ final class AppSettingsTests: XCTestCase {
 
         viewModel.setProfileDisplayName(" Ada Lovelace ")
 
-        XCTAssertEqual(viewModel.settings.profileDisplayName, "Ada Lovelace")
+        XCTAssertEqual(viewModel.settings.profileDisplayName, " Ada Lovelace ")
         XCTAssertNil(try store.load().profileDisplayName)
 
         viewModel.saveSettings()
 
         XCTAssertEqual(try store.load().profileDisplayName, "Ada Lovelace")
+    }
+
+    @MainActor
+    func testProfileDisplayNameKeepsTypingDraftUntilSaveNormalizesIt() throws {
+        let suiteName = "Suisui.AppSettingsProfileDisplayNameDraft.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        viewModel.setProfileDisplayName("Ada ")
+        XCTAssertEqual(viewModel.settings.profileDisplayName, "Ada ")
+        viewModel.setProfileDisplayName("Ada  ")
+        XCTAssertEqual(viewModel.settings.profileDisplayName, "Ada  ")
+
+        viewModel.saveSettings()
+        XCTAssertEqual(viewModel.settings.profileDisplayName, "Ada")
+        XCTAssertEqual(try store.load().profileDisplayName, "Ada")
     }
 
     func testUserDefaultsAppSettingsStoreCanUseRuntimeSuiteOverride() throws {

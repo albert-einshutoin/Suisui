@@ -36,13 +36,21 @@ struct TodayDashboardRailView: View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
             Label("Focus", systemImage: "target")
                 .font(SuisuiTypography.sectionTitle)
-            Text(dashboard.recommendation.title)
-                .font(.subheadline.weight(.semibold))
-                .fixedSize(horizontal: false, vertical: true)
-            Text(dashboard.recommendation.reason)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            if let recommendation = dashboard.recommendation {
+                Text(recommendation.title)
+                    .font(.subheadline.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(recommendation.reason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("No focus task")
+                    .font(.subheadline.weight(.semibold))
+                Text("Add a task to choose a focus for today.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .soloCard()
         .accessibilityElement(children: .combine)

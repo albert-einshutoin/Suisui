@@ -3,7 +3,7 @@ import SwiftUI
 
 struct TodayDashboardRecommendationCards: View {
     let recommendations: [TodayRecommendation]
-    let startFocus: (Int64) -> Void
+    let selectTaskID: (Int64) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
@@ -12,7 +12,7 @@ struct TodayDashboardRecommendationCards: View {
             HStack(alignment: .top, spacing: SuisuiSpacing.sm) {
                 ForEach(recommendations, id: \.taskID) { recommendation in
                     Button {
-                        if let taskID = recommendation.taskID { startFocus(taskID) }
+                        if let taskID = recommendation.taskID { selectTaskID(taskID) }
                     } label: {
                         VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
                             Image(systemName: "sparkles")
@@ -31,7 +31,7 @@ struct TodayDashboardRecommendationCards: View {
                     .disabled(recommendation.taskID == nil)
                     .soloCard()
                     .accessibilityLabel(String(format: String(localized: "Recommendation: %@. %@"), recommendation.title, recommendation.reason))
-                    .accessibilityHint(recommendation.taskID == nil ? "No focus task is available." : "Starts local focus without changing task status or Calendar.")
+                    .accessibilityHint(recommendation.taskID == nil ? "No focus task is available." : "Selects this task without changing task status or Calendar.")
                 }
             }
         }

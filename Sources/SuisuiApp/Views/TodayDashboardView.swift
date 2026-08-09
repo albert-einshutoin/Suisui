@@ -23,10 +23,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
     let openInspectorForTodayRailTask: (Int64) -> Void
     let playDailyPlanningReadout: () -> Void
     @ViewBuilder let catchUpContent: () -> CatchUpContent
-    @Environment(\.calendar) private var calendar
-    @Environment(\.locale) private var locale
-
-    private func makeDashboard(now: Date) -> TodayDashboardSnapshot {
+    private func makeDashboard(now: Date, calendar: Calendar, locale: Locale) -> TodayDashboardSnapshot {
         TodayDashboardSnapshotBuilder.make(
             today: snapshot,
             schedule: schedule,
@@ -40,24 +37,27 @@ struct TodayDashboardView<CatchUpContent: View>: View {
     }
 
     var body: some View {
-        let dashboard = makeDashboard(now: Date())
+        let dashboard = makeDashboard(
+            now: VisualEvidenceRuntimeContext.referenceDate(),
+            calendar: VisualEvidenceRuntimeContext.runtimeCalendar(),
+            locale: localizedDisplayLocale()
+        )
         GeometryReader { proxy in
             ScrollView(.vertical) {
-                Group {
-                    if proxy.size.width - TodayDashboardLayoutMetrics.horizontalInsets >= TodayDashboardLayoutMetrics.twoColumnMinimumWidth {
-                        HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
-                            mainContent(dashboard: dashboard)
-                                .frame(minWidth: TodayDashboardLayoutMetrics.primaryMinimumWidth, maxWidth: .infinity, alignment: .topLeading)
-                            rail(dashboard: dashboard)
-                                .frame(width: TodayDashboardLayoutMetrics.railMinimumWidth)
-                        }
-                    } else {
-                        VStack(alignment: .leading, spacing: SuisuiSpacing.lg) {
-                            mainContent(dashboard: dashboard)
-                            rail(dashboard: dashboard)
-                        }
+                let isWide = proxy.size.width - TodayDashboardLayoutMetrics.horizontalInsets >= TodayDashboardLayoutMetrics.twoColumnMinimumWidth
+                let layout: AnyLayout = isWide
+                    ? AnyLayout(HStackLayout(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing))
+                    : AnyLayout(VStackLayout(alignment: .leading, spacing: SuisuiSpacing.lg))
+                layout {
+                    mainContent(dashboard: dashboard, isWide: isWide)
+                        .frame(
+                            minWidth: isWide ? TodayDashboardLayoutMetrics.primaryMinimumWidth : nil,
+                            maxWidth: .infinity,
+                            alignment: .topLeading
+                        )
+                    rail(dashboard: dashboard)
+                        .frame(width: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : nil)
                     }
-                }
                 .padding(.horizontal, 18)
                 .padding(.bottom, 18)
             }
@@ -65,12 +65,12 @@ struct TodayDashboardView<CatchUpContent: View>: View {
         }
     }
 
-    private func mainContent(dashboard: TodayDashboardSnapshot) -> some View {
+    private func mainContent(dashboard: TodayDashboardSnapshot, isWide: Bool) -> some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.lg) {
             TodayDashboardHeaderView(header: dashboard.header)
             TodayDashboardRecommendationCards(
                 recommendations: dashboard.recommendations,
-                startFocus: viewModel.startFocus
+                selectTaskID: viewModel.selectTask
             )
             TodayDashboardTaskListView(
                 tasks: snapshot.plan.tasks,
@@ -79,18 +79,25 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                 toggleCompletion: viewModel.toggleTaskCompletion,
                 selectTask: selectTodayTask
             )
-            TodayDashboardWeeklyScheduleCard(schedule: dashboard.weeklySchedule)
-            TodayDashboardReviewCard {
-                TodayCommandPanel(
-                    commandTitle: $commandTitle,
-                    plan: snapshot.plan,
-                    recommendationChips: snapshot.recommendationChips,
-                    viewModel: viewModel,
-                    dailyPlanningReview: viewModel.dailyPlanningReview ?? snapshot.dailyPlanningReviewPreview,
-                    playDailyPlanningReadout: playDailyPlanningReadout
-                )
-                TodaySuggestionPanel(plan: snapshot.plan, viewModel: viewModel)
-                catchUpContent()
+            let lowerLayout: AnyLayout = isWide
+                ? AnyLayout(HStackLayout(alignment: .top, spacing: SuisuiSpacing.lg))
+                : AnyLayout(VStackLayout(alignment: .leading, spacing: SuisuiSpacing.lg))
+            lowerLayout {
+                TodayDashboardWeeklyScheduleCard(schedule: dashboard.weeklySchedule)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                TodayDashboardReviewCard {
+                    TodayCommandPanel(
+                        commandTitle: $commandTitle,
+                        plan: snapshot.plan,
+                        recommendationChips: snapshot.recommendationChips,
+                        viewModel: viewModel,
+                        dailyPlanningReview: viewModel.dailyPlanningReview ?? snapshot.dailyPlanningReviewPreview,
+                        playDailyPlanningReadout: playDailyPlanningReadout
+                    )
+                    TodaySuggestionPanel(plan: snapshot.plan, viewModel: viewModel)
+                    catchUpContent()
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)

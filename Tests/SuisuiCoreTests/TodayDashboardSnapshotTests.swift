@@ -22,14 +22,16 @@ final class TodayDashboardSnapshotTests: XCTestCase {
 
         XCTAssertEqual(snapshot.header.title, "Sunday, Aug 9")
         XCTAssertEqual(snapshot.header.greeting, "Good morning, Shuto")
+        XCTAssertEqual(snapshot.header.taskCount, 2)
+        XCTAssertEqual(snapshot.header.scheduledTaskCount, 0)
         XCTAssertEqual(snapshot.tasks.map(\.projectTitle), ["Suisui", "Launch"])
         XCTAssertEqual(snapshot.tasks.map(\.priorityLabel), ["High", "Medium"])
         XCTAssertTrue(snapshot.tasks[0].timeLabel?.hasPrefix("Overdue ") == true)
         XCTAssertEqual(snapshot.tasks[1].timeLabel, "Today 14:00")
         XCTAssertEqual(snapshot.workload.plannedTaskCount, 2)
         XCTAssertEqual(snapshot.workload.dailyCapacityMinutes, 360)
-        XCTAssertEqual(snapshot.recommendation.taskID, blocker.id)
-        XCTAssertEqual(snapshot.recommendation.reason, "Blocked work should be cleared first.")
+        XCTAssertEqual(snapshot.recommendation?.taskID, blocker.id)
+        XCTAssertEqual(snapshot.recommendation?.reason, "Blocked work should be cleared first.")
     }
 
     func testRecommendationOrderIsDeterministicAndFallsBackToFirstTask() throws {
@@ -39,11 +41,11 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         let overdue = task(id: 2, title: "Overdue", priority: .low, dueAt: "2026-08-08")
         let blocker = task(id: 1, title: "Blocker", status: .blocked, priority: .low, dueAt: nil)
 
-        XCTAssertEqual(make(tasks: [high, overdue, blocker], now: now, calendar: calendar).recommendation.taskID, blocker.id)
-        XCTAssertEqual(make(tasks: [high, overdue], now: now, calendar: calendar).recommendation.taskID, overdue.id)
-        XCTAssertEqual(make(tasks: [task(id: 5, title: "First", priority: .low, dueAt: nil), high], now: now, calendar: calendar).recommendation.taskID, high.id)
+        XCTAssertEqual(make(tasks: [high, overdue, blocker], now: now, calendar: calendar).recommendation?.taskID, blocker.id)
+        XCTAssertEqual(make(tasks: [high, overdue], now: now, calendar: calendar).recommendation?.taskID, overdue.id)
+        XCTAssertEqual(make(tasks: [task(id: 5, title: "First", priority: .low, dueAt: nil), high], now: now, calendar: calendar).recommendation?.taskID, high.id)
         let fallback = task(id: 4, title: "Fallback", priority: .low, dueAt: nil)
-        XCTAssertEqual(make(tasks: [fallback], now: now, calendar: calendar).recommendation.taskID, fallback.id)
+        XCTAssertEqual(make(tasks: [fallback], now: now, calendar: calendar).recommendation?.taskID, fallback.id)
     }
 
     func testPlanRecommendationWinsWhenTasksContainBlockedOverdueAndHighPriorityWork() throws {
@@ -64,8 +66,8 @@ final class TodayDashboardSnapshotTests: XCTestCase {
             locale: Locale(identifier: "en_US")
         )
 
-        XCTAssertEqual(snapshot.recommendation.taskID, high.id)
-        XCTAssertEqual(snapshot.recommendation.reason, "Protect the release work.")
+        XCTAssertEqual(snapshot.recommendation?.taskID, high.id)
+        XCTAssertEqual(snapshot.recommendation?.reason, "Protect the release work.")
     }
 
     func testRecommendationsAreEmptyWhenTodayHasNoActionableTasks() throws {
@@ -74,7 +76,7 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         let snapshot = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: []), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "en_US"))
 
         XCTAssertEqual(snapshot.recommendations, [])
-        XCTAssertNil(snapshot.recommendation.taskID)
+        XCTAssertNil(snapshot.recommendation?.taskID)
     }
 
     func testRecommendationsKeepPrimaryThenUniqueChipsThenRemainingTasks() throws {
@@ -117,6 +119,44 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         let snapshot = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: [primary], recommendedTask: primary, recommendationReason: "Start here.", chips: [chip(task: primary, kind: .highPriority)]), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "en_US"))
 
         XCTAssertEqual(snapshot.recommendations.map(\.taskID), [primary.id])
+    }
+
+    func testRecommendationsUseReviewFocusThenPrioritizedUnscheduledTasksWithoutDuplicates() throws {
+        let calendar = fixedCalendar()
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))
+        let primary = task(id: 1, title: "Primary", priority: .high, dueAt: nil)
+        let reviewFocus = task(id: 2, title: "Review focus", priority: .medium, dueAt: nil)
+        let lowUnscheduled = task(id: 3, title: "Low unscheduled", priority: .low, dueAt: nil)
+        let highUnscheduled = task(id: 4, title: "High unscheduled", priority: .high, dueAt: nil)
+        let review = DailyPlanningReview(
+            sourceTranscript: "",
+            phase: .morning,
+            requestedMinutes: nil,
+            headline: "",
+            spokenSummary: "",
+            overdueCount: 0,
+            dueTodayCount: 0,
+            inboxUntriagedCount: 0,
+            recommendedTaskID: primary.id,
+            focusItems: [
+                DailyPlanningFocusItem(taskID: primary.id, title: primary.title, reason: "Duplicate primary."),
+                DailyPlanningFocusItem(taskID: reviewFocus.id, title: reviewFocus.title, reason: "Review this next.")
+            ],
+            scheduleBlocks: []
+        )
+
+        let snapshot = TodayDashboardSnapshotBuilder.make(
+            today: workflowSnapshot(tasks: [primary], recommendedTask: primary, recommendationReason: "Start here.", review: review),
+            schedule: schedule(blocks: [], unscheduled: [lowUnscheduled, highUnscheduled]),
+            projectTitlesByTaskID: [:],
+            displayName: "",
+            dailyCapacityMinutes: 480,
+            now: now,
+            calendar: calendar,
+            locale: Locale(identifier: "en_US")
+        )
+
+        XCTAssertEqual(snapshot.recommendations.map(\.taskID), [primary.id, reviewFocus.id, highUnscheduled.id])
     }
 
     func testLocaleCalendarAndGreetingBoundariesAreExplicit() throws {
@@ -162,12 +202,11 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         let planned = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: [highTask], recommendedTask: highTask, recommendationReason: "High-priority work is the best first task."), schedule: .empty, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "ja_JP"))
 
         XCTAssertEqual(empty.header.greeting, "Suisui、おはようございます")
-        XCTAssertEqual(empty.recommendation.title, "おすすめはありません")
-        XCTAssertEqual(empty.recommendation.reason, "今日の計画にタスクを追加してください。")
+        XCTAssertNil(empty.recommendation)
         XCTAssertEqual(empty.review.message, "まだ振り返り項目はありません。")
         XCTAssertEqual(fallback.tasks[0].priorityLabel, "高")
-        XCTAssertEqual(fallback.recommendation.reason, "高優先度の作業を守りましょう。")
-        XCTAssertEqual(planned.recommendation.reason, "高優先度の作業から始めるのが最適です。")
+        XCTAssertEqual(fallback.recommendation?.reason, "高優先度の作業を守りましょう。")
+        XCTAssertEqual(planned.recommendation?.reason, "高優先度の作業から始めるのが最適です。")
         XCTAssertEqual(overdue.todayDueDisplayLabel(on: now, calendar: calendar, locale: Locale(identifier: "ja_JP")), "期限超過 8月8日")
     }
 
@@ -202,7 +241,7 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.tasks, [])
         XCTAssertEqual(snapshot.workload.plannedTaskCount, 0)
         XCTAssertEqual(snapshot.workload.dailyCapacityMinutes, 480)
-        XCTAssertNil(snapshot.recommendation.taskID)
+        XCTAssertNil(snapshot.recommendation?.taskID)
         XCTAssertFalse(snapshot.review.isError)
         XCTAssertEqual(snapshot.review.message, "No review items yet.")
     }

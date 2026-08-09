@@ -3,10 +3,14 @@ import Foundation
 public struct TodayDashboardHeaderSnapshot: Equatable, Sendable {
     public let title: String
     public let greeting: String
+    public let taskCount: Int
+    public let scheduledTaskCount: Int
 
-    public init(title: String, greeting: String) {
+    public init(title: String, greeting: String, taskCount: Int = 0, scheduledTaskCount: Int = 0) {
         self.title = title
         self.greeting = greeting
+        self.taskCount = taskCount
+        self.scheduledTaskCount = scheduledTaskCount
     }
 }
 
@@ -72,7 +76,6 @@ public struct TodayReviewSnapshot: Equatable, Sendable {
 
 public struct TodayDashboardSnapshot: Equatable, Sendable {
     public let header: TodayDashboardHeaderSnapshot
-    public let recommendation: TodayRecommendation
     public let recommendations: [TodayRecommendation]
     public let tasks: [TodayTaskRowSnapshot]
     public let workload: TodayWorkloadSnapshot
@@ -81,7 +84,6 @@ public struct TodayDashboardSnapshot: Equatable, Sendable {
 
     public init(
         header: TodayDashboardHeaderSnapshot,
-        recommendation: TodayRecommendation,
         recommendations: [TodayRecommendation],
         tasks: [TodayTaskRowSnapshot],
         workload: TodayWorkloadSnapshot,
@@ -89,12 +91,15 @@ public struct TodayDashboardSnapshot: Equatable, Sendable {
         review: TodayReviewSnapshot
     ) {
         self.header = header
-        self.recommendation = recommendation
         self.recommendations = recommendations
         self.tasks = tasks
         self.workload = workload
         self.weeklySchedule = weeklySchedule
         self.review = review
+    }
+
+    public var recommendation: TodayRecommendation? {
+        recommendations.first
     }
 
     public init(
@@ -107,7 +112,6 @@ public struct TodayDashboardSnapshot: Equatable, Sendable {
     ) {
         self.init(
             header: header,
-            recommendation: recommendation,
             recommendations: recommendation.taskID == nil ? [] : [recommendation],
             tasks: tasks,
             workload: workload,
@@ -143,6 +147,8 @@ public enum TodayDashboardSnapshotBuilder {
         let recommendations = recommendations(
             primary: primaryRecommendation,
             chips: today.recommendationChips,
+            review: today.dailyPlanningReviewPreview,
+            unscheduledTasks: schedule.unscheduledTasks,
             tasks: tasks,
             locale: locale
         )
@@ -150,9 +156,10 @@ public enum TodayDashboardSnapshotBuilder {
         return TodayDashboardSnapshot(
             header: TodayDashboardHeaderSnapshot(
                 title: dateTitle(for: now, calendar: calendar, locale: locale),
-                greeting: greeting(displayName: displayName, now: now, calendar: calendar, locale: locale)
+                greeting: greeting(displayName: displayName, now: now, calendar: calendar, locale: locale),
+                taskCount: tasks.count,
+                scheduledTaskCount: scheduledTaskCount
             ),
-            recommendation: primaryRecommendation,
             recommendations: recommendations,
             tasks: tasks,
             workload: TodayWorkloadSnapshot(
@@ -201,6 +208,8 @@ public enum TodayDashboardSnapshotBuilder {
     private static func recommendations(
         primary: TodayRecommendation,
         chips: [TodayRecommendationChip],
+        review: DailyPlanningReview?,
+        unscheduledTasks: [ProjectBoardTask],
         tasks: [TodayTaskRowSnapshot],
         locale: Locale
     ) -> [TodayRecommendation] {
@@ -220,6 +229,16 @@ public enum TodayDashboardSnapshotBuilder {
         for chip in chips {
             append(TodayRecommendation(taskID: chip.taskID, title: chip.title, reason: chip.reason))
         }
+        for item in review?.focusItems ?? [] {
+            append(TodayRecommendation(taskID: item.taskID, title: item.title, reason: item.reason))
+        }
+        for task in unscheduledTasks.sorted(by: isHigherPriority) {
+            append(TodayRecommendation(
+                taskID: task.id,
+                title: task.title,
+                reason: localized("Start with the first planned task.", locale: locale)
+            ))
+        }
         for task in tasks {
             append(
                 TodayRecommendation(
@@ -232,6 +251,18 @@ public enum TodayDashboardSnapshotBuilder {
             )
         }
         return recommendations
+    }
+
+    private static func isHigherPriority(_ lhs: ProjectBoardTask, _ rhs: ProjectBoardTask) -> Bool {
+        priorityRank(lhs.priority) < priorityRank(rhs.priority)
+    }
+
+    private static func priorityRank(_ priority: ProjectTaskPriority) -> Int {
+        switch priority {
+        case .high: 0
+        case .medium: 1
+        case .low: 2
+        }
     }
 
     private static func greeting(displayName: String, now: Date, calendar: Calendar, locale: Locale) -> String {
