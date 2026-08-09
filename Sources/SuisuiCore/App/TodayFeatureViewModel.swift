@@ -5,6 +5,7 @@ private struct TodayFeatureReadState: Equatable {
     let snapshot: TodayWorkflowSnapshot
     let catchUpCount: Int
     let missedTaskReview: MissedTaskReviewSummary
+    let schedule: ProjectBoardScheduleReadModel
     let projectTitlesByTaskID: [Int64: String]
 }
 
@@ -12,6 +13,7 @@ public struct TodayFeatureState: Equatable {
     public var snapshot: TodayWorkflowSnapshot
     public var catchUpCount: Int
     public var missedTaskReview: MissedTaskReviewSummary
+    public var schedule: ProjectBoardScheduleReadModel
     public var projectTitlesByTaskID: [Int64: String]
     public var showsCompletedWorkflowTasks: Bool
     public var selectedTaskID: Int64?
@@ -27,6 +29,7 @@ public final class TodayFeatureViewModel: ObservableObject {
     public var snapshot: TodayWorkflowSnapshot { state.snapshot }
     public var catchUpCount: Int { state.catchUpCount }
     public var missedTaskReview: MissedTaskReviewSummary { state.missedTaskReview }
+    public var schedule: ProjectBoardScheduleReadModel { state.schedule }
     public var projectTitlesByTaskID: [Int64: String] { state.projectTitlesByTaskID }
     public var showsCompletedWorkflowTasks: Bool { state.showsCompletedWorkflowTasks }
     public var selectedTaskID: Int64? { state.selectedTaskID }
@@ -52,6 +55,7 @@ public final class TodayFeatureViewModel: ObservableObject {
                     snapshot: readModels.todayWorkflowSnapshot,
                     catchUpCount: readModels.sidebarMetrics.catchUpCount,
                     missedTaskReview: readModels.missedTaskReview,
+                    schedule: readModels.schedule,
                     projectTitlesByTaskID: Self.projectTitlesByTaskID(
                         todayTasks: readModels.todayWorkflowSnapshot.plan.tasks,
                         // ProjectBoard publishes the snapshot before rebuilding
@@ -191,6 +195,7 @@ public final class TodayFeatureViewModel: ObservableObject {
             snapshot: snapshot,
             catchUpCount: board.derivedReadModels.sidebarMetrics.catchUpCount,
             missedTaskReview: board.derivedReadModels.missedTaskReview,
+            schedule: board.derivedReadModels.schedule,
             projectTitlesByTaskID: projectTitlesByTaskID(
                 todayTasks: snapshot.plan.tasks,
                 projects: board.snapshot.projects

@@ -172,4 +172,33 @@ final class TodayFeatureViewModelTests: XCTestCase {
         withExtendedLifetime(observation) {}
         withExtendedLifetime(boardObservation) {}
     }
+
+    @MainActor
+    func testBoardScheduleReadModelUpdatePublishesUpdatedWeeklyCockpit() async throws {
+        let board = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        board.load()
+        let project = try XCTUnwrap(board.createProject(title: "Launch"))
+        let task = try XCTUnwrap(board.createTask(
+            title: "Schedule release",
+            projectID: project.id,
+            status: .planned,
+            priority: .high,
+            dueAt: ISO8601DateFormatter().string(from: Date())
+        ))
+        let feature = TodayFeatureViewModel(board: board)
+        let initialCockpit = feature.schedule.weeklyCockpit
+        let publication = expectation(description: "Today publishes updated schedule read model")
+        let observation = feature.objectWillChange.sink {
+            publication.fulfill()
+        }
+
+        _ = board.prepareScheduleDraft()
+        await fulfillment(of: [publication], timeout: 1)
+
+        XCTAssertNotEqual(feature.schedule.weeklyCockpit, initialCockpit)
+        XCTAssertTrue(feature.schedule.weeklyCockpit.days.flatMap(\.blocks).contains {
+            $0.task.id == task.id && $0.source == .scheduleDraft
+        })
+        withExtendedLifetime(observation) {}
+    }
 }
