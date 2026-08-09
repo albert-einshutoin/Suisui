@@ -1939,6 +1939,8 @@
 "%d tasks need scheduling" = "%d tasks need scheduling";
 "%d task scheduled" = "%d task scheduled";
 "%d task needs scheduling" = "%d task needs scheduling";
+"%d task scheduled today" = "%d task scheduled today";
+"%d tasks scheduled today" = "%d tasks scheduled today";
 "This Week: %@" = "This Week: %@";
 "Starts local focus without changing task status or Calendar." = "Starts local focus without changing task status or Calendar.";
 "Mark incomplete" = "Mark incomplete";
@@ -1986,6 +1988,7 @@
 "Suisui Today: %@. %@. %d tasks today, %d scheduled" = "Suisui Today: %@. %@. %d tasks today, %d scheduled";
 "Suisui Today: %@. %@. %@ today, %@ scheduled" = "Suisui Today: %@. %@. %@ today, %@ scheduled";
 "Suisui Today: %@. %@. %@ today, %@ scheduled. %@" = "Suisui Today: %@. %@. %@ today, %@ scheduled. %@";
+"Suisui Today: %@. %@. %@. %@. %@" = "Suisui Today: %@. %@. %@. %@. %@";
 "Could not save your Today preferences." = "Could not save your Today preferences.";
 "Daily capacity" = "Daily capacity";
 "Make Today yours" = "Make Today yours";

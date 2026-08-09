@@ -16,6 +16,9 @@ struct TodayDashboardHeaderView: View {
                 Text(header.greeting)
                     .font(.title3.weight(.medium))
                     .fixedSize(horizontal: false, vertical: true)
+                Text("\(localizedTaskCount(header.taskCount)) · \(scheduledTodayLabel)")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
             }
             Spacer(minLength: SuisuiSpacing.sm)
             TodayDashboardWeatherView(weather: weather)
@@ -24,13 +27,21 @@ struct TodayDashboardHeaderView: View {
         .accessibilityIdentifier("today-dashboard-header")
         .accessibilityLabel(
             String(
-                format: String(localized: "Suisui Today: %@. %@. %@ today, %@ scheduled. %@"),
+                format: String(localized: "Suisui Today: %@. %@. %@. %@. %@"),
                 header.title,
                 header.greeting,
                 localizedTaskCount(header.taskCount),
-                localizedTaskCount(header.scheduledTaskCount),
+                scheduledTodayLabel,
                 weather.accessibilityLabel
             )
+        )
+    }
+
+    private var scheduledTodayLabel: String {
+        localizedCount(
+            header.scheduledTaskCount,
+            one: "%d task scheduled today",
+            other: "%d tasks scheduled today"
         )
     }
 }

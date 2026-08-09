@@ -136,6 +136,25 @@ public final class TodayFeatureViewModel: ObservableObject {
         performFeatureAction { board.startFocus(taskID: taskID) }
     }
 
+    /// Starts the shared local Focus session before updating Board context so
+    /// an unconfirmed replacement never changes the currently focused task.
+    @discardableResult
+    public func startFocusSession(
+        taskID: Int64,
+        durationSeconds: Int = 25 * 60,
+        replaceExisting: Bool = false
+    ) -> Result<FocusSessionRecord, FocusSessionError> {
+        let result = focusSession.start(
+            taskID: taskID,
+            durationSeconds: durationSeconds,
+            replaceExisting: replaceExisting
+        )
+        if case .success = result {
+            performFeatureAction { board.startFocus(taskID: taskID) }
+        }
+        return result
+    }
+
     public func toggleTaskCompletion(id: Int64) {
         performFeatureAction { board.toggleTaskCompletion(id: id) }
     }

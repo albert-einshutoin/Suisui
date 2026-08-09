@@ -60,11 +60,45 @@ public struct TodayWeeklyScheduleSnapshot: Equatable, Sendable {
     public let scheduledTaskCount: Int
     public let unscheduledTaskCount: Int
     public let dayCount: Int
+    public let rows: [TodayWeeklyScheduleRow]
 
-    public init(scheduledTaskCount: Int, unscheduledTaskCount: Int, dayCount: Int) {
+    public init(
+        scheduledTaskCount: Int,
+        unscheduledTaskCount: Int,
+        dayCount: Int,
+        rows: [TodayWeeklyScheduleRow] = []
+    ) {
         self.scheduledTaskCount = scheduledTaskCount
         self.unscheduledTaskCount = unscheduledTaskCount
         self.dayCount = dayCount
+        self.rows = rows
+    }
+}
+
+/// A presentation-ready scheduled block. Keep source dates and duration
+/// numeric so UI can use its locale-aware duration formatter without parsing.
+public struct TodayWeeklyScheduleRow: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let taskID: Int64
+    public let title: String
+    public let dateLabel: String
+    public let timeLabel: String
+    public let durationMinutes: Int?
+
+    public init(
+        id: String,
+        taskID: Int64,
+        title: String,
+        dateLabel: String,
+        timeLabel: String,
+        durationMinutes: Int?
+    ) {
+        self.id = id
+        self.taskID = taskID
+        self.title = title
+        self.dateLabel = dateLabel
+        self.timeLabel = timeLabel
+        self.durationMinutes = durationMinutes
     }
 }
 
@@ -162,7 +196,18 @@ public enum TodayDashboardSnapshotBuilder {
             )
         }
         let review = today.dailyPlanningReviewPreview
-        let scheduledTaskCount = Set(schedule.weeklyCockpit.days.flatMap(\.blocks).map(\.task.id)).count
+        let weeklyScheduledTaskCount = Set(schedule.weeklyCockpit.days.flatMap(\.blocks).map(\.task.id)).count
+        let todayScheduledTaskCount = Set(
+            schedule.weeklyCockpit.days
+                .filter { calendar.isDate($0.date, inSameDayAs: now) }
+                .flatMap(\.blocks)
+                .map(\.task.id)
+        ).count
+        let weeklyScheduleRows = weeklyScheduleRows(
+            from: schedule.weeklyCockpit,
+            calendar: calendar,
+            locale: locale
+        )
         let primaryRecommendation = recommendation(for: today.plan, now: now, calendar: calendar, locale: locale)
         let recommendations = recommendations(
             primary: primaryRecommendation,
@@ -180,7 +225,7 @@ public enum TodayDashboardSnapshotBuilder {
                 title: dateTitle(for: now, calendar: calendar, locale: locale),
                 greeting: greeting(displayName: displayName, now: now, calendar: calendar, locale: locale),
                 taskCount: tasks.count,
-                scheduledTaskCount: scheduledTaskCount
+                scheduledTaskCount: todayScheduledTaskCount
             ),
             weather: TodayWeatherSnapshotBuilder.make(
                 state: weatherState,
@@ -203,9 +248,10 @@ public enum TodayDashboardSnapshotBuilder {
                 plannedTaskCount: tasks.count
             ),
             weeklySchedule: TodayWeeklyScheduleSnapshot(
-                scheduledTaskCount: scheduledTaskCount,
+                scheduledTaskCount: weeklyScheduledTaskCount,
                 unscheduledTaskCount: schedule.unscheduledTasks.count,
-                dayCount: schedule.weeklyCockpit.days.count
+                dayCount: schedule.weeklyCockpit.days.count,
+                rows: weeklyScheduleRows
             ),
             review: TodayReviewSnapshot(
                 message: review.map { reviewTitle(for: $0, locale: locale) } ?? localized("No review items yet.", locale: locale),
@@ -239,6 +285,37 @@ public enum TodayDashboardSnapshotBuilder {
             reason = localized("Start with the first planned task.", locale: locale)
         }
         return TodayRecommendation(taskID: task.id, title: task.title, reason: reason, action: .startFocus)
+    }
+
+    private static func weeklyScheduleRows(
+        from cockpit: WeeklyScheduleCockpit,
+        calendar: Calendar,
+        locale: Locale
+    ) -> [TodayWeeklyScheduleRow] {
+        cockpit.days.flatMap { day in
+            day.blocks.map { block in
+                TodayWeeklyScheduleRow(
+                    id: block.id,
+                    taskID: block.task.id,
+                    title: block.task.title,
+                    dateLabel: SuisuiTimestampDisplay.formatted(
+                        day.date,
+                        template: "EEEMMMd",
+                        calendar: calendar,
+                        locale: locale
+                    ),
+                    timeLabel: block.timeLabel,
+                    durationMinutes: durationMinutes(startAt: block.startAt, endAt: block.endAt)
+                )
+            }
+        }
+    }
+
+    private static func durationMinutes(startAt: Date?, endAt: Date?) -> Int? {
+        guard let startAt, let endAt else { return nil }
+        let seconds = endAt.timeIntervalSince(startAt)
+        guard seconds > 0 else { return nil }
+        return Int(seconds / 60)
     }
 
     private static func recommendations(

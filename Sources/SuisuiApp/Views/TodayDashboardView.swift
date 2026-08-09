@@ -32,6 +32,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
     let playDailyPlanningReadout: () -> Void
     @ViewBuilder let catchUpContent: () -> CatchUpContent
     @AccessibilityFocusState private var isReviewFocused: Bool
+    @State private var focusTaskPendingReplacement: Int64?
     private func makeDashboard(now: Date, calendar: Calendar, locale: Locale) -> TodayDashboardSnapshot {
         TodayDashboardSnapshotBuilder.make(
             today: snapshot,
@@ -75,6 +76,28 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                 .padding(.bottom, 18)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .alert(
+                "Replace active Focus?",
+                isPresented: Binding(
+                    get: { focusTaskPendingReplacement != nil },
+                    set: { isPresented in
+                        if !isPresented {
+                            focusTaskPendingReplacement = nil
+                        }
+                    }
+                )
+            ) {
+                Button("Replace", role: .destructive) {
+                    guard let taskID = focusTaskPendingReplacement else { return }
+                    _ = viewModel.startFocusSession(taskID: taskID, replaceExisting: true)
+                    focusTaskPendingReplacement = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    focusTaskPendingReplacement = nil
+                }
+            } message: {
+                Text("Starting a new Focus ends the active local session. It does not change task status or Calendar.")
+            }
         }
     }
 
@@ -121,7 +144,9 @@ struct TodayDashboardView<CatchUpContent: View>: View {
         guard let taskID = recommendation.taskID else { return }
         switch recommendation.action {
         case .startFocus:
-            viewModel.startFocus(taskID: taskID)
+            if case .failure(.requiresReplacement) = viewModel.startFocusSession(taskID: taskID) {
+                focusTaskPendingReplacement = taskID
+            }
         case .selectTask:
             viewModel.selectTask(id: taskID)
         case .openReview:

@@ -69,6 +69,42 @@ struct TodayDashboardWeeklyScheduleCard: View {
             Text(localizedCount(schedule.unscheduledTaskCount, one: "%d task needs scheduling", other: "%d tasks need scheduling"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if !schedule.rows.isEmpty {
+                Divider()
+                ForEach(schedule.rows) { row in
+                    HStack(alignment: .firstTextBaseline, spacing: SuisuiSpacing.sm) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.dateLabel)
+                                .font(.caption.weight(.semibold))
+                            Text(row.timeLabel)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(width: 86, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.title)
+                                .font(.subheadline.weight(.medium))
+                                .fixedSize(horizontal: false, vertical: true)
+                            if let durationMinutes = row.durationMinutes {
+                                Text(localizedDurationMinutes(durationMinutes))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(
+                        [row.dateLabel, row.timeLabel, row.title]
+                            .compactMap { $0.isEmpty ? nil : $0 }
+                            .joined(separator: ". ")
+                    )
+                    .accessibilityValue(
+                        row.durationMinutes.map(localizedDurationMinutes) ?? ""
+                    )
+                    .accessibilityIdentifier("today-weekly-schedule-row-\(row.id)")
+                }
+            }
         }
         .soloCard()
         .accessibilityElement(children: .combine)

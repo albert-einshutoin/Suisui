@@ -241,6 +241,35 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.weeklySchedule.dayCount, 2)
     }
 
+    func testWeeklyScheduleRowsExposeScheduledAgendaAndHeaderCountsOnlyToday() throws {
+        let calendar = fixedCalendar()
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))
+        let todayTask = task(id: 1, title: "Design review", priority: .high, dueAt: nil)
+        let tomorrowTask = task(id: 2, title: "Ship notes", priority: .medium, dueAt: nil)
+        let todayWorkload = DailyWorkloadDay(date: now, dateKey: "2026-08-09", totalTaskCount: 1, openTaskCount: 1, inProgressTaskCount: 0, blockedTaskCount: 0, doneTaskCount: 0, overdueTaskCount: 0, progress: 0, projectContributions: [])
+        let tomorrow = now.addingTimeInterval(86_400)
+        let tomorrowWorkload = DailyWorkloadDay(date: tomorrow, dateKey: "2026-08-10", totalTaskCount: 1, openTaskCount: 1, inProgressTaskCount: 0, blockedTaskCount: 0, doneTaskCount: 0, overdueTaskCount: 0, progress: 0, projectContributions: [])
+        let todayBlock = WeeklyScheduleBlock(id: "today", dayKey: "2026-08-09", task: todayTask, projectTitle: "Suisui", source: .scheduleDraft, startAt: now.addingTimeInterval(1_800), endAt: now.addingTimeInterval(4_500), timeLabel: "10:00–10:45")
+        let tomorrowBlock = WeeklyScheduleBlock(id: "tomorrow", dayKey: "2026-08-10", task: tomorrowTask, projectTitle: "Suisui", source: .scheduleDraft, startAt: tomorrow.addingTimeInterval(1_800), endAt: tomorrow.addingTimeInterval(3_600), timeLabel: "10:00–10:30")
+        let todayDay = WeeklyScheduleDay(date: now, dateKey: "2026-08-09", workload: todayWorkload, blocks: [todayBlock], reminderProposalCount: 0, loadLevel: .open)
+        let tomorrowDay = WeeklyScheduleDay(date: tomorrow, dateKey: "2026-08-10", workload: tomorrowWorkload, blocks: [tomorrowBlock], reminderProposalCount: 0, loadLevel: .open)
+        let schedule = ProjectBoardScheduleReadModel(
+            workloadOverview: DailyWorkloadOverview(days: [todayWorkload, tomorrowWorkload], unscheduledTasks: [], inboxUntriagedCount: 0),
+            weeklyCockpit: WeeklyScheduleCockpit(days: [todayDay, tomorrowDay], unscheduledTasks: [], agendaDay: todayDay, focusForecast: WeeklyScheduleFocusForecast(state: .open, overloadedDayKeys: [], heavyDayKeys: [], reminderProposalCount: 0)),
+            unscheduledTasks: []
+        )
+
+        let snapshot = TodayDashboardSnapshotBuilder.make(today: workflowSnapshot(tasks: [todayTask]), schedule: schedule, projectTitlesByTaskID: [:], displayName: "", dailyCapacityMinutes: 480, now: now, calendar: calendar, locale: Locale(identifier: "en_US"))
+
+        XCTAssertEqual(snapshot.header.scheduledTaskCount, 1)
+        XCTAssertEqual(snapshot.weeklySchedule.scheduledTaskCount, 2)
+        XCTAssertEqual(snapshot.weeklySchedule.rows.map(\.taskID), [todayTask.id, tomorrowTask.id])
+        XCTAssertEqual(snapshot.weeklySchedule.rows.map(\.title), ["Design review", "Ship notes"])
+        XCTAssertEqual(snapshot.weeklySchedule.rows.map(\.timeLabel), ["10:00–10:45", "10:00–10:30"])
+        XCTAssertEqual(snapshot.weeklySchedule.rows.map(\.durationMinutes), [45, 30])
+        XCTAssertEqual(snapshot.weeklySchedule.rows.first?.dateLabel, "Sun, Aug 9")
+    }
+
     func testJapaneseLocalizesGreetingFallbackReviewPriorityAndKnownPlanReason() throws {
         let calendar = fixedCalendar()
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))

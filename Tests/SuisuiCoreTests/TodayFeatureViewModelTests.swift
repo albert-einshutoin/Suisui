@@ -367,6 +367,48 @@ final class TodayFeatureViewModelTests: XCTestCase {
 
         XCTAssertEqual(board.googleCalendarSyncStatus.state, .ready)
     }
+
+    @MainActor
+    func testRecommendationFocusStartsSessionAndRequiresExplicitReplacement() throws {
+        let board = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        board.load()
+        let project = try XCTUnwrap(board.createProject(title: "Launch"))
+        let firstTask = try XCTUnwrap(board.createTask(
+            title: "First focus",
+            projectID: project.id,
+            status: .planned,
+            priority: .high,
+            dueAt: nil
+        ))
+        let secondTask = try XCTUnwrap(board.createTask(
+            title: "Second focus",
+            projectID: project.id,
+            status: .planned,
+            priority: .high,
+            dueAt: nil
+        ))
+        let session = TodayFocusSessionStore(persistence: TestFocusSessionPersistence())
+        let feature = TodayFeatureViewModel(
+            board: board,
+            focusSessionRegistry: TodayFocusSessionStoreRegistry { session }
+        )
+
+        XCTAssertEqual(feature.startFocusSession(taskID: firstTask.id, durationSeconds: 1_500), .success(session.record))
+        XCTAssertEqual(feature.focusSession.record.taskID, firstTask.id)
+        XCTAssertEqual(feature.focusSession.record.state, .running)
+        XCTAssertEqual(board.todayFocusTaskID, firstTask.id)
+
+        XCTAssertEqual(
+            feature.startFocusSession(taskID: secondTask.id, durationSeconds: 1_500),
+            .failure(.requiresReplacement(existingTaskID: firstTask.id))
+        )
+        XCTAssertEqual(feature.focusSession.record.taskID, firstTask.id)
+        XCTAssertEqual(board.todayFocusTaskID, firstTask.id)
+
+        XCTAssertEqual(feature.startFocusSession(taskID: secondTask.id, durationSeconds: 1_500, replaceExisting: true), .success(feature.focusSession.record))
+        XCTAssertEqual(feature.focusSession.record.taskID, secondTask.id)
+        XCTAssertEqual(board.todayFocusTaskID, secondTask.id)
+    }
 }
 
 private struct StaticGoogleCalendarSync: GoogleCalendarRuntimeSyncing {
@@ -459,5 +501,15 @@ private final class BlockingGoogleCalendarSync: GoogleCalendarRuntimeSyncing, @u
 
     func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult {
         GoogleCalendarTaskSyncResult()
+    }
+}
+
+private final class TestFocusSessionPersistence: FocusSessionPersistence {
+    private var record: FocusSessionRecord?
+
+    func load() -> FocusSessionRecord? { record }
+
+    func save(_ record: FocusSessionRecord?) {
+        self.record = record
     }
 }
