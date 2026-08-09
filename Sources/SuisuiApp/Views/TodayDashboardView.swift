@@ -121,7 +121,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
             lowerLayout {
                 TodayDashboardWeeklyScheduleCard(schedule: dashboard.weeklySchedule)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
-                TodayDashboardReviewCard {
+                TodayDashboardReviewCard(externalActivity: dashboard.externalActivity) {
                     TodayCommandPanel(
                         commandTitle: $commandTitle,
                         plan: snapshot.plan,

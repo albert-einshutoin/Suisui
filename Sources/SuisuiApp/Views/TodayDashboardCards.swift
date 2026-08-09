@@ -115,16 +115,49 @@ struct TodayDashboardWeeklyScheduleCard: View {
 }
 
 struct TodayDashboardReviewCard<Content: View>: View {
+    let externalActivity: TodayExternalActivityModel
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
             Label("Review", systemImage: "checklist")
                 .font(SuisuiTypography.sectionTitle)
+            if !externalActivity.rows.isEmpty {
+                VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
+                    ForEach(externalActivity.rows, id: \.id) { row in
+                        HStack(alignment: .top, spacing: SuisuiSpacing.sm) {
+                            Image(systemName: systemImage(for: row.service))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 18)
+                            VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
+                                Text(row.title)
+                                    .font(.subheadline.weight(.semibold))
+                                Text(row.detail)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityIdentifier(row.id)
+                        .accessibilityLabel(row.accessibilityLabel)
+                    }
+                }
+                Divider()
+            }
             content()
         }
         .soloCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-review-card")
+    }
+
+    private func systemImage(for service: TodayIntegrationService) -> String {
+        switch service {
+        case .calendar:
+            "calendar"
+        case .slack:
+            "bubble.left.and.bubble.right"
+        }
     }
 }

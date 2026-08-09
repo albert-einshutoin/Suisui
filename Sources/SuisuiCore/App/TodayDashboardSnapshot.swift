@@ -116,6 +116,7 @@ public struct TodayDashboardSnapshot: Equatable, Sendable {
     public let header: TodayDashboardHeaderSnapshot
     public let weather: TodayWeatherSnapshot
     public let integrations: TodayIntegrationsSnapshot
+    public let externalActivity: TodayExternalActivityModel
     public let recommendations: [TodayRecommendation]
     public let tasks: [TodayTaskRowSnapshot]
     public let workload: TodayWorkloadSnapshot
@@ -126,6 +127,7 @@ public struct TodayDashboardSnapshot: Equatable, Sendable {
         header: TodayDashboardHeaderSnapshot,
         weather: TodayWeatherSnapshot,
         integrations: TodayIntegrationsSnapshot,
+        externalActivity: TodayExternalActivityModel = .empty,
         recommendations: [TodayRecommendation],
         tasks: [TodayTaskRowSnapshot],
         workload: TodayWorkloadSnapshot,
@@ -135,6 +137,7 @@ public struct TodayDashboardSnapshot: Equatable, Sendable {
         self.header = header
         self.weather = weather
         self.integrations = integrations
+        self.externalActivity = externalActivity
         self.recommendations = recommendations
         self.tasks = tasks
         self.workload = workload
@@ -164,6 +167,7 @@ public struct TodayDashboardSnapshot: Equatable, Sendable {
             header: header,
             weather: weather,
             integrations: .notConfigured,
+            externalActivity: TodayExternalActivityModelBuilder.make(integrations: .notConfigured),
             recommendations: recommendation.taskID == nil ? [] : [recommendation],
             tasks: tasks,
             workload: workload,
@@ -219,6 +223,12 @@ public enum TodayDashboardSnapshotBuilder {
             calendar: calendar,
             locale: locale
         )
+        let integrations = TodayIntegrationSnapshotBuilder.make(
+            states: integrationsState,
+            now: now,
+            calendar: calendar,
+            locale: locale
+        )
 
         return TodayDashboardSnapshot(
             header: TodayDashboardHeaderSnapshot(
@@ -233,12 +243,8 @@ public enum TodayDashboardSnapshotBuilder {
                 calendar: calendar,
                 locale: locale
             ),
-            integrations: TodayIntegrationSnapshotBuilder.make(
-                states: integrationsState,
-                now: now,
-                calendar: calendar,
-                locale: locale
-            ),
+            integrations: integrations,
+            externalActivity: TodayExternalActivityModelBuilder.make(integrations: integrations),
             recommendations: recommendations,
             tasks: tasks,
             workload: TodayWorkloadSnapshotBuilder.make(
