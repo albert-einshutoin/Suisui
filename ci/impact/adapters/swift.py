@@ -102,7 +102,13 @@ def select_tests(repo: Path, changed_paths: List[str]) -> Dict[str, List[str]]:
         test_file = repo / relative_path
         if not test_file.is_file():
             raise SwiftAnalysisError("changed Swift test does not exist")
-        unit_targets.update(_declared_test_suites(_read_text(test_file)))
+        declared_suites = _declared_test_suites(_read_text(test_file))
+        if not declared_suites:
+            # A changed helper can affect any suite that imports it. We cannot
+            # safely infer those consumers from a second changed suite, so keep
+            # this ambiguity visible and let the planner fail closed to full.
+            raise SwiftAnalysisError("changed Swift test file declares no XCTest suite")
+        unit_targets.update(declared_suites)
 
     source_files = sorted((repo / "Sources").rglob("*.swift"))
     test_files = sorted((repo / "Tests").rglob("*.swift"))
