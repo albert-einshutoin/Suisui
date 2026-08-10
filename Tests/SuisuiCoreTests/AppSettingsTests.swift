@@ -610,6 +610,30 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testSettingsSaveFailureRollsBackNormalizedWeatherAndProfileDrafts() throws {
+        let saved = AppSettings(
+            profileDisplayName: "Ada",
+            weatherLocationPreference: .unset
+        )
+        let store = FailingSaveAppSettingsStore(initial: saved)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+        let draftLocation = WeatherLocationPreference.manual(
+            cityLabel: "  Tokyo  ",
+            latitude: 35.681236,
+            longitude: 139.767125
+        )
+
+        viewModel.setProfileDisplayName("  Grace Hopper  ")
+        viewModel.setWeatherLocationPreference(draftLocation)
+        viewModel.saveSettings()
+
+        XCTAssertEqual(viewModel.settings.profileDisplayName, "  Grace Hopper  ")
+        XCTAssertEqual(viewModel.settings.weatherLocationPreference, draftLocation)
+        XCTAssertEqual(try store.load(), saved)
+        XCTAssertEqual(viewModel.errorMessage, "App settings could not be saved.")
+    }
+
+    @MainActor
     func testOnboardingTodayPreferencesSaveOnlyWhenApplied() throws {
         let suiteName = "Suisui.OnboardingTodayPreferences.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

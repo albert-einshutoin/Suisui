@@ -2650,11 +2650,15 @@ public final class AppSettingsViewModel: ObservableObject {
             return
         }
 
+        let originalProfileDisplayName = settings.profileDisplayName
+        let originalWeatherLocationPreference = settings.weatherLocationPreference
         let normalizedSettings = settings.normalizedForRuntime
         settings.profileDisplayName = normalizedSettings.profileDisplayName
         settings.weatherLocationPreference = normalizedSettings.weatherLocationPreference
         let issues = settings.validate().filter { $0.severity == .error }
         guard issues.isEmpty else {
+            settings.profileDisplayName = originalProfileDisplayName
+            settings.weatherLocationPreference = originalWeatherLocationPreference
             errorMessage = issues.map(\.message).joined(separator: " ")
             successMessage = nil
             return
@@ -2671,6 +2675,8 @@ public final class AppSettingsViewModel: ObservableObject {
                 NotificationCenter.default.post(name: .suisuiWeatherLocationDidChange, object: nil)
             }
         } catch {
+            settings.profileDisplayName = originalProfileDisplayName
+            settings.weatherLocationPreference = originalWeatherLocationPreference
             errorMessage = Self.settingsSaveFailureMessage
             successMessage = nil
         }
