@@ -617,6 +617,20 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(todaySource.contains(".onChange(of: viewModel.catchUpCount)"))
     }
 
+    func testTodayCatchUpRecommendationLeavesFocusToCatchUpSection() throws {
+        let dashboardSource = try readPackageFile(
+            "Sources/SuisuiApp/Views/TodayDashboardView.swift"
+        )
+        let actionStart = try XCTUnwrap(dashboardSource.range(of: "case .openCatchUp:"))
+        let actionEnd = try XCTUnwrap(
+            dashboardSource.range(of: "case .suggestBreak:", range: actionStart.upperBound..<dashboardSource.endIndex)
+        )
+        let action = dashboardSource[actionStart.lowerBound..<actionEnd.lowerBound]
+
+        XCTAssertTrue(action.contains("openCatchUp()"))
+        XCTAssertFalse(action.contains("isReviewFocused = true"))
+    }
+
     func testLegacyCatchUpFocusIsResolvedAndConsumedWithinOneBoardScene() throws {
         let boardSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardView.swift"

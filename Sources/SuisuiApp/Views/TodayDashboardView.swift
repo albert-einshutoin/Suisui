@@ -151,7 +151,6 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                 isReviewFocused = true
             case .openCatchUp:
                 openCatchUp()
-                isReviewFocused = true
             case .suggestBreak:
                 viewModel.suggestBreak()
                 isReviewFocused = true
