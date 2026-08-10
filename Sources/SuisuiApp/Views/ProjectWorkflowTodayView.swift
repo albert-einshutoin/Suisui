@@ -9,6 +9,7 @@ struct TodayWorkflowView: View {
     var selectTodayTask: (ProjectBoardTask) -> Void = { _ in }
     var openInspectorForTodayRailTask: (Int64) -> Void = { _ in }
     var playDailyPlanningReadout: () -> Void = {}
+    var openReview: () -> Void = {}
     let dashboardDisplayName: String
     let dashboardDailyCapacityMinutes: Int
     let dashboardWeatherState: TodayWeatherState?
@@ -24,6 +25,7 @@ struct TodayWorkflowView: View {
         selectTodayTask: @escaping (ProjectBoardTask) -> Void = { _ in },
         openInspectorForTodayRailTask: @escaping (Int64) -> Void = { _ in },
         playDailyPlanningReadout: @escaping () -> Void = {},
+        openReview: @escaping () -> Void = {},
         dashboardDisplayName: String = "",
         dashboardDailyCapacityMinutes: Int = AppSettings.default.dailyWorkCapacityMinutes,
         dashboardWeatherState: TodayWeatherState? = nil,
@@ -37,6 +39,7 @@ struct TodayWorkflowView: View {
         self.selectTodayTask = selectTodayTask
         self.openInspectorForTodayRailTask = openInspectorForTodayRailTask
         self.playDailyPlanningReadout = playDailyPlanningReadout
+        self.openReview = openReview
         self.dashboardDisplayName = dashboardDisplayName
         self.dashboardDailyCapacityMinutes = dashboardDailyCapacityMinutes
         self.dashboardWeatherState = dashboardWeatherState
@@ -80,7 +83,8 @@ struct TodayWorkflowView: View {
             openCatchUp: {
                 isCatchUpExpanded = true
                 isCatchUpFocused = true
-            }
+            },
+            openReview: openReview
         ) {
             catchUpSection
         }

@@ -572,6 +572,7 @@ struct ProjectBoardView: View {
                 selectTodayTask: selectTodayTask,
                 openInspectorForTodayRailTask: openInspectorForTodayRailTask,
                 playDailyPlanningReadout: playDailyPlanningReadoutFromSettings,
+                openReview: { boardRouteBinding.wrappedValue = .primary(.review) },
                 dashboardDisplayName: todaySettings.profileDisplayName ?? "",
                 dashboardDailyCapacityMinutes: todaySettings.dailyWorkCapacityMinutes,
                 initiallyExpandsCatchUp: activeBoardRouteFocus == .catchUp

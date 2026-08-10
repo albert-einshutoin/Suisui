@@ -50,6 +50,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
     let openInspectorForTodayRailTask: (Int64) -> Void
     let playDailyPlanningReadout: () -> Void
     let openCatchUp: () -> Void
+    let openReview: () -> Void
     @ViewBuilder let catchUpContent: () -> CatchUpContent
     @AccessibilityFocusState private var isReviewFocused: Bool
     @State private var focusTaskPendingReplacement: Int64?
@@ -153,20 +154,33 @@ struct TodayDashboardView<CatchUpContent: View>: View {
             lowerLayout {
                 TodayDashboardWeeklyScheduleCard(schedule: dashboard.weeklySchedule)
                     .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, alignment: .topLeading)
-                TodayDashboardReviewCard(externalActivity: dashboard.externalActivity) {
-                    TodayCommandPanel(
-                        commandTitle: $commandTitle,
-                        plan: snapshot.plan,
-                        recommendationChips: snapshot.recommendationChips,
-                        viewModel: viewModel,
-                        dailyPlanningReview: viewModel.dailyPlanningReview ?? snapshot.dailyPlanningReviewPreview,
-                        playDailyPlanningReadout: playDailyPlanningReadout
+                VStack(alignment: .leading, spacing: SuisuiSpacing.lg) {
+                    TodayDashboardReviewCard(
+                        review: dashboard.review,
+                        externalActivity: dashboard.externalActivity,
+                        openReview: openReview
                     )
-                    TodaySuggestionPanel(plan: snapshot.plan, viewModel: viewModel)
-                    catchUpContent()
+                    .accessibilityFocused($isReviewFocused)
+
+                    VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+                        Label("Review actions", systemImage: "checklist")
+                            .font(SuisuiTypography.sectionTitle)
+                        TodayCommandPanel(
+                            commandTitle: $commandTitle,
+                            plan: snapshot.plan,
+                            recommendationChips: snapshot.recommendationChips,
+                            viewModel: viewModel,
+                            dailyPlanningReview: viewModel.dailyPlanningReview ?? snapshot.dailyPlanningReviewPreview,
+                            playDailyPlanningReadout: playDailyPlanningReadout
+                        )
+                        TodaySuggestionPanel(plan: snapshot.plan, viewModel: viewModel)
+                        catchUpContent()
+                    }
+                    .todayDashboardCard()
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("today-review-actions")
                 }
                 .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, alignment: .topLeading)
-                .accessibilityFocused($isReviewFocused)
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)

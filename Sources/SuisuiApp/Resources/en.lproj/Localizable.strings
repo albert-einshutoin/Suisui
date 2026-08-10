@@ -70,6 +70,14 @@
 "Remind Me in 1 Hour" = "Remind Me in 1 Hour";
 "Reminders" = "Reminders";
 "Review" = "Review";
+"Needs Review" = "Needs Review";
+"External changes" = "External changes";
+"No items need review right now." = "No items need review right now.";
+"No external changes." = "No external changes.";
+"View all review items" = "View all review items";
+"Opens the Review area without changing tasks or external services." = "Opens the Review area without changing tasks or external services.";
+"Daily Planning" = "Daily Planning";
+"Review actions" = "Review actions";
 "Save to Inbox" = "Save to Inbox";
 "Saved to Inbox" = "Saved to Inbox";
 "Open Inbox" = "Open Inbox";
