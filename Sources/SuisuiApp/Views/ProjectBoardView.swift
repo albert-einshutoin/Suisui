@@ -26,10 +26,12 @@ enum ProjectBoardLayoutMetrics {
     // the widest at ~105pt for 15 characters of 13pt SF Pro, plus ~24pt icon
     // column, 8pt gap, and a ~16pt count badge ≈ 185pt with row insets)
     // readable without truncation at the 1024pt canonical window width. The
-    // native split chrome contributes another 20pt, so the ideal must stay at
-    // 200pt to keep the shared header and 300pt inspector inside that viewport.
-    static let sidebarColumnMinWidth: CGFloat = 180
-    static let sidebarColumnIdealWidth: CGFloat = 200
+    // Native NavigationSplitView otherwise expands the ideal width to roughly
+    // 294pt on a 1448pt window. Capping it at the 240pt reference width keeps
+    // the Today rail visible without making destination labels truncate.
+    static let sidebarColumnMinWidth: CGFloat = 220
+    static let sidebarColumnIdealWidth: CGFloat = 240
+    static let sidebarColumnMaxWidth: CGFloat = 240
     // NavigationSplitView otherwise gives the detail column a large implicit
     // minimum. With the compact inspector open, that floor prevents the product
     // from reaching its supported 1024pt compact window width.
@@ -171,7 +173,11 @@ struct ProjectBoardView: View {
             )
             .id(toolbarLayoutRefreshToken)
             .projectBoardSynchronizedColumnBounds()
-            .navigationSplitViewColumnWidth(min: ProjectBoardLayoutMetrics.sidebarColumnMinWidth, ideal: ProjectBoardLayoutMetrics.sidebarColumnIdealWidth)
+            .navigationSplitViewColumnWidth(
+                min: ProjectBoardLayoutMetrics.sidebarColumnMinWidth,
+                ideal: ProjectBoardLayoutMetrics.sidebarColumnIdealWidth,
+                max: ProjectBoardLayoutMetrics.sidebarColumnMaxWidth
+            )
         } detail: {
             VStack(spacing: 0) {
                 Group {

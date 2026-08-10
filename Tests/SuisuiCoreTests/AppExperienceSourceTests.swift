@@ -2280,8 +2280,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("static let portfolioCardMinHeight: CGFloat = 230"))
         XCTAssertTrue(source.contains("static let overviewPanelMinHeight: CGFloat = 170"))
         XCTAssertTrue(source.contains("static let displayModePickerWidth: CGFloat = 252"))
-        XCTAssertTrue(source.contains("static let sidebarColumnMinWidth: CGFloat = 180"))
-        XCTAssertTrue(source.contains("static let sidebarColumnIdealWidth: CGFloat = 200"))
+        XCTAssertTrue(source.contains("static let sidebarColumnMinWidth: CGFloat = 220"))
+        XCTAssertTrue(source.contains("static let sidebarColumnIdealWidth: CGFloat = 240"))
+        XCTAssertTrue(source.contains("static let sidebarColumnMaxWidth: CGFloat = 240"))
         XCTAssertTrue(source.contains("static let boardColumnWidth: CGFloat = 204"))
         XCTAssertTrue(source.contains("static let emptyColumnMinHeight: CGFloat = 82"))
         XCTAssertTrue(source.contains("static let inlinePriorityPickerWidth: CGFloat = 112"))
@@ -2486,10 +2487,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains(".windowResizability(.contentMinSize)"))
         XCTAssertEqual(boardSource.components(separatedBy: ".navigationTitle(\"Suisui\")").count - 1, 1)
         XCTAssertEqual(boardSource.components(separatedBy: ".projectBoardSynchronizedColumnBounds()").count - 1, 2)
-        // The sidebar pins bounded (min/ideal) column widths so fixed
+        // The sidebar pins bounded (min/ideal/max) column widths so fixed
         // destination labels render untruncated at the 1024pt canonical
         // width; a hard-coded fixed width remains forbidden.
-        XCTAssertTrue(boardSource.contains(".navigationSplitViewColumnWidth(min: ProjectBoardLayoutMetrics.sidebarColumnMinWidth, ideal: ProjectBoardLayoutMetrics.sidebarColumnIdealWidth)"))
+        XCTAssertTrue(boardSource.contains("max: ProjectBoardLayoutMetrics.sidebarColumnMaxWidth"))
         XCTAssertTrue(boardSource.contains("min: ProjectBoardLayoutMetrics.detailColumnMinWidth"))
         XCTAssertTrue(boardSource.contains("ideal: ProjectBoardLayoutMetrics.detailColumnIdealWidth"))
         XCTAssertFalse(boardSource.contains("ProjectBoardLayout.sidebarColumnWidth"))
@@ -4556,6 +4557,44 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(header.contains("Suisui"))
     }
 
+    func testTodayDashboardUsesReferenceVisualHierarchy() throws {
+        let dashboard = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardView.swift")
+        let header = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardHeaderView.swift")
+        let cards = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardCards.swift")
+        let taskList = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardTaskListView.swift")
+        let rail = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardRailView.swift")
+        let focusCard = try readPackageFile("Sources/SuisuiApp/Views/TodayFocusCard.swift")
+        let cardModifierStart = try XCTUnwrap(dashboard.range(of: "func todayDashboardCard()")?.lowerBound)
+        let dashboardViewStart = try XCTUnwrap(dashboard.range(of: "struct TodayDashboardView")?.lowerBound)
+        let cardModifierScope = String(dashboard[cardModifierStart..<dashboardViewStart])
+
+        XCTAssertTrue(dashboard.contains("func todayDashboardCard()"))
+        XCTAssertTrue(cardModifierScope.contains(".frame(maxWidth: .infinity, alignment: .topLeading)"))
+        XCTAssertTrue(header.contains("Divider()"))
+        XCTAssertTrue(header.contains("HStack(alignment: .firstTextBaseline"))
+        XCTAssertTrue(cards.contains("recommendationIcon(for:"))
+        XCTAssertTrue(cards.contains("actionTitle(for:"))
+        XCTAssertTrue(cards.contains(".todayDashboardCard()"))
+        XCTAssertTrue(taskList.contains("taskCountBadge"))
+        XCTAssertTrue(taskList.contains("Divider()"))
+        XCTAssertTrue(rail.contains("frame(width: 86, height: 86)"))
+        XCTAssertTrue(rail.contains(".todayDashboardCard()"))
+        XCTAssertTrue(focusCard.contains("@State private var durationMinutes = 90"))
+        XCTAssertTrue(focusCard.contains(".pickerStyle(.menu)"))
+        XCTAssertTrue(focusCard.contains(".buttonStyle(.borderedProminent)"))
+        XCTAssertTrue(focusCard.contains("case .idle: durationMinutes * 60"))
+        XCTAssertFalse(dashboard.contains(".padding(.top, isWide ? 124 : 0)"))
+        XCTAssertTrue(taskList.contains(".frame(width: 280, alignment: .leading)"))
+        XCTAssertTrue(taskList.contains("today-task-list-add"))
+        XCTAssertTrue(dashboard.contains("VStack(alignment: .leading, spacing: 32)"))
+        XCTAssertTrue(dashboard.contains("width: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth"))
+        XCTAssertTrue(rail.contains("minHeight: 228"))
+        XCTAssertTrue(focusCard.contains("minHeight: 192"))
+        XCTAssertTrue(rail.contains("assistantCard\n                .frame"))
+        XCTAssertTrue(rail.contains("let cardWidth = presentsCardsHorizontally"))
+        XCTAssertTrue(dashboard.contains("availableWidth: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth"))
+    }
+
     func testTodayWorkflowProvidesCommonQuickActionChipsAndLocalRailActions() throws {
         let workflowSource = try readProjectWorkflowSources()
         let boardSource = try readProjectBoardSurfaceSources()
@@ -4686,7 +4725,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(todaySource.contains("static let twoColumnMinimumWidth = primaryMinimumWidth + railMinimumWidth + columnSpacing"))
         XCTAssertTrue(workflowScope.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
         XCTAssertTrue(workflowScope.contains(".padding(.horizontal, 18)"))
-        XCTAssertTrue(workflowScope.contains(".padding(.bottom, 18)"))
+        XCTAssertTrue(workflowScope.contains(".padding(.vertical, 18)"))
         XCTAssertTrue(workflowScope.contains("TodayDashboardRailView("))
         XCTAssertTrue(railSource.contains("TodayAssistantRail("))
         XCTAssertTrue(sharedSource.contains("let fillsAvailableHeight: Bool"))

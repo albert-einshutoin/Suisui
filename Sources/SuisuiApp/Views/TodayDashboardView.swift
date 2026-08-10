@@ -17,6 +17,25 @@ enum TodayDashboardLayoutMetrics {
     }
 }
 
+extension View {
+    /// Today uses a denser dashboard card than other product surfaces. Keeping
+    /// this treatment local avoids changing established cards elsewhere while
+    /// preserving one shared border, inset, and elevation across the dashboard.
+    func todayDashboardCard() -> some View {
+        self.frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(SuisuiSpacing.lg)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(SuisuiSurface.groupedContent)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(SuisuiBorder.subtle.opacity(0.72), lineWidth: 0.75)
+            }
+            .shadow(color: .black.opacity(0.045), radius: 5, y: 2)
+    }
+}
+
 struct TodayDashboardView<CatchUpContent: View>: View {
     let snapshot: TodayWorkflowSnapshot
     let schedule: ProjectBoardScheduleReadModel
@@ -64,18 +83,25 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                 let layout: AnyLayout = isWide
                     ? AnyLayout(HStackLayout(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing))
                     : AnyLayout(VStackLayout(alignment: .leading, spacing: SuisuiSpacing.lg))
-                layout {
-                    mainContent(dashboard: dashboard, isWide: isWide)
-                        .frame(
-                            minWidth: isWide ? TodayDashboardLayoutMetrics.primaryMinimumWidth : nil,
-                            maxWidth: .infinity,
-                            alignment: .topLeading
-                        )
-                    rail(dashboard: dashboard, presentsCardsHorizontally: presentsCompactRailCardsHorizontally)
-                        .frame(width: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : nil)
+                VStack(alignment: .leading, spacing: 32) {
+                    TodayDashboardHeaderView(header: dashboard.header, weather: dashboard.weather)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    layout {
+                        mainContent(dashboard: dashboard, isWide: isWide)
+                            .frame(
+                                minWidth: isWide ? TodayDashboardLayoutMetrics.primaryMinimumWidth : nil,
+                                maxWidth: .infinity,
+                                alignment: .topLeading
+                            )
+                        rail(dashboard: dashboard, presentsCardsHorizontally: presentsCompactRailCardsHorizontally, availableWidth: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth)
+                            .frame(
+                                width: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth,
+                                alignment: .topLeading
+                            )
                     }
+                }
                 .padding(.horizontal, 18)
-                .padding(.bottom, 18)
+                .padding(.vertical, 18)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .alert(
@@ -105,7 +131,6 @@ struct TodayDashboardView<CatchUpContent: View>: View {
 
     private func mainContent(dashboard: TodayDashboardSnapshot, isWide: Bool) -> some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.lg) {
-            TodayDashboardHeaderView(header: dashboard.header, weather: dashboard.weather)
             TodayDashboardRecommendationCards(
                 recommendations: dashboard.recommendations,
                 onAction: performRecommendationAction
@@ -116,14 +141,18 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                 selectedTaskID: viewModel.selectedTaskID,
                 isWide: isWide,
                 toggleCompletion: viewModel.toggleTaskCompletion,
-                selectTask: selectTodayTask
+                selectTask: selectTodayTask,
+                addTask: {
+                    commandTitle = String(localized: "New task: ")
+                    isReviewFocused = true
+                }
             )
             let lowerLayout: AnyLayout = isWide
                 ? AnyLayout(HStackLayout(alignment: .top, spacing: SuisuiSpacing.lg))
                 : AnyLayout(VStackLayout(alignment: .leading, spacing: SuisuiSpacing.lg))
             lowerLayout {
                 TodayDashboardWeeklyScheduleCard(schedule: dashboard.weeklySchedule)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, alignment: .topLeading)
                 TodayDashboardReviewCard(externalActivity: dashboard.externalActivity) {
                     TodayCommandPanel(
                         commandTitle: $commandTitle,
@@ -136,7 +165,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                     TodaySuggestionPanel(plan: snapshot.plan, viewModel: viewModel)
                     catchUpContent()
                 }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, alignment: .topLeading)
                 .accessibilityFocused($isReviewFocused)
             }
         }
@@ -178,14 +207,19 @@ struct TodayDashboardView<CatchUpContent: View>: View {
         }
     }
 
-    private func rail(dashboard: TodayDashboardSnapshot, presentsCardsHorizontally: Bool) -> some View {
+    private func rail(
+        dashboard: TodayDashboardSnapshot,
+        presentsCardsHorizontally: Bool,
+        availableWidth: CGFloat
+    ) -> some View {
         TodayDashboardRailView(
             dashboard: dashboard,
             assistantContext: snapshot.assistantContext,
             viewModel: viewModel,
             commandTitle: $commandTitle,
             openInspector: openInspectorForTodayRailTask,
-            presentsCardsHorizontally: presentsCardsHorizontally
+            presentsCardsHorizontally: presentsCardsHorizontally,
+            availableWidth: availableWidth
         )
     }
 }

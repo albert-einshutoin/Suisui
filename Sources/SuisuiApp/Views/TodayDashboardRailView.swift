@@ -8,8 +8,12 @@ struct TodayDashboardRailView: View {
     @Binding var commandTitle: String
     let openInspector: (Int64) -> Void
     let presentsCardsHorizontally: Bool
+    let availableWidth: CGFloat
 
     var body: some View {
+        let cardWidth = presentsCardsHorizontally
+            ? max(0, (availableWidth - SuisuiSpacing.lg) / 2)
+            : availableWidth
         let primaryLayout: AnyLayout = presentsCardsHorizontally
             ? AnyLayout(HStackLayout(alignment: .top, spacing: SuisuiSpacing.lg))
             : AnyLayout(VStackLayout(alignment: .leading, spacing: SuisuiSpacing.lg))
@@ -19,18 +23,20 @@ struct TodayDashboardRailView: View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.lg) {
             primaryLayout {
                 workloadCard
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(width: cardWidth, alignment: .topLeading)
                 focusCard
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(width: cardWidth, alignment: .topLeading)
             }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            assistantCard
+                .frame(width: availableWidth, alignment: .topLeading)
             integrationLayout {
                 TodayIntegrationCard(integration: dashboard.integrations.calendar)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(width: cardWidth, alignment: .topLeading)
                 TodayIntegrationCard(integration: dashboard.integrations.slack)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(width: cardWidth, alignment: .topLeading)
             }
-            assistantCard
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
@@ -60,7 +66,7 @@ struct TodayDashboardRailView: View {
                 openInspector: openInspector
             )
         }
-        .soloCard()
+        .todayDashboardCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-assistant-card")
     }
@@ -84,7 +90,7 @@ private struct TodayIntegrationCard: View {
             .font(.caption.weight(.semibold))
             .accessibilityHint("Opens Settings to manage this connection. It does not start sync or send messages.")
         }
-        .soloCard()
+        .todayDashboardCard()
         .accessibilityElement(children: .contain)
         .accessibilityLabel(integration.accessibilityLabel)
         .accessibilityIdentifier(accessibilityIdentifier)
@@ -117,7 +123,7 @@ private struct TodayWorkloadCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
-            Label("Workload", systemImage: "gauge.with.dots.needle.50percent")
+            Label("Today's Workload", systemImage: "gauge.with.dots.needle.50percent")
                 .font(SuisuiTypography.sectionTitle)
             HStack(spacing: SuisuiSpacing.md) {
                 ZStack {
@@ -130,7 +136,7 @@ private struct TodayWorkloadCard: View {
                     Text("\(Int(workload.ratio * 100))%")
                         .font(.caption.monospacedDigit())
                 }
-                .frame(width: 54, height: 54)
+                .frame(width: 86, height: 86)
                 .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
                     Text("\(hours(workload.plannedMinutes)) / \(hours(workload.capacityMinutes))")
@@ -153,7 +159,8 @@ private struct TodayWorkloadCard: View {
                 .foregroundStyle(.orange)
             }
         }
-        .soloCard()
+        .frame(minHeight: 228, alignment: .topLeading)
+        .todayDashboardCard()
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("today-workload-card")
         .accessibilityLabel(String(format: String(localized: "Workload: %@ of %@ planned."), hours(workload.plannedMinutes), hours(workload.capacityMinutes)))

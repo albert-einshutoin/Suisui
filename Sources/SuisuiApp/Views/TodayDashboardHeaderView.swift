@@ -6,22 +6,28 @@ struct TodayDashboardHeaderView: View {
     let weather: TodayWeatherSnapshot
 
     var body: some View {
-        HStack(alignment: .top, spacing: SuisuiSpacing.lg) {
-            VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
-                Label("Today", systemImage: "sun.max.fill")
-                    .font(SuisuiTypography.pageTitle)
+        VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+            HStack(alignment: .firstTextBaseline, spacing: SuisuiSpacing.md) {
+                Text("Today")
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
                 Text(header.title)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+            Divider()
+            HStack(alignment: .top, spacing: SuisuiSpacing.lg) {
+                VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
                 Text(header.greeting)
-                    .font(.title3.weight(.medium))
+                    .font(.title3.weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
                 Text("\(localizedTaskCount(header.taskCount)) · \(scheduledTodayLabel)")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: SuisuiSpacing.sm)
+                TodayDashboardWeatherView(weather: weather)
             }
-            Spacer(minLength: SuisuiSpacing.sm)
-            TodayDashboardWeatherView(weather: weather)
         }
         // Keep weather attribution/retry as separate VoiceOver controls. A
         // combined parent would swallow those actions into the header label.

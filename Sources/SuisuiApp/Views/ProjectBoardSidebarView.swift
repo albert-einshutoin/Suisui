@@ -66,7 +66,7 @@ struct ProjectBoardSidebarView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
             HStack(spacing: 8) {
                 Image(nsImage: NSApplication.shared.applicationIconImage)
                     .resizable()
@@ -121,14 +121,14 @@ struct ProjectBoardSidebarView: View {
                 quickAction(.addByVoice, handler: onAddByVoice)
                 quickAction(.blockTime, handler: onBlockTime)
             }
-            .padding(10)
+            .padding(SuisuiSpacing.md)
             .background(.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
             }
         }
-        .padding(10)
+        .padding(SuisuiSpacing.lg)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project-board-sidebar")
         .accessibilityLabel(Text(LocalizedStringKey("Project navigation")))
@@ -204,11 +204,11 @@ struct ProjectBoardSidebarView: View {
                         )
                 }
             }
-            .padding(.horizontal, 8)
-            .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .foregroundStyle(isSelected ? Color.white : Color.primary)
             .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(isSelected ? Color.accentColor : .clear)
             }
             .contentShape(Rectangle())
@@ -238,10 +238,10 @@ struct ProjectBoardSidebarView: View {
                     .accessibilityHidden(true)
             }
                 .padding(.horizontal, 8)
-                .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
-                .background(.background, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+                .background(.background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
                 }
                 .contentShape(Rectangle())

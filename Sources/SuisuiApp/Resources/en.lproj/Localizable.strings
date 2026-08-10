@@ -765,6 +765,7 @@
 "Today Progress" = "Today Progress";
 "No due task selected" = "No due task selected";
 "Focus" = "Focus";
+"Focus Time" = "Focus Time";
 "Starts local focus without changing task status." = "Starts local focus without changing task status.";
 "Schedule Block" = "Schedule Block";
 "Creates a local schedule draft without writing Calendar." = "Creates a local schedule draft without writing Calendar.";
@@ -1622,6 +1623,7 @@
 "Fewer completions" = "Fewer completions";
 "More completions" = "More completions";
 "Workload" = "Workload";
+"Today's Workload" = "Today's Workload";
 "Schedule View" = "Schedule View";
 "Switches the visible schedule detail while preserving the selected week and day." = "Switches the visible schedule detail while preserving the selected week and day.";
 "Commit changes" = "Commit changes";
