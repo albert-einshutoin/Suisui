@@ -286,13 +286,22 @@ stop_existing_dist_apps_for_mode() {
 
 copy_app_localizations() {
   if [[ ! -d "$APP_LOCALIZATION_SOURCE" ]]; then
-    return
+    echo "BLOCKER: missing app localization source: $APP_LOCALIZATION_SOURCE" >&2
+    return 1
   fi
 
   mkdir -p "$APP_RESOURCES"
   while IFS= read -r -d '' localization_dir; do
     /usr/bin/ditto "$localization_dir" "$APP_RESOURCES/$(basename "$localization_dir")"
   done < <(find "$APP_LOCALIZATION_SOURCE" -maxdepth 1 -type d -name "*.lproj" -print0)
+
+  local required_locale
+  for required_locale in en ja; do
+    if [[ ! -f "$APP_RESOURCES/$required_locale.lproj/InfoPlist.strings" ]]; then
+      echo "BLOCKER: packaged app is missing $required_locale InfoPlist.strings" >&2
+      return 1
+    fi
+  done
 }
 
 xml_escape() {
@@ -435,6 +444,8 @@ done < <(find "$BUILD_DIR" -maxdepth 1 -type f -name "*.dylib" -print0)
   printf '%s\n' '  <false/>'
   printf '%s\n' '  <key>NSMicrophoneUsageDescription</key>'
   printf '%s\n' '  <string>Suisui uses the microphone when you explicitly start voice capture.</string>'
+  printf '%s\n' '  <key>NSLocationUsageDescription</key>'
+  printf '%s\n' '  <string>Suisui uses your location only while Today weather is being shown.</string>'
   printf '%s\n' '  <key>NSSpeechRecognitionUsageDescription</key>'
   printf '%s\n' '  <string>Suisui transcribes audio only after you explicitly record a voice command.</string>'
   printf '%s\n' '  <key>SuisuiLocalLicensePublicKey</key>'

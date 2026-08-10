@@ -150,4 +150,52 @@ final class FirstRunOnboardingTests: XCTestCase {
             )
         )
     }
+
+    func testTodayPreferencesRestoreExistingSettingsAndSkipTheFirstRunPrompt() {
+        let preferences = OnboardingTodayPreferences(
+            settings: AppSettings(profileDisplayName: "Ada", dailyWorkCapacityMinutes: 390)
+        )
+
+        XCTAssertEqual(preferences.displayName, "Ada")
+        XCTAssertEqual(preferences.dailyWorkCapacityMinutes, 390)
+        XCTAssertFalse(preferences.shouldAsk)
+    }
+
+    func testTodayPreferencesKeepTheFirstRunPromptVisibleWhileTyping() {
+        var preferences = OnboardingTodayPreferences(settings: AppSettings())
+
+        preferences.displayName = "Ada"
+
+        XCTAssertTrue(preferences.shouldAsk)
+    }
+
+    func testTodayPreferencesApplyExistingNormalizationWithoutChangingOtherSettings() {
+        let existing = AppSettings(
+            profileDisplayName: "Ada",
+            dailyWorkCapacityMinutes: 480,
+            googleCalendarID: "calendar@example.com"
+        )
+        let preferences = OnboardingTodayPreferences(
+            displayName: "  Grace Hopper  ",
+            dailyWorkCapacityMinutes: 75
+        )
+
+        let applied = preferences.applying(to: existing)
+
+        XCTAssertEqual(applied.profileDisplayName, "Grace Hopper")
+        XCTAssertEqual(applied.dailyWorkCapacityMinutes, 60)
+        XCTAssertEqual(applied.googleCalendarID, "calendar@example.com")
+    }
+
+    func testTodayPreferencesCancelLeavesSavedValuesForTheNextPresentation() {
+        let saved = AppSettings(profileDisplayName: "Ada", dailyWorkCapacityMinutes: 390)
+        var cancelledDraft = OnboardingTodayPreferences(settings: saved)
+        cancelledDraft.displayName = "Grace"
+        cancelledDraft.dailyWorkCapacityMinutes = 480
+
+        let reopened = OnboardingTodayPreferences(settings: saved)
+
+        XCTAssertEqual(reopened.displayName, "Ada")
+        XCTAssertEqual(reopened.dailyWorkCapacityMinutes, 390)
+    }
 }

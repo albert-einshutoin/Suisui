@@ -246,6 +246,7 @@ private struct ProjectBoardWindowRootView: View {
                 settingsViewModel: settingsViewModel,
                 permissionSnapshot: .empty,
                 permissionSnapshotProvider: AppRuntimeFactory.makeIntegrationPermissionSnapshotSendable,
+                requestCurrentLocationAuthorization: AppRuntimeFactory.requestTodayWeatherLocationAuthorization,
                 onTrySuisui: { outcome in
                     hasDismissedOnboarding = true
                     isOnboardingPresented = false

@@ -883,6 +883,70 @@ struct SettingsPrivacyFeatureView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
+                TextField(
+                    "Display Name",
+                    text: Binding(
+                        get: { settingsViewModel.settings.profileDisplayName ?? "" },
+                        set: { settingsViewModel.setProfileDisplayName($0) }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("settings-profile-display-name")
+                .accessibilityHint("Sets the optional name used by the Today greeting. Save Settings to persist it locally.")
+                Picker(
+                    "Daily work capacity",
+                    selection: Binding(
+                        get: { settingsViewModel.settings.dailyWorkCapacityMinutes },
+                        set: { settingsViewModel.setDailyWorkCapacityMinutes($0) }
+                    )
+                ) {
+                    ForEach(
+                        Array(stride(
+                            from: AppSettings.minimumDailyWorkCapacityMinutes,
+                            through: AppSettings.maximumDailyWorkCapacityMinutes,
+                            by: AppSettings.dailyWorkCapacityStepMinutes
+                        )),
+                        id: \.self
+                    ) { minutes in
+                        Text(dailyWorkCapacityLabel(minutes))
+                            .tag(minutes)
+                    }
+                }
+                .accessibilityIdentifier("settings-daily-work-capacity")
+                .accessibilityHint("Sets Today workload capacity in 30-minute steps. Save Settings to persist it locally.")
+                Picker("Weather location", selection: weatherLocationModeBinding) {
+                    Text("Not configured").tag("unset")
+                    Text("Current location").tag("current")
+                    Text("Manual city").tag("manual")
+                }
+                .accessibilityIdentifier("settings-weather-location")
+                if weatherLocationMode == "manual" {
+                    TextField("City name", text: weatherCityBinding)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("settings-weather-city")
+                    HStack {
+                        TextField(
+                            "Latitude",
+                            value: weatherLatitudeBinding,
+                            format: .number.precision(.fractionLength(0...6))
+                        )
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityIdentifier("settings-weather-latitude")
+                        TextField(
+                            "Longitude",
+                            value: weatherLongitudeBinding,
+                            format: .number.precision(.fractionLength(0...6))
+                        )
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityIdentifier("settings-weather-longitude")
+                    }
+                    Text("The city name is a label. Coordinates determine where weather is loaded.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text("Weather uses the selected source for Today and does not keep a location history.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 LocalPathSelectionField(
                     title: "Workspace",
                     text: Binding(
@@ -996,6 +1060,91 @@ struct SettingsPrivacyFeatureView: View {
         } message: {
             Text(context.backupRestoreConfirmationMessage)
         }
+    }
+
+    private func dailyWorkCapacityLabel(_ minutes: Int) -> String {
+        if minutes.isMultiple(of: 60) {
+            return localizedCount(minutes / 60, one: "%d hour", other: "%d hours")
+        }
+        return String(format: String(localized: "%.1f h"), Double(minutes) / 60)
+    }
+
+    private var weatherLocationMode: String {
+        switch settingsViewModel.settings.weatherLocationPreference {
+        case .unset: "unset"
+        case .currentLocation: "current"
+        case .manual: "manual"
+        }
+    }
+
+    private var weatherLocationModeBinding: Binding<String> {
+        Binding(
+            get: { weatherLocationMode },
+            set: { mode in
+                switch mode {
+                case "current":
+                    settingsViewModel.setWeatherLocationPreference(.currentLocation)
+                case "manual":
+                    if case .manual = settingsViewModel.settings.weatherLocationPreference {
+                        break
+                    }
+                    settingsViewModel.setWeatherLocationPreference(
+                        .manual(cityLabel: "Tokyo", latitude: 35.681236, longitude: 139.767125)
+                    )
+                default:
+                    settingsViewModel.setWeatherLocationPreference(.unset)
+                }
+            }
+        )
+    }
+
+    private var weatherCityBinding: Binding<String> {
+        Binding(
+            get: {
+                guard case let .manual(label, _, _) = settingsViewModel.settings.weatherLocationPreference else {
+                    return ""
+                }
+                return label
+            },
+            set: { label in
+                let preference = settingsViewModel.settings.weatherLocationPreference
+                guard case let .manual(_, latitude, longitude) = preference else { return }
+                settingsViewModel.setWeatherLocationPreference(.manual(cityLabel: label, latitude: latitude, longitude: longitude))
+            }
+        )
+    }
+
+    private var manualWeatherLocation: (label: String, latitude: Double, longitude: Double) {
+        guard case let .manual(label, latitude, longitude) = settingsViewModel.settings.weatherLocationPreference else {
+            return ("Tokyo", 35.681236, 139.767125)
+        }
+        return (label, latitude, longitude)
+    }
+
+    private var weatherLatitudeBinding: Binding<Double> {
+        Binding(
+            get: { manualWeatherLocation.latitude },
+            set: { latitude in
+                guard (-90...90).contains(latitude) else { return }
+                let location = manualWeatherLocation
+                settingsViewModel.setWeatherLocationPreference(
+                    .manual(cityLabel: location.label, latitude: latitude, longitude: location.longitude)
+                )
+            }
+        )
+    }
+
+    private var weatherLongitudeBinding: Binding<Double> {
+        Binding(
+            get: { manualWeatherLocation.longitude },
+            set: { longitude in
+                guard (-180...180).contains(longitude) else { return }
+                let location = manualWeatherLocation
+                settingsViewModel.setWeatherLocationPreference(
+                    .manual(cityLabel: location.label, latitude: location.latitude, longitude: longitude)
+                )
+            }
+        )
     }
 }
 

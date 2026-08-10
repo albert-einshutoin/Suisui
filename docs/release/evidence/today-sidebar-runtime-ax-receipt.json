@@ -2,7 +2,20 @@
   "schemaVersion": 1,
   "generatedAt": "2026-08-08T15:30:11Z",
   "sourceCommit": "83263bdad787923b8ae116771661f055b5d68a31",
-  "status": "partial",
+  "status": "blocked",
+  "releaseBlocker": {
+    "status": "blocked",
+    "recordedAt": "2026-08-09T15:32:33Z",
+    "artifactStatus": "not_retained",
+    "requiredViewport": "1448x1086",
+    "runnerVisibleFrame": "1920x976",
+    "reasonCodes": [
+      "runtime_artifact_not_retained",
+      "receipt_source_is_stale",
+      "required_wide_viewport_unavailable"
+    ],
+    "nextAction": "Regenerate the runtime AX receipt from a retained, checksummed release-candidate app on a runner that can display 1448x1086."
+  },
   "methodology": {
     "appBundle": "dist/Suisui.app",
     "fixture": "today-sidebar-runtime-fixture-v1",

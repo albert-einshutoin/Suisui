@@ -5,6 +5,11 @@ import os
 
 private let projectBoardRuntimeDiagnosticLogger = Logger(subsystem: "dev.suisui.app", category: "runtime")
 
+private enum GoogleCalendarReadinessRefreshResult: Sendable {
+    case success(GoogleCalendarRuntimeSyncStatus)
+    case failure(String)
+}
+
 public struct ProjectDevelopmentAutomationReadiness: Equatable, Sendable {
     public var projectID: Int64
     public var taskID: Int64?
@@ -690,6 +695,9 @@ public final class ProjectBoardViewModel: ObservableObject {
     private var failureRetryAction: ProjectBoardFailureRetryAction?
     private var failureTaskID: Int64?
     private var isSynchronizingFailure: Bool
+    private let hasPreloadedGoogleCalendarSyncStatus: Bool
+    private var googleCalendarReadinessRefreshRevision: UInt64
+    private var googleCalendarReadinessNotificationObservation: AnyCancellable?
 
     public init(
         store: any ProjectBoardStore,
@@ -703,6 +711,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         externalTaskLinkStore: (any ExternalTaskLinkStore)? = nil,
         scheduleCalendarClient: (any CalendarClient)? = nil,
         googleCalendarSync: (any GoogleCalendarRuntimeSyncing)? = nil,
+        initialGoogleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus? = nil,
         googleCalendarSyncFactory: (() -> (any GoogleCalendarRuntimeSyncing)?)? = nil,
         readModelNow: @escaping () -> Date = { VisualEvidenceRuntimeContext.referenceDate() },
         readModelCalendar: @escaping () -> Calendar = { VisualEvidenceRuntimeContext.runtimeCalendar() },
@@ -739,7 +748,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.dailyPlanningReview = nil
         self.scheduleDraft = nil
         self.scheduleApplyResult = nil
-        self.googleCalendarSyncStatus = .runtimeNotConfigured
+        self.googleCalendarSyncStatus = initialGoogleCalendarSyncStatus ?? .runtimeNotConfigured
         self.projectAssistantAnswer = nil
         self.projectAssistantReviewDraft = nil
         self.developmentAutomationReviewPlan = nil
@@ -772,6 +781,58 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.failureRetryAction = nil
         self.failureTaskID = nil
         self.isSynchronizingFailure = false
+        self.hasPreloadedGoogleCalendarSyncStatus = initialGoogleCalendarSyncStatus != nil
+        self.googleCalendarReadinessRefreshRevision = 0
+        self.googleCalendarReadinessNotificationObservation = NotificationCenter.default
+            .publisher(for: .suisuiGoogleCalendarReadinessDidChange)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.refreshGoogleCalendarSyncStatusOffMain()
+                }
+            }
+    }
+
+    /// Compatibility overload for integrations that predate the injected
+    /// Calendar readiness snapshot. Such callers intentionally use the
+    /// runtime-not-configured state until the normal off-main refresh runs.
+    @_disfavoredOverload
+    public convenience init(
+        store: any ProjectBoardStore,
+        inboxCaptureStore: (any InboxCaptureStore)? = nil,
+        assistantQueueStore: (any AssistantQueueStore)? = nil,
+        assistantQueueExecutionCoordinator: AssistantQueueExecutionCoordinator? = nil,
+        assistantQueueExecutionCoordinatorFactory: (() -> AssistantQueueExecutionCoordinator?)? = nil,
+        executionReceiptStore: (any ExecutionReceiptStore)? = nil,
+        missedTaskReviewStateStore: any MissedTaskReviewStateStore = VolatileMissedTaskReviewStateStore(),
+        missedTaskFollowUpNotificationClient: (any NotificationClient)? = nil,
+        externalTaskLinkStore: (any ExternalTaskLinkStore)? = nil,
+        scheduleCalendarClient: (any CalendarClient)? = nil,
+        googleCalendarSync: (any GoogleCalendarRuntimeSyncing)? = nil,
+        googleCalendarSyncFactory: (() -> (any GoogleCalendarRuntimeSyncing)?)? = nil,
+        readModelNow: @escaping () -> Date = { VisualEvidenceRuntimeContext.referenceDate() },
+        readModelCalendar: @escaping () -> Calendar = { VisualEvidenceRuntimeContext.runtimeCalendar() },
+        snapshot: ProjectBoardSnapshot = .empty,
+        onChange: @escaping () -> Void = {}
+    ) {
+        self.init(
+            store: store,
+            inboxCaptureStore: inboxCaptureStore,
+            assistantQueueStore: assistantQueueStore,
+            assistantQueueExecutionCoordinator: assistantQueueExecutionCoordinator,
+            assistantQueueExecutionCoordinatorFactory: assistantQueueExecutionCoordinatorFactory,
+            executionReceiptStore: executionReceiptStore,
+            missedTaskReviewStateStore: missedTaskReviewStateStore,
+            missedTaskFollowUpNotificationClient: missedTaskFollowUpNotificationClient,
+            externalTaskLinkStore: externalTaskLinkStore,
+            scheduleCalendarClient: scheduleCalendarClient,
+            googleCalendarSync: googleCalendarSync,
+            initialGoogleCalendarSyncStatus: nil,
+            googleCalendarSyncFactory: googleCalendarSyncFactory,
+            readModelNow: readModelNow,
+            readModelCalendar: readModelCalendar,
+            snapshot: snapshot,
+            onChange: onChange
+        )
     }
 
     public var fatalFailure: ProjectBoardFailure? {
@@ -4767,6 +4828,13 @@ public final class ProjectBoardViewModel: ObservableObject {
         return task
     }
 
+    /// Records a local break suggestion for the Today review surface. This is
+    /// deliberately feedback-only: it does not create a task or write to any
+    /// Calendar/Reminder provider from a recommendation card.
+    public func suggestTodayBreak() {
+        todayCommandFeedback = String(localized: "Take a short break before the next task.")
+    }
+
     public func todayRecommendationChips(
         on referenceDate: Date = Date(),
         calendar: Calendar = .current
@@ -6163,6 +6231,9 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     public func refreshGoogleCalendarSyncStatus(now: Date = Date()) {
+        // A synchronous user/approval refresh is newer than any detached
+        // readiness read already in flight, so invalidate it before publishing.
+        googleCalendarReadinessRefreshRevision &+= 1
         guard let googleCalendarSync = resolvedGoogleCalendarSync else {
             googleCalendarSyncStatus = .runtimeNotConfigured
             return
@@ -6180,6 +6251,48 @@ public final class ProjectBoardViewModel: ObservableObject {
                 state: .failed(message: message)
             )
             recordFailure(.readinessCheckFailed(message), retryAction: .load)
+        }
+    }
+
+    /// Settings changes can require SQLite or Keychain-backed readiness reads.
+    /// Keep that work away from Today rendering and publish only the completed
+    /// status on the MainActor, ignoring older overlapping refreshes.
+    public func refreshGoogleCalendarSyncStatusOffMain(
+        now: Date = VisualEvidenceRuntimeContext.referenceDate()
+    ) {
+        guard let googleCalendarSync = resolvedGoogleCalendarSync else {
+            googleCalendarSyncStatus = .runtimeNotConfigured
+            return
+        }
+        googleCalendarReadinessRefreshRevision &+= 1
+        let refreshRevision = googleCalendarReadinessRefreshRevision
+        let fallback = String(localized: "Google Calendar sync status is unavailable.")
+
+        Task { @MainActor [weak self] in
+            let result = await Task.detached(priority: .utility) {
+                do {
+                    return GoogleCalendarReadinessRefreshResult.success(
+                        try googleCalendarSync.status(now: now)
+                    )
+                } catch {
+                    return .failure(
+                        UserFacingErrorMessageSanitizer.message(from: error, fallback: fallback)
+                    )
+                }
+            }.value
+            guard let self, self.googleCalendarReadinessRefreshRevision == refreshRevision else {
+                return
+            }
+            switch result {
+            case let .success(status):
+                self.googleCalendarSyncStatus = status
+            case let .failure(message):
+                self.googleCalendarSyncStatus = GoogleCalendarRuntimeSyncStatus(
+                    plan: self.googleCalendarSyncStatus.plan,
+                    state: .failed(message: message)
+                )
+                self.recordFailure(.readinessCheckFailed(message), retryAction: .load)
+            }
         }
     }
 
@@ -6438,7 +6551,13 @@ public final class ProjectBoardViewModel: ObservableObject {
             if selectedTaskID != nil, selectedTask == nil {
                 self.selectedTaskID = nil
             }
-            refreshGoogleCalendarSyncStatus()
+            // Production injects a preloaded readiness status before the
+            // window is visible, while older/test initializers do not. Keep
+            // the former zero-read on first load and asynchronously hydrate
+            // only the latter; neither path performs I/O from SwiftUI render.
+            if hasLoadedBoardSnapshot || !hasPreloadedGoogleCalendarSyncStatus {
+                refreshGoogleCalendarSyncStatusOffMain()
+            }
             if snapshotChanged || invalidationReason != nil || derivedReadModelReferenceDate == nil {
                 // A mutation followed by its own board-change notification can
                 // load the same snapshot twice. Rebuild only on the first load

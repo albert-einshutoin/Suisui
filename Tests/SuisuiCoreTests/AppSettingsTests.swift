@@ -404,6 +404,60 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertNil(saved.workspaceCapCents)
     }
 
+    @MainActor
+    func testSuccessfulSettingsSavePostsCalendarReadinessInvalidation() async throws {
+        let suiteName = "Suisui.AppSettingsCalendarReadiness.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore()
+        )
+        let notification = expectation(description: "Calendar readiness is invalidated after Settings save")
+        let observer = NotificationCenter.default.addObserver(
+            forName: .suisuiGoogleCalendarReadinessDidChange,
+            object: nil,
+            queue: nil
+        ) { _ in
+            notification.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        viewModel.setGoogleCalendarID("team@example.com")
+        viewModel.saveSettings()
+
+        XCTAssertEqual(viewModel.successMessage, "Settings saved.")
+        await fulfillment(of: [notification], timeout: 1)
+    }
+
+    @MainActor
+    func testSuccessfulSettingsSavePostsWeatherLocationInvalidation() async throws {
+        let suiteName = "Suisui.AppSettingsWeatherLocation.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let viewModel = AppSettingsViewModel(
+            settingsStore: UserDefaultsAppSettingsStore(defaults: defaults),
+            secretStore: InMemorySecretStore()
+        )
+        let notification = expectation(description: "Today weather reloads after Settings save")
+        let observer = NotificationCenter.default.addObserver(
+            forName: .suisuiWeatherLocationDidChange,
+            object: nil,
+            queue: nil
+        ) { _ in
+            notification.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        viewModel.setWeatherLocationPreference(
+            .manual(cityLabel: "Osaka", latitude: 34.6937, longitude: 135.5023)
+        )
+        viewModel.saveSettings()
+
+        XCTAssertEqual(viewModel.successMessage, "Settings saved.")
+        await fulfillment(of: [notification], timeout: 1)
+    }
+
     func testGoogleCalendarIDDefaultsAndNormalizesForRuntime() throws {
         let legacyData = Data("""
         {
@@ -422,6 +476,197 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(decoded.googleCalendarID, "primary")
         XCTAssertEqual(trimmed.googleCalendarID, "team@example.com")
         XCTAssertEqual(blank.googleCalendarID, "")
+    }
+
+    func testDailyWorkCapacityDefaultsDecodesLegacyAndValidatesBounds() throws {
+        let legacyData = Data("""
+        {
+          "aiProvider": "openAIResponses",
+          "sttProvider": "openAITranscribe",
+          "notificationsEnabled": false,
+          "defaultWorkspacePath": null,
+          "timeZoneIdentifier": "UTC"
+        }
+        """.utf8)
+
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: legacyData)
+
+        XCTAssertEqual(AppSettings.default.dailyWorkCapacityMinutes, 480)
+        XCTAssertEqual(decoded.dailyWorkCapacityMinutes, 480)
+        XCTAssertEqual(AppSettings(dailyWorkCapacityMinutes: 390).normalizedForRuntime.dailyWorkCapacityMinutes, 390)
+        XCTAssertEqual(AppSettings(dailyWorkCapacityMinutes: 0).normalizedForRuntime.dailyWorkCapacityMinutes, 60)
+        XCTAssertEqual(AppSettings(dailyWorkCapacityMinutes: 24 * 60).normalizedForRuntime.dailyWorkCapacityMinutes, 16 * 60)
+        XCTAssertTrue(AppSettings(dailyWorkCapacityMinutes: 45).validate().contains {
+            $0.field == "dailyWorkCapacityMinutes" && $0.severity == .error
+        })
+    }
+
+    func testProfileDisplayNameDefaultsToNilWhenDecodingLegacySettings() throws {
+        let legacyData = Data("""
+        {
+          "aiProvider": "openAIResponses",
+          "sttProvider": "openAITranscribe",
+          "notificationsEnabled": false,
+          "defaultWorkspacePath": null,
+          "timeZoneIdentifier": "UTC"
+        }
+        """.utf8)
+
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: legacyData)
+
+        XCTAssertNil(decoded.profileDisplayName)
+    }
+
+    func testProfileDisplayNameTrimsWhitespaceAndTreatsEmptyValueAsNil() {
+        XCTAssertEqual(
+            AppSettings(profileDisplayName: "  Ada Lovelace \n").normalizedForRuntime.profileDisplayName,
+            "Ada Lovelace"
+        )
+        XCTAssertNil(AppSettings(profileDisplayName: " \n\t ").normalizedForRuntime.profileDisplayName)
+    }
+
+    func testProfileDisplayNameLimitsToEightyUserPerceivedCharacters() {
+        let name = String(repeating: "👩🏽‍💻", count: 81)
+
+        let normalized = AppSettings(profileDisplayName: name).normalizedForRuntime.profileDisplayName
+
+        XCTAssertEqual(normalized?.count, 80)
+        XCTAssertEqual(normalized, String(name.prefix(80)))
+    }
+
+    func testProfileDisplayNameRoundTripsThroughSettingsEncoding() throws {
+        let settings = AppSettings(profileDisplayName: "Ada Lovelace")
+
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+
+        XCTAssertEqual(decoded.profileDisplayName, "Ada Lovelace")
+    }
+
+    @MainActor
+    func testAppSettingsViewModelKeepsProfileDisplayNameInMemoryUntilSettingsSave() throws {
+        let suiteName = "Suisui.AppSettingsProfileDisplayName.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        viewModel.setProfileDisplayName(" Ada Lovelace ")
+
+        XCTAssertEqual(viewModel.settings.profileDisplayName, " Ada Lovelace ")
+        XCTAssertNil(try store.load().profileDisplayName)
+
+        viewModel.saveSettings()
+
+        XCTAssertEqual(try store.load().profileDisplayName, "Ada Lovelace")
+    }
+
+    @MainActor
+    func testProfileDisplayNameKeepsTypingDraftUntilSaveNormalizesIt() throws {
+        let suiteName = "Suisui.AppSettingsProfileDisplayNameDraft.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        viewModel.setProfileDisplayName("Ada ")
+        XCTAssertEqual(viewModel.settings.profileDisplayName, "Ada ")
+        viewModel.setProfileDisplayName("Ada  ")
+        XCTAssertEqual(viewModel.settings.profileDisplayName, "Ada  ")
+
+        viewModel.saveSettings()
+        XCTAssertEqual(viewModel.settings.profileDisplayName, "Ada")
+        XCTAssertEqual(try store.load().profileDisplayName, "Ada")
+    }
+
+    @MainActor
+    func testWeatherLocationKeepsManualDraftUntilSettingsSave() throws {
+        let suiteName = "Suisui.AppSettingsWeatherDraft.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        viewModel.setWeatherLocationPreference(
+            .manual(cityLabel: "", latitude: 35.681236, longitude: 139.767125)
+        )
+
+        guard case let .manual(label, latitude, longitude) = viewModel.settings.weatherLocationPreference else {
+            return XCTFail("A manual location draft must remain editable while its label is empty")
+        }
+        XCTAssertEqual(label, "")
+        XCTAssertEqual(latitude, 35.681236)
+        XCTAssertEqual(longitude, 139.767125)
+        XCTAssertEqual(try store.load().weatherLocationPreference, .unset)
+
+        viewModel.setWeatherLocationPreference(
+            .manual(cityLabel: "Tokyo", latitude: latitude, longitude: longitude)
+        )
+        viewModel.saveSettings()
+
+        XCTAssertEqual(
+            try store.load().weatherLocationPreference,
+            .manual(cityLabel: "Tokyo", latitude: latitude, longitude: longitude)
+        )
+    }
+
+    @MainActor
+    func testSettingsSaveFailureRollsBackNormalizedWeatherAndProfileDrafts() throws {
+        let saved = AppSettings(
+            profileDisplayName: "Ada",
+            weatherLocationPreference: .unset
+        )
+        let store = FailingSaveAppSettingsStore(initial: saved)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+        let draftLocation = WeatherLocationPreference.manual(
+            cityLabel: "  Tokyo  ",
+            latitude: 35.681236,
+            longitude: 139.767125
+        )
+
+        viewModel.setProfileDisplayName("  Grace Hopper  ")
+        viewModel.setWeatherLocationPreference(draftLocation)
+        viewModel.saveSettings()
+
+        XCTAssertEqual(viewModel.settings.profileDisplayName, "  Grace Hopper  ")
+        XCTAssertEqual(viewModel.settings.weatherLocationPreference, draftLocation)
+        XCTAssertEqual(try store.load(), saved)
+        XCTAssertEqual(viewModel.errorMessage, "App settings could not be saved.")
+    }
+
+    @MainActor
+    func testOnboardingTodayPreferencesSaveOnlyWhenApplied() throws {
+        let suiteName = "Suisui.OnboardingTodayPreferences.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+        let preferences = OnboardingTodayPreferences(
+            displayName: "  Grace Hopper  ",
+            dailyWorkCapacityMinutes: 75
+        )
+
+        XCTAssertNil(try store.load().profileDisplayName)
+        XCTAssertTrue(viewModel.saveOnboardingTodayPreferences(preferences))
+        XCTAssertEqual(viewModel.settings.profileDisplayName, "Grace Hopper")
+        XCTAssertEqual(viewModel.settings.dailyWorkCapacityMinutes, 60)
+        XCTAssertEqual(try store.load().profileDisplayName, "Grace Hopper")
+        XCTAssertEqual(try store.load().dailyWorkCapacityMinutes, 60)
+    }
+
+    @MainActor
+    func testOnboardingTodayPreferencesRollBackRuntimeAndPersistedSettingsWhenSaveFails() throws {
+        let saved = AppSettings(profileDisplayName: "Ada", dailyWorkCapacityMinutes: 390)
+        let store = FailingSaveAppSettingsStore(initial: saved)
+        let viewModel = AppSettingsViewModel(settingsStore: store, secretStore: InMemorySecretStore())
+
+        XCTAssertFalse(viewModel.saveOnboardingTodayPreferences(
+            OnboardingTodayPreferences(displayName: "Grace", dailyWorkCapacityMinutes: 480)
+        ))
+
+        XCTAssertEqual(viewModel.settings.profileDisplayName, "Ada")
+        XCTAssertEqual(viewModel.settings.dailyWorkCapacityMinutes, 390)
+        XCTAssertEqual(try store.load().profileDisplayName, "Ada")
+        XCTAssertEqual(try store.load().dailyWorkCapacityMinutes, 390)
     }
 
     func testUserDefaultsAppSettingsStoreCanUseRuntimeSuiteOverride() throws {
@@ -2073,8 +2318,14 @@ private final class RecordingTTSPreviewClient: TextToSpeechPreviewing, @unchecke
 }
 
 private struct FailingSaveAppSettingsStore: AppSettingsStore {
+    let initial: AppSettings
+
+    init(initial: AppSettings = .default) {
+        self.initial = initial
+    }
+
     func load() throws -> AppSettings {
-        .default
+        initial
     }
 
     func save(_ settings: AppSettings) throws {

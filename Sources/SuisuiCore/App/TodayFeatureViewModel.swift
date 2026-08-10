@@ -5,6 +5,7 @@ private struct TodayFeatureReadState: Equatable {
     let snapshot: TodayWorkflowSnapshot
     let catchUpCount: Int
     let missedTaskReview: MissedTaskReviewSummary
+    let schedule: ProjectBoardScheduleReadModel
     let projectTitlesByTaskID: [Int64: String]
 }
 
@@ -12,12 +13,14 @@ public struct TodayFeatureState: Equatable {
     public var snapshot: TodayWorkflowSnapshot
     public var catchUpCount: Int
     public var missedTaskReview: MissedTaskReviewSummary
+    public var schedule: ProjectBoardScheduleReadModel
     public var projectTitlesByTaskID: [Int64: String]
     public var showsCompletedWorkflowTasks: Bool
     public var selectedTaskID: Int64?
     public var commandFeedback: String?
     public var scheduleDraft: TodayScheduleDraft?
     public var dailyPlanningReview: DailyPlanningReview?
+    public var integrationStates: TodayIntegrationStates
 }
 
 @MainActor
@@ -27,31 +30,46 @@ public final class TodayFeatureViewModel: ObservableObject {
     public var snapshot: TodayWorkflowSnapshot { state.snapshot }
     public var catchUpCount: Int { state.catchUpCount }
     public var missedTaskReview: MissedTaskReviewSummary { state.missedTaskReview }
+    public var schedule: ProjectBoardScheduleReadModel { state.schedule }
     public var projectTitlesByTaskID: [Int64: String] { state.projectTitlesByTaskID }
     public var showsCompletedWorkflowTasks: Bool { state.showsCompletedWorkflowTasks }
     public var selectedTaskID: Int64? { state.selectedTaskID }
     public var commandFeedback: String? { state.commandFeedback }
     public var scheduleDraft: TodayScheduleDraft? { state.scheduleDraft }
     public var dailyPlanningReview: DailyPlanningReview? { state.dailyPlanningReview }
+    public var integrationStates: TodayIntegrationStates { state.integrationStates }
+    public let focusSession: TodayFocusSessionStore
 
     private let board: ProjectBoardViewModel
+    private let runtimeReferenceDate: () -> Date
+    private let runtimeCalendar: () -> Calendar
     private var observations: Set<AnyCancellable> = []
     private var featureActionDepth = 0
     private var hasScheduledSynchronization = false
 
-    public init(board: ProjectBoardViewModel) {
+    public init(
+        board: ProjectBoardViewModel,
+        runtimeReferenceDate: @escaping () -> Date = { VisualEvidenceRuntimeContext.referenceDate() },
+        runtimeCalendar: @escaping () -> Calendar = { VisualEvidenceRuntimeContext.runtimeCalendar() },
+        focusSessionRegistry: TodayFocusSessionStoreRegistry = .shared
+    ) {
         self.board = board
+        self.runtimeReferenceDate = runtimeReferenceDate
+        self.runtimeCalendar = runtimeCalendar
+        self.focusSession = focusSessionRegistry.focusSession
         self.state = Self.makeState(from: board)
 
         // Today subscribes only to the state it renders. Automation, receipt,
-        // MCP, and integration publications remain on the compatibility board
-        // facade and cannot invalidate the Today root.
+        // and MCP publications remain on the compatibility board facade, while
+        // Calendar readiness is intentionally observed so Settings changes
+        // refresh the read-only integration card without render-path I/O.
         board.$derivedReadModels
             .map { [weak board] readModels in
                 TodayFeatureReadState(
                     snapshot: readModels.todayWorkflowSnapshot,
                     catchUpCount: readModels.sidebarMetrics.catchUpCount,
                     missedTaskReview: readModels.missedTaskReview,
+                    schedule: readModels.schedule,
                     projectTitlesByTaskID: Self.projectTitlesByTaskID(
                         todayTasks: readModels.todayWorkflowSnapshot.plan.tasks,
                         // ProjectBoard publishes the snapshot before rebuilding
@@ -102,6 +120,25 @@ public final class TodayFeatureViewModel: ObservableObject {
                 self?.scheduleSynchronization()
             }
             .store(in: &observations)
+        board.$googleCalendarSyncStatus
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.scheduleSynchronization()
+            }
+            .store(in: &observations)
+    }
+
+    /// Compatibility entry point for clients that only supplied the board.
+    /// Runtime date/calendar providers remain injectable through the primary
+    /// initializer used by the Today dashboard.
+    @_disfavoredOverload
+    public convenience init(board: ProjectBoardViewModel) {
+        self.init(
+            board: board,
+            runtimeReferenceDate: { VisualEvidenceRuntimeContext.referenceDate() },
+            runtimeCalendar: { VisualEvidenceRuntimeContext.runtimeCalendar() }
+        )
     }
 
     public func projectTitle(for task: ProjectBoardTask) -> String {
@@ -110,6 +147,25 @@ public final class TodayFeatureViewModel: ObservableObject {
 
     public func startFocus(taskID: Int64) {
         performFeatureAction { board.startFocus(taskID: taskID) }
+    }
+
+    /// Starts the shared local Focus session before updating Board context so
+    /// an unconfirmed replacement never changes the currently focused task.
+    @discardableResult
+    public func startFocusSession(
+        taskID: Int64,
+        durationSeconds: Int = 25 * 60,
+        replaceExisting: Bool = false
+    ) -> Result<FocusSessionRecord, FocusSessionError> {
+        let result = focusSession.start(
+            taskID: taskID,
+            durationSeconds: durationSeconds,
+            replaceExisting: replaceExisting
+        )
+        if case .success = result {
+            performFeatureAction { board.startFocus(taskID: taskID) }
+        }
+        return result
     }
 
     public func toggleTaskCompletion(id: Int64) {
@@ -125,6 +181,10 @@ public final class TodayFeatureViewModel: ObservableObject {
         performFeatureAction { board.submitTodayCommand(title) }
     }
 
+    public func suggestBreak() {
+        performFeatureAction { board.suggestTodayBreak() }
+    }
+
     public func setShowsCompletedWorkflowTasks(_ isShown: Bool) {
         performFeatureAction { board.setShowsCompletedWorkflowTasks(isShown) }
     }
@@ -132,6 +192,17 @@ public final class TodayFeatureViewModel: ObservableObject {
     @discardableResult
     public func prepareTodayScheduleDraft(prioritizing taskID: Int64? = nil) -> TodayScheduleDraft? {
         performFeatureAction { board.prepareTodayScheduleDraft(prioritizing: taskID) }
+    }
+
+    @discardableResult
+    public func addUnscheduledTaskToScheduleDraft(taskID: Int64) -> Bool {
+        let referenceDate = runtimeReferenceDate()
+        let calendar = runtimeCalendar()
+        // Capture rendering and draft placement use the same runtime context so
+        // visual-evidence runs cannot add a task to a different local day.
+        return performFeatureAction {
+            board.addUnscheduledTaskToScheduleDraft(taskID: taskID, on: referenceDate, calendar: calendar)
+        }
     }
 
     public func enqueueTodayReminderDraft(for taskID: Int64) {
@@ -191,6 +262,7 @@ public final class TodayFeatureViewModel: ObservableObject {
             snapshot: snapshot,
             catchUpCount: board.derivedReadModels.sidebarMetrics.catchUpCount,
             missedTaskReview: board.derivedReadModels.missedTaskReview,
+            schedule: board.derivedReadModels.schedule,
             projectTitlesByTaskID: projectTitlesByTaskID(
                 todayTasks: snapshot.plan.tasks,
                 projects: board.snapshot.projects
@@ -199,7 +271,11 @@ public final class TodayFeatureViewModel: ObservableObject {
             selectedTaskID: board.selectedTaskID,
             commandFeedback: board.todayCommandFeedback,
             scheduleDraft: board.todayScheduleDraft,
-            dailyPlanningReview: board.dailyPlanningReview
+            dailyPlanningReview: board.dailyPlanningReview,
+            integrationStates: TodayIntegrationStates(
+                calendar: TodayIntegrationState.calendar(from: board.googleCalendarSyncStatus),
+                slack: .notConnected
+            )
         )
     }
 

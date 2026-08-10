@@ -5,6 +5,7 @@ struct OnboardingWelcomeView: View {
     @ObservedObject var settingsViewModel: AppSettingsViewModel
     private let permissionSnapshotProvider: @Sendable () -> PermissionSnapshot
     private let sampleProjectAction: OnboardingSampleProjectAction?
+    private let requestCurrentLocationAuthorization: @MainActor () -> Void
     let onTrySuisui: (OnboardingSampleProjectEnsureResult) -> Void
     let onFinish: () -> Void
 
@@ -13,6 +14,10 @@ struct OnboardingWelcomeView: View {
     @State private var isRefreshingReadiness: Bool = false
     @State private var isCreatingSampleProject = false
     @State private var sampleProjectErrorMessage: String?
+    @State private var todayPreferences: OnboardingTodayPreferences
+    @State private var todayPreferencesSaveError: String?
+    @State private var manualLatitudeText: String
+    @State private var manualLongitudeText: String
     @Environment(\.openWindow) private var openWindow
 
     init(
@@ -20,15 +25,25 @@ struct OnboardingWelcomeView: View {
         permissionSnapshot: PermissionSnapshot,
         permissionSnapshotProvider: @escaping @Sendable () -> PermissionSnapshot,
         sampleProjectAction: OnboardingSampleProjectAction? = OnboardingSampleProjectFactory.makeAction(),
+        requestCurrentLocationAuthorization: @escaping @MainActor () -> Void = {},
         onTrySuisui: @escaping (OnboardingSampleProjectEnsureResult) -> Void,
         onFinish: @escaping () -> Void
     ) {
         self.settingsViewModel = settingsViewModel
         self.permissionSnapshotProvider = permissionSnapshotProvider
         self.sampleProjectAction = sampleProjectAction
+        self.requestCurrentLocationAuthorization = requestCurrentLocationAuthorization
         self.onTrySuisui = onTrySuisui
         self.onFinish = onFinish
         _permissionSnapshot = State(initialValue: permissionSnapshot)
+        _todayPreferences = State(initialValue: OnboardingTodayPreferences(settings: settingsViewModel.settings))
+        if case let .manual(_, latitude, longitude) = settingsViewModel.settings.weatherLocationPreference {
+            _manualLatitudeText = State(initialValue: String(latitude))
+            _manualLongitudeText = State(initialValue: String(longitude))
+        } else {
+            _manualLatitudeText = State(initialValue: "35.681236")
+            _manualLongitudeText = State(initialValue: "139.767125")
+        }
     }
 
     var body: some View {
@@ -89,7 +104,67 @@ struct OnboardingWelcomeView: View {
                     .foregroundStyle(.red)
                     .accessibilityIdentifier("onboarding-create-sample-error")
             }
+
+            if todayPreferences.shouldAsk {
+                todayPreferencesForm
+            }
         }
+    }
+
+    private var todayPreferencesForm: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
+            Text("Make Today yours")
+                .font(.headline)
+            TextField("What should Suisui call you?", text: $todayPreferences.displayName)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("onboarding-profile-display-name")
+            Picker("Daily capacity", selection: $todayPreferences.dailyWorkCapacityMinutes) {
+                ForEach(
+                    Array(stride(
+                        from: AppSettings.minimumDailyWorkCapacityMinutes,
+                        through: AppSettings.maximumDailyWorkCapacityMinutes,
+                        by: AppSettings.dailyWorkCapacityStepMinutes
+                    )),
+                    id: \.self
+                ) { minutes in
+                    Text(localizedDurationMinutes(minutes)).tag(minutes)
+                }
+            }
+            .accessibilityIdentifier("onboarding-daily-work-capacity")
+            Picker("Weather location", selection: weatherLocationModeBinding) {
+                Text("Not now").tag("unset")
+                Text("Use current location").tag("current")
+                Text("Choose a city").tag("manual")
+            }
+            .accessibilityIdentifier("onboarding-weather-location")
+            if weatherLocationMode == "manual" {
+                TextField("City name", text: manualCityLabelBinding)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("onboarding-weather-city")
+                HStack(spacing: SuisuiSpacing.sm) {
+                    TextField("Latitude", text: manualLatitudeBinding)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Longitude", text: manualLongitudeBinding)
+                        .textFieldStyle(.roundedBorder)
+                }
+                .accessibilityIdentifier("onboarding-weather-coordinates")
+            }
+            Text("Weather uses your choice only while showing Today and does not keep a location history.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("You can change these later in Settings.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let todayPreferencesSaveError {
+                Text(todayPreferencesSaveError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("onboarding-today-preferences-error")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .soloCard()
+        .accessibilityIdentifier("onboarding-today-preferences")
     }
 
     private var flowArrow: some View {
@@ -331,15 +406,17 @@ struct OnboardingWelcomeView: View {
 
             if flow.step == .welcome {
                 Button("Set up AI first") {
-                    flow.advance()
-                    Task { @MainActor in
-                        await refreshReadinessAsync()
+                    saveTodayPreferencesThen {
+                        flow.advance()
+                        Task { @MainActor in
+                            await refreshReadinessAsync()
+                        }
                     }
                 }
                 .accessibilityIdentifier("onboarding-set-up-ai")
 
                 Button("Try Suisui now") {
-                    createSampleProject()
+                    saveTodayPreferencesThen(createSampleProject)
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
@@ -375,6 +452,80 @@ struct OnboardingWelcomeView: View {
         settingsViewModel.providerReadinessRows.first(where: { $0.isSelected })
     }
 
+    private var weatherLocationMode: String {
+        switch todayPreferences.weatherLocationPreference {
+        case .unset: "unset"
+        case .currentLocation: "current"
+        case .manual: "manual"
+        }
+    }
+
+    private var weatherLocationModeBinding: Binding<String> {
+        Binding(
+            get: { weatherLocationMode },
+            set: { mode in
+                switch mode {
+                case "current":
+                    todayPreferences.weatherLocationPreference = .currentLocation
+                    requestCurrentLocationAuthorization()
+                case "manual":
+                    let current = manualCoordinateValues
+                    todayPreferences.weatherLocationPreference = .manual(
+                        cityLabel: current.label,
+                        latitude: current.latitude,
+                        longitude: current.longitude
+                    ).normalized
+                default:
+                    todayPreferences.weatherLocationPreference = .unset
+                }
+            }
+        )
+    }
+
+    private var manualCoordinateValues: (label: String, latitude: Double, longitude: Double) {
+        if case let .manual(label, latitude, longitude) = todayPreferences.weatherLocationPreference {
+            return (label, latitude, longitude)
+        }
+        return ("Tokyo", 35.681236, 139.767125)
+    }
+
+    private var manualCityLabelBinding: Binding<String> {
+        Binding(
+            get: { manualCoordinateValues.label },
+            set: { updateManualPreference(label: $0, latitude: manualCoordinateValues.latitude, longitude: manualCoordinateValues.longitude) }
+        )
+    }
+
+    private var manualLatitudeBinding: Binding<String> {
+        Binding(
+            get: { manualLatitudeText },
+            set: {
+                manualLatitudeText = $0
+                guard let latitude = Double($0) else { return }
+                updateManualPreference(label: manualCoordinateValues.label, latitude: latitude, longitude: manualCoordinateValues.longitude)
+            }
+        )
+    }
+
+    private var manualLongitudeBinding: Binding<String> {
+        Binding(
+            get: { manualLongitudeText },
+            set: {
+                manualLongitudeText = $0
+                guard let longitude = Double($0) else { return }
+                updateManualPreference(label: manualCoordinateValues.label, latitude: manualCoordinateValues.latitude, longitude: longitude)
+            }
+        )
+    }
+
+    private func updateManualPreference(label: String, latitude: Double, longitude: Double) {
+        todayPreferences.weatherLocationPreference = .manual(
+            cityLabel: label,
+            latitude: latitude,
+            longitude: longitude
+        )
+    }
+
     private func createSampleProject() {
         guard let sampleProjectAction, !isCreatingSampleProject else {
             return
@@ -388,6 +539,19 @@ struct OnboardingWelcomeView: View {
         } catch {
             sampleProjectErrorMessage = localizedDisplay("Could not create the sample project.")
         }
+    }
+
+    private func saveTodayPreferencesThen(_ action: () -> Void) {
+        guard todayPreferences.shouldAsk else {
+            action()
+            return
+        }
+        guard settingsViewModel.saveOnboardingTodayPreferences(todayPreferences) else {
+            todayPreferencesSaveError = localizedDisplay("Could not save your Today preferences.")
+            return
+        }
+        todayPreferencesSaveError = nil
+        action()
     }
 
     private func completeOnboarding() {

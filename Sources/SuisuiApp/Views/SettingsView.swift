@@ -1086,6 +1086,7 @@ struct SettingsSyncProjectionBuilder {
             try googleCalendarOAuthDisconnecter.disconnect()
             googleCalendarSetupMessage = "Google Calendar OAuth disconnected. Tokens were removed from Keychain."
             googleCalendarSyncStatus = googleCalendarStatusProvider()
+            NotificationCenter.default.post(name: .suisuiGoogleCalendarReadinessDidChange, object: nil)
         } catch {
             googleCalendarSetupMessage = UserFacingErrorMessageSanitizer.message(
                 from: error,
@@ -1128,6 +1129,7 @@ struct SettingsSyncProjectionBuilder {
             case .success:
                 googleCalendarSetupMessage = "Google Calendar OAuth authorization completed. Check Status to refresh readiness."
                 googleCalendarSyncStatus = googleCalendarStatusProvider()
+                NotificationCenter.default.post(name: .suisuiGoogleCalendarReadinessDidChange, object: nil)
             case .failure(let error):
                 googleCalendarSetupMessage = googleCalendarOAuthFailureMessage(from: error)
             }

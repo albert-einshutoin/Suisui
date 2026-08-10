@@ -7,6 +7,19 @@ public extension Notification.Name {
     static let suisuiCodexExecutionApprovalDidChange = Notification.Name(
         "dev.suisui.codexExecutionApprovalDidChange"
     )
+
+    /// Signals that Calendar settings or OAuth credentials changed. Project
+    /// Board refreshes its readiness off the main thread before republishing
+    /// the payload-free Today integration snapshot.
+    static let suisuiGoogleCalendarReadinessDidChange = Notification.Name(
+        "dev.suisui.googleCalendarReadinessDidChange"
+    )
+
+    /// Signals that the persisted Today weather source changed. Weather
+    /// acquisition remains outside Settings and reloads through its runtime.
+    static let suisuiWeatherLocationDidChange = Notification.Name(
+        "dev.suisui.weatherLocationDidChange"
+    )
 }
 
 public struct AppSettings: Codable, Equatable, Sendable {
@@ -19,6 +32,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var notificationPreferences: NotificationPreferences
     public var isDeveloperModeEnabled: Bool
     public var defaultWorkspacePath: String?
+    public var profileDisplayName: String?
+    public var dailyWorkCapacityMinutes: Int
+    public var weatherLocationPreference: WeatherLocationPreference
     public var timeZoneIdentifier: String
     public var googleCalendarID: String
     public var geminiModelID: String?
@@ -56,6 +72,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case notificationPreferences
         case isDeveloperModeEnabled
         case defaultWorkspacePath
+        case profileDisplayName
+        case dailyWorkCapacityMinutes
+        case weatherLocationPreference
         case timeZoneIdentifier
         case googleCalendarID
         case geminiModelID
@@ -91,6 +110,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         notificationPreferences: NotificationPreferences = .default,
         isDeveloperModeEnabled: Bool = false,
         defaultWorkspacePath: String? = nil,
+        profileDisplayName: String? = nil,
+        dailyWorkCapacityMinutes: Int = 480,
+        weatherLocationPreference: WeatherLocationPreference = .unset,
         timeZoneIdentifier: String = TimeZone.current.identifier,
         googleCalendarID: String = "primary",
         geminiModelID: String? = nil,
@@ -125,6 +147,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.notificationPreferences = notificationPreferences
         self.isDeveloperModeEnabled = isDeveloperModeEnabled
         self.defaultWorkspacePath = defaultWorkspacePath
+        self.profileDisplayName = profileDisplayName
+        self.dailyWorkCapacityMinutes = dailyWorkCapacityMinutes
+        self.weatherLocationPreference = weatherLocationPreference.normalized
         self.timeZoneIdentifier = timeZoneIdentifier
         self.googleCalendarID = googleCalendarID
         self.geminiModelID = geminiModelID
@@ -147,6 +172,81 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.isLowLatencyVoiceAgentCloudFallbackCostVisible = isLowLatencyVoiceAgentCloudFallbackCostVisible
         self.taskAutoExecution = taskAutoExecution
         self.managedAIBilling = managedAIBilling
+    }
+
+    /// Source-compatible initializer retained for clients built against the
+    /// pre-Today settings surface. New Today preferences intentionally use
+    /// their canonical defaults when callers do not provide them.
+    @_disfavoredOverload
+    public init(
+        aiProvider: AIProvider = .openaiResponses,
+        sttProvider: STTProvider = .openAITranscribe,
+        ttsProvider: TTSProvider = .localKokoro,
+        sttRoutingPreference: VoiceRoutingPreference = .appleFirst,
+        ttsRoutingPreference: VoiceRoutingPreference = .appleFirst,
+        notificationsEnabled: Bool = false,
+        notificationPreferences: NotificationPreferences = .default,
+        isDeveloperModeEnabled: Bool = false,
+        defaultWorkspacePath: String? = nil,
+        timeZoneIdentifier: String = TimeZone.current.identifier,
+        googleCalendarID: String = "primary",
+        geminiModelID: String? = nil,
+        groqBaseURLString: String? = nil,
+        whisperCppExecutablePath: String? = nil,
+        kokoroExecutablePath: String? = nil,
+        ttsLanguageCode: String = "en",
+        ttsVoiceID: String = "af_heart",
+        openCodeExecutablePath: String? = nil,
+        openCodeWorkspacePath: String? = nil,
+        openCodeModelID: String? = nil,
+        isOpenCodeLocalExecutionApproved: Bool = false,
+        codexExecutablePath: String? = nil,
+        codexModelID: String? = nil,
+        isCodexLocalExecutionApproved: Bool = false,
+        approvedCodexExecutable: ApprovedCodexExecutable? = nil,
+        isLowLatencyVoiceAgentModeEnabled: Bool = false,
+        isLowLatencyVoiceAgentAlwaysOnRecordingEnabled: Bool = false,
+        isLowLatencyVoiceAgentCloudFallbackEnabled: Bool = false,
+        isLowLatencyVoiceAgentCloudFallbackCostVisible: Bool = false,
+        taskAutoExecution: TaskAutoExecutionSettings = .default,
+        managedAIBilling: ManagedAIBillingSettings = .default
+    ) {
+        self.init(
+            aiProvider: aiProvider,
+            sttProvider: sttProvider,
+            ttsProvider: ttsProvider,
+            sttRoutingPreference: sttRoutingPreference,
+            ttsRoutingPreference: ttsRoutingPreference,
+            notificationsEnabled: notificationsEnabled,
+            notificationPreferences: notificationPreferences,
+            isDeveloperModeEnabled: isDeveloperModeEnabled,
+            defaultWorkspacePath: defaultWorkspacePath,
+            profileDisplayName: nil,
+            dailyWorkCapacityMinutes: 480,
+            weatherLocationPreference: .unset,
+            timeZoneIdentifier: timeZoneIdentifier,
+            googleCalendarID: googleCalendarID,
+            geminiModelID: geminiModelID,
+            groqBaseURLString: groqBaseURLString,
+            whisperCppExecutablePath: whisperCppExecutablePath,
+            kokoroExecutablePath: kokoroExecutablePath,
+            ttsLanguageCode: ttsLanguageCode,
+            ttsVoiceID: ttsVoiceID,
+            openCodeExecutablePath: openCodeExecutablePath,
+            openCodeWorkspacePath: openCodeWorkspacePath,
+            openCodeModelID: openCodeModelID,
+            isOpenCodeLocalExecutionApproved: isOpenCodeLocalExecutionApproved,
+            codexExecutablePath: codexExecutablePath,
+            codexModelID: codexModelID,
+            isCodexLocalExecutionApproved: isCodexLocalExecutionApproved,
+            approvedCodexExecutable: approvedCodexExecutable,
+            isLowLatencyVoiceAgentModeEnabled: isLowLatencyVoiceAgentModeEnabled,
+            isLowLatencyVoiceAgentAlwaysOnRecordingEnabled: isLowLatencyVoiceAgentAlwaysOnRecordingEnabled,
+            isLowLatencyVoiceAgentCloudFallbackEnabled: isLowLatencyVoiceAgentCloudFallbackEnabled,
+            isLowLatencyVoiceAgentCloudFallbackCostVisible: isLowLatencyVoiceAgentCloudFallbackCostVisible,
+            taskAutoExecution: taskAutoExecution,
+            managedAIBilling: managedAIBilling
+        )
     }
 
     public init(from decoder: Decoder) throws {
@@ -175,6 +275,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         ) ?? .default
         self.isDeveloperModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .isDeveloperModeEnabled) ?? false
         self.defaultWorkspacePath = try container.decodeIfPresent(String.self, forKey: .defaultWorkspacePath)
+        self.profileDisplayName = try container.decodeIfPresent(String.self, forKey: .profileDisplayName)
+        self.dailyWorkCapacityMinutes = try container.decodeIfPresent(Int.self, forKey: .dailyWorkCapacityMinutes) ?? 480
+        self.weatherLocationPreference = (try? container.decodeIfPresent(WeatherLocationPreference.self, forKey: .weatherLocationPreference)) ?? .unset
         self.timeZoneIdentifier = try container.decode(String.self, forKey: .timeZoneIdentifier)
         self.googleCalendarID = try container.decodeIfPresent(String.self, forKey: .googleCalendarID) ?? "primary"
         self.geminiModelID = try container.decodeIfPresent(String.self, forKey: .geminiModelID)
@@ -218,6 +321,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try container.encode(notificationPreferences, forKey: .notificationPreferences)
         try container.encode(isDeveloperModeEnabled, forKey: .isDeveloperModeEnabled)
         try container.encodeIfPresent(defaultWorkspacePath, forKey: .defaultWorkspacePath)
+        try container.encodeIfPresent(profileDisplayName, forKey: .profileDisplayName)
+        try container.encode(dailyWorkCapacityMinutes, forKey: .dailyWorkCapacityMinutes)
+        try container.encode(weatherLocationPreference.normalized, forKey: .weatherLocationPreference)
         try container.encode(timeZoneIdentifier, forKey: .timeZoneIdentifier)
         try container.encode(googleCalendarID, forKey: .googleCalendarID)
         try container.encodeIfPresent(geminiModelID, forKey: .geminiModelID)
@@ -244,6 +350,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
     }
 
     public static let `default` = AppSettings()
+    public static let minimumDailyWorkCapacityMinutes = 60
+    public static let maximumDailyWorkCapacityMinutes = 16 * 60
+    public static let dailyWorkCapacityStepMinutes = 30
+
+    public static func normalizedDailyWorkCapacityMinutes(_ minutes: Int) -> Int {
+        let bounded = min(max(minutes, minimumDailyWorkCapacityMinutes), maximumDailyWorkCapacityMinutes)
+        return (bounded / dailyWorkCapacityStepMinutes) * dailyWorkCapacityStepMinutes
+    }
 
     public var normalizedForRuntime: AppSettings {
         var copy = self
@@ -259,6 +373,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
         if let groqBaseURLString = copy.groqBaseURLString?.trimmingCharacters(in: .whitespacesAndNewlines) {
             copy.groqBaseURLString = groqBaseURLString.isEmpty ? nil : groqBaseURLString
         }
+        if let profileDisplayName = copy.profileDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            copy.profileDisplayName = profileDisplayName.isEmpty ? nil : String(profileDisplayName.prefix(80))
+        }
+        copy.dailyWorkCapacityMinutes = Self.normalizedDailyWorkCapacityMinutes(copy.dailyWorkCapacityMinutes)
+        copy.weatherLocationPreference = copy.weatherLocationPreference.normalized
         // Google Calendar treats "primary" as the backward-compatible default,
         // while a user-entered blank must stay blank so runtime readiness can flag
         // the external write target instead of silently writing to the wrong calendar.
@@ -327,6 +446,17 @@ public struct AppSettings: Codable, Equatable, Sendable {
                 ValidationIssue(
                     field: "timeZoneIdentifier",
                     message: "Unknown time zone identifier.",
+                    severity: .error
+                )
+            )
+        }
+
+        if !(Self.minimumDailyWorkCapacityMinutes...Self.maximumDailyWorkCapacityMinutes).contains(dailyWorkCapacityMinutes)
+            || dailyWorkCapacityMinutes % Self.dailyWorkCapacityStepMinutes != 0 {
+            issues.append(
+                ValidationIssue(
+                    field: "dailyWorkCapacityMinutes",
+                    message: "Daily work capacity must be between 1 and 16 hours in 30-minute steps.",
                     severity: .error
                 )
             )
@@ -1324,6 +1454,7 @@ public final class AppSettingsViewModel: ObservableObject {
     private let secretReadinessReader: any ProviderSecretReadinessReading
     private let appleSpeechReadinessProvider: @Sendable () -> AppleSpeechReadinessSnapshot
     private let systemSpeechReadinessProvider: @Sendable () -> SystemSpeechReadinessSnapshot
+    private var savedWeatherLocationPreference: WeatherLocationPreference
     private var rejectedAIProvider: AIProvider?
     private static let settingsSaveFailureMessage = "App settings could not be saved."
     private static let apiKeySaveFailureMessage = "API key could not be saved to Keychain."
@@ -1416,11 +1547,13 @@ public final class AppSettingsViewModel: ObservableObject {
             loadedSettings = .default
             initialErrorMessage = "App settings could not be loaded. Defaults are shown until settings are saved again."
         }
-        self.settings = Self.normalizedSettings(
+        let normalizedSettings = Self.normalizedSettings(
             loadedSettings,
             voiceModelStatuses: initialVoiceModelStatuses,
             voiceModelCatalog: voiceModelCatalog
         )
+        self.settings = normalizedSettings
+        self.savedWeatherLocationPreference = normalizedSettings.weatherLocationPreference
         self.openAIAPIKeyInput = ""
         self.openAIAPIKeyStatusLabel = "Not configured"
         self.openAIAPIKeyReadinessState = .missing
@@ -2158,6 +2291,40 @@ public final class AppSettingsViewModel: ObservableObject {
         clearMessages()
     }
 
+    public func setProfileDisplayName(_ name: String) {
+        // Keep the editor draft verbatim so typing a space at the end does not
+        // move the cursor or discard input before the user chooses Save.
+        settings.profileDisplayName = name
+        clearMessages()
+    }
+
+    public func setDailyWorkCapacityMinutes(_ minutes: Int) {
+        settings.dailyWorkCapacityMinutes = minutes
+        clearMessages()
+    }
+
+    public func setWeatherLocationPreference(_ preference: WeatherLocationPreference) {
+        // Keep the manual editor as a draft. Normalizing an empty city label
+        // here changes the picker to `.unset` while the user is still typing.
+        // The persisted boundary below remains the single normalization point.
+        settings.weatherLocationPreference = preference
+        clearMessages()
+    }
+
+    /// Applies the onboarding draft only after the person continues, so a
+    /// cancelled sheet cannot overwrite an existing profile or capacity.
+    @discardableResult
+    public func saveOnboardingTodayPreferences(_ preferences: OnboardingTodayPreferences) -> Bool {
+        let previousSettings = settings
+        settings = preferences.applying(to: settings)
+        saveSettings()
+        guard errorMessage == nil else {
+            settings = previousSettings
+            return false
+        }
+        return true
+    }
+
     public func setGoogleCalendarID(_ calendarID: String) {
         settings.googleCalendarID = calendarID.trimmingCharacters(in: .whitespacesAndNewlines)
         clearMessages()
@@ -2483,18 +2650,33 @@ public final class AppSettingsViewModel: ObservableObject {
             return
         }
 
+        let originalProfileDisplayName = settings.profileDisplayName
+        let originalWeatherLocationPreference = settings.weatherLocationPreference
+        let normalizedSettings = settings.normalizedForRuntime
+        settings.profileDisplayName = normalizedSettings.profileDisplayName
+        settings.weatherLocationPreference = normalizedSettings.weatherLocationPreference
         let issues = settings.validate().filter { $0.severity == .error }
         guard issues.isEmpty else {
+            settings.profileDisplayName = originalProfileDisplayName
+            settings.weatherLocationPreference = originalWeatherLocationPreference
             errorMessage = issues.map(\.message).joined(separator: " ")
             successMessage = nil
             return
         }
 
         do {
-            try settingsStore.save(settings)
+            let weatherLocationChanged = normalizedSettings.weatherLocationPreference != savedWeatherLocationPreference
+            try settingsStore.save(normalizedSettings)
+            savedWeatherLocationPreference = normalizedSettings.weatherLocationPreference
             errorMessage = nil
             successMessage = "Settings saved."
+            NotificationCenter.default.post(name: .suisuiGoogleCalendarReadinessDidChange, object: nil)
+            if weatherLocationChanged {
+                NotificationCenter.default.post(name: .suisuiWeatherLocationDidChange, object: nil)
+            }
         } catch {
+            settings.profileDisplayName = originalProfileDisplayName
+            settings.weatherLocationPreference = originalWeatherLocationPreference
             errorMessage = Self.settingsSaveFailureMessage
             successMessage = nil
         }

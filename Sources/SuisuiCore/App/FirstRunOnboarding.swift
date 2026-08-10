@@ -46,6 +46,46 @@ public struct FirstRunOnboardingFlow: Equatable, Sendable {
     }
 }
 
+/// A local draft for the personal Today questions. It prevents a skipped or
+/// cancelled onboarding sheet from mutating existing settings before Save.
+public struct OnboardingTodayPreferences: Equatable, Sendable {
+    public var displayName: String
+    public var dailyWorkCapacityMinutes: Int
+    public var weatherLocationPreference: WeatherLocationPreference
+    /// Captured from saved settings, not the editable draft, so typing a name
+    /// cannot hide the form before the explicit continue action saves it.
+    public let shouldAsk: Bool
+
+    public init(
+        displayName: String = "",
+        dailyWorkCapacityMinutes: Int = AppSettings.default.dailyWorkCapacityMinutes,
+        weatherLocationPreference: WeatherLocationPreference = .unset
+    ) {
+        self.displayName = displayName
+        self.dailyWorkCapacityMinutes = dailyWorkCapacityMinutes
+        self.weatherLocationPreference = weatherLocationPreference.normalized
+        shouldAsk = true
+    }
+
+    public init(settings: AppSettings) {
+        displayName = settings.profileDisplayName ?? ""
+        dailyWorkCapacityMinutes = settings.dailyWorkCapacityMinutes
+        weatherLocationPreference = settings.weatherLocationPreference
+        // Existing profiles should not be interrupted by the new optional
+        // weather question; first-run users still see the location choice while
+        // the display-name draft is empty.
+        shouldAsk = displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    public func applying(to settings: AppSettings) -> AppSettings {
+        var updated = settings
+        updated.profileDisplayName = displayName
+        updated.dailyWorkCapacityMinutes = dailyWorkCapacityMinutes
+        updated.weatherLocationPreference = weatherLocationPreference
+        return updated.normalizedForRuntime
+    }
+}
+
 public enum OnboardingRequirement: String, Equatable, Sendable {
     case required
     case optional

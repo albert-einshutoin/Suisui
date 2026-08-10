@@ -69,10 +69,14 @@ assert_eq "$(read_key LSApplicationCategoryType)" "$DEBUG_CATEGORY" "Debug/Relea
 
 plutil -lint "$ENTITLEMENTS_FILE" >/dev/null
 ENTITLEMENT_KEY_COUNT="$("$PLIST_BUDDY" -c "Print" "$ENTITLEMENTS_FILE" | sed -n '/=/p' | wc -l | tr -d ' ')"
-assert_eq "$ENTITLEMENT_KEY_COUNT" "1" "entitlement key count"
+assert_eq "$ENTITLEMENT_KEY_COUNT" "2" "entitlement key count"
 assert_eq \
   "$("$PLIST_BUDDY" -c "Print :com.apple.security.device.audio-input" "$ENTITLEMENTS_FILE")" \
   "true" \
   "audio-input entitlement"
+assert_eq \
+  "$("$PLIST_BUDDY" -c "Print :com.apple.developer.weatherkit" "$ENTITLEMENTS_FILE")" \
+  "true" \
+  "weatherkit entitlement"
 
 echo "Bundle metadata verified for debug and release."

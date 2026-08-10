@@ -256,20 +256,20 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
         )
 
         if isOverdueForToday(on: referenceDate, calendar: calendar) {
-            return String(format: String(localized: "Overdue %@"), dateText)
+            return String(format: localizedTodayLabel("Overdue %@", locale: locale), dateText)
         }
         if let dayInterval,
            parsedDue.date >= dayInterval.start,
            parsedDue.date < dayInterval.end {
             guard parsedDue.includesTime else {
-                return String(localized: "Today")
+                return localizedTodayLabel("Today", locale: locale)
             }
             return String(
-                format: String(localized: "Today %@"),
+                format: localizedTodayLabel("Today %@", locale: locale),
                 SuisuiTimestampDisplay.time(parsedDue.date, calendar: calendar, locale: locale)
             )
         }
-        return String(format: String(localized: "Due %@"), dateText)
+        return String(format: localizedTodayLabel("Due %@", locale: locale), dateText)
     }
 
     public func isOverdueForToday(
@@ -283,6 +283,13 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
         }
         return parsedDue.date < dayStart && status != .done
     }
+}
+
+private func localizedTodayLabel(_ key: String, locale: Locale) -> String {
+    let language = locale.identifier.hasPrefix("ja") ? "ja" : "en"
+    let bundle = Bundle.module.url(forResource: language, withExtension: "lproj")
+        .flatMap(Bundle.init(url:)) ?? .module
+    return String(localized: String.LocalizationValue(key), bundle: bundle, locale: locale)
 }
 
 public struct ProjectBoardTaskDraft: Equatable, Sendable {

@@ -20,14 +20,34 @@ func localizedDisplay(_ key: String) -> String {
     if let preference = AppLanguagePreference.environmentOverride
         ?? AppLanguagePreference(rawValue: UserDefaults.standard.string(forKey: AppLanguagePreference.storageKey) ?? ""),
        preference != .system,
-       let localizationPath = Bundle.main.path(forResource: preference.localeIdentifier, ofType: "lproj"),
-       let localizationBundle = Bundle(path: localizationPath) {
+       let localizationBundle = localizedDisplayBundle(for: preference) {
         // Dynamic status strings do not inherit SwiftUI's environment locale.
         // Resolve them from the same explicit app preference so visible text,
         // help, and accessibility values cannot drift to the system language.
         return localizationBundle.localizedString(forKey: key, value: key, table: nil)
     }
     return String(localized: String.LocalizationValue(key))
+}
+
+func localizedDisplayBundle(
+    for preference: AppLanguagePreference,
+    appBundle: Bundle = .main
+) -> Bundle? {
+    if let packagedAppBundle = localizationBundle(for: preference, in: appBundle) {
+        return packagedAppBundle
+    }
+
+    // SwiftPM tests run with an XCTest host whose main bundle has no app
+    // localizations. Keep Bundle.module in this fallback branch: its generated
+    // accessor can fatal if evaluated in a packaged app without that sidecar.
+    return localizationBundle(for: preference, in: Bundle.module)
+}
+
+private func localizationBundle(for preference: AppLanguagePreference, in bundle: Bundle) -> Bundle? {
+    guard let localizationPath = bundle.path(forResource: preference.localeIdentifier, ofType: "lproj") else {
+        return nil
+    }
+    return Bundle(path: localizationPath)
 }
 
 func localizedDisplay(_ formatKey: String, _ arguments: CVarArg...) -> String {
@@ -45,6 +65,23 @@ func localizedDisplay(_ formatKey: String, _ arguments: CVarArg...) -> String {
 /// resolve without a format-expansion step.
 func localizedCount(_ count: Int, one singularKey: String, other pluralKey: String) -> String {
     localizedDisplay(count == 1 ? singularKey : pluralKey, count)
+}
+
+/// A capacity picker must expose every 30-minute step distinctly to both the
+/// visual label and VoiceOver; rounding to whole hours made adjacent values
+/// such as 60 and 90 minutes indistinguishable.
+func localizedDurationMinutes(_ minutes: Int) -> String {
+    let bounded = max(0, minutes)
+    let hours = bounded / 60
+    let remainingMinutes = bounded % 60
+    switch (hours, remainingMinutes) {
+    case (0, _):
+        return localizedDisplay("%d m", remainingMinutes)
+    case (_, 0):
+        return localizedDisplay("%d h", hours)
+    default:
+        return localizedDisplay("%d h %d m", hours, remainingMinutes)
+    }
 }
 
 func localizedTaskCount(_ count: Int) -> String {

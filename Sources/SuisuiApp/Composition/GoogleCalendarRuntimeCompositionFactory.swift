@@ -31,6 +31,23 @@ extension AppRuntimeFactory {
         }
         do {
             let connection = try migratedConnection()
+            return makeGoogleCalendarRuntimeSyncStatus(connection: connection)
+        } catch {
+            return GoogleCalendarRuntimeSyncStatus(
+                plan: .free,
+                state: .failed(message: UserFacingErrorMessageSanitizer.message(
+                    from: error,
+                    fallback: "Google Calendar sync status is unavailable."
+                ))
+            )
+        }
+    }
+
+    static func makeGoogleCalendarRuntimeSyncStatus(connection: SQLiteConnection) -> GoogleCalendarRuntimeSyncStatus {
+        guard isGoogleCalendarRuntimeEnabled() else {
+            return .runtimeNotConfigured
+        }
+        do {
             let secretStore = makeSecretStore()
             let runtimeSettings = loadRuntimeAppSettings()
             return try GoogleCalendarAppRuntimeFactory.syncStatus(

@@ -28,15 +28,39 @@ final class AppBundleMetadataTests: XCTestCase {
 
     // Keep the production entitlement surface explicit so future capabilities cannot
     // silently broaden the app sandbox boundary during release packaging.
-    func testEntitlementsGrantOnlyHardenedRuntimeAudioInput() throws {
+    func testEntitlementsGrantAudioInputAndWeatherKitOnly() throws {
         let entitlementsURL = packageRoot().appendingPathComponent("packaging/Suisui.entitlements")
         let data = try Data(contentsOf: entitlementsURL)
         let plist = try XCTUnwrap(
             PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any]
         )
 
-        XCTAssertEqual(Set(plist.keys), ["com.apple.security.device.audio-input"])
+        XCTAssertEqual(Set(plist.keys), ["com.apple.security.device.audio-input", "com.apple.developer.weatherkit"])
         XCTAssertEqual(plist["com.apple.security.device.audio-input"] as? Bool, true)
+        XCTAssertEqual(plist["com.apple.developer.weatherkit"] as? Bool, true)
+    }
+
+    func testPackagedLocationPermissionHasEnglishAndJapaneseInfoPlistStrings() throws {
+        let root = packageRoot()
+        let english = try String(
+            contentsOf: root.appendingPathComponent("Sources/SuisuiApp/Resources/en.lproj/InfoPlist.strings"),
+            encoding: .utf8
+        )
+        let japanese = try String(
+            contentsOf: root.appendingPathComponent("Sources/SuisuiApp/Resources/ja.lproj/InfoPlist.strings"),
+            encoding: .utf8
+        )
+        let buildScript = try String(
+            contentsOf: root.appendingPathComponent("script/build_and_run.sh"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(english.contains("NSLocationUsageDescription"))
+        XCTAssertTrue(english.contains("only while Today weather is being shown"))
+        XCTAssertTrue(japanese.contains("NSLocationUsageDescription"))
+        XCTAssertTrue(japanese.contains("Todayの天気を表示している間だけ現在地を使用します"))
+        XCTAssertTrue(buildScript.contains("InfoPlist.strings"))
+        XCTAssertTrue(buildScript.contains("BLOCKER: missing app localization source"))
     }
 
     private func loadMetadata() throws -> [String: String] {

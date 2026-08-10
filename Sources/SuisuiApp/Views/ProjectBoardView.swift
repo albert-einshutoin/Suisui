@@ -558,6 +558,7 @@ struct ProjectBoardView: View {
 
     @ViewBuilder
     private var routedProjectBoardContent: some View {
+        let todaySettings = appSettings().normalizedForRuntime
         switch currentBoardRoute {
         case .primary(.today):
             TodayWorkflowView(
@@ -565,6 +566,8 @@ struct ProjectBoardView: View {
                 selectTodayTask: selectTodayTask,
                 openInspectorForTodayRailTask: openInspectorForTodayRailTask,
                 playDailyPlanningReadout: playDailyPlanningReadoutFromSettings,
+                dashboardDisplayName: todaySettings.profileDisplayName ?? "",
+                dashboardDailyCapacityMinutes: todaySettings.dailyWorkCapacityMinutes,
                 initiallyExpandsCatchUp: activeBoardRouteFocus == .catchUp
                     || currentBoardRouteResolution.focus == .catchUp,
                 catchUpFocusRevision: catchUpFocusRevision > consumedCatchUpFocusRevision

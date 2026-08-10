@@ -8421,13 +8421,15 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testReadinessFailureIsRedactedInlineAndRetryRechecksProvider() {
+    func testReadinessFailureIsRedactedInlineAndRetryRechecksProvider() async {
         let sync = RecoveringReadinessGoogleCalendarSync()
         let viewModel = ProjectBoardViewModel(
             store: InMemoryProjectBoardStore(),
-            googleCalendarSync: sync
+            googleCalendarSync: sync,
+            initialGoogleCalendarSyncStatus: .runtimeNotConfigured
         )
         viewModel.load()
+        viewModel.refreshGoogleCalendarSyncStatus()
         sync.shouldFail = true
 
         viewModel.refreshGoogleCalendarSyncStatus()
@@ -8444,20 +8446,31 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         sync.shouldFail = false
         viewModel.retryCurrentFailure()
+        for _ in 0..<100 where sync.statusCallCount < 3 {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
 
         XCTAssertEqual(sync.statusCallCount, 3)
         XCTAssertNil(viewModel.failure)
     }
 
     @MainActor
-    func testReadinessFailureRemainsVisibleWhenRetryStillFails() {
+    func testReadinessFailureRemainsVisibleWhenRetryStillFails() async {
         let sync = RecoveringReadinessGoogleCalendarSync()
-        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore(), googleCalendarSync: sync)
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            googleCalendarSync: sync,
+            initialGoogleCalendarSyncStatus: .runtimeNotConfigured
+        )
         viewModel.load()
+        viewModel.refreshGoogleCalendarSyncStatus()
         sync.shouldFail = true
         viewModel.refreshGoogleCalendarSyncStatus()
 
         viewModel.retryCurrentFailure()
+        for _ in 0..<100 where sync.statusCallCount < 3 {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
 
         XCTAssertEqual(sync.statusCallCount, 3)
         XCTAssertEqual(

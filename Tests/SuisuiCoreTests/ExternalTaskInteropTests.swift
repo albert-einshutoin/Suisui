@@ -774,7 +774,7 @@ final class ExternalTaskInteropTests: XCTestCase {
     }
 
     @MainActor
-    func testProjectBoardViewModelGoogleCalendarSyncUsesReadinessAndApprovalGate() throws {
+    func testProjectBoardViewModelGoogleCalendarSyncUsesReadinessAndApprovalGate() async throws {
         let store = InMemoryProjectBoardStore(snapshot: ProjectBoardSnapshot(projects: [
             makeProject(
                 id: 42,
@@ -812,6 +812,9 @@ final class ExternalTaskInteropTests: XCTestCase {
             googleCalendarSync: controller
         )
         viewModel.load()
+        for _ in 0..<100 where !viewModel.canSyncGoogleCalendar {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
 
         XCTAssertTrue(viewModel.canSyncGoogleCalendar)
         XCTAssertEqual(viewModel.googleCalendarSyncStatus.state, .ready)

@@ -33,6 +33,59 @@ extension AppRuntimeFactory {
     }
 
     @MainActor
+    static func makeTodayWeatherModel() -> TodayWeatherModel {
+        TodayWeatherRuntime.subscription.model
+    }
+
+    @MainActor
+    static func requestTodayWeatherLocationAuthorization() {
+#if canImport(WeatherKit) && canImport(CoreLocation)
+        TodayWeatherRuntime.subscription.requestAuthorization?()
+#endif
+    }
+
+    @MainActor
+    static func observeTodayWeatherSettingsChanges(
+        for model: TodayWeatherModel,
+        notificationCenter: NotificationCenter = .default
+    ) -> NSObjectProtocol {
+        notificationCenter.addObserver(
+            forName: .suisuiWeatherLocationDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak model] _ in
+            Task { @MainActor [weak model] in
+                await model?.refresh()
+            }
+        }
+    }
+
+    @MainActor
+    private enum TodayWeatherRuntime {
+        static let subscription: (model: TodayWeatherModel, observer: NSObjectProtocol, requestAuthorization: (@MainActor () -> Void)?) = {
+#if canImport(WeatherKit) && canImport(CoreLocation)
+            let weatherProvider: any TodayWeatherProviding = WeatherKitTodayProvider()
+            let locationProvider = CoreLocationTodayProvider()
+            let requestAuthorization: (@MainActor () -> Void)? = { locationProvider.requestAuthorization() }
+#else
+            let weatherProvider: any TodayWeatherProviding = UnavailableTodayWeatherProvider()
+            let locationProvider: UnavailableTodayLocationProvider? = nil
+            let requestAuthorization: (@MainActor () -> Void)? = nil
+#endif
+            let model = TodayWeatherModel(
+                preferenceProvider: { loadRuntimeAppSettings().weatherLocationPreference },
+                weatherProvider: weatherProvider,
+                locationProvider: locationProvider
+            )
+            return (
+                model,
+                observeTodayWeatherSettingsChanges(for: model),
+                requestAuthorization
+            )
+        }()
+    }
+
+    @MainActor
     static func makeLaunchAtLoginSettingsViewModel() -> LaunchAtLoginSettingsViewModel {
         LaunchAtLoginSettingsViewModel(client: SMAppServiceLaunchAtLoginClient())
     }
