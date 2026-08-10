@@ -7,6 +7,9 @@ DECLARATION_PATTERN = re.compile(
     r"\b(?:actor|class|enum|protocol|struct|typealias)\s+([A-Za-z_][A-Za-z0-9_]*)"
 )
 TOKEN_PATTERN = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
+TEST_SUITE_DECLARATION_PATTERN = re.compile(
+    r"\bclass\s+([A-Za-z_][A-Za-z0-9_]*Tests)\b"
+)
 
 
 class SwiftAnalysisError(RuntimeError):
@@ -79,6 +82,10 @@ def _tokens(text: str) -> Set[str]:
     return set(TOKEN_PATTERN.findall(text))
 
 
+def _declared_test_suites(text: str) -> Set[str]:
+    return set(TEST_SUITE_DECLARATION_PATTERN.findall(text))
+
+
 def select_tests(repo: Path, changed_paths: List[str]) -> Dict[str, List[str]]:
     changed_test_paths = [
         path
@@ -90,7 +97,18 @@ def select_tests(repo: Path, changed_paths: List[str]) -> Dict[str, List[str]]:
         for path in changed_paths
         if path.startswith("Sources/") and path.endswith(".swift")
     ]
-    unit_targets = {Path(path).stem for path in changed_test_paths}
+    unit_targets: Set[str] = set()
+    for relative_path in changed_test_paths:
+        test_file = repo / relative_path
+        if not test_file.is_file():
+            raise SwiftAnalysisError("changed Swift test does not exist")
+        declared_suites = _declared_test_suites(_read_text(test_file))
+        if not declared_suites:
+            # A changed helper can affect any suite that imports it. We cannot
+            # safely infer those consumers from a second changed suite, so keep
+            # this ambiguity visible and let the planner fail closed to full.
+            raise SwiftAnalysisError("changed Swift test file declares no XCTest suite")
+        unit_targets.update(declared_suites)
 
     source_files = sorted((repo / "Sources").rglob("*.swift"))
     test_files = sorted((repo / "Tests").rglob("*.swift"))
@@ -128,7 +146,10 @@ def select_tests(repo: Path, changed_paths: List[str]) -> Dict[str, List[str]]:
     for test_file in test_files:
         text = _read_text(test_file)
         if _tokens(text).intersection(impacted_symbols):
-            unit_targets.add(test_file.stem)
+            # SwiftPM filters XCTest suite names, not filenames. Support files
+            # live beside suites and may reference the same production symbols;
+            # emitting their stems would execute zero tests and must fail closed.
+            unit_targets.update(_declared_test_suites(text))
 
     return {
         "unitTestTargets": sorted(unit_targets),
