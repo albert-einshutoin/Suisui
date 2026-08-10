@@ -827,7 +827,7 @@ assert_semantic_regions_have_visible_variance() {
   local screenshot_path="$1"
   # These regions are expected to contain visible controls or seeded task
   # content even when the remainder of the dark board canvas is intentionally empty.
-  assert_ax_region_has_visible_variance "$screenshot_path" "project-board-sidebar-toggle"
+  assert_ax_region_has_visible_variance "$screenshot_path" "project-board-integrations-menu"
   assert_ax_region_has_visible_variance "$screenshot_path" "project-header-add-task"
   assert_ax_region_has_visible_variance "$screenshot_path" "task-card-open-details"
 }
