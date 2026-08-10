@@ -573,7 +573,7 @@ public enum TodayDashboardSnapshotBuilder {
                 id: "daily-planning-\(item.taskID)",
                 kind: .dailyPlanning,
                 title: item.title,
-                detail: item.reason
+                detail: localizedPlanReason(item.reason, locale: locale)
             )
         }
         if catchUpCount > 0 {

@@ -325,6 +325,7 @@ final class TodayDashboardSnapshotTests: XCTestCase {
             )
 
             XCTAssertEqual(snapshot.recommendations.first?.reason, expected)
+            XCTAssertEqual(snapshot.review.items.first?.detail, expected)
         }
     }
 
