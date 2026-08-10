@@ -14,21 +14,39 @@ struct TodayDashboardRecommendationCards: View {
                     Button {
                         onAction(recommendation)
                     } label: {
-                        VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
-                            Image(systemName: "sparkles")
+                        VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+                            HStack(alignment: .top, spacing: SuisuiSpacing.sm) {
+                                Image(systemName: recommendationIcon(for: recommendation))
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 34, height: 34)
+                                    .background(actionColor(for: recommendation), in: Circle())
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
+                                    Text(recommendation.title)
+                                        .font(.subheadline.weight(.semibold))
+                                        .lineLimit(2)
+                                    Text(recommendation.reason)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                            Text(actionTitle(for: recommendation))
+                                .font(.caption.weight(.semibold))
                                 .foregroundStyle(SuisuiBrand.soloBlue)
-                            Text(recommendation.title)
-                                .font(.subheadline.weight(.semibold))
-                                .lineLimit(2)
-                            Text(recommendation.reason)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 7)
+                                .background(
+                                    RoundedRectangle(cornerRadius: SuisuiRadius.control, style: .continuous)
+                                        .stroke(SuisuiBrand.soloBlue.opacity(0.28), lineWidth: 1)
+                                )
                         }
-                        .frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
+                        .frame(maxWidth: .infinity, minHeight: 102, alignment: .topLeading)
                     }
                     .buttonStyle(.plain)
-                    .soloCard()
+                    .todayDashboardCard()
                     .accessibilityLabel(String(format: String(localized: "Recommendation: %@. %@"), recommendation.title, recommendation.reason))
                     .accessibilityHint(accessibilityHint(for: recommendation))
                 }
@@ -36,6 +54,38 @@ struct TodayDashboardRecommendationCards: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-recommendations")
+    }
+
+    private func recommendationIcon(for recommendation: TodayRecommendation) -> String {
+        switch recommendation.action {
+        case .startFocus: "timer"
+        case .openReview: "flag.fill"
+        case .prepareScheduleDraft: "clock.fill"
+        case .selectTask: "arrow.right.circle.fill"
+        case .addTask: "plus"
+        case .openCatchUp: "arrow.triangle.2.circlepath"
+        case .suggestBreak: "cup.and.saucer.fill"
+        }
+    }
+
+    private func actionColor(for recommendation: TodayRecommendation) -> Color {
+        switch recommendation.action {
+        case .startFocus, .selectTask: SuisuiBrand.soloBlue
+        case .openReview, .openCatchUp: Color(nsColor: .systemGreen)
+        case .prepareScheduleDraft, .suggestBreak: Color(nsColor: .systemOrange)
+        case .addTask: Color(nsColor: .systemPurple)
+        }
+    }
+
+    private func actionTitle(for recommendation: TodayRecommendation) -> String {
+        switch recommendation.action {
+        case .startFocus: String(localized: "Start Focus")
+        case .openReview: String(localized: "Review")
+        case .prepareScheduleDraft, .suggestBreak: String(localized: "Schedule")
+        case .selectTask: String(localized: "Open Task")
+        case .addTask: String(localized: "Add Task")
+        case .openCatchUp: String(localized: "Catch Up")
+        }
     }
 
     private func accessibilityHint(for recommendation: TodayRecommendation) -> String {
@@ -107,7 +157,7 @@ struct TodayDashboardWeeklyScheduleCard: View {
                 }
             }
         }
-        .soloCard()
+        .todayDashboardCard()
         // Weekly rows are independently addressable schedule items; do not
         // flatten them into the card's summary element.
         .accessibilityElement(children: .contain)
@@ -150,7 +200,7 @@ struct TodayDashboardReviewCard<Content: View>: View {
             }
             content()
         }
-        .soloCard()
+        .todayDashboardCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-review-card")
     }

@@ -761,6 +761,7 @@
 "Today Progress" = "Today進捗";
 "No due task selected" = "期限付きタスクは未選択";
 "Focus" = "集中";
+"Focus Time" = "フォーカスタイム";
 "Starts local focus without changing task status." = "タスクステータスを変えずにローカル集中を開始します。";
 "Schedule Block" = "時間枠を作成";
 "Creates a local schedule draft without writing Calendar." = "カレンダーへ書き込まず、ローカルのスケジュール下書きを作成します。";
@@ -1614,6 +1615,7 @@
 "Fewer completions" = "完了が少ない";
 "More completions" = "完了が多い";
 "Workload" = "負荷";
+"Today's Workload" = "今日のワークロード";
 "Schedule View" = "スケジュール表示";
 "Switches the visible schedule detail while preserving the selected week and day." = "選択中の週と日付を保ったまま、表示するスケジュール詳細を切り替えます。";
 "Commit changes" = "変更をコミット";

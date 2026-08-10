@@ -601,7 +601,7 @@ struct TodayAssistantRail: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .soloAssistantSignal()
+        .soloCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-assistant-rail")
         .accessibilityLabel("Today assistant rail")

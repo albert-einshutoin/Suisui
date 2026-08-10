@@ -8,12 +8,12 @@ struct TodayFocusCard: View {
     let startFocusSession: (Int64, Int, Bool) -> Result<FocusSessionRecord, FocusSessionError>
     let openInspector: (Int64) -> Void
 
-    @State private var durationMinutes = 25
+    @State private var durationMinutes = 90
     @State private var showsReplacementConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
-            Label("Focus", systemImage: "target")
+            Label("Focus Time", systemImage: "target")
                 .font(SuisuiTypography.sectionTitle)
             Text(timeLabel)
                 .font(.title2.monospacedDigit().weight(.semibold))
@@ -30,10 +30,8 @@ struct TodayFocusCard: View {
                 Text("50 min").tag(50)
                 Text("90 min").tag(90)
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
             .disabled(session.record.state == .running || session.record.state == .paused)
-            Stepper("Custom duration: \(durationMinutes) min", value: $durationMinutes, in: 1...240)
-                .disabled(session.record.state == .running || session.record.state == .paused)
             controls
             if let taskID = session.record.taskID ?? suggestedTaskID {
                 Button("Open task") {
@@ -43,7 +41,8 @@ struct TodayFocusCard: View {
                 .accessibilityIdentifier("today-focus-open-task")
             }
         }
-        .soloCard()
+        .frame(minHeight: 192, alignment: .topLeading)
+        .todayDashboardCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-focus-card")
         .accessibilityLabel(String(format: String(localized: "Focus: %@. %@ remaining."), stateLabel, timeLabel))
@@ -70,6 +69,9 @@ struct TodayFocusCard: View {
         switch session.record.state {
         case .idle, .completed:
             Button("Start Focus") { start() }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .frame(maxWidth: .infinity)
                 .accessibilityIdentifier("today-focus-start")
                 .disabled(suggestedTaskID == nil)
         case .running:
@@ -95,7 +97,11 @@ struct TodayFocusCard: View {
     }
 
     private var timeLabel: String {
-        let remaining = max(0, session.record.durationSeconds - session.elapsedSeconds)
+        let remaining = switch session.record.state {
+        case .idle: durationMinutes * 60
+        case .running, .paused, .completed:
+            max(0, session.record.durationSeconds - session.elapsedSeconds)
+        }
         return String(format: "%02d:%02d", remaining / 60, remaining % 60)
     }
 
