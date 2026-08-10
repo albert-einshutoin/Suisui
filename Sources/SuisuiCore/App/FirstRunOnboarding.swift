@@ -322,11 +322,11 @@ public extension Notification.Name {
 
 // MARK: - Onboarding sample project
 
-/// Pure data description of one "Learn Suisui" practice task. The English
-/// strings double as localization keys: the app passes `localizedDisplay`
-/// into `OnboardingSampleProjectCreator` so titles and details are localized
-/// at creation time (mirroring how smart list preset names route static
-/// known strings through the app localization table).
+/// Pure data description of one "Suisuiを学ぶ" practice task. The Japanese
+/// strings are the source-language localization keys: the app passes
+/// `localizedDisplay` into `OnboardingSampleProjectCreator` so titles and
+/// details are localized at creation time (mirroring how smart list preset
+/// names route static known strings through the app localization table).
 public struct OnboardingSampleTaskDefinition: Equatable, Sendable {
     public enum DueDate: Equatable, Sendable {
         case none
@@ -356,46 +356,48 @@ public struct OnboardingSampleTaskDefinition: Equatable, Sendable {
 }
 
 public enum OnboardingSampleProjectDefinition {
-    public static let projectTitle = "Learn Suisui"
+    public static let projectTitle = "Suisuiを学ぶ"
     /// Stable marker persisted in `projects.source_command` so the sample can
     /// be recognized even if the defaults flag is lost.
     public static let projectMarkerSourceCommand = "onboarding-sample"
     /// Defaults flag that makes sample creation a one-shot action.
     public static let createdDefaultsKey = "suisui.onboarding.sampleProjectCreated"
 
-    /// Six tasks that each teach a real Suisui feature. The weekly task also
-    /// carries a due date because completion-driven recurrence needs one to
-    /// schedule the next occurrence (see `TaskRecurrence`).
+    /// Six tasks that each teach a real Suisui feature. Every detail has one
+    /// concrete line and one abstract line so a learner can reproduce the
+    /// action first, then understand the reusable idea behind it. The weekly
+    /// task also carries a due date because completion-driven recurrence needs
+    /// one to schedule the next occurrence (see `TaskRecurrence`).
     public static let tasks: [OnboardingSampleTaskDefinition] = [
         OnboardingSampleTaskDefinition(
-            title: "Press ⌘K and search for anything",
-            detail: "The command palette matches views, projects, smart lists, and even task content. Try typing part of this sentence.",
+            title: "⌘Kでコマンドパレットを開き、何でも検索する",
+            detail: "具体：⌘Kを押し、「Today」やこのタスクの文章の一部を入力して選びます。\n抽象：情報を探す入口を一つにすると、画面を覚えていなくても目的の場所へ移動できます。",
             priority: .high,
             due: .todayAt(hour: 18, minute: 0)
         ),
         OnboardingSampleTaskDefinition(
-            title: "Drag this task to another column",
-            detail: "Kanban columns map to task status. Dropping a card updates the task immediately.",
+            title: "このタスクを別の列へドラッグして状態を変える",
+            detail: "具体：カードを別のカンバン列へドラッグし、タスクの表示が変わることを確認します。\n抽象：作業の状態を列で表すと、今どこにあるかと次に進める場所を一目で共有できます。",
             priority: .medium
         ),
         OnboardingSampleTaskDefinition(
-            title: "Press ⌘Z to undo your last change",
-            detail: "Board operations such as complete, move, and edit go onto an undo stack. ⌘Z reverts the latest one.",
+            title: "⌘Zで直前の変更を元に戻す",
+            detail: "具体：タスクを完了・移動・編集してから⌘Zを押し、直前の操作を戻します。\n抽象：変更を取り消せる履歴があると、試しながら安全に作業を進められます。",
             priority: .low
         ),
         OnboardingSampleTaskDefinition(
-            title: "Say a task out loud in the Voice window",
-            detail: "Open Voice Command from the toolbar or the ⌘K palette, then speak. Suisui drafts a plan you approve before anything is written.",
+            title: "音声ウィンドウでタスクを声に出して伝える",
+            detail: "具体：ツールバーまたは⌘Kのコマンドパレットから「音声コマンド」を開き、タスクを話して下書きを確認します。\n抽象：入力と実行の間にレビューを置くと、曖昧な依頼でも内容を確認してから安全に反映できます。",
             priority: .medium
         ),
         OnboardingSampleTaskDefinition(
-            title: "Set a due date by typing 'tomorrow' in Quick Add",
-            detail: "Quick Add understands natural-language dates such as 'tomorrow' or 'next Friday' and files the task with the right due date.",
+            title: "クイック追加に「tomorrow」と入力して期限を設定する",
+            detail: "具体：クイック追加で「tomorrow」または「next Friday」を含むタスクを入力し、期限が設定されることを確認します。\n抽象：自然な言葉を構造化された期限に変換すると、入力の手間を減らしつつ予定を正確に扱えます。",
             due: .tomorrowAt(hour: 9, minute: 0)
         ),
         OnboardingSampleTaskDefinition(
-            title: "This task repeats weekly — complete it to see the next one appear",
-            detail: "Completing a recurring task automatically schedules the next occurrence one week later.",
+            title: "毎週繰り返すタスクを完了し、次の回を確認する",
+            detail: "具体：このタスクを完了し、1週間後の次のタスクが自動で現れることを確認します。\n抽象：繰り返しを仕組みに任せると、定期作業を毎回思い出して登録する必要がなくなります。",
             recurrence: "weekly",
             due: .todayAt(hour: 10, minute: 0)
         )
@@ -440,7 +442,7 @@ public enum OnboardingSampleProjectError: Error, Equatable {
     case missingAfterEnsure
 }
 
-/// Creates the "Learn Suisui" sample project through the normal store create
+/// Creates the "Suisuiを学ぶ" sample project through the normal store create
 /// paths. Stores, defaults, clock, and localization are injected
 /// (VoiceRuntimeFactory-style) so tests can drive it against a temporary
 /// SQLite database; the app wires it in `OnboardingSampleProjectFactory`.

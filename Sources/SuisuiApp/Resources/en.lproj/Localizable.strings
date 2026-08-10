@@ -1811,24 +1811,24 @@
 "Sample project added" = "Sample project added";
 "Adds a Learn Suisui practice project with sample tasks to the Project Board." = "Adds a Learn Suisui practice project with sample tasks to the Project Board.";
 "Could not create the sample project." = "Could not create the sample project.";
-"Learn Suisui" = "Learn Suisui";
+"Suisuiを学ぶ" = "Learn Suisui";
 "Start with a private practice project. No AI account or Mac permissions are needed." = "Start with a private practice project. No AI account or Mac permissions are needed.";
 "Capture" = "Capture";
 "Set up AI first" = "Set up AI first";
 "Try Suisui now" = "Try Suisui now";
 "Creates or reuses Learn Suisui, opens Today, and selects the first lesson." = "Creates or reuses Learn Suisui, opens Today, and selects the first lesson.";
-"Press ⌘K and search for anything" = "Press ⌘K and search for anything";
-"The command palette matches views, projects, smart lists, and even task content. Try typing part of this sentence." = "The command palette matches views, projects, smart lists, and even task content. Try typing part of this sentence.";
-"Drag this task to another column" = "Drag this task to another column";
-"Kanban columns map to task status. Dropping a card updates the task immediately." = "Kanban columns map to task status. Dropping a card updates the task immediately.";
-"Press ⌘Z to undo your last change" = "Press ⌘Z to undo your last change";
-"Board operations such as complete, move, and edit go onto an undo stack. ⌘Z reverts the latest one." = "Board operations such as complete, move, and edit go onto an undo stack. ⌘Z reverts the latest one.";
-"Say a task out loud in the Voice window" = "Say a task out loud in the Voice window";
-"Open Voice Command from the toolbar or the ⌘K palette, then speak. Suisui drafts a plan you approve before anything is written." = "Open Voice Command from the toolbar or the ⌘K palette, then speak. Suisui drafts a plan you approve before anything is written.";
-"Set a due date by typing 'tomorrow' in Quick Add" = "Set a due date by typing 'tomorrow' in Quick Add";
-"Quick Add understands natural-language dates such as 'tomorrow' or 'next Friday' and files the task with the right due date." = "Quick Add understands natural-language dates such as 'tomorrow' or 'next Friday' and files the task with the right due date.";
-"This task repeats weekly — complete it to see the next one appear" = "This task repeats weekly — complete it to see the next one appear";
-"Completing a recurring task automatically schedules the next occurrence one week later." = "Completing a recurring task automatically schedules the next occurrence one week later.";
+"⌘Kでコマンドパレットを開き、何でも検索する" = "Press ⌘K to open the command palette and search anything";
+"具体：⌘Kを押し、「Today」やこのタスクの文章の一部を入力して選びます。\n抽象：情報を探す入口を一つにすると、画面を覚えていなくても目的の場所へ移動できます。" = "Concrete: Press ⌘K, then type part of “Today” or this task and select a result.\nAbstract: A single search entry point helps you reach the right place without memorizing every screen.";
+"このタスクを別の列へドラッグして状態を変える" = "Drag this task to another column to change its status";
+"具体：カードを別のカンバン列へドラッグし、タスクの表示が変わることを確認します。\n抽象：作業の状態を列で表すと、今どこにあるかと次に進める場所を一目で共有できます。" = "Concrete: Drag the card to another Kanban column and confirm that the task display changes.\nAbstract: Representing work states as columns makes the current position and next move visible at a glance.";
+"⌘Zで直前の変更を元に戻す" = "Press ⌘Z to undo your last change";
+"具体：タスクを完了・移動・編集してから⌘Zを押し、直前の操作を戻します。\n抽象：変更を取り消せる履歴があると、試しながら安全に作業を進められます。" = "Concrete: Complete, move, or edit the task, then press ⌘Z to reverse the latest operation.\nAbstract: An undo history lets you experiment while keeping your work safe.";
+"音声ウィンドウでタスクを声に出して伝える" = "Say a task out loud in the Voice window";
+"具体：ツールバーまたは⌘Kのコマンドパレットから「音声コマンド」を開き、タスクを話して下書きを確認します。\n抽象：入力と実行の間にレビューを置くと、曖昧な依頼でも内容を確認してから安全に反映できます。" = "Concrete: Open Voice Command from the toolbar or the ⌘K command palette, speak a task, and review the draft.\nAbstract: A review step between input and execution makes it safe to confirm even an ambiguous request.";
+"クイック追加に「tomorrow」と入力して期限を設定する" = "Set a due date by typing “tomorrow” in Quick Add";
+"具体：クイック追加で「tomorrow」または「next Friday」を含むタスクを入力し、期限が設定されることを確認します。\n抽象：自然な言葉を構造化された期限に変換すると、入力の手間を減らしつつ予定を正確に扱えます。" = "Concrete: Enter a task containing “tomorrow” or “next Friday” in Quick Add and confirm that a due date is set.\nAbstract: Converting natural language into a structured due date reduces effort while keeping scheduling precise.";
+"毎週繰り返すタスクを完了し、次の回を確認する" = "Complete the weekly task and confirm the next occurrence";
+"具体：このタスクを完了し、1週間後の次のタスクが自動で現れることを確認します。\n抽象：繰り返しを仕組みに任せると、定期作業を毎回思い出して登録する必要がなくなります。" = "Concrete: Complete this task and confirm that the next task appears automatically one week later.\nAbstract: When a system handles repetition, you do not need to remember and register recurring work each time.";
 
 /* Diagnostics export (T-18) */
 "Export Diagnostics…" = "Export Diagnostics…";

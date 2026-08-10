@@ -1799,24 +1799,24 @@
 "Sample project added" = "サンプルプロジェクトを追加しました";
 "Adds a Learn Suisui practice project with sample tasks to the Project Board." = "練習用の「Suisuiを学ぶ」プロジェクトとサンプルタスクをプロジェクトボードに追加します。";
 "Could not create the sample project." = "サンプルプロジェクトを作成できませんでした。";
-"Learn Suisui" = "Suisuiを学ぶ";
+"Suisuiを学ぶ" = "Suisuiを学ぶ";
 "Start with a private practice project. No AI account or Mac permissions are needed." = "非公開の練習プロジェクトから始めましょう。AIアカウントもMacの権限も必要ありません。";
 "Capture" = "取り込む";
 "Set up AI first" = "先にAIを設定";
 "Try Suisui now" = "今すぐSuisuiを試す";
 "Creates or reuses Learn Suisui, opens Today, and selects the first lesson." = "「Suisuiを学ぶ」を作成または再利用し、Todayを開いて最初のレッスンを選択します。";
-"Press ⌘K and search for anything" = "⌘Kを押して何でも検索";
-"The command palette matches views, projects, smart lists, and even task content. Try typing part of this sentence." = "コマンドパレットはビュー、プロジェクト、スマートリスト、さらにタスクの内容まで検索できます。この文章の一部を入力してみてください。";
-"Drag this task to another column" = "このタスクを別の列にドラッグ";
-"Kanban columns map to task status. Dropping a card updates the task immediately." = "カンバンの列はタスクのステータスに対応しています。カードをドロップするとタスクが即座に更新されます。";
-"Press ⌘Z to undo your last change" = "⌘Zで直前の変更を元に戻す";
-"Board operations such as complete, move, and edit go onto an undo stack. ⌘Z reverts the latest one." = "完了・移動・編集などのボード操作は取り消しスタックに積まれます。⌘Zで最新の操作を元に戻せます。";
-"Say a task out loud in the Voice window" = "音声ウィンドウでタスクを声に出して伝える";
-"Open Voice Command from the toolbar or the ⌘K palette, then speak. Suisui drafts a plan you approve before anything is written." = "ツールバーまたは⌘Kパレットから音声コマンドを開いて話してください。Suisuiがプランを下書きし、承認するまで何も書き込みません。";
-"Set a due date by typing 'tomorrow' in Quick Add" = "クイック追加に「tomorrow」と入力して期限を設定";
-"Quick Add understands natural-language dates such as 'tomorrow' or 'next Friday' and files the task with the right due date." = "クイック追加は「tomorrow」や「next Friday」のような自然言語の日付を理解し、正しい期限付きでタスクを登録します。";
-"This task repeats weekly — complete it to see the next one appear" = "このタスクは毎週繰り返します — 完了すると次の回が現れます";
-"Completing a recurring task automatically schedules the next occurrence one week later." = "繰り返しタスクを完了すると、1週間後の次の回が自動的にスケジュールされます。";
+"⌘Kでコマンドパレットを開き、何でも検索する" = "⌘Kでコマンドパレットを開き、何でも検索する";
+"具体：⌘Kを押し、「Today」やこのタスクの文章の一部を入力して選びます。\n抽象：情報を探す入口を一つにすると、画面を覚えていなくても目的の場所へ移動できます。" = "具体：⌘Kを押し、「Today」やこのタスクの文章の一部を入力して選びます。\n抽象：情報を探す入口を一つにすると、画面を覚えていなくても目的の場所へ移動できます。";
+"このタスクを別の列へドラッグして状態を変える" = "このタスクを別の列へドラッグして状態を変える";
+"具体：カードを別のカンバン列へドラッグし、タスクの表示が変わることを確認します。\n抽象：作業の状態を列で表すと、今どこにあるかと次に進める場所を一目で共有できます。" = "具体：カードを別のカンバン列へドラッグし、タスクの表示が変わることを確認します。\n抽象：作業の状態を列で表すと、今どこにあるかと次に進める場所を一目で共有できます。";
+"⌘Zで直前の変更を元に戻す" = "⌘Zで直前の変更を元に戻す";
+"具体：タスクを完了・移動・編集してから⌘Zを押し、直前の操作を戻します。\n抽象：変更を取り消せる履歴があると、試しながら安全に作業を進められます。" = "具体：タスクを完了・移動・編集してから⌘Zを押し、直前の操作を戻します。\n抽象：変更を取り消せる履歴があると、試しながら安全に作業を進められます。";
+"音声ウィンドウでタスクを声に出して伝える" = "音声ウィンドウでタスクを声に出して伝える";
+"具体：ツールバーまたは⌘Kのコマンドパレットから「音声コマンド」を開き、タスクを話して下書きを確認します。\n抽象：入力と実行の間にレビューを置くと、曖昧な依頼でも内容を確認してから安全に反映できます。" = "具体：ツールバーまたは⌘Kのコマンドパレットから「音声コマンド」を開き、タスクを話して下書きを確認します。\n抽象：入力と実行の間にレビューを置くと、曖昧な依頼でも内容を確認してから安全に反映できます。";
+"クイック追加に「tomorrow」と入力して期限を設定する" = "クイック追加に「tomorrow」と入力して期限を設定する";
+"具体：クイック追加で「tomorrow」または「next Friday」を含むタスクを入力し、期限が設定されることを確認します。\n抽象：自然な言葉を構造化された期限に変換すると、入力の手間を減らしつつ予定を正確に扱えます。" = "具体：クイック追加で「tomorrow」または「next Friday」を含むタスクを入力し、期限が設定されることを確認します。\n抽象：自然な言葉を構造化された期限に変換すると、入力の手間を減らしつつ予定を正確に扱えます。";
+"毎週繰り返すタスクを完了し、次の回を確認する" = "毎週繰り返すタスクを完了し、次の回を確認する";
+"具体：このタスクを完了し、1週間後の次のタスクが自動で現れることを確認します。\n抽象：繰り返しを仕組みに任せると、定期作業を毎回思い出して登録する必要がなくなります。" = "具体：このタスクを完了し、1週間後の次のタスクが自動で現れることを確認します。\n抽象：繰り返しを仕組みに任せると、定期作業を毎回思い出して登録する必要がなくなります。";
 
 /* Diagnostics export (T-18) */
 "Export Diagnostics…" = "診断情報を書き出す…";

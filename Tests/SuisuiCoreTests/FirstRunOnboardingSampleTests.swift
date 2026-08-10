@@ -31,6 +31,25 @@ final class FirstRunOnboardingSampleTests: XCTestCase {
     private static let fixedNow = Date(timeIntervalSince1970: 1_783_825_200)
     private static let timeZoneIdentifier = "Asia/Tokyo"
 
+    func testLessonDefinitionsUseJapaneseConcreteAndAbstractLayers() {
+        XCTAssertEqual(OnboardingSampleProjectDefinition.projectTitle, "Suisuiを学ぶ")
+        XCTAssertEqual(OnboardingSampleProjectDefinition.tasks.count, 6)
+
+        for definition in OnboardingSampleProjectDefinition.tasks {
+            XCTAssertNotNil(
+                definition.title.range(of: "[ぁ-んァ-ン一-龯]", options: .regularExpression),
+                "Lesson title must be Japanese-based: \(definition.title)"
+            )
+            XCTAssertTrue(definition.detail.contains("具体："))
+            XCTAssertTrue(definition.detail.contains("抽象："))
+            XCTAssertEqual(
+                definition.detail.components(separatedBy: "\n").count,
+                2,
+                "Each Lesson should expose one concrete and one abstract line"
+            )
+        }
+    }
+
     func testCreatesLearnSuisuiProjectWithSixTeachingTasks() throws {
         let connection = try migratedConnection()
         let projectStore = SQLiteProjectStore(connection: connection)
@@ -157,7 +176,7 @@ final class FirstRunOnboardingSampleTests: XCTestCase {
         let taskStore = SQLiteTaskStore(connection: connection)
         let defaults = try makeIsolatedDefaults()
         let interruptedProject = try projectStore.create(
-            title: "Learn Suisui",
+            title: OnboardingSampleProjectDefinition.projectTitle,
             sourceCommand: OnboardingSampleProjectDefinition.projectMarkerSourceCommand
         )
         _ = try taskStore.create(
