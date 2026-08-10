@@ -114,13 +114,34 @@ public struct TodayWeeklyScheduleRow: Identifiable, Equatable, Sendable {
     }
 }
 
+public enum TodayReviewItemKind: Equatable, Sendable {
+    case dailyPlanning
+    case catchUp
+}
+
+public struct TodayReviewItemSnapshot: Equatable, Identifiable, Sendable {
+    public let id: String
+    public let kind: TodayReviewItemKind
+    public let title: String
+    public let detail: String
+
+    public init(id: String, kind: TodayReviewItemKind, title: String, detail: String) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.detail = detail
+    }
+}
+
 public struct TodayReviewSnapshot: Equatable, Sendable {
     public let message: String
     public let isError: Bool
+    public let items: [TodayReviewItemSnapshot]
 
-    public init(message: String, isError: Bool) {
+    public init(message: String, isError: Bool, items: [TodayReviewItemSnapshot] = []) {
         self.message = message
         self.isError = isError
+        self.items = items
     }
 }
 
@@ -275,7 +296,8 @@ public enum TodayDashboardSnapshotBuilder {
             ),
             review: TodayReviewSnapshot(
                 message: review.map { reviewTitle(for: $0, locale: locale) } ?? localized("No review items yet.", locale: locale),
-                isError: false
+                isError: false,
+                items: reviewItems(review: review, catchUpCount: catchUpCount, locale: locale)
             )
         )
     }
@@ -535,6 +557,41 @@ public enum TodayDashboardSnapshotBuilder {
             return String(format: localized("%@ focus review: %d tasks for %d minutes", locale: locale), phase, review.focusItems.count, minutes)
         }
         return String(format: localized("%@ daily planning review", locale: locale), phase)
+    }
+
+    private static func reviewItems(
+        review: DailyPlanningReview?,
+        catchUpCount: Int,
+        locale: Locale
+    ) -> [TodayReviewItemSnapshot] {
+        // The reference card is intentionally a two-row summary. Reserve one
+        // row for overdue follow-up when it exists, then keep the complete
+        // review workflow available through the Review destination.
+        let planningLimit = catchUpCount > 0 ? 1 : 2
+        var items = (review?.focusItems ?? []).prefix(planningLimit).map { item in
+            TodayReviewItemSnapshot(
+                id: "daily-planning-\(item.taskID)",
+                kind: .dailyPlanning,
+                title: item.title,
+                detail: item.reason
+            )
+        }
+        if catchUpCount > 0 {
+            items.append(
+                TodayReviewItemSnapshot(
+                    id: "catch-up",
+                    kind: .catchUp,
+                    title: localized("Catch up", locale: locale),
+                    detail: localizedCount(
+                        catchUpCount,
+                        one: "%d task needs follow-up",
+                        other: "%d tasks need follow-up",
+                        locale: locale
+                    )
+                )
+            )
+        }
+        return items
     }
 
 }

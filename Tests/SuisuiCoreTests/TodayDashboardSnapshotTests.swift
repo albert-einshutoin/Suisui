@@ -340,6 +340,53 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         XCTAssertEqual(ja.review.message, "夜のデイリープランニングレビュー")
     }
 
+    func testReviewProjectsRealPlanningItemsAndCatchUpWithoutInventingRequestMetadata() throws {
+        let calendar = fixedCalendar()
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))
+        let planningReview = review(phase: .morning, minutes: 90, focusCount: 2)
+
+        let snapshot = TodayDashboardSnapshotBuilder.make(
+            today: workflowSnapshot(tasks: [], review: planningReview),
+            schedule: .empty,
+            projectTitlesByTaskID: [:],
+            displayName: "",
+            dailyCapacityMinutes: 480,
+            now: now,
+            calendar: calendar,
+            locale: Locale(identifier: "en_US"),
+            catchUpCount: 3
+        )
+
+        XCTAssertEqual(snapshot.review.items.map(\.kind), [.dailyPlanning, .catchUp])
+        XCTAssertEqual(snapshot.review.items.first?.title, planningReview.focusItems.first?.title)
+        XCTAssertEqual(snapshot.review.items.first?.detail, planningReview.focusItems.first?.reason)
+        XCTAssertEqual(snapshot.review.items.last?.title, "Catch up")
+        XCTAssertEqual(snapshot.review.items.last?.detail, "3 tasks need follow-up")
+        XCTAssertFalse(String(reflecting: snapshot.review).contains("requested by"))
+    }
+
+    func testReviewItemsLocalizeCatchUpAndKeepUserAuthoredTaskTextVerbatim() throws {
+        let calendar = fixedCalendar()
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))
+        let planningReview = review(phase: .evening, minutes: nil, focusCount: 1)
+
+        let snapshot = TodayDashboardSnapshotBuilder.make(
+            today: workflowSnapshot(tasks: [], review: planningReview),
+            schedule: .empty,
+            projectTitlesByTaskID: [:],
+            displayName: "",
+            dailyCapacityMinutes: 480,
+            now: now,
+            calendar: calendar,
+            locale: Locale(identifier: "ja_JP"),
+            catchUpCount: 1
+        )
+
+        XCTAssertEqual(snapshot.review.items[0].title, planningReview.focusItems[0].title)
+        XCTAssertEqual(snapshot.review.items[1].title, "キャッチアップ")
+        XCTAssertEqual(snapshot.review.items[1].detail, "1件のタスクをフォローアップ")
+    }
+
     func testZeroDataHasSafeDefaults() throws {
         let calendar = fixedCalendar()
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))
