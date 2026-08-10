@@ -50,9 +50,9 @@ struct TodayDashboardView<CatchUpContent: View>: View {
     let openInspectorForTodayRailTask: (Int64) -> Void
     let playDailyPlanningReadout: () -> Void
     let openCatchUp: () -> Void
-    let openReview: () -> Void
     @ViewBuilder let catchUpContent: () -> CatchUpContent
     @AccessibilityFocusState private var isReviewFocused: Bool
+    @AccessibilityFocusState private var isReviewActionsFocused: Bool
     @State private var focusTaskPendingReplacement: Int64?
     private func makeDashboard(now: Date, calendar: Calendar, locale: Locale) -> TodayDashboardSnapshot {
         TodayDashboardSnapshotBuilder.make(
@@ -77,34 +77,46 @@ struct TodayDashboardView<CatchUpContent: View>: View {
             locale: localizedDisplayLocale()
         )
         GeometryReader { proxy in
-            ScrollView(.vertical) {
-                let availableWidth = proxy.size.width - TodayDashboardLayoutMetrics.horizontalInsets
-                let isWide = TodayDashboardLayoutMetrics.isWide(availableWidth: availableWidth)
-                let presentsCompactRailCardsHorizontally = !isWide && availableWidth >= TodayDashboardLayoutMetrics.compactRailCardsMinimumWidth
-                let layout: AnyLayout = isWide
-                    ? AnyLayout(HStackLayout(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing))
-                    : AnyLayout(VStackLayout(alignment: .leading, spacing: SuisuiSpacing.lg))
-                VStack(alignment: .leading, spacing: 32) {
-                    TodayDashboardHeaderView(header: dashboard.header, weather: dashboard.weather)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                    layout {
-                        mainContent(dashboard: dashboard, isWide: isWide)
-                            .frame(
-                                minWidth: isWide ? TodayDashboardLayoutMetrics.primaryMinimumWidth : nil,
-                                maxWidth: .infinity,
-                                alignment: .topLeading
-                            )
-                        rail(dashboard: dashboard, presentsCardsHorizontally: presentsCompactRailCardsHorizontally, availableWidth: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth)
-                            .frame(
-                                width: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth,
-                                alignment: .topLeading
-                            )
+            ScrollViewReader { scrollProxy in
+                ScrollView(.vertical) {
+                    let availableWidth = proxy.size.width - TodayDashboardLayoutMetrics.horizontalInsets
+                    let isWide = TodayDashboardLayoutMetrics.isWide(availableWidth: availableWidth)
+                    let presentsCompactRailCardsHorizontally = !isWide && availableWidth >= TodayDashboardLayoutMetrics.compactRailCardsMinimumWidth
+                    let layout: AnyLayout = isWide
+                        ? AnyLayout(HStackLayout(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing))
+                        : AnyLayout(VStackLayout(alignment: .leading, spacing: SuisuiSpacing.lg))
+                    VStack(alignment: .leading, spacing: 32) {
+                        TodayDashboardHeaderView(header: dashboard.header, weather: dashboard.weather)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                        layout {
+                            mainContent(dashboard: dashboard, isWide: isWide) {
+                                // These summaries come from Today planning and Catch Up,
+                                // so keep users in that workflow instead of routing to the
+                                // unrelated global Review overview.
+                                withAnimation {
+                                    scrollProxy.scrollTo("today-review-actions", anchor: .top)
+                                }
+                                DispatchQueue.main.async {
+                                    isReviewActionsFocused = true
+                                }
+                            }
+                                .frame(
+                                    minWidth: isWide ? TodayDashboardLayoutMetrics.primaryMinimumWidth : nil,
+                                    maxWidth: .infinity,
+                                    alignment: .topLeading
+                                )
+                            rail(dashboard: dashboard, presentsCardsHorizontally: presentsCompactRailCardsHorizontally, availableWidth: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth)
+                                .frame(
+                                    width: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth,
+                                    alignment: .topLeading
+                                )
+                        }
                     }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 18)
                 }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 18)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .alert(
                 "Replace active Focus?",
                 isPresented: Binding(
@@ -130,7 +142,11 @@ struct TodayDashboardView<CatchUpContent: View>: View {
         }
     }
 
-    private func mainContent(dashboard: TodayDashboardSnapshot, isWide: Bool) -> some View {
+    private func mainContent(
+        dashboard: TodayDashboardSnapshot,
+        isWide: Bool,
+        openReview: @escaping () -> Void
+    ) -> some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.lg) {
             TodayDashboardRecommendationCards(
                 recommendations: dashboard.recommendations,
@@ -177,8 +193,10 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                         catchUpContent()
                     }
                     .todayDashboardCard()
+                    .id("today-review-actions")
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("today-review-actions")
+                    .accessibilityFocused($isReviewActionsFocused)
                 }
                 .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, alignment: .topLeading)
             }
