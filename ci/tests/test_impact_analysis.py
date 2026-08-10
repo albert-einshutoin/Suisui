@@ -65,6 +65,24 @@ class ImpactAnalysisTests(unittest.TestCase):
             ["DevelopmentAutomationRuntimeSmokeTests"],
         )
 
+    def test_source_change_selects_declared_test_suites_and_ignores_test_support_files(self) -> None:
+        self._write(
+            "Tests/SuisuiCoreTests/WidgetTestSupport.swift",
+            "struct WidgetFixture { let subject = Widget() }\n",
+        )
+        self._write(
+            "Tests/SuisuiCoreTests/WidgetScenarios.swift",
+            "final class WidgetPrimaryTests: XCTestCase { let subject = Widget() }\n"
+            "final class WidgetSecondaryTests: XCTestCase { let subject = Widget() }\n",
+        )
+
+        plan = self._analyze([{"status": "M", "path": "Sources/SuisuiCore/App/Widget.swift"}])
+
+        self.assertIn("WidgetPrimaryTests", plan["unitTestTargets"])
+        self.assertIn("WidgetSecondaryTests", plan["unitTestTargets"])
+        self.assertNotIn("WidgetScenarios", plan["unitTestTargets"])
+        self.assertNotIn("WidgetTestSupport", plan["unitTestTargets"])
+
     def test_changed_test_file_is_always_selected(self) -> None:
         plan = self._analyze([{"status": "M", "path": "Tests/SuisuiCoreTests/WidgetTests.swift"}])
 
