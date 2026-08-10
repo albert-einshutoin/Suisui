@@ -462,7 +462,7 @@ measure_cold_launch_sample() {
   # AX markers remain mandatory proof that the app-owned readiness milestones
   # correspond to real, operable UI rather than optimistic instrumentation.
   wait_for_visible_window
-  wait_for_marker "project-board-command-palette"
+  wait_for_marker "project-board-sidebar-toggle"
   wait_for_marker "today-workflow"
 
   visible_elapsed_ms=$((visible_window_ms - launch_start_ms))

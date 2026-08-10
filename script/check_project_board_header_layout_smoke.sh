@@ -148,7 +148,7 @@ on run argv
     tell item 1 of matchingProcesses
       set frontmost to true
       repeat with candidateWindow in windows
-        if my containsIdentifier(candidateWindow, "project-board-command-palette", 0) and my containsIdentifier(candidateWindow, "project-board-sidebar", 0) and my containsIdentifier(candidateWindow, "project-board-detail", 0) then
+        if my containsIdentifier(candidateWindow, "project-board-sidebar-toggle", 0) and my containsIdentifier(candidateWindow, "project-board-sidebar", 0) and my containsIdentifier(candidateWindow, "project-board-detail", 0) then
           try
             perform action "AXRaise" of candidateWindow
           end try
@@ -571,8 +571,7 @@ exercise_automation_utility() {
 }
 
 exercise_settings_utility() {
-  open_utilities_menu
-  click_first_ax_identifier "project-board-settings-link"
+  click_first_ax_identifier "sidebar-action-settings"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
     if /usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT' >/dev/null 2>&1
@@ -595,11 +594,11 @@ end run
 APPLESCRIPT
     then
       restore_project_board_window
-      printf "OK: Settings utility opened and closed the Settings window\n"
+      printf "OK: sidebar Settings opened and closed the Settings window\n"
       return 0
     fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: Settings utility did not open a second window" >&2
+      echo "BLOCKER: sidebar Settings did not open a second window" >&2
       return 1
     fi
     sleep 0.2
@@ -738,7 +737,7 @@ capture_window() {
 assert_primary_ax_frames_are_nonzero() {
   local frame_file="$OUTPUT_DIR/screenshot-primary-frames.tsv"
   toolbar_items_deduplicated >"$frame_file"
-  for identifier in project-board-command-palette project-board-sidebar project-board-detail; do
+  for identifier in project-board-sidebar-toggle project-board-sidebar project-board-detail; do
     if ! awk -F $'\t' -v wanted="$identifier" '
       $1 == wanted && $4 + 0 > 0 && $5 + 0 > 0 { found = 1 }
       END { exit(found ? 0 : 1) }
@@ -828,7 +827,7 @@ assert_semantic_regions_have_visible_variance() {
   local screenshot_path="$1"
   # These regions are expected to contain visible controls or seeded task
   # content even when the remainder of the dark board canvas is intentionally empty.
-  assert_ax_region_has_visible_variance "$screenshot_path" "project-board-command-palette"
+  assert_ax_region_has_visible_variance "$screenshot_path" "project-board-sidebar-toggle"
   assert_ax_region_has_visible_variance "$screenshot_path" "project-header-add-task"
   assert_ax_region_has_visible_variance "$screenshot_path" "task-card-open-details"
 }
@@ -850,10 +849,6 @@ on appendIdentifiedElement(outputLines, uiElement, syntheticIdentifier)
       end try
       if titleValue is "Utilities" or titleValue is "ユーティリティ" or titleValue is "Integrations" or titleValue is "連携" then
         set identifierValue to "project-board-integrations-menu"
-      else if titleValue is "Voice Command" or titleValue is "音声コマンド" then
-        set identifierValue to "project-board-voice-command"
-      else if titleValue is "Settings" or titleValue is "設定" then
-        set identifierValue to "project-board-settings-link"
       else if titleValue is "Terminal" or titleValue is "ターミナル" then
         set identifierValue to "project-board-terminal-toggle"
       end if
@@ -984,29 +979,23 @@ wait_for_toolbar_buttons() {
 assert_action_buttons_are_trailing() {
   local label="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  local sidebar_x search_x voice_x inspector_x utilities_x utilities_width window_right
+  local sidebar_x inspector_x utilities_x utilities_width window_right
 
   while true; do
     wait_for_window_metadata
     wait_for_toolbar_buttons "$label"
 
     assert_button_present "project-board-sidebar-toggle"
-    assert_button_present "project-board-command-palette"
-    assert_button_present "project-board-voice-command"
     assert_button_present "project-board-inspector-toggle"
     assert_button_present "project-board-integrations-menu"
 
     sidebar_x="$(button_x "project-board-sidebar-toggle")"
-    search_x="$(button_x "project-board-command-palette")"
-    voice_x="$(button_x "project-board-voice-command")"
     inspector_x="$(button_x "project-board-inspector-toggle")"
     utilities_x="$(button_x "project-board-integrations-menu")"
     utilities_width="$(button_width "project-board-integrations-menu")"
     window_right=$((window_x + window_width))
 
-    if (( sidebar_x < search_x &&
-          search_x < voice_x &&
-          voice_x < inspector_x &&
+    if (( sidebar_x < inspector_x &&
           inspector_x < utilities_x &&
           utilities_x + utilities_width <= window_right )); then
       printf "OK: native toolbar actions fit without overlap for %s\n" "$label"
@@ -1026,8 +1015,7 @@ assert_action_buttons_are_trailing() {
 
 toolbar_position_signature() {
   awk -F $'\t' '
-    $1 == "project-board-command-palette" ||
-    $1 == "project-board-voice-command" ||
+    $1 == "project-board-sidebar-toggle" ||
     $1 == "project-board-inspector-toggle" ||
     $1 == "project-board-integrations-menu" {
       print $1 ":" $2 ":" $3 ":" $4 ":" $5

@@ -389,7 +389,7 @@ wait_for_marker_until() {
 }
 
 wait_for_required_markers() {
-  wait_for_marker_until "project-board-command-palette" "" "$case_deadline"
+  wait_for_marker_until "project-board-sidebar-toggle" "" "$case_deadline"
   wait_for_marker_until "today-workflow" "$expected_today_label" "$case_deadline"
 }
 
@@ -624,7 +624,7 @@ launch_route_and_wait_for_markers() {
   # its AX route subtree is queryable; only a window-classified failure gets
   # one clean relaunch below.
   case_deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
-  if ! wait_for_marker_until "project-board-command-palette" "" "$case_deadline"; then
+  if ! wait_for_marker_until "project-board-sidebar-toggle" "" "$case_deadline"; then
     route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
     return 1
   fi
@@ -733,7 +733,7 @@ navigate_to_seed_project() {
   fi
 
   case_deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
-  for marker in "project-board-command-palette" "$route_sidebar_marker" "$route_content_marker"; do
+  for marker in "project-board-sidebar-toggle" "$route_sidebar_marker" "$route_content_marker"; do
     required_text=""
     [[ "$marker" == "$route_content_marker" ]] && required_text="$route_text"
     if ! wait_for_marker_until "$marker" "$required_text" "$case_deadline"; then

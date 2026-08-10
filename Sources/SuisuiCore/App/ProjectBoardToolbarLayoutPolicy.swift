@@ -24,19 +24,11 @@ public struct ProjectBoardToolbarContext: Equatable, Sendable {
         self.hasInspectorSelection = hasInspectorSelection
     }
 
-    public var hasPrimaryVoiceAction: Bool {
-        true
-    }
-
     public var showsIntegrations: Bool {
         true
     }
 
     public var showsAutomation: Bool {
-        true
-    }
-
-    public var showsSettings: Bool {
         true
     }
 

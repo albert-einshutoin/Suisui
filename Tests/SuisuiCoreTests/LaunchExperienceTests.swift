@@ -65,7 +65,7 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(launcher.contains("\"-ApplePersistenceIgnoreState\", \"YES\""))
         XCTAssertTrue(script.contains("wait_for_project_board_window"))
         XCTAssertTrue(script.contains("wait_for_project_board_marker"))
-        XCTAssertTrue(script.contains("project-board-command-palette"))
+        XCTAssertTrue(script.contains("project-board-sidebar-toggle"))
         XCTAssertTrue(script.contains("project-board-sidebar"))
         XCTAssertTrue(script.contains("project-board-detail"))
         XCTAssertTrue(script.contains("BLOCKER: Project Board window was not visible within"))
@@ -498,7 +498,7 @@ final class LaunchExperienceTests: XCTestCase {
         // The marker waiter is deliberately generic: the production smoke must
         // exercise both concrete markers through that helper, not duplicate it.
         XCTAssertTrue(source.contains("wait_for_marker_until()"))
-        XCTAssertTrue(source.contains("wait_for_marker_until \"project-board-command-palette\" \"\" \"$case_deadline\""))
+        XCTAssertTrue(source.contains("wait_for_marker_until \"project-board-sidebar-toggle\" \"\" \"$case_deadline\""))
         XCTAssertTrue(source.contains("wait_for_marker_until \"today-workflow\" \"$expected_today_label\" \"$case_deadline\""))
         XCTAssertTrue(source.contains("RUNTIME_TIMEOUT_SECONDS=\"${SUISUI_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS:-30}\""))
         XCTAssertFalse(source.contains("RUNTIME_TIMEOUT_SECONDS=\"${SUISUI_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS:-10}\""))

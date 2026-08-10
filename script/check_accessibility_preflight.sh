@@ -57,8 +57,8 @@ REQUIRED_RUNTIME_BUTTON_A11Y_MARKERS=(
 REQUIRED_RUNTIME_SCREEN_MARKERS=(
   "Inbox sidebar=>sidebar-destination-inbox"
   "Today sidebar=>sidebar-destination-today"
-  "Settings via Utilities toolbar=>project-board-integrations-menu"
-  "Voice Command toolbar=>project-board-voice-command"
+  "Settings sidebar=>sidebar-action-settings"
+  "Voice Command sidebar=>sidebar-action-voice-command"
 )
 REQUIRED_RUNTIME_DESTRUCTIVE_CANCEL_MARKERS=(
   "Delete task cancel=>task-inspector-delete-confirmation-cancel"

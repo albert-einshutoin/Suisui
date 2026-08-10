@@ -9,8 +9,6 @@ struct ProjectBoardToolbarContent: ToolbarContent {
     let canSyncGoogleCalendar: Bool
     let googleCalendarSyncHelp: String
     let onToggleSidebar: () -> Void
-    let onOpenSearch: () -> Void
-    let onOpenVoiceCommand: () -> Void
     let onToggleInspector: () -> Void
     let onExportTasks: () -> Void
     let onImportTasks: () -> Void
@@ -47,26 +45,6 @@ struct ProjectBoardToolbarContent: ToolbarContent {
 
         if #available(macOS 26.0, *) {
             ToolbarSpacer(.flexible, placement: .primaryAction)
-        }
-
-        ToolbarItemGroup(placement: .primaryAction) {
-            Button(action: onOpenSearch) {
-                Label("Search", systemImage: "magnifyingglass")
-            }
-            .help("Search and commands")
-            .accessibilityIdentifier("project-board-command-palette")
-
-            if context.hasPrimaryVoiceAction {
-                Button(action: onOpenVoiceCommand) {
-                    Label("Voice Command", systemImage: "mic")
-                }
-                .help("Voice Command")
-                .accessibilityIdentifier("project-board-voice-command")
-            }
-        }
-
-        if #available(macOS 26.0, *) {
-            ToolbarSpacer(.fixed, placement: .primaryAction)
         }
 
         if context.showsInspectorToggle {
@@ -118,19 +96,10 @@ struct ProjectBoardToolbarContent: ToolbarContent {
                     .keyboardShortcut("`", modifiers: [.control])
                     .accessibilityIdentifier("project-board-terminal-toggle")
                 }
-
-                if context.showsSettings {
-                    Divider()
-                    SettingsLink {
-                        Label("Settings", systemImage: "gearshape")
-                    }
-                    .help("Open Settings")
-                    .accessibilityIdentifier("project-board-settings-link")
-                }
             } label: {
                 Label("Utilities", systemImage: "ellipsis.circle")
             }
-            .help("Integrations, automation, settings, and developer tools")
+            .help("Utilities")
             .accessibilityIdentifier("project-board-integrations-menu")
         }
     }

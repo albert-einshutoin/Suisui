@@ -186,7 +186,7 @@ WINDOW_METADATA_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/window.tsv"
 WINDOW_CONTENT_SIZE_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/window-content-size.tsv"
 WINDOW_RESIZE_ATTEMPTS_FILE="$LAYOUT_STABILITY_OUTPUT_DIR/window-resize-attempts.tsv"
 REQUIRED_AX_IDENTIFIERS=(
-  "project-board-command-palette"
+  "project-board-integrations-menu"
   "project-board-detail"
   "project-board-sidebar"
 )
@@ -1108,7 +1108,7 @@ sample_layout_frames() {
     # The first sample is intentionally taken at t=0ms so transient layout
     # correction cannot be hidden behind a delayed runloop retry.
     awk -F $'\t' -v label="$label" -v sample="$sample_index" -v offset="t=${offset_ms}ms" '
-      $1 == "project-board-command-palette" ||
+      $1 == "project-board-integrations-menu" ||
       $1 == "project-board-detail" ||
       $1 == "project-board-sidebar" ||
       $1 == "project-inspector" ||
@@ -1218,7 +1218,7 @@ wait_for_required_layout_subjects
 assert_layout_stable "initial"
 
 click_sidebar_toggle
-assert_layout_stable "sidebar-hidden" "project-board-command-palette" "project-board-detail"
+assert_layout_stable "sidebar-hidden" "project-board-integrations-menu" "project-board-detail"
 
 click_sidebar_toggle
 assert_layout_stable "sidebar-restored"
@@ -1246,19 +1246,19 @@ assert_layout_stable "content-minimum-closed"
 
 click_ax_identifier "project-header-open-inspector"
 wait_for_ax_identifier "project-inspector"
-assert_layout_stable "inspector-explicit-open" "project-board-command-palette" "project-board-detail" "project-board-sidebar" "project-inspector"
+assert_layout_stable "inspector-explicit-open" "project-board-integrations-menu" "project-board-detail" "project-board-sidebar" "project-inspector"
 
 set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH" "$LAYOUT_STABILITY_WINDOW_BELOW_MIN_HEIGHT"
 wait_for_ax_identifier "project-inspector"
 assert_window_content_minimum "open"
-assert_layout_stable "content-minimum-open" "project-board-command-palette" "project-board-detail" "project-board-sidebar" "project-inspector"
+assert_layout_stable "content-minimum-open" "project-board-integrations-menu" "project-board-detail" "project-board-sidebar" "project-inspector"
 
 set_project_board_window_size \
   "$LAYOUT_STABILITY_WINDOW_BELOW_MIN_WIDTH" \
   "$LAYOUT_STABILITY_WINDOW_MIN_HEIGHT" \
   "$LAYOUT_STABILITY_WINDOW_MIN_WIDTH"
 wait_for_ax_identifier "project-inspector"
-assert_layout_stable "window-minimum-open" "project-board-command-palette" "project-board-detail" "project-board-sidebar" "project-inspector"
+assert_layout_stable "window-minimum-open" "project-board-integrations-menu" "project-board-detail" "project-board-sidebar" "project-inspector"
 assert_window_minimum_width "open"
 
 set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_CANONICAL_WIDTH" "$LAYOUT_STABILITY_WINDOW_MIN_HEIGHT"
@@ -1269,7 +1269,7 @@ assert_layout_stable "inspector-explicit-close"
 click_ax_identifier "task-card-open-details"
 wait_for_ax_identifier "task-inspector"
 wait_for_ax_identifier_absent "project-inspector"
-assert_layout_stable "task-inspector-explicit-open" "project-board-command-palette" "project-board-detail" "project-board-sidebar" "task-inspector"
+assert_layout_stable "task-inspector-explicit-open" "project-board-integrations-menu" "project-board-detail" "project-board-sidebar" "task-inspector"
 click_ax_identifier "task-inspector-close"
 wait_for_ax_identifier_absent "task-inspector"
 assert_layout_stable "task-inspector-explicit-close"
@@ -1286,7 +1286,7 @@ set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH" "$LAYOUT
 assert_layout_stable "inspector-wide-closed"
 click_ax_identifier "project-header-open-inspector"
 wait_for_ax_identifier "project-inspector"
-assert_layout_stable "inspector-wide-open" "project-board-command-palette" "project-board-detail" "project-board-sidebar" "project-inspector"
+assert_layout_stable "inspector-wide-open" "project-board-integrations-menu" "project-board-detail" "project-board-sidebar" "project-inspector"
 
 # A native SwiftUI inspector contributes its own AppKit minimum width, so
 # close it through the user-visible control before exercising the compact
