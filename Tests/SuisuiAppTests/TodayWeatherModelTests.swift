@@ -38,6 +38,28 @@ final class TodayWeatherModelTests: XCTestCase {
     }
 
     @MainActor
+    func testCurrentLocationKeepsPermissionPendingWhileAuthorizationIsUnresolved() async {
+        let requestStarted = expectation(description: "Location authorization requested")
+        let location = DeferredLocationProvider(requestStarted: requestStarted)
+        let weather = RecordingWeatherProvider()
+        let model = TodayWeatherModel(
+            preferenceProvider: { .currentLocation },
+            weatherProvider: weather,
+            locationProvider: location
+        )
+
+        let refresh = Task { @MainActor in await model.refresh() }
+        await fulfillment(of: [requestStarted], timeout: 1)
+
+        XCTAssertEqual(model.state, .permissionPending)
+        XCTAssertTrue(weather.coordinates.isEmpty)
+
+        location.resolve(TodayWeatherCoordinate(latitude: 35.6, longitude: 139.7))
+        await refresh.value
+        XCTAssertEqual(model.state, .available(temperatureCelsius: 23, location: "Tokyo", updatedAt: weather.updatedAt))
+    }
+
+    @MainActor
     func testUnsetLocationDoesNotContactProviders() async {
         let weather = RecordingWeatherProvider()
         let location = RecordingLocationProvider()
@@ -70,6 +92,31 @@ final class TodayWeatherModelTests: XCTestCase {
         await model.refresh()
 
         XCTAssertEqual(model.state, .available(temperatureCelsius: 23, location: "Tokyo", updatedAt: Date(timeIntervalSince1970: 100)))
+        XCTAssertEqual(weather.requestCount, 2)
+    }
+
+    @MainActor
+    func testDisablingWeatherClearsTheLocationDerivedSessionCache() async {
+        let weather = SequenceWeatherProvider(values: [
+            .success(TodayWeatherValue(temperatureCelsius: 23, location: "Tokyo", updatedAt: Date(timeIntervalSince1970: 100))),
+            .failure(TodayWeatherModelError.unavailable),
+        ])
+        let preference = MutableWeatherPreference(
+            .manual(cityLabel: "Tokyo", latitude: 35.6, longitude: 139.7)
+        )
+        let model = TodayWeatherModel(
+            preferenceProvider: { preference.value },
+            weatherProvider: weather,
+            locationProvider: RecordingLocationProvider()
+        )
+
+        await model.refresh()
+        preference.value = .unset
+        await model.refresh()
+        preference.value = .manual(cityLabel: "Tokyo", latitude: 35.6, longitude: 139.7)
+        await model.refresh()
+
+        XCTAssertEqual(model.state, .failed)
         XCTAssertEqual(weather.requestCount, 2)
     }
 
@@ -352,5 +399,27 @@ private final class RecordingLocationProvider: TodayLocationProviding, @unchecke
         requestCount += 1
         if let error { throw error }
         return TodayWeatherCoordinate(latitude: 35.6, longitude: 139.7)
+    }
+}
+
+@MainActor
+private final class DeferredLocationProvider: TodayLocationProviding {
+    private let requestStarted: XCTestExpectation
+    private var continuation: CheckedContinuation<TodayWeatherCoordinate, Error>?
+
+    init(requestStarted: XCTestExpectation) {
+        self.requestStarted = requestStarted
+    }
+
+    func currentCoordinate() async throws -> TodayWeatherCoordinate {
+        requestStarted.fulfill()
+        return try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func resolve(_ coordinate: TodayWeatherCoordinate) {
+        continuation?.resume(returning: coordinate)
+        continuation = nil
     }
 }

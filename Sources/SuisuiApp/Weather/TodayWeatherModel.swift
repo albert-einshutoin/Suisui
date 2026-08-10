@@ -96,6 +96,7 @@ public final class TodayWeatherModel: ObservableObject {
         let cacheKey = preference.sessionCacheKey
         switch preference {
         case .unset:
+            cachedEntry = nil
             state = .notConfigured
             return
         case .currentLocation:
@@ -110,12 +111,6 @@ public final class TodayWeatherModel: ObservableObject {
         let hasMatchingCache = cachedEntry?.key == cacheKey
         if let cachedEntry, cachedEntry.key == cacheKey {
             state = state(for: cachedEntry.value)
-        }
-        // Keep a cached reading visible while the refresh runs. Replacing it
-        // with a loading placeholder creates a misleading blank/oscillating
-        // header and discards the stale-data affordance.
-        if !hasMatchingCache {
-            state = .loading
         }
         do {
             let coordinate: TodayWeatherCoordinate
@@ -132,6 +127,12 @@ public final class TodayWeatherModel: ObservableObject {
                 return
             }
             guard isCurrentRefresh(generation) else { return }
+            // Current-location refreshes keep permission guidance visible until
+            // Core Location resolves. Manual locations reach this point
+            // immediately. A matching cache remains visible in either case.
+            if !hasMatchingCache {
+                state = .loading
+            }
             let value = try await weatherProvider.weather(for: coordinate)
             // Settings may start a newer refresh while location/weather awaits.
             // Only the newest request is allowed to publish a Today state.
