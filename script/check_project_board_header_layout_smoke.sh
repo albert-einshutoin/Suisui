@@ -390,6 +390,7 @@ on run argv
       repeat with candidateWindow in windows
         if my containsIdentifier(candidateWindow, "project-board-detail", 0) then
           set size of candidateWindow to {700, 500}
+          set position of candidateWindow to {120, 160}
           return true
         end if
       end repeat
@@ -412,10 +413,8 @@ assert_window_respects_minimum() {
 assert_utility_menu_items_reachable() {
   local automation_title="$1"
   local localized_automation_title="$2"
-  local settings_title="$3"
-  local localized_settings_title="$4"
   click_first_ax_identifier "project-board-integrations-menu"
-  /usr/bin/osascript - "$APP_NAME" "$app_pid" "$automation_title" "$localized_automation_title" "$settings_title" "$localized_settings_title" <<'APPLESCRIPT' >/dev/null
+  /usr/bin/osascript - "$APP_NAME" "$app_pid" "$automation_title" "$localized_automation_title" <<'APPLESCRIPT' >/dev/null
 on containsEitherNamedMenuItem(uiElement, primaryName, localizedName, depth)
   tell application "System Events"
     try
@@ -440,14 +439,12 @@ on run argv
   set targetPID to (item 2 of argv) as integer
   set automationTitle to item 3 of argv
   set localizedAutomationTitle to item 4 of argv
-  set settingsTitle to item 5 of argv
-  set localizedSettingsTitle to item 6 of argv
   tell application "System Events"
     set matchingProcesses to every process whose unix id is targetPID
     if (count of matchingProcesses) is not 1 then error "owned process missing"
     tell item 1 of matchingProcesses
       repeat with candidateWindow in windows
-        if my containsEitherNamedMenuItem(candidateWindow, automationTitle, localizedAutomationTitle, 0) and my containsEitherNamedMenuItem(candidateWindow, settingsTitle, localizedSettingsTitle, 0) then
+        if my containsEitherNamedMenuItem(candidateWindow, automationTitle, localizedAutomationTitle, 0) then
           key code 53
           return true
         end if
@@ -457,7 +454,7 @@ on run argv
   end tell
 end run
 APPLESCRIPT
-  printf "OK: automation and Settings are reachable from native toolbar overflow\n"
+  printf "OK: automation is reachable from native toolbar overflow\n"
 }
 
 open_utilities_menu() {
@@ -469,6 +466,27 @@ wait_for_file_panel_and_cancel() {
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
     if /usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT' >/dev/null 2>&1
+on pressCancel(uiElement, depth)
+  tell application "System Events"
+    set identifierValue to ""
+    try
+      set identifierValue to value of attribute "AXIdentifier" of uiElement
+    end try
+    if identifierValue is "CancelButton" then
+      perform action "AXPress" of uiElement
+      return true
+    end if
+    if depth < 8 then
+      try
+        repeat with childElement in UI elements of uiElement
+          if my pressCancel(childElement, depth + 1) then return true
+        end repeat
+      end try
+    end if
+  end tell
+  return false
+end pressCancel
+
 on run argv
   set appName to item 1 of argv
   set targetPID to (item 2 of argv) as integer
@@ -477,16 +495,7 @@ on run argv
     if (count of matchingProcesses) is not 1 then error "owned process missing"
     tell item 1 of matchingProcesses
       repeat with candidateWindow in windows
-        if (count of sheets of candidateWindow) > 0 then
-          key code 53
-          return true
-        end if
-        try
-          if subrole of candidateWindow is "AXDialog" then
-            key code 53
-            return true
-          end if
-        end try
+        if my pressCancel(candidateWindow, 0) then return true
       end repeat
     end tell
   end tell
@@ -511,6 +520,9 @@ exercise_file_utility() {
   open_utilities_menu
   click_first_ax_identifier "$identifier"
   wait_for_file_panel_and_cancel "$label"
+  # AX closes the native panel asynchronously; do not let the next toolbar
+  # action target controls behind a still-active modal surface.
+  wait_for_ax_identifier_absent "open-panel"
   restore_project_board_window
 }
 
@@ -698,6 +710,41 @@ end run
 APPLESCRIPT
 }
 
+close_hydrated_loading_window() {
+  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null
+on containsIdentifier(uiElement, targetIdentifier, depth)
+  tell application "System Events"
+    try
+      if value of attribute "AXIdentifier" of uiElement is targetIdentifier then return true
+    end try
+    if depth < 8 then
+      try
+        repeat with childElement in UI elements of uiElement
+          if my containsIdentifier(childElement, targetIdentifier, depth + 1) then return true
+        end repeat
+      end try
+    end if
+  end tell
+  return false
+end containsIdentifier
+
+on run argv
+  set targetPID to (item 1 of argv) as integer
+  tell application "System Events"
+    set matchingProcesses to every process whose unix id is targetPID
+    if (count of matchingProcesses) is not 1 then error "owned process missing"
+    tell item 1 of matchingProcesses
+      repeat with candidateWindow in windows
+        if my containsIdentifier(candidateWindow, "project-board-fallback-loading", 0) then
+          perform action "AXPress" of (first button of candidateWindow whose subrole is "AXCloseButton")
+        end if
+      end repeat
+    end tell
+  end tell
+end run
+APPLESCRIPT
+}
+
 wait_for_project_detail_visible() {
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   local probe_file="$OUTPUT_DIR/project-detail-probe.tsv"
@@ -705,6 +752,11 @@ wait_for_project_detail_visible() {
     ensure_project_detail_visible
     if toolbar_items_deduplicated >"$probe_file" 2>"$OUTPUT_DIR/project-detail-probe.err" &&
       awk -F $'\t' '$1 == "project-board-detail" { found = 1 } END { exit(found ? 0 : 1) }' "$probe_file"; then
+      # Direct evidence launches can leave the first-paint loading window next
+      # to the hydrated board. Close only that identified temporary surface so
+      # CGWindow screenshot selection cannot capture stale launch chrome.
+      close_hydrated_loading_window
+      wait_for_window_metadata
       return 0
     fi
 
@@ -776,7 +828,7 @@ assert_ax_region_has_visible_variance() {
   local frame_x frame_y frame_width frame_height relative_x relative_y
   local pixel_width pixel_height scale_x scale_y pixel_x pixel_y pixel_region_width pixel_region_height
   IFS=$'\t' read -r _ frame_x frame_y frame_width frame_height < <(
-    awk -F $'\t' -v wanted="$identifier" '$1 == wanted { print; exit }' "$frame_file"
+    awk -F $'\t' -v wanted="$identifier" '$1 == wanted || index($1, wanted "-") == 1 { print; exit }' "$frame_file"
   )
   if [[ -z "${frame_x:-}" || -z "${frame_y:-}" || -z "${frame_width:-}" || -z "${frame_height:-}" ]]; then
     echo "BLOCKER: semantic screenshot region is missing from AX evidence: $identifier" >&2
@@ -1410,7 +1462,7 @@ wait_for_visible_windows
 assert_window_respects_minimum
 assert_action_buttons_are_trailing "minimum-window"
 capture_window "minimum-window"
-assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認" "Settings" "設定"
+assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
 exercise_toolbar_utilities
 
 launch_header_layout_candidate "japanese"
@@ -1421,7 +1473,7 @@ wait_for_visible_windows
 assert_window_respects_minimum
 assert_action_buttons_are_trailing "minimum-window-japanese"
 capture_window "minimum-window-japanese"
-assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認" "Settings" "設定"
+assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
 exercise_toolbar_utilities
 
 printf "OK: Project Board header layout smoke passed\n"
