@@ -70,6 +70,14 @@
 "Remind Me in 1 Hour" = "1時間後に再通知";
 "Reminders" = "リマインダー";
 "Review" = "確認";
+"Needs Review" = "要確認";
+"External changes" = "外部連携の変更";
+"No items need review right now." = "現在、確認が必要な項目はありません。";
+"No external changes." = "外部連携の変更はありません。";
+"View all review items" = "すべての確認事項を表示";
+"Opens the Review area without changing tasks or external services." = "タスクや外部サービスを変更せずに確認エリアを開きます。";
+"Daily Planning" = "日次計画";
+"Review actions" = "確認アクション";
 "Save to Inbox" = "Inboxに保存";
 "Saved to Inbox" = "Inboxに保存しました";
 "Open Inbox" = "Inboxを開く";

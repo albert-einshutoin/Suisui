@@ -167,42 +167,140 @@ struct TodayDashboardWeeklyScheduleCard: View {
     }
 }
 
-struct TodayDashboardReviewCard<Content: View>: View {
+struct TodayDashboardReviewCard: View {
+    let review: TodayReviewSnapshot
     let externalActivity: TodayExternalActivityModel
-    @ViewBuilder let content: () -> Content
+    let openReview: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
-            Label("Review", systemImage: "checklist")
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Needs Review")
                 .font(SuisuiTypography.sectionTitle)
-            if !externalActivity.rows.isEmpty {
-                VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
-                    ForEach(externalActivity.rows, id: \.id) { row in
-                        HStack(alignment: .top, spacing: SuisuiSpacing.sm) {
-                            Image(systemName: systemImage(for: row.service))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 18)
-                            VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
-                                Text(row.title)
-                                    .font(.subheadline.weight(.semibold))
-                                Text(row.detail)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityIdentifier(row.id)
-                        .accessibilityLabel(row.accessibilityLabel)
+                .padding(.bottom, SuisuiSpacing.md)
+
+            if review.items.isEmpty {
+                Text("No items need review right now.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, SuisuiSpacing.md)
+            } else {
+                ForEach(review.items) { item in
+                    reviewItemRow(item)
+                    if item.id != review.items.last?.id {
+                        Divider().padding(.leading, 42)
                     }
                 }
-                Divider()
+
             }
-            content()
+
+            externalChangesDivider
+            if externalActivity.rows.isEmpty {
+                Text("No external changes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, SuisuiSpacing.sm)
+            } else {
+                ForEach(externalActivity.rows, id: \.id) { row in
+                    externalActivityRow(row)
+                    if row.id != externalActivity.rows.last?.id {
+                        Divider().padding(.leading, 42)
+                    }
+                }
+            }
+
+            Divider()
+                .padding(.top, SuisuiSpacing.md)
+            Button(action: openReview) {
+                HStack(spacing: SuisuiSpacing.xs) {
+                    Text("View all review items")
+                    Image(systemName: "arrow.right")
+                        .font(.caption.weight(.semibold))
+                }
+                .font(.subheadline.weight(.medium))
+                .frame(maxWidth: .infinity)
+                .padding(.top, SuisuiSpacing.md)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.accentColor)
+            .accessibilityHint("Opens the Review area without changing tasks or external services.")
+            .accessibilityIdentifier("today-review-view-all")
         }
         .todayDashboardCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-review-card")
+    }
+
+    private func reviewItemRow(_ item: TodayReviewItemSnapshot) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            reviewIcon(systemName: item.kind == .dailyPlanning ? "doc.text" : "clock.arrow.circlepath")
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                if !item.detail.isEmpty {
+                    Text(item.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+            Spacer(minLength: SuisuiSpacing.sm)
+            Text(item.kind == .dailyPlanning ? "Daily Planning" : "Catch Up")
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.trailing)
+                .lineLimit(2)
+        }
+        .padding(.vertical, 10)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("today-review-item-\(item.id)")
+        .accessibilityLabel("\(item.title). \(item.detail)")
+    }
+
+    private var externalChangesDivider: some View {
+        HStack(spacing: SuisuiSpacing.sm) {
+            Rectangle()
+                .fill(SuisuiBorder.subtle)
+                .frame(height: 1)
+            Text("External changes")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize()
+            Rectangle()
+                .fill(SuisuiBorder.subtle)
+                .frame(height: 1)
+        }
+        .padding(.vertical, SuisuiSpacing.md)
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    private func externalActivityRow(_ row: TodayExternalActivitySummaryRow) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            reviewIcon(systemName: systemImage(for: row.service))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(row.title)
+                    .font(.subheadline.weight(.semibold))
+                Text(row.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 10)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier(row.id)
+        .accessibilityLabel(row.accessibilityLabel)
+    }
+
+    private func reviewIcon(systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(Color.accentColor)
+            .frame(width: 30, height: 30)
+            .background(Color.accentColor.opacity(0.11), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .accessibilityHidden(true)
     }
 
     private func systemImage(for service: TodayIntegrationService) -> String {
