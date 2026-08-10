@@ -290,6 +290,44 @@ final class TodayDashboardSnapshotTests: XCTestCase {
         XCTAssertEqual(overdue.todayDueDisplayLabel(on: now, calendar: calendar, locale: Locale(identifier: "ja_JP")), "期限超過 8月8日")
     }
 
+    func testJapaneseLocalizesDailyPlanningReviewReasonsInRecommendations() throws {
+        let calendar = fixedCalendar()
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))
+        let reasons = [
+            ("Blocked work should be unblocked before adding new scope.", "ブロック中の作業を解消してから新しい範囲を追加しましょう。"),
+            ("High-priority work protects today's plan.", "高優先度の作業が今日の計画を守ります。"),
+            ("Keeps today's due work moving.", "今日が期限の作業を前に進められます。")
+        ]
+
+        for (reason, expected) in reasons {
+            let review = DailyPlanningReview(
+                sourceTranscript: "",
+                phase: .morning,
+                requestedMinutes: nil,
+                headline: "",
+                spokenSummary: "",
+                overdueCount: 0,
+                dueTodayCount: 0,
+                inboxUntriagedCount: 0,
+                recommendedTaskID: nil,
+                focusItems: [DailyPlanningFocusItem(taskID: 1, title: "Task", reason: reason)],
+                scheduleBlocks: []
+            )
+            let snapshot = TodayDashboardSnapshotBuilder.make(
+                today: workflowSnapshot(tasks: [], review: review),
+                schedule: .empty,
+                projectTitlesByTaskID: [:],
+                displayName: "",
+                dailyCapacityMinutes: 480,
+                now: now,
+                calendar: calendar,
+                locale: Locale(identifier: "ja_JP")
+            )
+
+            XCTAssertEqual(snapshot.recommendations.first?.reason, expected)
+        }
+    }
+
     func testReviewTitleUsesSemanticFieldsInEnglishAndJapanese() throws {
         let calendar = fixedCalendar()
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-09T09:30:00Z"))

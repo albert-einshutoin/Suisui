@@ -379,7 +379,7 @@ public enum TodayDashboardSnapshotBuilder {
             append(TodayRecommendation(taskID: chip.taskID, title: localizedChip.title, reason: localizedChip.reason, action: .selectTask))
         }
         for item in review?.focusItems ?? [] {
-            append(TodayRecommendation(taskID: item.taskID, title: item.title, reason: item.reason, action: .openReview))
+            append(TodayRecommendation(taskID: item.taskID, title: item.title, reason: localizedPlanReason(item.reason, locale: locale), action: .openReview))
         }
         let unscheduledCandidates = unscheduledTasks
             .filter { isUnscheduledRecommendationCandidate($0, now: now, calendar: calendar) }
@@ -515,7 +515,10 @@ public enum TodayDashboardSnapshotBuilder {
              "Overdue high-priority work should be cleared first.",
              "Overdue work should be cleared before new tasks.",
              "High-priority work is the best first task.",
-             "Earliest due task keeps today on track.":
+             "Earliest due task keeps today on track.",
+             "Blocked work should be unblocked before adding new scope.",
+             "High-priority work protects today's plan.",
+             "Keeps today's due work moving.":
             localized(reason, locale: locale)
         default:
             reason

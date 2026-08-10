@@ -1,6 +1,7 @@
 "%@, %@" = "%2$@、%1$@";
 "Add a task to plan your day." = "今日の計画にタスクを追加してください。";
 "Blocked work should be cleared first." = "ブロック中の作業を最初に解消しましょう。";
+"Blocked work should be unblocked before adding new scope." = "ブロック中の作業を解消してから新しい範囲を追加しましょう。";
 "Earliest due task keeps today on track." = "最も早い期限のタスクから始めて、今日の予定を守りましょう。";
 "Good afternoon" = "こんにちは";
 "Good evening" = "こんばんは";
@@ -8,6 +9,7 @@
 "High" = "高";
 "High-priority work is the best first task." = "高優先度の作業から始めるのが最適です。";
 "High-priority work should be protected." = "高優先度の作業を守りましょう。";
+"High-priority work protects today's plan." = "高優先度の作業が今日の計画を守ります。";
 "Low" = "低";
 "Medium" = "中";
 "Morning" = "朝";
@@ -36,6 +38,7 @@
 "%@ is overdue." = "%@は期限を超過しています。";
 "%@ is high priority." = "%@は高優先度です。";
 "No review items yet." = "まだ振り返り項目はありません。";
+"Keeps today's due work moving." = "今日が期限の作業を前に進められます。";
 "Overdue high-priority work should be cleared first." = "期限超過の高優先度作業を最初に片付けましょう。";
 "Overdue work needs attention." = "期限超過の作業に対応しましょう。";
 "Overdue work should be cleared before new tasks." = "新しいタスクの前に期限超過作業を片付けてください。";

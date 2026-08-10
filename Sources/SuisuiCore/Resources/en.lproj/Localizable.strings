@@ -1,6 +1,7 @@
 "%@, %@" = "%@, %@";
 "Add a task to plan your day." = "Add a task to plan your day.";
 "Blocked work should be cleared first." = "Blocked work should be cleared first.";
+"Blocked work should be unblocked before adding new scope." = "Blocked work should be unblocked before adding new scope.";
 "Earliest due task keeps today on track." = "Earliest due task keeps today on track.";
 "Good afternoon" = "Good afternoon";
 "Good evening" = "Good evening";
@@ -8,6 +9,7 @@
 "High" = "High";
 "High-priority work is the best first task." = "High-priority work is the best first task.";
 "High-priority work should be protected." = "High-priority work should be protected.";
+"High-priority work protects today's plan." = "High-priority work protects today's plan.";
 "Low" = "Low";
 "Medium" = "Medium";
 "Morning" = "Morning";
@@ -36,6 +38,7 @@
 "%@ is overdue." = "%@ is overdue.";
 "%@ is high priority." = "%@ is high priority.";
 "No review items yet." = "No review items yet.";
+"Keeps today's due work moving." = "Keeps today's due work moving.";
 "Overdue high-priority work should be cleared first." = "Overdue high-priority work should be cleared first.";
 "Overdue work needs attention." = "Overdue work needs attention.";
 "Overdue work should be cleared before new tasks." = "Overdue work should be cleared before new tasks.";
