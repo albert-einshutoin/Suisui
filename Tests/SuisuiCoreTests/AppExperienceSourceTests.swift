@@ -1,7 +1,29 @@
 import Foundation
+import SuisuiCore
 import XCTest
 
 final class AppExperienceSourceTests: XCTestCase {
+    func testOnboardingLessonCatalogUsesJapaneseSourceKeys() throws {
+        let english = try readPackageFile("Sources/SuisuiApp/Resources/en.lproj/Localizable.strings")
+        let japanese = try readPackageFile("Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings")
+        let englishKeys = try localizableKeys(in: "Sources/SuisuiApp/Resources/en.lproj/Localizable.strings")
+        let japaneseKeys = try localizableKeys(in: "Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings")
+
+        let lessonKeys = [OnboardingSampleProjectDefinition.projectTitle]
+            + OnboardingSampleProjectDefinition.tasks.flatMap { [$0.title, $0.detail] }
+
+        for key in lessonKeys {
+            // `.strings` stores escaped newlines, while the runtime detail
+            // uses an actual newline for the two-layer Lesson presentation.
+            let serializedKey = key.replacingOccurrences(of: "\n", with: "\\n")
+            XCTAssertTrue(englishKeys.contains(serializedKey), "Missing English key: \(serializedKey)")
+            XCTAssertTrue(japaneseKeys.contains(serializedKey), "Missing Japanese key: \(serializedKey)")
+        }
+
+        XCTAssertTrue(english.contains("\"Suisuiを学ぶ\" = \"Learn Suisui\";"))
+        XCTAssertTrue(japanese.contains("\"Suisuiを学ぶ\" = \"Suisuiを学ぶ\";"))
+    }
+
     func testSettingsWindowSupportsHostedCompactHeight() throws {
         let source = try readPackageFile("Sources/SuisuiApp/Views/SettingsView.swift")
 
