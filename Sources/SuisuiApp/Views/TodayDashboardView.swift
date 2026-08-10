@@ -4,8 +4,8 @@ import SwiftUI
 
 enum TodayDashboardLayoutMetrics {
     // Main needs room for task metadata and rail needs room for assistant actions.
-    static let primaryMinimumWidth: CGFloat = 840
-    static let railMinimumWidth: CGFloat = 320
+    static let primaryMinimumWidth: CGFloat = 760
+    static let railMinimumWidth: CGFloat = 280
     static let columnSpacing: CGFloat = 16
     static let horizontalInsets: CGFloat = 36
     // 900pt windows leave 864pt after the dashboard's horizontal insets.
