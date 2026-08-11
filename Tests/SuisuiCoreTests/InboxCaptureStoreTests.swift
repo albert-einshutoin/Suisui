@@ -456,10 +456,10 @@ final class InboxCaptureStoreTests: XCTestCase {
             viewModel.inboxTriageSummary(for: manual),
             InboxTriageSummary(
                 sourceLabel: "Manual",
-                interpretationLabel: "Unprocessed",
+                interpretationLabel: "Manual",
                 systemImage: "square.and.pencil",
                 tintName: "secondary",
-                accessibilityValue: "Source: Manual, Interpretation: Unprocessed"
+                accessibilityValue: "Source: Manual, Interpretation: Manual"
             )
         )
         XCTAssertEqual(

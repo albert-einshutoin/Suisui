@@ -39,6 +39,12 @@ public enum SuisuiTimestampDisplay {
         if let date = FormatterCache.shared.iso8601WithFractionalSeconds.date(from: trimmed) {
             return Parsed(date: date, includesTime: true)
         }
+        if let date = FormatterCache.shared.sqliteTimestamp.date(from: trimmed) {
+            return Parsed(date: date, includesTime: true)
+        }
+        if let date = FormatterCache.shared.sqliteTimestampWithFractionalSeconds.date(from: trimmed) {
+            return Parsed(date: date, includesTime: true)
+        }
         if let date = FormatterCache.shared.dayOnly(timeZone: calendar.timeZone).date(from: trimmed) {
             return Parsed(date: date, includesTime: false)
         }
@@ -192,6 +198,28 @@ private final class FormatterCache: @unchecked Sendable {
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
     }()
+
+    // SQLite's CURRENT_TIMESTAMP is UTC text without the ISO `T`/`Z` markers.
+    // Keep this parser at the storage boundary so every UI surface still uses
+    // one locale-aware display path instead of special-casing database values.
+    let sqliteTimestamp: DateFormatter = FormatterCache.makeSQLiteTimestampFormatter(
+        dateFormat: "yyyy-MM-dd HH:mm:ss"
+    )
+
+    let sqliteTimestampWithFractionalSeconds: DateFormatter = FormatterCache.makeSQLiteTimestampFormatter(
+        dateFormat: "yyyy-MM-dd HH:mm:ss.SSS"
+    )
+
+    private static func makeSQLiteTimestampFormatter(dateFormat: String) -> DateFormatter {
+        let formatter = DateFormatter()
+        var parsingCalendar = Calendar(identifier: .gregorian)
+        parsingCalendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        formatter.calendar = parsingCalendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = parsingCalendar.timeZone
+        formatter.dateFormat = dateFormat
+        return formatter
+    }
 
     func localized(template: String, calendar: Calendar, locale: Locale) -> DateFormatter {
         let key = "\(template)|\(locale.identifier)|\(calendar.timeZone.identifier)|\(calendar.identifier)"

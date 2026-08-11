@@ -588,7 +588,9 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     }
 
     private func ensureActiveInboxProject() throws -> ProjectRecord {
-        if let inbox = try projectStore.listForProjectBoard().first(where: { $0.title == "Inbox" }) {
+        if let inbox = try projectStore.listForProjectBoard().first(where: {
+            $0.title.caseInsensitiveCompare("Inbox") == .orderedSame
+        }) {
             return inbox
         }
 

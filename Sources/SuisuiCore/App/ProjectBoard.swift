@@ -3666,12 +3666,13 @@ public final class ProjectBoardViewModel: ObservableObject {
         guard let capture = captures.first else {
             return InboxTriageSummary(
                 sourceLabel: "Manual",
-                interpretationLabel: task.status == .backlog && task.dueAt == nil ? "Unprocessed" : "Manual",
+                // Disposition is rendered by the dedicated triage badge. The
+                // source summary must stay about how the item arrived, or a
+                // processed manual task appears contradictory as "Unprocessed".
+                interpretationLabel: "Manual",
                 systemImage: "square.and.pencil",
                 tintName: "secondary",
-                accessibilityValue: task.status == .backlog && task.dueAt == nil
-                    ? "Source: Manual, Interpretation: Unprocessed"
-                    : "Source: Manual, Interpretation: Manual"
+                accessibilityValue: "Source: Manual, Interpretation: Manual"
             )
         }
 
@@ -6570,7 +6571,9 @@ public final class ProjectBoardViewModel: ObservableObject {
             let loadedSnapshot = try store.loadSnapshot(includeArchived: showsArchivedProjects)
             let snapshotChanged = loadedSnapshot != snapshot
             let captureCacheErrorMessage = refreshInboxCaptureCache(for: loadedSnapshot)
-            _ = refreshInboxTriageCache(for: loadedSnapshot)
+            let previousTriageRecords = inboxTriageRecordsByTaskID
+            let triageCacheErrorMessage = refreshInboxTriageCache(for: loadedSnapshot)
+            let triageCacheChanged = previousTriageRecords != inboxTriageRecordsByTaskID
             let assistantQueueErrorMessage = refreshAssistantQueueSnapshot()
             resetScopedExecutionReceiptHistorySnapshots()
             snapshot = loadedSnapshot
@@ -6590,7 +6593,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             if hasLoadedBoardSnapshot || !hasPreloadedGoogleCalendarSyncStatus {
                 refreshGoogleCalendarSyncStatusOffMain()
             }
-            if snapshotChanged || invalidationReason != nil || derivedReadModelReferenceDate == nil {
+            if snapshotChanged || triageCacheChanged || invalidationReason != nil || derivedReadModelReferenceDate == nil {
                 // A mutation followed by its own board-change notification can
                 // load the same snapshot twice. Rebuild only on the first load
                 // so one logical mutation advances the preview revision once.
@@ -6602,7 +6605,9 @@ public final class ProjectBoardViewModel: ObservableObject {
                 }
             }
             hasLoadedBoardSnapshot = true
-            if let recoverableMessage = assistantQueueErrorMessage ?? captureCacheErrorMessage {
+            if let recoverableMessage = assistantQueueErrorMessage
+                ?? captureCacheErrorMessage
+                ?? triageCacheErrorMessage {
                 recordFailure(.providerFailed(recoverableMessage), retryAction: .load)
             } else if failure == nil && failureAtLoadStart == nil {
                 clearFailure()
@@ -8237,8 +8242,11 @@ public final class ProjectBoardViewModel: ObservableObject {
         do {
             let restoredTask: ProjectBoardTask
             switch undo {
-            case .restoreMutation(let mutation):
-                restoredTask = try store.undoInboxTriage(mutation)
+            case .restoreMutation(let mutation, let regenerated):
+                restoredTask = try undoInboxTriageOperation(
+                    mutation: mutation,
+                    regenerated: regenerated
+                )
             case .restoreTask(let originalTask):
                 restoredTask = try store.updateTask(id: originalTask.id, originalTask.classificationDraft)
             case .restoreTaskAndDeleteProject(let originalTask, let createdProjectID):
@@ -8869,6 +8877,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         do {
+            let taskIDsBeforeMutation = visibleTaskIDsForUndoDiff()
             let mutation = try store.performInboxTriage(
                 taskID: selectedTask.id,
                 action: action,
@@ -8881,6 +8890,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 on: inboxVisibilityReferenceDate ?? readModelNow(),
                 calendar: readModelCalendarProvider()
             )
+            let regenerated = regeneratedTasksAfterMutation(notIn: taskIDsBeforeMutation).first
             selectedProjectID = mutation.updatedTask.projectID
             selectedTaskID = mutation.updatedTask.id
 
@@ -8891,7 +8901,10 @@ public final class ProjectBoardViewModel: ObservableObject {
             }
 
             inboxClassificationFeedback = feedback
-            lastInboxClassificationUndo = .restoreMutation(mutation: mutation)
+            lastInboxClassificationUndo = .restoreMutation(
+                mutation: mutation,
+                regenerated: regenerated
+            )
             errorMessage = nil
             onChange()
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
@@ -9109,6 +9122,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         let taskIDs = Self.inboxTaskIDs(in: snapshot)
         guard !taskIDs.isEmpty else {
             inboxTriageRecordsByTaskID = [:]
+            inboxTriageErrorMessage = nil
             return nil
         }
         do {
@@ -9802,7 +9816,7 @@ public final class ProjectBoardViewModel: ObservableObject {
 }
 
 private enum InboxClassificationUndo {
-    case restoreMutation(mutation: InboxTriageMutation)
+    case restoreMutation(mutation: InboxTriageMutation, regenerated: ProjectBoardTask?)
     case restoreTask(originalTask: ProjectBoardTask)
     case restoreTaskAndDeleteProject(originalTask: ProjectBoardTask, createdProjectID: Int64)
 }

@@ -2187,7 +2187,7 @@ public enum CoreMigrations {
                         NULL
                     FROM tasks
                     INNER JOIN projects ON projects.id = tasks.project_id
-                    WHERE projects.title = 'Inbox';
+                    WHERE projects.title COLLATE NOCASE = 'Inbox';
                     """
                 )
             },

@@ -7,21 +7,26 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
     private var nextArtifactID: Int64
     private var nextMilestoneID: Int64
     private var inboxRecordsByTaskID: [Int64: InboxTriageRecord]
+    private let inboxTriageReadError: Error?
 
-    init(snapshot: ProjectBoardSnapshot = ProjectBoardSnapshot(projects: [
-        ProjectBoardProject(
-            id: 1,
-            title: "Inbox",
-            status: "active",
-            subtitle: "0 open / 0 total",
-            columns: ProjectTaskStatus.allCases.map { ProjectBoardColumn(status: $0, tasks: []) }
-        )
-    ])) {
+    init(
+        snapshot: ProjectBoardSnapshot = ProjectBoardSnapshot(projects: [
+            ProjectBoardProject(
+                id: 1,
+                title: "Inbox",
+                status: "active",
+                subtitle: "0 open / 0 total",
+                columns: ProjectTaskStatus.allCases.map { ProjectBoardColumn(status: $0, tasks: []) }
+            )
+        ]),
+        inboxTriageReadError: Error? = nil
+    ) {
         self.snapshot = snapshot
         self.nextTaskID = snapshot.projects.flatMap(\.tasks).map(\.id).max().map { $0 + 1 } ?? 1
         self.nextArtifactID = snapshot.projects.flatMap(\.artifacts).map(\.id).max().map { $0 + 1 } ?? 1
         self.nextMilestoneID = snapshot.projects.flatMap(\.milestones).map(\.id).max().map { $0 + 1 } ?? 1
         self.inboxRecordsByTaskID = [:]
+        self.inboxTriageReadError = inboxTriageReadError
     }
 
     func loadSnapshot() throws -> ProjectBoardSnapshot {
@@ -37,7 +42,10 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
     }
 
     func loadInboxTriageRecords(taskIDs: Set<Int64>) throws -> [Int64: InboxTriageRecord] {
-        Dictionary(uniqueKeysWithValues: taskIDs.compactMap { taskID in
+        if let inboxTriageReadError {
+            throw inboxTriageReadError
+        }
+        return Dictionary(uniqueKeysWithValues: taskIDs.compactMap { taskID in
             inboxRecordsByTaskID[taskID].map { (taskID, $0) }
         })
     }

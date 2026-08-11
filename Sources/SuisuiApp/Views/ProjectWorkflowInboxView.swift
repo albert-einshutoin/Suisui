@@ -51,9 +51,17 @@ struct InboxWorkflowView: View {
         case .oldest:
             sortByCaptureDate(viewModel.filteredInboxTasks, descending: false)
         case .title:
-            viewModel.filteredInboxTasks.sorted {
-                $0.title.localizedStandardCompare($1.title) == .orderedAscending
-            }
+            sortByTitle(viewModel.filteredInboxTasks)
+        }
+    }
+
+    private func sortByTitle(_ tasks: [ProjectBoardTask]) -> [ProjectBoardTask] {
+        // Localized comparison can tie for equivalent titles; the ID tie-break
+        // keeps the row order stable across SwiftUI redraws and reloads.
+        tasks.sorted { lhs, rhs in
+            let comparison = lhs.title.localizedStandardCompare(rhs.title)
+            return comparison == .orderedAscending
+                || (comparison == .orderedSame && lhs.id < rhs.id)
         }
     }
 
@@ -442,7 +450,9 @@ private struct InboxReferenceTaskRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Open task \(task.title)")
-            .accessibilityValue("\(summary.accessibilityValue), Project: \(projectTitle)")
+            .accessibilityValue(
+                "\(summary.accessibilityValue), \(triageAccessibilityValue), Project: \(projectTitle)"
+            )
             .accessibilityIdentifier("workflow-task-row-\(task.id)")
         }
         .padding(.horizontal, 14)
@@ -463,6 +473,10 @@ private struct InboxReferenceTaskRow: View {
         return "\(String(localized: String.LocalizationValue(summary.sourceLabel))) · \(date)"
     }
 
+    private var triageAccessibilityValue: String {
+        InboxTriageStatePresentation.label(for: triageRecord, referenceDate: referenceDate)
+    }
+
     private var iconTint: Color {
         switch summary.tintName {
         case "blue":
@@ -475,22 +489,8 @@ private struct InboxReferenceTaskRow: View {
     }
 }
 
-private struct InboxTriageStateBadge: View {
-    let taskID: Int64
-    let record: InboxTriageRecord?
-    let referenceDate: Date
-
-    var body: some View {
-        Text(stateLabel)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color.accentColor.opacity(0.08), in: Capsule())
-            .accessibilityIdentifier("inbox-row-disposition-\(taskID)")
-    }
-
-    private var stateLabel: String {
+private enum InboxTriageStatePresentation {
+    static func label(for record: InboxTriageRecord?, referenceDate: Date) -> String {
         switch record?.disposition {
         case .task:
             return String(localized: "Processed task")
@@ -511,6 +511,26 @@ private struct InboxTriageStateBadge: View {
         case .unprocessed, nil:
             return String(localized: "Unprocessed")
         }
+    }
+}
+
+private struct InboxTriageStateBadge: View {
+    let taskID: Int64
+    let record: InboxTriageRecord?
+    let referenceDate: Date
+
+    var body: some View {
+        Text(stateLabel)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.accentColor.opacity(0.08), in: Capsule())
+            .accessibilityIdentifier("inbox-row-disposition-\(taskID)")
+    }
+
+    private var stateLabel: String {
+        InboxTriageStatePresentation.label(for: record, referenceDate: referenceDate)
     }
 }
 
@@ -815,7 +835,7 @@ private struct InboxReferenceDetails: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            detailRow("Received", value: capture?.createdAt ?? task?.updatedAt ?? String(localized: "Unknown"))
+            detailRow("Received", value: capture?.createdAt ?? task?.createdAt ?? task?.updatedAt ?? String(localized: "Unknown"))
             Divider()
             detailRow("Source", value: source)
             Divider()

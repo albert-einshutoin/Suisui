@@ -3405,6 +3405,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(feedbackBlock.contains(".accessibilityElement(children: .combine)"))
     }
 
+    func testInboxRowsKeepDispositionAccessibleAndUseStableDisplayOrdering() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift")
+
+        XCTAssertTrue(source.contains("private func sortByTitle("))
+        XCTAssertTrue(source.contains("localizedStandardCompare"))
+        XCTAssertTrue(source.contains("lhs.id < rhs.id"))
+        XCTAssertTrue(source.contains("task?.createdAt ?? task?.updatedAt"))
+        XCTAssertTrue(source.contains("triageAccessibilityValue"))
+        XCTAssertTrue(source.contains("summary.accessibilityValue"))
+    }
+
     func testInboxActionPanelShowsSelectedContextWithoutDuplicatingVoiceMetadata() throws {
         let source = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift"
