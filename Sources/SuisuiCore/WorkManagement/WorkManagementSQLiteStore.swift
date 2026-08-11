@@ -452,7 +452,15 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             projectID: .set(normalized.projectID),
             recurrence: normalized.recurrence.map { .set($0) } ?? .clear
         )
-        return try makeBoardTask(record).requiredTask()
+        // updateFields intentionally records completion history on a done
+        // transition. Undo must restore the snapshot's exact history value,
+        // including clearing a timestamp when the original task was open.
+        try connection.execute(
+            "UPDATE tasks SET completed_at = ? WHERE id = ?;",
+            parameters: [SQLiteValue(snapshot.completedAt), .integer(snapshot.id)]
+        )
+        let restored = try taskStore.get(id: record.id)
+        return try makeBoardTask(restored).requiredTask()
     }
 
     @discardableResult

@@ -4597,7 +4597,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         let wednesday = try XCTUnwrap(overview.days.first { $0.dateKey == "2026-06-24" })
         XCTAssertEqual(wednesday.projectContributions.map(\.projectTitle), ["Active Plan"])
         XCTAssertEqual(wednesday.projectContributions.flatMap(\.tasks).map(\.title), ["Active due"])
-        XCTAssertEqual(overview.inboxUntriagedCount, 1)
+        XCTAssertEqual(overview.inboxUntriagedCount, 0)
         XCTAssertTrue(try calendarClient.listEvents().isEmpty)
     }
 
@@ -6589,6 +6589,10 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(reloadedTask.title, "Persist menu bar capture")
         XCTAssertEqual(reloadedTask.status, .backlog)
         XCTAssertEqual(reloadedViewModel.inboxProject?.title, "Inbox")
+        XCTAssertEqual(
+            try store.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition,
+            .unprocessed
+        )
     }
 
     @MainActor
@@ -8356,8 +8360,107 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedTask?.dueAt, "2026-06-19T09:00:00Z")
 
         viewModel.deferSelectedTaskForLater()
+        XCTAssertEqual(viewModel.selectedTask?.status, .planned)
+        XCTAssertEqual(viewModel.selectedTask?.dueAt, "2026-06-19T09:00:00Z")
+    }
+
+    @MainActor
+    func testInboxStartsWithUnprocessedFilterAndMakeTaskLeavesHistoryVisible() throws {
+        let store = InMemoryProjectBoardStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        let first = try XCTUnwrap(viewModel.createInboxTask(title: "First capture"))
+        let second = try XCTUnwrap(viewModel.createInboxTask(title: "Second capture"))
+        viewModel.selectedTaskID = second.id
+
+        XCTAssertEqual(viewModel.inboxTriageFilter, .unprocessed)
+        XCTAssertEqual(viewModel.filteredInboxTasks.map(\.id), [second.id, first.id])
+
+        viewModel.markSelectedTaskAsTask()
+
+        XCTAssertEqual(viewModel.filteredInboxTasks.map(\.id), [first.id])
+        XCTAssertEqual(viewModel.inboxTasks.map(\.id), [second.id, first.id])
+        XCTAssertEqual(viewModel.selectedTaskID, first.id)
+        XCTAssertEqual(viewModel.inboxClassificationFeedback?.canUndo, true)
+    }
+
+    @MainActor
+    func testInboxSidebarCountUsesUnprocessedDisposition() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let first = try XCTUnwrap(viewModel.createInboxTask(title: "Sidebar first"))
+        let second = try XCTUnwrap(viewModel.createInboxTask(title: "Sidebar second"))
+        viewModel.selectedTaskID = second.id
+
+        viewModel.markSelectedTaskAsTask()
+
+        XCTAssertEqual(viewModel.derivedReadModels.sidebarMetrics.inboxCount, 1)
+        XCTAssertEqual(viewModel.inboxTriageCount(for: .unprocessed), 1)
+        XCTAssertTrue(viewModel.inboxTasks.contains { $0.id == first.id })
+    }
+
+    @MainActor
+    func testInboxReviewLaterBecomesVisibleAtNextLocalNine() throws {
+        let store = InMemoryProjectBoardStore()
+        let viewModel = ProjectBoardViewModel(
+            store: store,
+            readModelCalendar: { self.utcCalendar() }
+        )
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createInboxTask(title: "Review later"))
+        viewModel.selectedTaskID = task.id
+
+        let referenceDate = try isoDate("2026-08-11T08:59:00Z")
+        viewModel.deferSelectedTaskForLater(referenceDate: referenceDate)
+
+        XCTAssertTrue(viewModel.filteredInboxTasks.isEmpty)
+        viewModel.refreshInboxReviewAvailability(at: try isoDate("2026-08-12T08:59:59Z"))
+        XCTAssertTrue(viewModel.filteredInboxTasks.isEmpty)
+
+        viewModel.refreshInboxReviewAvailability(at: try isoDate("2026-08-12T09:00:00Z"))
+        XCTAssertEqual(viewModel.filteredInboxTasks.map(\.id), [task.id])
+    }
+
+    @MainActor
+    func testInboxCompletionUndoRestoresTaskAndDispositionTogether() throws {
+        let store = InMemoryProjectBoardStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createInboxTask(title: "Complete and undo"))
+        viewModel.selectedTaskID = task.id
+
+        viewModel.toggleTaskCompletion(id: task.id)
+
+        XCTAssertEqual(viewModel.selectedTask?.status, .done)
+        XCTAssertEqual(try store.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition, .task)
+        XCTAssertTrue(viewModel.canUndoBoardOperation)
+
+        viewModel.undoLastBoardOperation()
+
+        XCTAssertEqual(viewModel.selectedTaskID, task.id)
         XCTAssertEqual(viewModel.selectedTask?.status, .backlog)
-        XCTAssertNil(viewModel.selectedTask?.dueAt)
+        XCTAssertEqual(try store.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition, .unprocessed)
+        XCTAssertEqual(viewModel.filteredInboxTasks.map(\.id), [task.id])
+    }
+
+    @MainActor
+    func testSQLiteInboxCompletionUndoClearsCompletionTimestampAndRestoresDisposition() throws {
+        let store = try makeStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createInboxTask(title: "Persist completion undo"))
+        viewModel.selectedTaskID = task.id
+
+        viewModel.toggleTaskCompletion(id: task.id)
+        XCTAssertEqual(viewModel.selectedTask?.status, .done)
+        XCTAssertNotNil(viewModel.selectedTask?.completedAt)
+
+        viewModel.undoLastBoardOperation()
+
+        let restored = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+        XCTAssertEqual(restored.status, .backlog)
+        XCTAssertNil(restored.completedAt)
+        XCTAssertEqual(try store.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition, .unprocessed)
     }
 
     @MainActor

@@ -21,6 +21,10 @@ public enum BoardOperationUndoEntry: Equatable, Sendable {
     /// recurrence occurrence, `regenerated` carries that occurrence exactly as
     /// it was created; undo deletes it only while it is still untouched.
     case undoCompletion(snapshot: ProjectBoardTask, regenerated: ProjectBoardTask?)
+    /// Inverse of completing/reopening an Inbox task. The mutation carries the
+    /// task fields and explicit Inbox disposition together so Edit-menu Undo
+    /// cannot restore one half of the lifecycle and leave the read model stale.
+    case revertInboxTriage(mutation: InboxTriageMutation, regenerated: ProjectBoardTask?)
     /// Inverse of a multi-task drag & drop status move. `regenerated` carries
     /// every next occurrence spawned by recurring tasks completed in the batch.
     case revertStatusBatch(snapshots: [ProjectBoardTask], regenerated: [ProjectBoardTask])

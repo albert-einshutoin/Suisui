@@ -339,7 +339,9 @@ final class InboxCaptureStoreTests: XCTestCase {
         XCTAssertEqual(restoredTask.title, "Voice capture")
         XCTAssertEqual(restoredTask.projectID, inboxID)
         XCTAssertEqual(try stores.captures.list(taskID: restoredTask.id).first?.transcript, "Make launch checklist")
-        XCTAssertTrue(try stores.captures.list(taskID: voiceTask.id).isEmpty)
+        // Atomic project conversion keeps the task identity, so the voice
+        // capture remains linked without a delete/recreate relink dance.
+        XCTAssertEqual(try stores.captures.list(taskID: voiceTask.id).count, 1)
     }
 
     @MainActor
