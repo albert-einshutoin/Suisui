@@ -1,8 +1,8 @@
 # Inbox Triage Lifecycle and Voice Playback Design
 
-**Date:** 2026-08-11  
-**Status:** Approved for implementation planning  
-**Scope:** Inbox triage lifecycle correctness and persistent local voice playback  
+**Date:** 2026-08-11
+**Status:** Approved for implementation planning
+**Scope:** Inbox triage lifecycle correctness and persistent local voice playback
 **Reference UI:** `ui-samples/02_inbox.png`
 
 ## 1. Goal
@@ -460,4 +460,3 @@ Issue 2はIssue 1のUI完成を待たずCore/adapterを実装できるが、同�
 - VoiceOver、keyboard、error表示がvisible UIと一致している。
 - 外部依存、秘密情報、絶対パス漏えい、管理外ファイル操作が追加されていない。
 - `outputs/` を含むユーザー所有の未追跡ファイルへ触れていない。
-
