@@ -110,7 +110,8 @@ struct InboxWorkflowView: View {
                         task: viewModel.selectedTask,
                         viewModel: viewModel,
                         memoDraft: $voiceMemoDraft,
-                        memoCaptureID: $voiceMemoCaptureID
+                        memoCaptureID: $voiceMemoCaptureID,
+                        voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail"
                     )
                         .frame(minWidth: 340, idealWidth: 400, maxWidth: 440)
                         .padding(.vertical, 18)
@@ -124,7 +125,8 @@ struct InboxWorkflowView: View {
                             task: viewModel.selectedTask,
                             viewModel: viewModel,
                             memoDraft: $voiceMemoDraft,
-                            memoCaptureID: $voiceMemoCaptureID
+                            memoCaptureID: $voiceMemoCaptureID,
+                            voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail-compact"
                         )
                             .padding(.horizontal, 18)
                             .padding(.bottom, 18)
@@ -665,6 +667,7 @@ private struct InboxTriageRail: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
     @Binding var memoDraft: String
     @Binding var memoCaptureID: Int64?
+    let voiceDetailAccessibilityIdentifier: String
 
     var body: some View {
         VStack(spacing: 0) {
@@ -673,7 +676,8 @@ private struct InboxTriageRail: View {
                     task: task,
                     viewModel: viewModel,
                     memoDraft: $memoDraft,
-                    memoCaptureID: $memoCaptureID
+                    memoCaptureID: $memoCaptureID,
+                    voiceDetailAccessibilityIdentifier: voiceDetailAccessibilityIdentifier
                 )
             }
             .scrollIndicators(.visible)
@@ -697,6 +701,7 @@ private struct InboxActionPanel: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
     @Binding var memoDraft: String
     @Binding var memoCaptureID: Int64?
+    let voiceDetailAccessibilityIdentifier: String
     @State private var isDeleteConfirmationPresented = false
     @State private var isRelatedSearchPresented = false
     @State private var showsAdvancedVoiceMetadata = false
@@ -742,6 +747,7 @@ private struct InboxActionPanel: View {
                 taskTitle: task?.title ?? "Selected Inbox item",
                 memoDraft: $memoDraft,
                 memoCaptureID: $memoCaptureID,
+                accessibilityIdentifier: voiceDetailAccessibilityIdentifier,
                 showsAdvancedMetadata: showsAdvancedVoiceMetadata,
                 onSaveMemo: { memo in
                     viewModel.updateSelectedInboxCaptureMemo(memo)
@@ -1193,6 +1199,7 @@ private struct InboxVoiceIntakeDetail: View {
     let taskTitle: String
     @Binding var memoDraft: String
     @Binding var memoCaptureID: Int64?
+    let accessibilityIdentifier: String
     let showsAdvancedMetadata: Bool
     let onSaveMemo: (String) -> Void
     @StateObject private var playback = InboxAudioPlaybackModel()
@@ -1266,7 +1273,7 @@ private struct InboxVoiceIntakeDetail: View {
                     .accessibilityIdentifier("inbox-voice-review-status")
             }
             .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("inbox-voice-intake-detail")
+            .accessibilityIdentifier(accessibilityIdentifier)
             .accessibilityLabel("Voice intake detail for \(taskTitle)")
             .accessibilityValue(captureAccessibilityValue(capture))
             .accessibilityHint("Summarizes the selected Inbox capture metadata for review.")

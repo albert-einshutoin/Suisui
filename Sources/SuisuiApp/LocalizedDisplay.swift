@@ -118,7 +118,10 @@ func localizedInboxCaptureTranscription(_ status: InboxCaptureTranscriptionStatu
 }
 
 func localizedInboxCaptureDuration(_ durationSeconds: Double) -> String {
-    localizedDisplay("%d sec", Int(durationSeconds.rounded()))
+    // A media-player clock is scannable in both locales and matches the
+    // reference Inbox waveform; keep raw seconds out of the review surface.
+    let totalSeconds = max(Int(durationSeconds.rounded()), 0)
+    return String(format: "%02d:%02d", totalSeconds / 60, totalSeconds % 60)
 }
 
 /// The human field name shown on the approval surface. `SuisuiCore` hands over

@@ -3560,15 +3560,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("taskTitle: task?.title ?? \"Selected Inbox item\""))
         XCTAssertTrue(workflowSource.contains("InboxProposedActions("))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-proposed-actions\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-intake-detail\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(accessibilityIdentifier)"))
         let voiceDetailStart = try XCTUnwrap(workflowSource.range(of: "private struct InboxVoiceIntakeDetail"))
         let voiceDetailSource = String(workflowSource[voiceDetailStart.lowerBound...])
         XCTAssertEqual(
-            voiceDetailSource.components(separatedBy: ".accessibilityIdentifier(\"inbox-voice-intake-detail\")").count - 1,
+            voiceDetailSource.components(separatedBy: ".accessibilityIdentifier(accessibilityIdentifier)").count - 1,
             1
         )
         let voiceDetailTarget = try XCTUnwrap(voiceDetailSource.range(
-            of: ".accessibilityIdentifier(\"inbox-voice-intake-detail\")"
+            of: ".accessibilityIdentifier(accessibilityIdentifier)"
         ))
         let containedChildren = try XCTUnwrap(voiceDetailSource.range(of: ".accessibilityElement(children: .contain)"))
         XCTAssertLessThan(containedChildren.lowerBound, voiceDetailTarget.lowerBound)
