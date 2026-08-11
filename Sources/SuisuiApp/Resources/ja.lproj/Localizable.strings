@@ -2174,3 +2174,11 @@
 "Retry weather" = "天気を再試行";
 "Requests the latest weather for the selected location." = "選択した場所の最新の天気を取得します。";
 "Weather uses your choice only while showing Today and does not keep a location history." = "天気はTodayの表示中だけ選択した場所を使い、位置履歴を保存しません。";
+"AI Interpretation" = "AIの解釈";
+"Add New Item" = "新しいアイテムを追加";
+"Copy" = "コピー";
+"Suggested Actions" = "提案アクション";
+"This removes the selected Inbox item. You can undo the deletion from the Edit menu." = "選択した受信箱アイテムを削除します。編集メニューから削除を取り消せます。";
+"Unprocessed only" = "未処理のみ表示";
+"Including Done" = "完了済みを含む";
+"Voice Memo" = "音声メモ";

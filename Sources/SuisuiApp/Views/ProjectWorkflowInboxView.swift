@@ -1,10 +1,11 @@
 import Foundation
 import SuisuiCore
 import SwiftUI
-import UniformTypeIdentifiers
+#if canImport(AppKit)
+import AppKit
+#endif
 
 struct InboxWorkflowView: View {
-    @Environment(\.openWindow) private var openWindow
     @ObservedObject var viewModel: ProjectBoardViewModel
     var selectInboxTask: (ProjectBoardTask) -> Void = { _ in }
     let requestsQuickAddFocus: Bool
@@ -12,6 +13,10 @@ struct InboxWorkflowView: View {
     @State private var quickTitle = ""
     @State private var voiceMemoDraft = ""
     @State private var voiceMemoCaptureID: Int64?
+    // Sorting stays view-local so reviewing the same Inbox from another window
+    // does not rewrite the shared capture order or persistence model.
+    @State private var sortOrder: InboxSortOrder = .newest
+    @State private var isQuickAddExpanded = false
     @FocusState private var isQuickAddFocused: Bool
 
     init(
@@ -39,7 +44,16 @@ struct InboxWorkflowView: View {
     }
 
     private var tasks: [ProjectBoardTask] {
-        viewModel.filteredInboxTasks
+        switch sortOrder {
+        case .newest:
+            viewModel.filteredInboxTasks.sorted { $0.id > $1.id }
+        case .oldest:
+            viewModel.filteredInboxTasks.sorted { $0.id < $1.id }
+        case .title:
+            viewModel.filteredInboxTasks.sorted {
+                $0.title.localizedStandardCompare($1.title) == .orderedAscending
+            }
+        }
     }
 
     private var subtitle: String {
@@ -69,7 +83,7 @@ struct InboxWorkflowView: View {
                     memoDraft: $voiceMemoDraft,
                     memoCaptureID: $voiceMemoCaptureID
                 )
-                    .frame(minWidth: 300, idealWidth: 320, maxWidth: 360)
+                    .frame(minWidth: 340, idealWidth: 400, maxWidth: 440)
                     .padding(.vertical, 18)
                     .padding(.trailing, 18)
             }
@@ -113,38 +127,24 @@ struct InboxWorkflowView: View {
     }
 
     private var mainSurface: some View {
-        WorkflowTaskSurface(
-            title: "Inbox",
-            subtitle: subtitle,
-            systemImage: "tray",
-            tasks: tasks,
-            emptyTitle: "Inbox is clear",
-            emptyDescription: "Voice notes, manual captures, and unassigned tasks land here before classification.",
-            emptyStateAction: WorkflowEmptyStateAction(
-                title: "Capture with Voice",
-                systemImage: "mic",
-                accessibilityIdentifier: "inbox-empty-capture-voice",
-                handler: {
-                    openWindow(id: "voice-capture")
-                }
-            ),
-            viewModel: viewModel,
-            onSelectTask: selectInboxTask,
-            triageSummary: { task in
-                viewModel.inboxTriageSummary(for: task)
-            },
-            headerAccessory: {
-                InboxHeaderControls(
-                    quickTitle: $quickTitle,
-                    viewModel: viewModel,
-                    isQuickAddFocused: $isQuickAddFocused,
-                    addInboxTask: addInboxTask
-                )
-            },
-            footer: {
-                EmptyView()
-            }
-        )
+        VStack(alignment: .leading, spacing: 14) {
+            InboxReferenceHeader(
+                subtitle: subtitle,
+                sortOrder: $sortOrder,
+                viewModel: viewModel
+            )
+            InboxReferenceTaskList(
+                tasks: tasks,
+                viewModel: viewModel,
+                onSelectTask: selectInboxTask,
+                quickTitle: $quickTitle,
+                isQuickAddExpanded: $isQuickAddExpanded,
+                isQuickAddFocused: $isQuickAddFocused,
+                addInboxTask: addInboxTask
+            )
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func addInboxTask() {
@@ -154,60 +154,114 @@ struct InboxWorkflowView: View {
         }
         _ = viewModel.createTask(title: title, projectID: inboxID, status: .backlog)
         quickTitle = ""
+        isQuickAddExpanded = false
     }
 
     private func consumeQuickAddFocusRequestIfNeeded() {
         guard requestsQuickAddFocus else {
             return
         }
+        isQuickAddExpanded = true
         isQuickAddFocused = true
         onQuickAddFocusConsumed()
     }
 }
 
-private struct InboxHeaderControls: View {
-    @Binding var quickTitle: String
+private enum InboxSortOrder: String, CaseIterable, Identifiable {
+    case newest
+    case oldest
+    case title
+
+    var id: String { rawValue }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .newest:
+            "Newest First"
+        case .oldest:
+            "Oldest First"
+        case .title:
+            "Title"
+        }
+    }
+}
+
+private struct InboxReferenceHeader: View {
+    let subtitle: String
+    @Binding var sortOrder: InboxSortOrder
     @ObservedObject var viewModel: ProjectBoardViewModel
-    @FocusState.Binding var isQuickAddFocused: Bool
-    let addInboxTask: () -> Void
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: 8) {
-            HStack(spacing: 8) {
-                WorkflowDoneToggle(viewModel: viewModel)
-                TextField("Capture an inbox item", text: $quickTitle)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($isQuickAddFocused)
-                    .onSubmit(addInboxTask)
-                    .accessibilityIdentifier("inbox-quick-add-title")
-                    .accessibilityLabel("Inbox quick add title")
-                    .accessibilityHint("Creates a local Inbox item when submitted.")
-                Button(action: addInboxTask) {
-                    Label("Quick Add", systemImage: "plus")
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Inbox")
+                        .font(.largeTitle.weight(.bold))
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .disabled(quickTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .keyboardShortcut(.return, modifiers: [.command])
-                .help("Add this item to Inbox")
-                .accessibilityIdentifier("inbox-quick-add-button")
-                .accessibilityHint("Adds the typed item to the local Inbox.")
+
+                Spacer(minLength: 16)
+
+                Menu("Sort", systemImage: "arrow.up.arrow.down") {
+                    Picker("Sort", selection: $sortOrder) {
+                        ForEach(InboxSortOrder.allCases) { order in
+                            Text(order.title).tag(order)
+                        }
+                    }
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .accessibilityIdentifier("inbox-sort-menu")
+
+                Menu("Filter", systemImage: "line.3.horizontal.decrease") {
+                    Picker("Inbox Filter", selection: filterBinding) {
+                        ForEach(InboxTriageFilter.allCases) { filter in
+                            Text(filterTitle(filter)).tag(filter)
+                        }
+                    }
+                    Divider()
+                    Toggle("Show Done", isOn: Binding(
+                        get: { viewModel.showsCompletedWorkflowTasks },
+                        set: { viewModel.setShowsCompletedWorkflowTasks($0) }
+                    ))
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .accessibilityIdentifier("inbox-filter-menu")
             }
 
-            Picker("Inbox Filter", selection: Binding(
-                get: { viewModel.inboxTriageFilter },
-                set: { viewModel.setInboxTriageFilter($0) }
-            )) {
-                ForEach(InboxTriageFilter.allCases) { filter in
-                    Text(filterTitle(filter))
-                        .tag(filter)
-                        .accessibilityLabel(filterAccessibilityLabel(filter))
+            Divider()
+
+            HStack(alignment: .center, spacing: 8) {
+                Picker("Inbox Filter", selection: filterBinding) {
+                    ForEach(InboxTriageFilter.allCases) { filter in
+                        Text(filterTitle(filter))
+                            .tag(filter)
+                            .accessibilityLabel(filterAccessibilityLabel(filter))
+                    }
                 }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("inbox-triage-filter")
+                .accessibilityLabel("Inbox filter")
+                .accessibilityHint("Filters Inbox items by source and interpretation status.")
+
+                Text(viewModel.showsCompletedWorkflowTasks ? "Including Done" : "Unprocessed only")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
             }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 560)
-            .accessibilityIdentifier("inbox-triage-filter")
-            .accessibilityLabel("Inbox filter")
-            .accessibilityHint("Filters Inbox items by source and interpretation status.")
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("inbox-reference-header")
+    }
+
+    private var filterBinding: Binding<InboxTriageFilter> {
+        Binding(
+            get: { viewModel.inboxTriageFilter },
+            set: { viewModel.setInboxTriageFilter($0) }
+        )
     }
 
     private func filterTitle(_ filter: InboxTriageFilter) -> String {
@@ -219,6 +273,196 @@ private struct InboxHeaderControls: View {
     }
 }
 
+private struct InboxReferenceTaskList: View {
+    let tasks: [ProjectBoardTask]
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    let onSelectTask: (ProjectBoardTask) -> Void
+    @Binding var quickTitle: String
+    @Binding var isQuickAddExpanded: Bool
+    @FocusState.Binding var isQuickAddFocused: Bool
+    let addInboxTask: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if tasks.isEmpty {
+                ContentUnavailableView(
+                    "Inbox is clear",
+                    systemImage: "tray",
+                    description: Text("Voice notes, manual captures, and unassigned tasks land here before classification.")
+                )
+                .frame(maxWidth: .infinity, minHeight: 260)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(tasks.enumerated()), id: \.element.id) { index, task in
+                            InboxReferenceTaskRow(
+                                task: task,
+                                summary: viewModel.inboxTriageSummary(for: task),
+                                projectTitle: viewModel.projectTitle(for: task),
+                                isSelected: viewModel.selectedTaskID == task.id,
+                                onSelect: { onSelectTask(task) },
+                                onToggleCompletion: { viewModel.toggleTaskCompletion(id: task.id) }
+                            )
+                            if index < tasks.count - 1 {
+                                Divider()
+                            }
+                        }
+                    }
+                }
+                .scrollIndicators(.visible)
+            }
+
+            Divider()
+            InboxQuickAddRow(
+                title: $quickTitle,
+                isExpanded: $isQuickAddExpanded,
+                isFocused: $isQuickAddFocused,
+                onAdd: addInboxTask
+            )
+        }
+        .background(.background, in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.secondary.opacity(0.20))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("inbox-reference-task-list")
+    }
+}
+
+private struct InboxReferenceTaskRow: View {
+    let task: ProjectBoardTask
+    let summary: InboxTriageSummary
+    let projectTitle: String
+    let isSelected: Bool
+    let onSelect: () -> Void
+    let onToggleCompletion: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Button(action: onToggleCompletion) {
+                Image(systemName: task.status == .done ? "checkmark.circle.fill" : summary.systemImage)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(iconTint)
+                    .frame(width: 34, height: 34)
+                    .background(iconTint.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("workflow-task-completion-\(task.id)")
+            .accessibilityLabel(task.status == .done ? "Reopen task \(task.title)" : "Complete task \(task.title)")
+            .accessibilityHint("Updates the task status in the local Suisui database without opening the inspector.")
+
+            Button(action: onSelect) {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(task.title)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .help(task.title)
+                        Text(metadata)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Text(LocalizedStringKey(summary.interpretationLabel))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.secondary.opacity(0.08), in: Capsule())
+                        .accessibilityIdentifier("inbox-row-triage-summary-\(task.id)")
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Open task \(task.title)")
+            .accessibilityValue("\(summary.accessibilityValue), Project: \(projectTitle)")
+            .accessibilityIdentifier("workflow-task-row-\(task.id)")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+        .background(isSelected ? Color.accentColor.opacity(0.08) : Color.clear)
+        .overlay(alignment: .leading) {
+            if isSelected {
+                Rectangle()
+                    .fill(Color.accentColor)
+                    .frame(width: 3)
+            }
+        }
+    }
+
+    private var metadata: String {
+        let date = task.todayDueDisplayLabel() ?? task.updatedAt ?? String(localized: "Unscheduled")
+        return "\(String(localized: String.LocalizationValue(summary.sourceLabel))) · \(date)"
+    }
+
+    private var iconTint: Color {
+        switch summary.tintName {
+        case "blue":
+            .blue
+        case "red":
+            .red
+        default:
+            .secondary
+        }
+    }
+}
+
+private struct InboxQuickAddRow: View {
+    @Binding var title: String
+    @Binding var isExpanded: Bool
+    @FocusState.Binding var isFocused: Bool
+    let onAdd: () -> Void
+
+    var body: some View {
+        Group {
+            if isExpanded {
+                HStack(spacing: 8) {
+                    TextField("Capture an inbox item", text: $title)
+                        .textFieldStyle(.plain)
+                        .focused($isFocused)
+                        .onSubmit(onAdd)
+                        .accessibilityIdentifier("inbox-quick-add-title")
+                        .accessibilityLabel("Inbox quick add title")
+                    Button("Add", systemImage: "plus", action: onAdd)
+                        .buttonStyle(.borderedProminent)
+                        .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .keyboardShortcut(.return, modifiers: [.command])
+                        .accessibilityIdentifier("inbox-quick-add-button")
+                    Button("Cancel") {
+                        title = ""
+                        isExpanded = false
+                    }
+                    .buttonStyle(.borderless)
+                }
+            } else {
+                Button("Add New Item", systemImage: "plus") {
+                    isExpanded = true
+                    isFocused = true
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.blue)
+                .accessibilityIdentifier("inbox-quick-add-button")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 private struct InboxTriageRail: View {
     let task: ProjectBoardTask?
     @ObservedObject var viewModel: ProjectBoardViewModel
@@ -226,29 +470,24 @@ private struct InboxTriageRail: View {
     @Binding var memoCaptureID: Int64?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Classify")
-                        .font(.headline)
-                    Text("Review the selected Inbox capture and classify it without opening the task inspector.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            } icon: {
-                Image(systemName: "tray.and.arrow.down")
-                    .foregroundStyle(.blue)
+        VStack(spacing: 0) {
+            ScrollView {
+                InboxActionPanel(
+                    task: task,
+                    viewModel: viewModel,
+                    memoDraft: $memoDraft,
+                    memoCaptureID: $memoCaptureID
+                )
             }
-
-            InboxActionPanel(
-                task: task,
-                viewModel: viewModel,
-                memoDraft: $memoDraft,
-                memoCaptureID: $memoCaptureID
-            )
+            .scrollIndicators(.visible)
+            .accessibilityIdentifier("inbox-reference-detail")
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(.background, in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.secondary.opacity(0.20))
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inbox-triage-rail")
         .accessibilityLabel("Inbox triage station")
@@ -261,19 +500,41 @@ private struct InboxActionPanel: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
     @Binding var memoDraft: String
     @Binding var memoCaptureID: Int64?
+    @State private var isDeleteConfirmationPresented = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Classify Selected Item")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 16) {
             InboxSelectedItemContext(
                 task: task,
+                viewModel: viewModel,
                 // Voice intake owns capture metadata below, so only manual
                 // items repeat their lightweight source and interpretation.
                 manualSummary: task != nil && viewModel.selectedInboxCaptureRecords.isEmpty
                     ? task.map { viewModel.inboxTriageSummary(for: $0) }
                     : nil
             )
+
+            HStack(spacing: 8) {
+                Button {
+                    viewModel.markSelectedTaskAsTask()
+                } label: {
+                    Label("Make Task", systemImage: "checkmark.circle")
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("inbox-detail-make-task")
+
+                Button("Review Later") {
+                    viewModel.deferSelectedTaskForLater()
+                }
+                .buttonStyle(.bordered)
+
+                Button("Delete", role: .destructive) {
+                    isDeleteConfirmationPresented = true
+                }
+                .buttonStyle(.bordered)
+            }
+            .disabled(task == nil)
+
             InboxVoiceIntakeDetail(
                 captures: viewModel.selectedInboxCaptureRecords,
                 taskTitle: task?.title ?? "Selected Inbox item",
@@ -310,19 +571,43 @@ private struct InboxActionPanel: View {
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("inbox-classification-feedback")
             }
+
+            Text("Suggested Actions")
+                .font(.headline)
+
             LazyVGrid(columns: actionGridColumns, alignment: .leading, spacing: 8) {
                 actionButtons
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("inbox-action-grid")
             .disabled(task == nil)
+
+            Text("Details")
+                .font(.headline)
+
+            InboxReferenceDetails(
+                task: task,
+                summary: task.map { viewModel.inboxTriageSummary(for: $0) },
+                capture: viewModel.selectedInboxCaptureRecords.first
+            )
         }
-        .padding(12)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .padding(18)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inbox-action-panel")
         .accessibilityLabel("Inbox classification actions")
         .accessibilityHint("Choose how to classify the selected Inbox item.")
+        .confirmationDialog(
+            "Delete Inbox Item?",
+            isPresented: $isDeleteConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                viewModel.deleteSelectedTask()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the selected Inbox item. You can undo the deletion from the Edit menu.")
+        }
     }
 
     private var actionGridColumns: [GridItem] {
@@ -374,17 +659,31 @@ private struct InboxActionPanel: View {
 
 private struct InboxSelectedItemContext: View {
     let task: ProjectBoardTask?
+    @ObservedObject var viewModel: ProjectBoardViewModel
     let manualSummary: InboxTriageSummary?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Selected Item")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
+        VStack(alignment: .leading, spacing: 7) {
             if let task {
+                HStack(alignment: .center, spacing: 8) {
+                    Text(LocalizedStringKey(manualSummary?.sourceLabel ?? "Voice"))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.blue)
+                    Spacer(minLength: 8)
+                    Menu("More", systemImage: "ellipsis") {
+                        Button("Schedule Today", systemImage: "calendar.badge.plus") {
+                            viewModel.scheduleSelectedTaskForToday()
+                        }
+                        Button("Review Later", systemImage: "clock") {
+                            viewModel.deferSelectedTaskForLater()
+                        }
+                    }
+                    .labelStyle(.iconOnly)
+                    .menuStyle(.borderlessButton)
+                }
+
                 Text(task.title)
-                    .font(.headline)
+                    .font(.title3.weight(.semibold))
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -399,12 +698,9 @@ private struct InboxSelectedItemContext: View {
                 }
 
                 if let manualSummary {
-                    LabeledContent("Source") {
-                        Text(LocalizedStringKey(manualSummary.sourceLabel))
-                    }
-                    LabeledContent("Interpretation") {
-                        Text(LocalizedStringKey(manualSummary.interpretationLabel))
-                    }
+                    Text("\(String(localized: String.LocalizationValue(manualSummary.interpretationLabel))) · \(task.updatedAt ?? String(localized: "Unscheduled"))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             } else {
                 Text("Select an Inbox item to classify.")
@@ -415,6 +711,57 @@ private struct InboxSelectedItemContext: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("inbox-selected-context")
+    }
+}
+
+private struct InboxReferenceDetails: View {
+    let task: ProjectBoardTask?
+    let summary: InboxTriageSummary?
+    let capture: InboxCaptureRecord?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            detailRow("Received", value: capture?.createdAt ?? task?.updatedAt ?? String(localized: "Unknown"))
+            Divider()
+            detailRow("Source", value: source)
+            Divider()
+            detailRow("Status", value: summary.map {
+                String(localized: String.LocalizationValue($0.interpretationLabel))
+            } ?? String(localized: "Unselected"))
+            Divider()
+            detailRow("Related", value: task == nil ? String(localized: "Unassigned") : String(localized: "Inbox"))
+        }
+        .background(Color.secondary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.secondary.opacity(0.16))
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("inbox-detail-metadata")
+    }
+
+    private var source: String {
+        if let capture {
+            return localizedInboxCaptureSource(capture.sourceKind)
+        }
+        return summary.map { String(localized: String.LocalizationValue($0.sourceLabel)) }
+            ?? String(localized: "Unknown")
+    }
+
+    private func detailRow(_ title: LocalizedStringKey, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.trailing)
+                .lineLimit(2)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 }
 
@@ -431,10 +778,10 @@ private struct InboxVoiceIntakeDetail: View {
 
     var body: some View {
         if let capture = captures.first {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .center, spacing: 8) {
-                    Label("Voice Intake", systemImage: "waveform")
-                        .font(.caption.weight(.semibold))
+                    Text("Voice Memo")
+                        .font(.headline)
                     Spacer(minLength: 8)
                     Text(localizedInboxCaptureSource(capture.sourceKind))
                         .font(.caption2.weight(.semibold))
@@ -446,24 +793,45 @@ private struct InboxVoiceIntakeDetail: View {
 
                 voicePlayback(capture)
 
-                LazyVGrid(columns: metadataColumns, alignment: .leading, spacing: 6) {
-                    metadataRow(title: "Source", value: localizedInboxCaptureSource(capture.sourceKind))
-                    metadataRow(title: "Duration", value: localizedInboxCaptureDuration(capture.durationSeconds))
-                    metadataRow(title: "Classification", value: localizedInboxCaptureClassification(capture.classificationStatus))
-                    metadataRow(title: "Transcription", value: localizedInboxCaptureTranscription(capture.transcriptionStatus))
+                HStack(spacing: 8) {
+                    Text(localizedInboxCaptureDuration(capture.durationSeconds))
+                    Text(verbatim: "·")
+                    Text(localizedInboxCaptureClassification(capture.classificationStatus))
+                    Text(verbatim: "·")
+                    Text(localizedInboxCaptureTranscription(capture.transcriptionStatus))
                 }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("inbox-voice-source-metadata")
 
-                detailSection(
-                    title: "Transcript",
-                    value: transcriptReviewText(for: capture),
-                    systemImage: transcriptSystemImage(for: capture)
-                )
+                HStack {
+                    Text("Transcript")
+                        .font(.headline)
+                    Spacer(minLength: 8)
+                    Button("Copy") {
+                        copyTranscript(transcriptReviewText(for: capture))
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.blue)
+                    .accessibilityIdentifier("inbox-voice-transcript-copy")
+                }
+
+                Text(transcriptReviewText(for: capture))
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+                    .accessibilityLabel("Transcript")
+                    .accessibilityValue(transcriptReviewText(for: capture))
                 .accessibilityIdentifier("inbox-voice-transcript")
 
+                Text("AI Interpretation")
+                    .font(.headline)
+
                 detailSection(
-                    title: "AI Interpretation",
+                    title: "Interpretation",
                     value: interpretationReviewText(for: capture),
                     systemImage: interpretationSystemImage(for: capture)
                 )
@@ -476,8 +844,6 @@ private struct InboxVoiceIntakeDetail: View {
                     .foregroundStyle(reviewStatusColor(for: capture))
                     .accessibilityIdentifier("inbox-voice-review-status")
             }
-            .padding(8)
-            .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("inbox-voice-intake-detail")
             .accessibilityLabel("Voice intake detail for \(taskTitle)")
@@ -492,10 +858,11 @@ private struct InboxVoiceIntakeDetail: View {
         }
     }
 
-    private var metadataColumns: [GridItem] {
-        [
-            GridItem(.adaptive(minimum: 120), spacing: 8)
-        ]
+    private func copyTranscript(_ transcript: String) {
+        #if canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(transcript, forType: .string)
+        #endif
     }
 
     private func voicePlayback(_ capture: InboxCaptureRecord) -> some View {
@@ -652,10 +1019,6 @@ private struct InboxVoiceIntakeDetail: View {
         }
     }
 
-    private func transcriptSystemImage(for capture: InboxCaptureRecord) -> String {
-        capture.transcriptionStatus == .failed ? "exclamationmark.triangle" : "text.quote"
-    }
-
     private func interpretationSystemImage(for capture: InboxCaptureRecord) -> String {
         capture.interpretationSummary?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             ? "sparkles"
@@ -670,18 +1033,6 @@ private struct InboxVoiceIntakeDetail: View {
             .secondary
         case .succeeded:
             .blue
-        }
-    }
-
-    private func metadataRow(title: LocalizedStringKey, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.caption)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

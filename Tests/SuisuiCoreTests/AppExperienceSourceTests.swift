@@ -575,14 +575,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(inboxSource.contains("let requestsQuickAddFocus: Bool"))
         XCTAssertTrue(inboxSource.contains("let onQuickAddFocusConsumed: () -> Void"))
         XCTAssertTrue(inboxSource.contains("@FocusState private var isQuickAddFocused: Bool"))
-        XCTAssertTrue(inboxSource.contains(".focused($isQuickAddFocused)"))
+        XCTAssertTrue(inboxSource.contains("isFocused: $isQuickAddFocused"))
+        XCTAssertTrue(inboxSource.contains(".focused($isFocused)"))
 
         let helperStart = try XCTUnwrap(
             inboxSource.range(of: "private func consumeQuickAddFocusRequestIfNeeded()")
         )
         let helperEnd = try XCTUnwrap(
             inboxSource.range(
-                of: "\n}\n\nprivate struct InboxHeaderControls",
+                of: "\n}\n\nprivate enum InboxSortOrder",
                 range: helperStart.upperBound..<inboxSource.endIndex
             )
         )
@@ -595,7 +596,7 @@ final class AppExperienceSourceTests: XCTestCase {
             helper.components(separatedBy: "onQuickAddFocusConsumed()").count - 1,
             1
         )
-        XCTAssertFalse(helper.contains("private struct InboxHeaderControls"))
+        XCTAssertFalse(helper.contains("private enum InboxSortOrder"))
 
         let onAppearStart = try XCTUnwrap(inboxSource.range(of: ".onAppear {"))
         let onAppearEnd = try XCTUnwrap(
@@ -3505,7 +3506,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("viewModel.inboxTriageSummary(for: task)"))
         XCTAssertTrue(workflowSource.contains("InboxTriagePill(summary: triageSummary)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-row-triage-summary-\\(task.id)\")"))
-        XCTAssertTrue(workflowSource.contains("InboxHeaderControls("))
+        XCTAssertTrue(workflowSource.contains("InboxReferenceHeader("))
         XCTAssertTrue(workflowSource.contains("Picker(\"Inbox Filter\""))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-triage-filter\")"))
         XCTAssertTrue(workflowSource.contains("private var mainSurface: some View"))
@@ -3595,6 +3596,24 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("Window(\"Voice Command\", id: \"voice-capture\")"))
     }
 
+    func testInboxWorkflowMatchesReferenceListAndDetailComposition() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift")
+
+        XCTAssertTrue(source.contains("private struct InboxReferenceHeader"))
+        XCTAssertTrue(source.contains("private struct InboxReferenceTaskList"))
+        XCTAssertTrue(source.contains("private struct InboxReferenceTaskRow"))
+        XCTAssertTrue(source.contains("private struct InboxTriageRail"))
+        XCTAssertTrue(source.contains("Menu(\"Sort\", systemImage: \"arrow.up.arrow.down\")"))
+        XCTAssertTrue(source.contains("Menu(\"Filter\", systemImage: \"line.3.horizontal.decrease\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"inbox-reference-header\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"inbox-reference-task-list\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"inbox-reference-detail\")"))
+        XCTAssertTrue(source.contains("Text(\"Suggested Actions\")"))
+        XCTAssertTrue(source.contains("Text(\"Details\")"))
+        XCTAssertTrue(source.contains("confirmationDialog("))
+        XCTAssertFalse(source.contains("WorkflowTaskSurface("))
+    }
+
     func testInboxSelectionKeepsTriageInWorkflowInsteadOfInspector() throws {
         let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
         let workflowSource = try readProjectWorkflowSources()
@@ -3609,7 +3628,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("onSelectTask: selectInboxTask"))
         XCTAssertTrue(workflowSource.contains("memoDraft: $voiceMemoDraft"))
         XCTAssertTrue(workflowSource.contains("memoCaptureID: $voiceMemoCaptureID"))
-        XCTAssertTrue(workflowSource.contains(".frame(minWidth: 300, idealWidth: 320, maxWidth: 360"))
+        XCTAssertTrue(workflowSource.contains(".frame(minWidth: 340, idealWidth: 400, maxWidth: 440"))
 
         let overrideStart = try XCTUnwrap(boardSource.range(of: "private func applySelectedTaskOverrideIfNeeded()"))
         let overrideEnd = try XCTUnwrap(boardSource[overrideStart.lowerBound...].range(of: "private func selectTodayTask"))
