@@ -1,6 +1,6 @@
 # MCP Inspector Evidence
 
-Generated: 2026-08-11T08:54:48Z
+Generated: 2026-08-09T18:15:33Z
 
 - Source commit: `0b506cfc`
 
@@ -59,7 +59,29 @@ Success path: `initialize -> tools/list -> tools/call`
 ## MCP Inspector CLI tools/list
 
 ```console
-$ /usr/bin/true --cli node fixtures/mcp/stdio-fixture-server.mjs --method tools/list
+$ npx --loglevel error -y @modelcontextprotocol/inspector --cli node fixtures/mcp/stdio-fixture-server.mjs --method tools/list
+{
+  "tools": [
+    {
+      "name": "read_status",
+      "title": "Read Status",
+      "description": "Read local project status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "description": "Project name"
+          }
+        },
+        "required": [
+          "project"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
 
 exit: 0
 ```
@@ -67,7 +89,16 @@ exit: 0
 ## MCP Inspector CLI tools/call
 
 ```console
-$ /usr/bin/true --cli node fixtures/mcp/stdio-fixture-server.mjs --method tools/call --tool-name read_status --tool-arg project=suisui
+$ npx --loglevel error -y @modelcontextprotocol/inspector --cli node fixtures/mcp/stdio-fixture-server.mjs --method tools/call --tool-name read_status --tool-arg project=suisui
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "status: ok project=suisui"
+    }
+  ],
+  "isError": false
+}
 
 exit: 0
 ```
