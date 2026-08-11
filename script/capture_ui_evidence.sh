@@ -2287,7 +2287,10 @@ TODAY_TARGET_MARKERS="today-workflow=>$TODAY_ROUTE_LABEL|today-briefing-panel=>$
 P0_INBOX_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-action-panel=>$INBOX_ROUTE_LABEL"
 P0_TODAY_TARGET_MARKERS="today-workflow=>$TODAY_ROUTE_LABEL|today-briefing-panel=>$TODAY_ROUTE_LABEL|today-assistant-rail=>$TODAY_ROUTE_LABEL"
 INBOX_VOICE_ROUTE_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL"
-P0_INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-panel=>$INBOX_CLASSIFICATION_ACTIONS_LABEL"
+# The detail panel now exposes stable accessibility anchors for the voice
+# surface. Keep the visual harness independent of localized action copy so a
+# Japanese run validates the same selected detail as the English run.
+P0_INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture|inbox-action-panel=>$INBOX_CLASSIFICATION_ACTIONS_LABEL"
 PROJECTS_TARGET_MARKERS="sidebar-destination-projects=>$PROJECTS_ROUTE_LABEL|projects-portfolio-overview=>$PROJECTS_ROUTE_LABEL"
 SCHEDULE_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-mode-overview=>|schedule-mini-calendar=>"
 SCHEDULE_COCKPIT_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-mode-overview=>|schedule-mini-calendar=>"

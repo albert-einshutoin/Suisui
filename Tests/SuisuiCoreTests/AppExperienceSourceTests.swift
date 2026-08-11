@@ -3399,7 +3399,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-classification-feedback\")"))
 
         let feedbackStart = try XCTUnwrap(workflowSource.range(of: "if let feedback = viewModel.inboxClassificationFeedback"))
-        let feedbackEnd = try XCTUnwrap(workflowSource[feedbackStart.lowerBound...].range(of: "LazyVGrid(columns: actionGridColumns"))
+        let feedbackEnd = try XCTUnwrap(workflowSource[feedbackStart.lowerBound...].range(of: "InboxProposedActions("))
         let feedbackBlock = String(workflowSource[feedbackStart.lowerBound..<feedbackEnd.lowerBound])
         XCTAssertTrue(feedbackBlock.contains(".accessibilityElement(children: .contain)"))
         XCTAssertFalse(feedbackBlock.contains(".accessibilityElement(children: .combine)"))
@@ -3423,9 +3423,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         let context = try XCTUnwrap(source.range(of: "InboxSelectedItemContext("))
         let voice = try XCTUnwrap(source.range(of: "InboxVoiceIntakeDetail("))
-        let actions = try XCTUnwrap(
-            source.range(of: "LazyVGrid(columns: actionGridColumns")
-        )
+        let actions = try XCTUnwrap(source.range(of: "InboxProposedActions("))
         XCTAssertLessThan(context.lowerBound, voice.lowerBound)
         XCTAssertLessThan(voice.lowerBound, actions.lowerBound)
         let contextCall = String(source[context.lowerBound..<voice.lowerBound])
@@ -3449,7 +3447,7 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         let actionPanelEnd = try XCTUnwrap(
             source.range(
-                of: "private var actionGridColumns",
+                of: "private struct InboxProposedActions",
                 range: actionPanelStart.upperBound..<source.endIndex
             )
         )
@@ -3513,12 +3511,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(modelSource.contains("public enum InboxTriageFilter"))
         XCTAssertTrue(coreSource.contains("public var filteredInboxTasks"))
         XCTAssertTrue(coreSource.contains("public func setInboxTriageFilter"))
-        XCTAssertTrue(workflowSource.contains("viewModel.filteredInboxTasks"))
+        XCTAssertTrue(workflowSource.contains("viewModel.inboxReferenceTasks("))
         XCTAssertTrue(workflowSource.contains("viewModel.inboxTriageSummary(for: task)"))
-        XCTAssertTrue(workflowSource.contains("InboxTriagePill(summary: triageSummary)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-row-triage-summary-\\(task.id)\")"))
         XCTAssertTrue(workflowSource.contains("InboxReferenceHeader("))
-        XCTAssertTrue(workflowSource.contains("Picker(\"Inbox Filter\""))
+        XCTAssertTrue(workflowSource.contains("ForEach(InboxReferenceFilter.allCases)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-triage-filter\")"))
         XCTAssertTrue(workflowSource.contains("private var mainSurface: some View"))
         XCTAssertTrue(workflowSource.contains("InboxTriageRail("))
@@ -3561,8 +3558,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(inboxWorkflowSource.contains("Voice capture metadata available for \\(task.title)"))
         XCTAssertTrue(inboxWorkflowSource.contains("InboxSelectedItemContext("))
         XCTAssertTrue(workflowSource.contains("taskTitle: task?.title ?? \"Selected Inbox item\""))
-        XCTAssertTrue(workflowSource.contains("LazyVGrid(columns: actionGridColumns"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-grid\")"))
+        XCTAssertTrue(workflowSource.contains("InboxProposedActions("))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-proposed-actions\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-intake-detail\")"))
         let voiceDetailStart = try XCTUnwrap(workflowSource.range(of: "private struct InboxVoiceIntakeDetail"))
         let voiceDetailSource = String(workflowSource[voiceDetailStart.lowerBound...])
@@ -3585,7 +3582,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-source-metadata\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-review-status\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityElement(children: .contain)"))
-        XCTAssertTrue(workflowSource.contains("Transcript only"))
+        XCTAssertTrue(workflowSource.contains("Voice transcript preview"))
         XCTAssertTrue(workflowSource.contains("Transcript-only voice capture, duration %@, waveform preview"))
         XCTAssertFalse(workflowSource.contains("Playback unavailable in this MVP"))
         XCTAssertFalse(workflowSource.contains("Button {} label:"))
@@ -3619,7 +3616,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"inbox-reference-header\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"inbox-reference-task-list\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"inbox-reference-detail\")"))
-        XCTAssertTrue(source.contains("Text(\"Suggested Actions\")"))
+        XCTAssertTrue(source.contains("Text(\"Proposed Actions\")"))
         XCTAssertTrue(source.contains("Text(\"Details\")"))
         XCTAssertTrue(source.contains("confirmationDialog("))
         XCTAssertFalse(source.contains("WorkflowTaskSurface("))

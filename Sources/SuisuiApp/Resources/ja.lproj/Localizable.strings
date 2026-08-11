@@ -2185,7 +2185,15 @@
 "Add New Item" = "新しいアイテムを追加";
 "Copy" = "コピー";
 "Suggested Actions" = "提案アクション";
-"This removes the selected Inbox item. You can undo the deletion from the Edit menu." = "選択した受信箱アイテムを削除します。編集メニューから削除を取り消せます。";
+"Proposed Actions" = "提案アクション";
+"Proposals" = "提案";
 "Unprocessed only" = "未処理のみ表示";
+"Play voice memo" = "音声メモを再生";
+"Pause voice memo" = "音声メモを一時停止";
+"Search related past materials" = "関連する過去の資料を検索";
+"Link to a new project" = "新しいプロジェクトへ紐づける";
+"Add presentation preparation task" = "プレゼン資料作成のタスクを追加";
+"No related materials" = "関連する資料はありません";
+"This removes the selected Inbox item. You can undo the deletion from the Edit menu." = "選択した受信箱アイテムを削除します。編集メニューから削除を取り消せます。";
 "Including Done" = "完了済みを含む";
 "Voice Memo" = "音声メモ";

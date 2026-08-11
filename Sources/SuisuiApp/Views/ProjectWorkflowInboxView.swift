@@ -1,6 +1,7 @@
 import Foundation
 import SuisuiCore
 import SwiftUI
+import AVFoundation
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -16,6 +17,8 @@ struct InboxWorkflowView: View {
     // Sorting stays view-local so reviewing the same Inbox from another window
     // does not rewrite the shared capture order or persistence model.
     @State private var sortOrder: InboxSortOrder = .newest
+    @State private var referenceFilter: InboxReferenceFilter = .all
+    @State private var showUnprocessedOnly = true
     @State private var isQuickAddExpanded = false
     @State private var lastReviewRefreshMinute: Date?
     @FocusState private var isQuickAddFocused: Bool
@@ -45,13 +48,17 @@ struct InboxWorkflowView: View {
     }
 
     private var tasks: [ProjectBoardTask] {
+        let referenceTasks = viewModel.inboxReferenceTasks(
+            for: referenceFilter,
+            unprocessedOnly: showUnprocessedOnly
+        )
         switch sortOrder {
         case .newest:
-            sortByCaptureDate(viewModel.filteredInboxTasks, descending: true)
+            return sortByCaptureDate(referenceTasks, descending: true)
         case .oldest:
-            sortByCaptureDate(viewModel.filteredInboxTasks, descending: false)
+            return sortByCaptureDate(referenceTasks, descending: false)
         case .title:
-            sortByTitle(viewModel.filteredInboxTasks)
+            return sortByTitle(referenceTasks)
         }
     }
 
@@ -93,17 +100,10 @@ struct InboxWorkflowView: View {
     }
 
     private var subtitle: String {
-        if viewModel.showsCompletedWorkflowTasks {
-            return localizedDisplay(
-                "%@, including %d done",
-                localizedCount(tasks.count, one: "%d inbox item", other: "%d inbox items"),
-                viewModel.completedInboxTaskCount
-            )
-        }
-        return localizedCount(
-            tasks.count,
-            one: "%d unprocessed captured item",
-            other: "%d unprocessed captured items"
+        localizedCount(
+            viewModel.inboxReferenceCount(for: .all),
+            one: "%d inbox item",
+            other: "%d inbox items"
         )
     }
 
@@ -182,7 +182,9 @@ struct InboxWorkflowView: View {
             InboxReferenceHeader(
                 subtitle: subtitle,
                 sortOrder: $sortOrder,
-                viewModel: viewModel
+                viewModel: viewModel,
+                referenceFilter: $referenceFilter,
+                showUnprocessedOnly: $showUnprocessedOnly
             )
             InboxReferenceTaskList(
                 tasks: tasks,
@@ -246,6 +248,8 @@ private struct InboxReferenceHeader: View {
     let subtitle: String
     @Binding var sortOrder: InboxSortOrder
     @ObservedObject var viewModel: ProjectBoardViewModel
+    @Binding var referenceFilter: InboxReferenceFilter
+    @Binding var showUnprocessedOnly: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -272,11 +276,7 @@ private struct InboxReferenceHeader: View {
                 .accessibilityIdentifier("inbox-sort-menu")
 
                 Menu("Filter", systemImage: "line.3.horizontal.decrease") {
-                    Picker("Inbox Filter", selection: filterBinding) {
-                        ForEach(InboxTriageFilter.allCases) { filter in
-                            Text(filterTitle(filter)).tag(filter)
-                        }
-                    }
+                    Toggle("Unprocessed only", isOn: $showUnprocessedOnly)
                     Divider()
                     Toggle("Show Done", isOn: Binding(
                         get: { viewModel.showsCompletedWorkflowTasks },
@@ -291,19 +291,34 @@ private struct InboxReferenceHeader: View {
             Divider()
 
             HStack(alignment: .center, spacing: 8) {
-                Picker("Inbox Filter", selection: filterBinding) {
-                    ForEach(InboxTriageFilter.allCases) { filter in
-                        Text(filterTitle(filter))
-                            .tag(filter)
-                            .accessibilityLabel(filterAccessibilityLabel(filter))
+                HStack(spacing: 8) {
+                    ForEach(InboxReferenceFilter.allCases) { filter in
+                        Button {
+                            referenceFilter = filter
+                        } label: {
+                            Text(filterTitle(filter))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(referenceFilter == filter ? .white : .primary)
+                                .padding(.horizontal, 13)
+                                .padding(.vertical, 8)
+                                .background(
+                                    referenceFilter == filter ? Color.accentColor : Color.clear,
+                                    in: RoundedRectangle(cornerRadius: 10)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(filterAccessibilityLabel(filter))
+                        .accessibilityAddTraits(referenceFilter == filter ? .isSelected : [])
                     }
                 }
-                .pickerStyle(.segmented)
+                .padding(3)
+                .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
                 .accessibilityIdentifier("inbox-triage-filter")
-                .accessibilityLabel("Inbox filter")
-                .accessibilityHint("Filters Inbox items by source and interpretation status.")
 
-                Text(viewModel.showsCompletedWorkflowTasks ? "Including Done" : "Unprocessed only")
+                Spacer(minLength: 8)
+
+                Toggle("Unprocessed only", isOn: $showUnprocessedOnly)
+                    .toggleStyle(.checkbox)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize()
@@ -313,19 +328,12 @@ private struct InboxReferenceHeader: View {
         .accessibilityIdentifier("inbox-reference-header")
     }
 
-    private var filterBinding: Binding<InboxTriageFilter> {
-        Binding(
-            get: { viewModel.inboxTriageFilter },
-            set: { viewModel.setInboxTriageFilter($0) }
-        )
+    private func filterTitle(_ filter: InboxReferenceFilter) -> String {
+        "\(String(localized: String.LocalizationValue(filter.title))) (\(viewModel.inboxReferenceCount(for: filter)))"
     }
 
-    private func filterTitle(_ filter: InboxTriageFilter) -> String {
-        "\(String(localized: String.LocalizationValue(filter.title))) (\(viewModel.inboxTriageCount(for: filter)))"
-    }
-
-    private func filterAccessibilityLabel(_ filter: InboxTriageFilter) -> String {
-        "\(String(localized: String.LocalizationValue(filter.title))), \(viewModel.inboxTriageCount(for: filter))"
+    private func filterAccessibilityLabel(_ filter: InboxReferenceFilter) -> String {
+        "\(String(localized: String.LocalizationValue(filter.title))), \(viewModel.inboxReferenceCount(for: filter))"
     }
 }
 
@@ -615,6 +623,7 @@ private struct InboxActionPanel: View {
     @Binding var memoDraft: String
     @Binding var memoCaptureID: Int64?
     @State private var isDeleteConfirmationPresented = false
+    @State private var isRelatedSearchPresented = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -686,15 +695,17 @@ private struct InboxActionPanel: View {
                 .accessibilityIdentifier("inbox-classification-feedback")
             }
 
-            Text("Suggested Actions")
+            Text("Proposed Actions")
                 .font(.headline)
 
-            LazyVGrid(columns: actionGridColumns, alignment: .leading, spacing: 8) {
-                actionButtons
-            }
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("inbox-action-grid")
+            InboxProposedActions(
+                task: task,
+                viewModel: viewModel,
+                onSearchRelatedMaterials: { isRelatedSearchPresented = true }
+            )
             .disabled(task == nil)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("inbox-proposed-actions")
 
             Text("Details")
                 .font(.headline)
@@ -722,12 +733,10 @@ private struct InboxActionPanel: View {
         } message: {
             Text("This removes the selected Inbox item. You can undo the deletion from the Edit menu.")
         }
-    }
-
-    private var actionGridColumns: [GridItem] {
-        [
-            GridItem(.adaptive(minimum: 150), spacing: 8)
-        ]
+        .sheet(isPresented: $isRelatedSearchPresented) {
+            InboxRelatedMaterialsSheet(task: task, viewModel: viewModel)
+                .frame(minWidth: 420, minHeight: 300)
+        }
     }
 
     @ViewBuilder
@@ -768,6 +777,130 @@ private struct InboxActionPanel: View {
         .help("Review selected Inbox item later (Control-Command-4)")
         .accessibilityIdentifier("inbox-action-review-later")
         .accessibilityHint("Leaves the selected Inbox item for later review.")
+    }
+}
+
+private struct InboxProposedActions: View {
+    let task: ProjectBoardTask?
+    @ObservedObject var viewModel: ProjectBoardViewModel
+    let onSearchRelatedMaterials: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            proposedAction(
+                title: "Add presentation preparation task",
+                systemImage: "checkmark",
+                trailingTitle: "Edit"
+            ) {
+                viewModel.markSelectedTaskAsTask()
+            }
+            Divider()
+            proposedAction(
+                title: "Link to a new project",
+                systemImage: "folder",
+                trailingTitle: nil
+            ) {
+                viewModel.convertSelectedTaskToProject()
+            }
+            Divider()
+            proposedAction(
+                title: "Search related past materials",
+                systemImage: "magnifyingglass",
+                trailingTitle: nil,
+                action: onSearchRelatedMaterials
+            )
+        }
+        .padding(.horizontal, 12)
+        .background(Color.secondary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.secondary.opacity(0.14))
+        }
+    }
+
+    @ViewBuilder
+    private func proposedAction(
+        title: LocalizedStringKey,
+        systemImage: String,
+        trailingTitle: LocalizedStringKey?,
+        action: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 8) {
+            Button(action: action) {
+                HStack(spacing: 8) {
+                    Image(systemName: systemImage)
+                        .font(.caption2)
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 16)
+                    Text(title)
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if let trailingTitle {
+                Button(trailingTitle) { action() }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .foregroundStyle(.blue)
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.vertical, 9)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
+        .accessibilityIdentifier("inbox-proposed-action-\(systemImage)")
+    }
+}
+
+private struct InboxRelatedMaterialsSheet: View {
+    let task: ProjectBoardTask?
+    @ObservedObject var viewModel: ProjectBoardViewModel
+
+    private var relatedTasks: [ProjectBoardTask] {
+        guard let task else { return [] }
+        let terms = Set(task.title.split(whereSeparator: { $0.isWhitespace || $0.isPunctuation }).map {
+            String($0).lowercased()
+        }.filter { $0.count > 2 })
+        return viewModel.snapshot.projects
+            .flatMap(\.tasks)
+            .filter { candidate in
+                candidate.id != task.id && terms.contains { term in
+                    candidate.title.lowercased().contains(term)
+                }
+            }
+            .prefix(10)
+            .map { $0 }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Search related past materials")
+                .font(.title3.weight(.semibold))
+            if relatedTasks.isEmpty {
+                ContentUnavailableView("No related materials", systemImage: "magnifyingglass")
+            } else {
+                List(relatedTasks) { relatedTask in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(relatedTask.title)
+                            .font(.headline)
+                        Text(viewModel.projectTitle(for: relatedTask))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .listStyle(.inset)
+            }
+        }
+        .padding(20)
+        .accessibilityIdentifier("inbox-related-materials-sheet")
     }
 }
 
@@ -883,12 +1016,87 @@ private func normalizedInboxDetail(_ detail: String) -> String {
     detail.split(whereSeparator: \.isWhitespace).joined(separator: " ")
 }
 
+@MainActor
+private final class InboxAudioPlaybackModel: ObservableObject {
+    @Published private(set) var isPlaying = false
+    @Published private(set) var currentTime: TimeInterval = 0
+    @Published private(set) var duration: TimeInterval = 0
+    @Published private(set) var errorMessage: String?
+
+    private var player: AVAudioPlayer?
+    private var progressTask: Task<Void, Never>?
+    private var loadedPath: String?
+
+    func load(path: String, fallbackDuration: TimeInterval) {
+        guard loadedPath != path else { return }
+        progressTask?.cancel()
+        progressTask = nil
+        player = nil
+        isPlaying = false
+        currentTime = 0
+        duration = max(fallbackDuration, 0)
+        errorMessage = nil
+        loadedPath = path
+
+        // Capture paths are persisted input, so only regular files are opened.
+        // This avoids treating a missing/invalid path as a playback success and
+        // keeps the visual review surface usable with transcript-only records.
+        let url = URL(fileURLWithPath: path).standardizedFileURL
+        var isDirectory: ObjCBool = false
+        guard !path.isEmpty,
+              FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+              !isDirectory.boolValue else {
+            return
+        }
+
+        do {
+            let audioPlayer = try AVAudioPlayer(contentsOf: url)
+            audioPlayer.prepareToPlay()
+            player = audioPlayer
+            duration = max(audioPlayer.duration, duration)
+        } catch {
+            errorMessage = "Audio playback is unavailable for this capture."
+        }
+    }
+
+    func toggle() {
+        guard let player else {
+            errorMessage = "Audio playback is unavailable for this capture."
+            return
+        }
+        if player.isPlaying {
+            player.pause()
+            isPlaying = false
+            progressTask?.cancel()
+            progressTask = nil
+        } else {
+            player.play()
+            isPlaying = true
+            startProgressTracking()
+        }
+    }
+
+    private func startProgressTracking() {
+        progressTask?.cancel()
+        progressTask = Task { @MainActor [weak self] in
+            while let self, self.player?.isPlaying == true {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                self.currentTime = self.player?.currentTime ?? 0
+            }
+            guard let self else { return }
+            self.isPlaying = false
+            self.progressTask = nil
+        }
+    }
+}
+
 private struct InboxVoiceIntakeDetail: View {
     let captures: [InboxCaptureRecord]
     let taskTitle: String
     @Binding var memoDraft: String
     @Binding var memoCaptureID: Int64?
     let onSaveMemo: (String) -> Void
+    @StateObject private var playback = InboxAudioPlaybackModel()
 
     var body: some View {
         if let capture = captures.first {
@@ -941,17 +1149,18 @@ private struct InboxVoiceIntakeDetail: View {
                     .accessibilityValue(transcriptReviewText(for: capture))
                 .accessibilityIdentifier("inbox-voice-transcript")
 
-                Text("AI Interpretation")
-                    .font(.headline)
+                DisclosureGroup("AI Interpretation") {
+                    detailSection(
+                        title: "Interpretation",
+                        value: interpretationReviewText(for: capture),
+                        systemImage: interpretationSystemImage(for: capture)
+                    )
+                    .accessibilityIdentifier("inbox-voice-interpretation")
+                }
 
-                detailSection(
-                    title: "Interpretation",
-                    value: interpretationReviewText(for: capture),
-                    systemImage: interpretationSystemImage(for: capture)
-                )
-                .accessibilityIdentifier("inbox-voice-interpretation")
-
-                memoEditor(for: capture)
+                DisclosureGroup("Note") {
+                    memoEditor(for: capture)
+                }
 
                 Text(reviewStatusText(for: capture))
                     .font(.caption.weight(.semibold))
@@ -965,9 +1174,11 @@ private struct InboxVoiceIntakeDetail: View {
             .accessibilityHint("Summarizes the selected Inbox capture metadata for review.")
             .onAppear {
                 resetMemoDraft(for: capture)
+                playback.load(path: capture.audioFilePath, fallbackDuration: capture.durationSeconds)
             }
             .onChange(of: capture.id) { _, _ in
                 resetMemoDraft(for: capture)
+                playback.load(path: capture.audioFilePath, fallbackDuration: capture.durationSeconds)
             }
         }
     }
@@ -980,38 +1191,50 @@ private struct InboxVoiceIntakeDetail: View {
     }
 
     private func voicePlayback(_ capture: InboxCaptureRecord) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "text.quote")
-                .foregroundStyle(.secondary)
-                .frame(width: 28, height: 28)
-                .accessibilityHidden(true)
-
-            Text("Transcript only")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-
-            HStack(alignment: .center, spacing: 3) {
-                ForEach(waveformBars.indices, id: \.self) { index in
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.accentColor.opacity(0.55))
-                        .frame(width: 3, height: waveformBars[index])
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Button {
+                    playback.toggle()
+                } label: {
+                    Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 30, height: 30)
+                        .background(Color.accentColor, in: Circle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("inbox-voice-playback-toggle")
+                .accessibilityLabel(playback.isPlaying ? "Pause voice memo" : "Play voice memo")
+
+                HStack(alignment: .center, spacing: 2) {
+                    ForEach(waveformBars.indices, id: \.self) { index in
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(index < Int(Double(waveformBars.count) * playbackProgress)
+                                ? Color.accentColor
+                                : Color.accentColor.opacity(0.38))
+                            .frame(maxWidth: .infinity, minHeight: 4, maxHeight: waveformBars[index])
+                    }
+                }
+                .frame(height: 34)
+                .accessibilityIdentifier("inbox-voice-waveform")
+                .accessibilityLabel("Voice waveform")
+                .accessibilityValue("Waveform preview")
+
+                Text(localizedInboxCaptureDuration(capture.durationSeconds))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 42, alignment: .trailing)
             }
-            .frame(height: 28)
-            .accessibilityIdentifier("inbox-voice-waveform")
-            .accessibilityLabel("Voice waveform")
-            .accessibilityValue("Waveform preview")
 
-            Spacer(minLength: 8)
-
-            Text(localizedInboxCaptureDuration(capture.durationSeconds))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+            if let errorMessage = playback.errorMessage {
+                Text(errorMessage)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("inbox-voice-playback-error")
+            }
         }
-        .padding(8)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        .padding(10)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inbox-voice-transcript-preview")
         .accessibilityLabel("Voice transcript preview")
@@ -1022,7 +1245,12 @@ private struct InboxVoiceIntakeDetail: View {
     }
 
     private var waveformBars: [CGFloat] {
-        [8, 14, 10, 20, 12, 18, 9, 16, 22, 11, 15, 19, 10, 17, 13, 21]
+        [10, 16, 22, 12, 18, 26, 14, 20, 28, 16, 24, 12, 18, 30, 20, 14, 24, 18, 28, 12, 20, 26, 16, 22, 30, 14, 18, 24, 12, 28, 20, 16, 26, 14, 22, 30, 18, 12, 24, 16, 28, 20, 14, 26, 18, 22, 12, 24, 16]
+    }
+
+    private var playbackProgress: Double {
+        guard playback.duration > 0 else { return 0 }
+        return min(max(playback.currentTime / playback.duration, 0), 1)
     }
 
     private func memoEditor(for capture: InboxCaptureRecord) -> some View {
