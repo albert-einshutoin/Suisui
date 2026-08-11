@@ -537,11 +537,11 @@
 "Pending notification requests could not be loaded." = "保留中の通知リクエストを読み込めませんでした。";
 "Plan" = "計画";
 "Priority" = "優先度";
+"Project" = "プロジェクト";
 "Pro is required for Projects, Tasks, and Settings sync." = "プロジェクト、タスク、設定の同期にはProが必要です。";
 "Pro plan detected. Sync backend is not configured." = "Proプランを検出しました。同期バックエンドが未設定です。";
 "Pro value overview" = "Pro価値の概要";
 "Progress" = "進捗";
-"Project" = "プロジェクト";
 "Project navigation" = "プロジェクトナビゲーション";
 "Project summary" = "プロジェクトサマリー";
 "Project view actions" = "プロジェクト表示操作";
@@ -2210,7 +2210,6 @@
 "Presentation materials" = "プレゼン資料";
 "Design" = "デザイン";
 "API" = "API";
-"Project" = "プロジェクト";
 "Research" = "リサーチ";
 "Meeting" = "会議";
 "Product" = "プロダクト";

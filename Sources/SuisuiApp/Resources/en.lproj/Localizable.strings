@@ -540,11 +540,11 @@
 "Pending notification requests could not be loaded." = "Pending notification requests could not be loaded.";
 "Plan" = "Plan";
 "Priority" = "Priority";
+"Project" = "Project";
 "Pro is required for Projects, Tasks, and Settings sync." = "Pro is required for Projects, Tasks, and Settings sync.";
 "Pro plan detected. Sync backend is not configured." = "Pro plan detected. Sync backend is not configured.";
 "Pro value overview" = "Pro value overview";
 "Progress" = "Progress";
-"Project" = "Project";
 "Project navigation" = "Project navigation";
 "Project summary" = "Project summary";
 "Project view actions" = "Project view actions";
@@ -2210,7 +2210,6 @@
 "Presentation materials" = "Presentation materials";
 "Design" = "Design";
 "API" = "API";
-"Project" = "Project";
 "Research" = "Research";
 "Meeting" = "Meeting";
 "Product" = "Product";
