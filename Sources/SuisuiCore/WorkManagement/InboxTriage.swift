@@ -47,6 +47,43 @@ public enum InboxTriageAction: Equatable, Sendable {
     case reopen
 }
 
+public struct InboxTriageMutation: Equatable, Sendable {
+    public let originalTask: ProjectBoardTask
+    public let originalRecord: InboxTriageRecord
+    public let updatedTask: ProjectBoardTask
+    public let createdProjectID: Int64?
+
+    public init(
+        originalTask: ProjectBoardTask,
+        originalRecord: InboxTriageRecord,
+        updatedTask: ProjectBoardTask,
+        createdProjectID: Int64? = nil
+    ) {
+        self.originalTask = originalTask
+        self.originalRecord = originalRecord
+        self.updatedTask = updatedTask
+        self.createdProjectID = createdProjectID
+    }
+}
+
+public extension ProjectBoardTask {
+    func inboxDraft(
+        projectID: Int64? = nil,
+        status: ProjectTaskStatus? = nil,
+        dueAt: String?? = nil
+    ) -> ProjectBoardTaskDraft {
+        ProjectBoardTaskDraft(
+            projectID: projectID ?? self.projectID,
+            title: title,
+            detail: detail,
+            status: status ?? self.status,
+            priority: priority,
+            dueAt: dueAt ?? self.dueAt,
+            recurrence: recurrence
+        )
+    }
+}
+
 public enum InboxReviewClock {
     public static func nextReviewDate(after referenceDate: Date, calendar: Calendar) throws -> Date {
         let start = calendar.startOfDay(for: referenceDate)

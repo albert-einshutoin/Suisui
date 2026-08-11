@@ -125,6 +125,158 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertNotNil(task.createdAt)
     }
 
+    func testSQLiteInboxMakeTaskAndUndoAreAtomicAcrossRestart() throws {
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-inbox-\(UUID().uuidString).sqlite")
+            .path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let store = try SQLiteProjectBoardStore(path: path)
+        let task = try store.createInboxTask(title: "Classify me")
+        let mutation = try store.performInboxTriage(
+            taskID: task.id,
+            action: .makeTask,
+            referenceDate: try isoDate("2026-08-11T01:00:00Z"),
+            calendar: utcCalendar()
+        )
+
+        XCTAssertEqual(
+            try store.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition,
+            .task
+        )
+        _ = try store.undoInboxTriage(mutation)
+
+        let reopened = try SQLiteProjectBoardStore(path: path)
+        XCTAssertEqual(
+            try reopened.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition,
+            .unprocessed
+        )
+        XCTAssertEqual(try reopened.loadSnapshot().projects.first?.tasks.first?.title, "Classify me")
+    }
+
+    func testSQLiteInboxReviewLaterPreservesDueAtAndStoresNextLocalReview() throws {
+        let stores = try makeStoreBundle()
+        let task = try stores.board.createInboxTask(title: "Review tomorrow")
+        let original = try XCTUnwrap(
+            stores.board.loadSnapshot().projects.first?.tasks.first { $0.id == task.id }
+        )
+
+        _ = try stores.board.performInboxTriage(
+            taskID: task.id,
+            action: .reviewLater,
+            referenceDate: try isoDate("2026-08-11T01:00:00Z"),
+            calendar: utcCalendar()
+        )
+
+        let updated = try XCTUnwrap(
+            stores.board.loadSnapshot().projects.first?.tasks.first { $0.id == task.id }
+        )
+        XCTAssertEqual(updated.dueAt, original.dueAt)
+        XCTAssertEqual(
+            try stores.board.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition,
+            .reviewLater
+        )
+        XCTAssertEqual(
+            try stores.board.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.reviewAt,
+            "2026-08-12T09:00:00Z"
+        )
+    }
+
+    func testSQLiteInboxScheduleTodaySetsDueAtAndDisposition() throws {
+        let stores = try makeStoreBundle()
+        let task = try stores.board.createInboxTask(title: "Schedule today")
+        let referenceDate = try isoDate("2026-08-11T09:00:00Z")
+
+        _ = try stores.board.performInboxTriage(
+            taskID: task.id,
+            action: .scheduleToday,
+            referenceDate: referenceDate,
+            calendar: utcCalendar()
+        )
+
+        let updated = try XCTUnwrap(
+            stores.board.loadSnapshot().projects.first?.tasks.first { $0.id == task.id }
+        )
+        XCTAssertEqual(updated.status, .planned)
+        XCTAssertEqual(updated.dueAt, "2026-08-11T09:00:00Z")
+        XCTAssertEqual(
+            try stores.board.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition,
+            .scheduled
+        )
+    }
+
+    func testSQLiteInboxMakeProjectAndUndoRestoresOriginalProject() throws {
+        let stores = try makeStoreBundle()
+        let task = try stores.board.createInboxTask(title: "Turn into project")
+        let inboxID = task.projectID
+
+        let mutation = try stores.board.performInboxTriage(
+            taskID: task.id,
+            action: .makeProject,
+            referenceDate: try isoDate("2026-08-11T01:00:00Z"),
+            calendar: utcCalendar()
+        )
+        let moved = try XCTUnwrap(
+            stores.board.loadSnapshot(includeArchived: true).projects
+                .flatMap(\.tasks).first { $0.id == task.id }
+        )
+
+        XCTAssertNotEqual(moved.projectID, inboxID)
+        XCTAssertEqual(
+            try stores.board.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition,
+            .project
+        )
+        let createdProjectID = try XCTUnwrap(mutation.createdProjectID)
+
+        _ = try stores.board.undoInboxTriage(mutation)
+
+        let restored = try XCTUnwrap(
+            stores.board.loadSnapshot(includeArchived: true).projects
+                .flatMap(\.tasks).first { $0.id == task.id }
+        )
+        XCTAssertEqual(restored.projectID, inboxID)
+        XCTAssertEqual(
+            try stores.board.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition,
+            .unprocessed
+        )
+        XCTAssertFalse(
+            try stores.board.loadSnapshot(includeArchived: true).projects.contains { $0.id == createdProjectID }
+        )
+    }
+
+    func testSQLiteInboxTriageRollsBackTaskWhenStateWriteFails() throws {
+        let stores = try makeStoreBundle()
+        let task = try stores.board.createInboxTask(title: "Keep original")
+        _ = try stores.board.performInboxTriage(
+            taskID: task.id,
+            action: .makeTask,
+            referenceDate: try isoDate("2026-08-11T01:00:00Z"),
+            calendar: utcCalendar()
+        )
+        try stores.connection.execute(
+            """
+            CREATE TRIGGER fail_inbox_state
+            BEFORE UPDATE ON inbox_triage_records
+            BEGIN SELECT RAISE(ABORT, 'forced inbox state failure'); END;
+            """
+        )
+
+        XCTAssertThrowsError(try stores.board.performInboxTriage(
+            taskID: task.id,
+            action: .scheduleToday,
+            referenceDate: try isoDate("2026-08-11T01:00:00Z"),
+            calendar: utcCalendar()
+        ))
+        let unchanged = try XCTUnwrap(
+            stores.board.loadSnapshot().projects.first?.tasks.first { $0.id == task.id }
+        )
+        XCTAssertNil(unchanged.dueAt)
+        XCTAssertEqual(
+            try stores.board.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition,
+            .task
+        )
+    }
+
     func testSQLiteBoardStoreCreatesDefaultProjectWithoutMockTasks() throws {
         let store = try makeStore()
 
@@ -9365,6 +9517,27 @@ private struct AlwaysFailingProjectBoardStore: ProjectBoardStore {
         throw error
     }
 
+    func loadInboxTriageRecords(taskIDs: Set<Int64>) throws -> [Int64: InboxTriageRecord] {
+        throw error
+    }
+
+    func createInboxTask(title: String) throws -> ProjectBoardTask {
+        throw error
+    }
+
+    func performInboxTriage(
+        taskID: Int64,
+        action: InboxTriageAction,
+        referenceDate: Date,
+        calendar: Calendar
+    ) throws -> InboxTriageMutation {
+        throw error
+    }
+
+    func undoInboxTriage(_ mutation: InboxTriageMutation) throws -> ProjectBoardTask {
+        throw error
+    }
+
     func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
         throw error
     }
@@ -9523,6 +9696,27 @@ private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore
     }
 
     func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func loadInboxTriageRecords(taskIDs: Set<Int64>) throws -> [Int64: InboxTriageRecord] {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func createInboxTask(title: String) throws -> ProjectBoardTask {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func performInboxTriage(
+        taskID: Int64,
+        action: InboxTriageAction,
+        referenceDate: Date,
+        calendar: Calendar
+    ) throws -> InboxTriageMutation {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func undoInboxTriage(_ mutation: InboxTriageMutation) throws -> ProjectBoardTask {
         throw ProjectBoardStoreTestError.unavailable
     }
 
