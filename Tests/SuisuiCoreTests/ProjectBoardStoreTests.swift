@@ -2,6 +2,38 @@ import XCTest
 @testable import SuisuiCore
 
 final class ProjectBoardStoreTests: XCTestCase {
+    func testInboxReviewLaterRequiresReviewAt() {
+        XCTAssertThrowsError(try InboxTriageRecord(
+            taskID: 42,
+            disposition: .reviewLater,
+            reviewAt: nil,
+            updatedAt: "2026-08-11T00:00:00Z"
+        )) { error in
+            XCTAssertEqual(error as? InboxTriageError, .missingReviewDate)
+        }
+    }
+
+    func testInboxNonReviewDispositionRejectsReviewAt() {
+        XCTAssertThrowsError(try InboxTriageRecord(
+            taskID: 42,
+            disposition: .task,
+            reviewAt: "2026-08-12T09:00:00Z",
+            updatedAt: "2026-08-11T00:00:00Z"
+        )) { error in
+            XCTAssertEqual(error as? InboxTriageError, .unexpectedReviewDate)
+        }
+    }
+
+    func testInboxReviewLaterDateIsNextLocalNineAcrossDST() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let reference = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-03-08T08:30:00Z"))
+
+        let result = try InboxReviewClock.nextReviewDate(after: reference, calendar: calendar)
+
+        XCTAssertEqual(ISO8601DateFormatter().string(from: result), "2026-03-09T16:00:00Z")
+    }
+
     func testSQLiteBoardStoreCreatesDefaultProjectWithoutMockTasks() throws {
         let store = try makeStore()
 
