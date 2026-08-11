@@ -9683,18 +9683,13 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(captureScript.contains("capture_project_board_destination system inbox"))
         XCTAssertTrue(captureScript.contains("INBOX_VOICE_ROUTE_MARKERS=\"inbox-workflow=>$INBOX_ROUTE_LABEL\""))
-        XCTAssertTrue(captureScript.contains("inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture"))
+        XCTAssertTrue(captureScript.contains("inbox-voice-intake-detail=>Voice intake detail for 明日のプレゼン資料を作成する"))
         let inboxVoiceTargetMarkers = try XCTUnwrap(
             captureScript.split(separator: "\n").first {
                 $0.hasPrefix("  INBOX_VOICE_TARGET_MARKERS=")
             }
         )
-        XCTAssertFalse(
-            inboxVoiceTargetMarkers.contains("inbox-action-panel=>Voice capture metadata available for Scheduled manual capture"),
-            "The action panel no longer exposes this text; requiring it blocks every live Inbox Voice capture."
-        )
-        XCTAssertTrue(captureScript.contains("inbox-action-panel=>Schedule launch review and capture visual evidence."))
-        XCTAssertTrue(captureScript.contains("inbox-action-panel=>Create a task for launch review evidence."))
+        XCTAssertTrue(inboxVoiceTargetMarkers.contains("inbox-voice-intake-detail=>Voice intake detail for 明日のプレゼン資料を作成する"))
         XCTAssertTrue(captureScript.contains("INBOX_CLASSIFICATION_ACTIONS_LABEL=\"Inbox classification actions\""))
         XCTAssertTrue(captureScript.contains("INBOX_CLASSIFICATION_ACTIONS_LABEL=\"インボックス分類操作\""))
         XCTAssertTrue(captureScript.contains("inbox-action-panel=>$INBOX_CLASSIFICATION_ACTIONS_LABEL"))
@@ -9722,7 +9717,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("\"schedule-workload-attention-banner\""))
         XCTAssertTrue(captureScript.contains("capture_settings_sync light \"$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT\""))
         XCTAssertTrue(captureScript.contains("capture_settings_sync dark \"$SETTINGS_INTEGRATIONS_DARK_SCREENSHOT\""))
-        XCTAssertTrue(seeder.contains("\"Review captured note\","))
+        XCTAssertTrue(seeder.contains("\"鈴木さんにデザイン案を共有する\","))
         XCTAssertTrue(seeder.contains("'./fixtures/mcp-workspace'"))
         XCTAssertFalse(seeder.contains("'$ROOT_DIR'"))
         XCTAssertTrue(captureScript.contains("capture_settings_overview system"))

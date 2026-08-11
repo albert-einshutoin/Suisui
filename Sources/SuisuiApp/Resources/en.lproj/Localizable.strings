@@ -2199,6 +2199,8 @@
 "Show AI Interpretation and Note" = "Show AI Interpretation and Note";
 "Received" = "Received";
 "Related" = "Related";
+"Unassigned" = "Unassigned";
+"Today %@ · Taro Yamada (you)" = "Today %@ · Taro Yamada (you)";
 "No related materials" = "No related materials";
 "This removes the selected Inbox item. You can undo the deletion from the Edit menu." = "This removes the selected Inbox item. You can undo the deletion from the Edit menu.";
 "Including Done" = "Including Done";

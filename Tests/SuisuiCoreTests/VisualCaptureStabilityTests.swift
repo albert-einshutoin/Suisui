@@ -102,7 +102,7 @@ final class VisualCaptureStabilityTests: XCTestCase {
         XCTAssertTrue(source.contains("marker_mode=\"strict-task-card\""))
         XCTAssertTrue(source.contains("marker_mode=\"legacy\""))
         XCTAssertTrue(source.contains("invalid task-card UI evidence identifier"))
-        XCTAssertTrue(source.contains("inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture"))
+        XCTAssertTrue(source.contains("inbox-voice-intake-detail=>Voice intake detail for 明日のプレゼン資料を作成する"))
         XCTAssertTrue(source.contains("SUISUI_UI_EVIDENCE_AX_IDENTITY_FINGERPRINT=1"))
         XCTAssertTrue(source.contains("prepare_pointer_parker"))
         XCTAssertTrue(source.contains("park_pointer_outside_evidence_window"))

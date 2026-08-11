@@ -363,6 +363,7 @@ private struct InboxReferenceTaskList: View {
                             InboxReferenceTaskRow(
                                 task: task,
                                 summary: viewModel.inboxTriageSummary(for: task),
+                                category: viewModel.inboxReferenceCategory(for: task),
                                 triageRecord: viewModel.inboxTriageRecord(for: task),
                                 referenceDate: referenceDate,
                                 projectTitle: viewModel.projectTitle(for: task),
@@ -401,6 +402,7 @@ private struct InboxReferenceTaskList: View {
 private struct InboxReferenceTaskRow: View {
     let task: ProjectBoardTask
     let summary: InboxTriageSummary
+    let category: InboxReferenceCategory
     let triageRecord: InboxTriageRecord?
     let referenceDate: Date
     let projectTitle: String
@@ -411,7 +413,7 @@ private struct InboxReferenceTaskRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             Button(action: onToggleCompletion) {
-                Image(systemName: task.status == .done ? "checkmark.circle.fill" : summary.systemImage)
+                Image(systemName: task.status == .done ? "checkmark.circle.fill" : referenceIcon)
                     .font(.body.weight(.medium))
                     .foregroundStyle(iconTint)
                     .frame(width: 34, height: 34)
@@ -486,13 +488,24 @@ private struct InboxReferenceTaskRow: View {
     }
 
     private var iconTint: Color {
-        switch summary.tintName {
-        case "blue":
+        switch category {
+        case .task:
             .blue
-        case "red":
-            .red
-        default:
-            .secondary
+        case .proposal:
+            .orange
+        case .notification:
+            .purple
+        }
+    }
+
+    private var referenceIcon: String {
+        switch category {
+        case .task:
+            "checkmark"
+        case .proposal:
+            "sparkles"
+        case .notification:
+            "bell"
         }
     }
 }
@@ -947,17 +960,24 @@ private struct InboxSelectedItemContext: View {
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
-                let detail = normalizedInboxDetail(task.detail)
-                if !detail.isEmpty {
-                    Text(detail)
+                if let capture = viewModel.selectedInboxCaptureRecords.first,
+                   let parsed = SuisuiTimestampDisplay.parse(capture.createdAt) {
+                    Text(String(format: String(localized: "Today %@ · Taro Yamada (you)"), SuisuiTimestampDisplay.time(parsed.date)))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .help(detail)
+                } else {
+                    let detail = normalizedInboxDetail(task.detail)
+                    if !detail.isEmpty {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .help(detail)
+                    }
                 }
 
-                if let manualSummary {
+                if let manualSummary, viewModel.selectedInboxCaptureRecords.isEmpty {
                     Text("\(String(localized: String.LocalizationValue(manualSummary.interpretationLabel))) · \(task.updatedAt ?? String(localized: "Unscheduled"))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -981,7 +1001,7 @@ private struct InboxReferenceDetails: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            detailRow("Received", value: capture?.createdAt ?? task?.createdAt ?? task?.updatedAt ?? String(localized: "Unknown"))
+            detailRow("Received", value: received)
             Divider()
             detailRow("Source", value: source)
             Divider()
@@ -989,7 +1009,7 @@ private struct InboxReferenceDetails: View {
                 String(localized: String.LocalizationValue($0.interpretationLabel))
             } ?? String(localized: "Unselected"))
             Divider()
-            detailRow("Related", value: task == nil ? String(localized: "Unassigned") : String(localized: "Inbox"))
+            detailRow("Related", value: capture == nil && task != nil ? String(localized: "Inbox") : String(localized: "Unassigned"))
         }
         .background(Color.secondary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
         .overlay {
@@ -1006,6 +1026,14 @@ private struct InboxReferenceDetails: View {
         }
         return summary.map { String(localized: String.LocalizationValue($0.sourceLabel)) }
             ?? String(localized: "Unknown")
+    }
+
+    private var received: String {
+        let rawValue = capture?.createdAt ?? task?.createdAt ?? task?.updatedAt
+        guard let rawValue else {
+            return String(localized: "Unknown")
+        }
+        return SuisuiTimestampDisplay.absolute(rawValue)
     }
 
     private func detailRow(_ title: LocalizedStringKey, value: String) -> some View {

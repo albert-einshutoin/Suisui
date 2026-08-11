@@ -1217,10 +1217,96 @@ private func requiredCaptureID(
     return value
 }
 
+private struct InboxReferenceFixture {
+    let titles: [String]
+    let details: [String]
+    let voiceCaptures: [(title: String, duration: Double, transcript: String, interpretation: String)]
+
+    init(japanese: Bool) {
+        if japanese {
+            titles = [
+                "リリースノートのドラフトを作成",
+                "会議のアジェンダを準備する",
+                "マーケティングレポートを確認",
+                "新作プロジェクトのキックオフを設定",
+                "API仕様のドキュメントを更新する",
+                "鈴木さんにデザイン案を共有する",
+                "明日のプレゼン資料を作成する",
+                "新機能のお知らせを確認",
+                "完了済み資料の整理",
+                "次回レビューの準備",
+                "チームの共有フォルダを更新",
+                "四半期計画の下書きを確認"
+            ]
+            details = [
+                "リリースノートの初稿をまとめる。",
+                "次回会議の議題と事前資料を整理する。",
+                "月次マーケティングレポートの要点を確認する。",
+                "参加者と日程を調整し、キックオフを設定する。",
+                "API仕様の変更点をドキュメントへ反映する。",
+                "Webリニューアルのデザイン案を共有する。",
+                "明日のクライアント向けプレゼン資料を作成する。",
+                "Suisuiの新機能に関するお知らせを確認する。",
+                "過去の資料をプロジェクト別に整理する。",
+                "次回レビューに向けた確認事項をまとめる。",
+                "共有フォルダの構成と権限を見直す。",
+                "四半期計画の下書きを確認し、コメントを残す。"
+            ]
+            voiceCaptures = [
+                (
+                    "明日のプレゼン資料を作成する",
+                    84,
+                    "明日のクライアント向けプレゼン資料を作成してほしいです。特に、Suisuiの新機能デモ部分を中心に、3〜5枚程度のスライドでまとめてください。デザインはシンプルで、図やスクリーンショットを含めてください。",
+                    "プレゼン資料作成のタスクを追加"
+                ),
+                ("API仕様のドキュメントを更新する", 12, "API仕様の変更点をドキュメントへ反映してください。", "API仕様の更新を提案"),
+                ("リリースノートのドラフトを作成", 10, "今回のリリースノートのドラフトを作成してください。", "リリースノート作成を提案")
+            ]
+        } else {
+            titles = [
+                "Draft release notes",
+                "Prepare meeting agenda",
+                "Review marketing report",
+                "Set up new project kickoff",
+                "Update API specification document",
+                "Share design proposal with Suzuki",
+                "Create tomorrow's presentation materials",
+                "Check product notification",
+                "Organize completed materials",
+                "Prepare next review",
+                "Update team shared folder",
+                "Review quarterly plan draft"
+            ]
+            details = [
+                "Prepare the first draft of the release notes.",
+                "Organize the agenda and pre-read for the next meeting.",
+                "Review the key points in the monthly marketing report.",
+                "Coordinate attendees and schedule the project kickoff.",
+                "Reflect API changes in the specification document.",
+                "Share the Web redesign proposal with Suzuki.",
+                "Prepare tomorrow's client presentation materials.",
+                "Review the announcement for Suisui's new feature.",
+                "Organize past materials by project.",
+                "Summarize open questions for the next review.",
+                "Review the structure and permissions of the shared folder.",
+                "Review the quarterly plan draft and leave comments."
+            ]
+            voiceCaptures = [
+                ("Create tomorrow's presentation materials", 84, "Please create tomorrow's client presentation materials, focusing on the Suisui feature demo in three to five simple slides.", "Add presentation preparation task"),
+                ("Update API specification document", 12, "Reflect the API specification changes in the documentation.", "Suggest an API specification update"),
+                ("Draft release notes", 10, "Please prepare a draft of the release notes for this release.", "Suggest drafting release notes")
+            ]
+        }
+    }
+}
+
 private func seedCaptureFixtures(
     connection: SQLiteConnection,
     referenceInstant: Date
 ) throws -> CaptureSeedReceipt {
+    let inbox = InboxReferenceFixture(
+        japanese: ProcessInfo.processInfo.environment["SUISUI_LANGUAGE_PREFERENCE"] == "japanese"
+    )
     var calendar = Calendar(identifier: .iso8601)
     calendar.timeZone = TimeZone(secondsFromGMT: 0)!
     let dayFormatter = DateFormatter()
@@ -1338,19 +1424,109 @@ private func seedCaptureFixtures(
             ),
             (
                 inboxProjectIDValue,
-                "Scheduled manual capture",
+                inbox.titles[0],
                 "planned",
-                "Voice memo capture with transcript and local interpretation metadata.",
+                inbox.details[0],
                 .null,
                 .null,
                 "high"
             ),
             (
                 inboxProjectIDValue,
-                "Review captured note",
+                inbox.titles[1],
                 "backlog",
-                "Manual Inbox item keeps the normal route visually distinct from the seeded voice intake detail.",
+                inbox.details[1],
                 .null,
+                .null,
+                "medium"
+            ),
+            (
+                inboxProjectIDValue,
+                inbox.titles[2],
+                "backlog",
+                inbox.details[2],
+                .null,
+                .null,
+                "medium"
+            ),
+            (
+                inboxProjectIDValue,
+                inbox.titles[3],
+                "planned",
+                inbox.details[3],
+                .null,
+                .null,
+                "high"
+            ),
+            (
+                inboxProjectIDValue,
+                inbox.titles[4],
+                "backlog",
+                inbox.details[4],
+                .null,
+                .null,
+                "high"
+            ),
+            (
+                inboxProjectIDValue,
+                inbox.titles[5],
+                "backlog",
+                inbox.details[5],
+                .null,
+                .null,
+                "medium"
+            ),
+            (
+                inboxProjectIDValue,
+                inbox.titles[6],
+                "planned",
+                inbox.details[6],
+                .null,
+                .null,
+                "high"
+            ),
+            (
+                inboxProjectIDValue,
+                inbox.titles[7],
+                "planned",
+                inbox.details[7],
+                .text(tomorrow),
+                .null,
+                "medium"
+            ),
+            (
+                inboxProjectIDValue,
+                inbox.titles[8],
+                "planned",
+                inbox.details[8],
+                .text(tomorrow),
+                .null,
+                "medium"
+            ),
+            (
+                inboxProjectIDValue,
+                inbox.titles[9],
+                "planned",
+                inbox.details[9],
+                .text(tomorrow),
+                .null,
+                "medium"
+            ),
+            (
+                inboxProjectIDValue,
+                inbox.titles[10],
+                "planned",
+                inbox.details[10],
+                .text(tomorrow),
+                .null,
+                "medium"
+            ),
+            (
+                inboxProjectIDValue,
+                inbox.titles[11],
+                "planned",
+                inbox.details[11],
+                .text(tomorrow),
                 .null,
                 "medium"
             ),
@@ -1395,28 +1571,35 @@ private func seedCaptureFixtures(
 
         let inboxVoiceTaskID = try requiredCaptureID(
             connection,
-            title: "Scheduled manual capture",
+            title: inbox.titles[6],
             table: "tasks"
         )
-        guard let inboxVoiceTaskIDValue = Int64(inboxVoiceTaskID) else {
-            throw SeederError.invalidCaptureFixture("Inbox voice task identifier could not be bound")
+        for (title, duration, transcript, interpretation) in inbox.voiceCaptures {
+            let taskID = try requiredCaptureID(connection, title: title, table: "tasks")
+            guard let taskIDValue = Int64(taskID) else {
+                throw SeederError.invalidCaptureFixture("Inbox voice task identifier could not be bound")
+            }
+            try connection.execute(
+                """
+                INSERT INTO inbox_capture_records (
+                    task_id, source_kind, audio_file_path, duration_seconds,
+                    transcript, interpretation_summary, memo,
+                    classification_status, transcription_status, created_at
+                ) VALUES (
+                    ?, 'voice_memo', '/tmp/suisui-ui-evidence-redacted.m4a', ?,
+                    ?, ?, NULL,
+                    'unclassified', 'succeeded', ?
+                );
+                """,
+                parameters: [
+                    .integer(taskIDValue),
+                    .real(duration),
+                    .text(transcript),
+                    .text(interpretation),
+                    .text("2025-06-02T10:15:00Z")
+                ]
+            )
         }
-        try connection.execute(
-            """
-            INSERT INTO inbox_capture_records (
-                task_id, source_kind, audio_file_path, duration_seconds,
-                transcript, interpretation_summary, memo,
-                classification_status, transcription_status, created_at
-            ) VALUES (
-                ?, 'voice_memo', '/tmp/suisui-ui-evidence-redacted.m4a', 18.5,
-                'Schedule launch review and capture visual evidence.',
-                'Create a task for launch review evidence.',
-                'Seeded local transcript for UI screenshot evidence.',
-                'unclassified', 'succeeded', ?
-            );
-            """,
-            parameters: [.integer(inboxVoiceTaskIDValue), .text(yesterday)]
-        )
         try connection.execute(
             """
             INSERT INTO project_milestones (project_id, title, due_at, is_completed)
@@ -1451,7 +1634,7 @@ private func seedCaptureFixtures(
 
         let countChecks = [
             (
-                "Scheduled manual capture",
+                inbox.titles[6],
                 "SELECT COUNT(*) FROM tasks WHERE source_command = 'ui-evidence' AND title = ?;"
             ),
             (
