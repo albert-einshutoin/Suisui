@@ -9683,13 +9683,13 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(captureScript.contains("capture_project_board_destination system inbox"))
         XCTAssertTrue(captureScript.contains("INBOX_VOICE_ROUTE_MARKERS=\"inbox-workflow=>$INBOX_ROUTE_LABEL\""))
-        XCTAssertTrue(captureScript.contains("inbox-voice-intake-detail=>Voice intake detail for 明日のプレゼン資料を作成する"))
+        XCTAssertTrue(captureScript.contains("inbox-voice-intake-detail=>Voice intake detail for $INBOX_VOICE_TITLE"))
         let inboxVoiceTargetMarkers = try XCTUnwrap(
             captureScript.split(separator: "\n").first {
                 $0.hasPrefix("  INBOX_VOICE_TARGET_MARKERS=")
             }
         )
-        XCTAssertTrue(inboxVoiceTargetMarkers.contains("inbox-voice-intake-detail=>Voice intake detail for 明日のプレゼン資料を作成する"))
+        XCTAssertTrue(inboxVoiceTargetMarkers.contains("inbox-voice-intake-detail=>Voice intake detail for $inbox_voice_title"))
         XCTAssertTrue(captureScript.contains("INBOX_CLASSIFICATION_ACTIONS_LABEL=\"Inbox classification actions\""))
         XCTAssertTrue(captureScript.contains("INBOX_CLASSIFICATION_ACTIONS_LABEL=\"インボックス分類操作\""))
         XCTAssertTrue(captureScript.contains("inbox-action-panel=>$INBOX_CLASSIFICATION_ACTIONS_LABEL"))

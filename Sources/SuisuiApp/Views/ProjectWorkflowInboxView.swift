@@ -672,6 +672,8 @@ private struct InboxActionPanel: View {
                 .buttonStyle(.bordered)
             }
             .disabled(task == nil)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("inbox-action-grid")
 
             InboxVoiceIntakeDetail(
                 captures: viewModel.selectedInboxCaptureRecords,
