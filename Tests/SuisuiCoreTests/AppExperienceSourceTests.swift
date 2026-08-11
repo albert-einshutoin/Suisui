@@ -3537,7 +3537,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(inboxWorkflowSource.contains("private var waveformBars"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-workflow\")"))
         XCTAssertTrue(workflowSource.contains("fillsAvailableHeight ? \"inbox-triage-rail\" : \"inbox-action-panel\""))
-        XCTAssertTrue(workflowSource.contains(".accessibilityLabel(\"Inbox triage station\")"))
+        XCTAssertTrue(
+            workflowSource.contains(
+                ".accessibilityLabel(fillsAvailableHeight ? \"Inbox triage station\" : \"Inbox classification actions\")"
+            )
+        )
         XCTAssertTrue(workflowSource.contains("without opening the task inspector"))
         XCTAssertTrue(workflowSource.contains("onSelectTask: selectInboxTask"))
         XCTAssertTrue(workflowSource.contains("@State private var voiceMemoDraft"))
@@ -3677,7 +3681,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"workflow-task-row-\\(task.id)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityLabel(\"Open task \\(task.title)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityValue(workflowAccessibilityValue)"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-panel\")"))
+        XCTAssertTrue(
+            workflowSource.contains(
+                "accessibilityIdentifier: fillsAvailableHeight ? \"inbox-action-panel\" : \"inbox-action-panel-content\""
+            )
+        )
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-make-task\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-make-project\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-schedule-today\")"))
