@@ -610,6 +610,10 @@ public final class ProjectBoardViewModel: ObservableObject {
             }
         }
     }
+    // A successful mutation reload must not clear a provider failure that was
+    // raised by that same reload. Keep the result separate from `failure`,
+    // which may intentionally represent an earlier recoverable operation.
+    private var didLastLoadFail = false
     @Published public private(set) var failure: ProjectBoardFailure?
     @Published public private(set) var integrationStatusMessage: String?
     @Published public private(set) var inboxClassificationFeedback: InboxClassificationFeedback?
@@ -998,6 +1002,11 @@ public final class ProjectBoardViewModel: ObservableObject {
         failure = nil
         failureTaskID = nil
         failureRetryAction = nil
+    }
+
+    private func clearErrorAfterSuccessfulLoad() {
+        guard !didLastLoadFail else { return }
+        errorMessage = nil
     }
 
     private func beginRecoverableOperation(taskID: Int64? = nil) {
@@ -5069,7 +5078,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             selectedProjectID = task.projectID
             selectedTaskID = taskID
             todayCommandFeedback = String(format: String(localized: "Completed \"%@\" from missed review."), task.title)
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
             errorMessage = "Restore the project before moving tasks."
@@ -5102,7 +5111,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             selectedProjectID = updatedTask.projectID
             selectedTaskID = updatedTask.id
             todayCommandFeedback = String(format: String(localized: "Rescheduled \"%@\" for today."), task.title)
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
             errorMessage = "Restore the project before editing tasks."
@@ -6566,6 +6575,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     private func load(invalidationReason: TodaySnapshotInvalidationReason?) {
+        didLastLoadFail = false
         let failureAtLoadStart = failure
         do {
             let loadedSnapshot = try store.loadSnapshot(includeArchived: showsArchivedProjects)
@@ -6608,11 +6618,13 @@ public final class ProjectBoardViewModel: ObservableObject {
             if let recoverableMessage = assistantQueueErrorMessage
                 ?? captureCacheErrorMessage
                 ?? triageCacheErrorMessage {
+                didLastLoadFail = true
                 recordFailure(.providerFailed(recoverableMessage), retryAction: .load)
             } else if failure == nil && failureAtLoadStart == nil {
                 clearFailure()
             }
         } catch {
+            didLastLoadFail = true
             let message = Self.userFacingMessage(for: error)
             if hasLoadedBoardSnapshot {
                 recordFailure(.saveFailed(message), retryAction: .load)
@@ -7630,7 +7642,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             ).importDocument(document)
             load()
             integrationStatusMessage = Self.importStatusMessage(for: result)
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
             return result
         } catch {
@@ -7792,7 +7804,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 load()
                 selectedProjectID = task.projectID
                 selectedTaskID = task.id
-                errorMessage = nil
+                clearErrorAfterSuccessfulLoad()
                 onChange()
                 return task
             } catch ProjectBoardStoreError.emptyTitle {
@@ -7831,7 +7843,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             load()
             selectedProjectID = inboxProject.id
             selectedTaskID = task.id
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
             return task
         } catch ProjectBoardStoreError.emptyTitle {
@@ -7907,7 +7919,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             load()
             selectedProjectID = targetProjectID
             selectedTaskID = nil
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
             return true
         } catch ProjectBoardStoreError.nonAbsoluteWorkspacePath {
@@ -7934,7 +7946,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             load()
             selectedProjectID = targetProjectID
             selectedTaskID = nil
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
             return true
         } catch {
@@ -8272,7 +8284,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             selectedTaskID = restoredTask.id
             inboxClassificationFeedback = nil
             lastInboxClassificationUndo = nil
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
             errorMessage = "Restore the project before undoing the classification."
@@ -8339,7 +8351,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 selectedTaskID = restoredSelection.taskID
             }
             showBoardUndoFeedback(feedbackMessage)
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
             errorMessage = "Restore the project before undoing this change."
@@ -8523,7 +8535,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             }
             selectedProjectID = previousProjectID
             selectedTaskID = previousTaskID
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
             errorMessage = "Restore the project before moving tasks."
@@ -8638,7 +8650,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             integrationStatusMessage = movedTasks.count == 1
                 ? String(localized: "Moved task to project.")
                 : String(format: String(localized: "Moved %d tasks to project."), movedTasks.count)
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
             return true
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
@@ -8685,7 +8697,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             let artifact = try store.createProjectArtifact(projectID: targetProjectID, expectedPath: expectedPath)
             load()
             selectedProjectID = targetProjectID
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
             return artifact
         } catch ProjectBoardStoreError.emptyArtifactPath {
@@ -8710,7 +8722,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             let targetProjectID = projectID ?? selectedProjectID
             load()
             selectedProjectID = targetProjectID
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
             return true
         } catch ArtifactStoreError.notFound {
@@ -8733,7 +8745,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             let milestone = try store.createProjectMilestone(projectID: targetProjectID, title: title, dueAt: dueAt)
             load()
             selectedProjectID = targetProjectID
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
             return milestone
         } catch ProjectBoardStoreError.emptyTitle {
@@ -8761,7 +8773,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             )
             load()
             selectedProjectID = projectID ?? milestone.projectID
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
             return updated
         } catch {
@@ -8905,7 +8917,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 mutation: mutation,
                 regenerated: regenerated
             )
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
             errorMessage = "Restore the project before editing tasks."
@@ -8962,7 +8974,7 @@ public final class ProjectBoardViewModel: ObservableObject {
 
         inboxClassificationFeedback = feedback
         lastInboxClassificationUndo = undo
-        errorMessage = nil
+        clearErrorAfterSuccessfulLoad()
     }
 
     private func ensureSelectedTaskIsVisibleInInboxFilter() {

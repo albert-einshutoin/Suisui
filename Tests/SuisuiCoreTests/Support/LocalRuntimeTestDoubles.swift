@@ -7,7 +7,7 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
     private var nextArtifactID: Int64
     private var nextMilestoneID: Int64
     private var inboxRecordsByTaskID: [Int64: InboxTriageRecord]
-    private let inboxTriageReadError: Error?
+    var inboxTriageReadError: Error?
 
     init(
         snapshot: ProjectBoardSnapshot = ProjectBoardSnapshot(projects: [

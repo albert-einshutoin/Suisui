@@ -8490,6 +8490,39 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testInboxTriageReadFailureAfterMutationRemainsVisible() throws {
+        let store = InMemoryProjectBoardStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createInboxTask(title: "Mutation reload failure"))
+        viewModel.selectedTaskID = task.id
+        store.inboxTriageReadError = DatabaseError.stepFailed("Inbox triage read failed.")
+
+        viewModel.markSelectedTaskAsTask()
+
+        XCTAssertEqual(viewModel.errorMessage, "Inbox triage read failed.")
+        XCTAssertEqual(viewModel.failure, .providerFailed("Inbox triage read failed."))
+        XCTAssertEqual(viewModel.failureActionLabel, "Reload")
+    }
+
+    @MainActor
+    func testInboxTriageReadFailureAfterUndoRemainsVisible() throws {
+        let store = InMemoryProjectBoardStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createInboxTask(title: "Undo reload failure"))
+        viewModel.selectedTaskID = task.id
+        viewModel.markSelectedTaskAsTask()
+
+        store.inboxTriageReadError = DatabaseError.stepFailed("Inbox triage read failed.")
+        viewModel.undoLastInboxClassification()
+
+        XCTAssertEqual(viewModel.errorMessage, "Inbox triage read failed.")
+        XCTAssertEqual(viewModel.failure, .providerFailed("Inbox triage read failed."))
+        XCTAssertEqual(viewModel.failureActionLabel, "Reload")
+    }
+
+    @MainActor
     func testInboxManualSummaryDoesNotCallAProcessedTaskUnprocessed() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()
