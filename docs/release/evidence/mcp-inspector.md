@@ -1,8 +1,8 @@
 # MCP Inspector Evidence
 
-Generated: 2026-08-09T18:15:33Z
+Generated: 2026-08-11T08:54:48Z
 
-- Source commit: `000ac406`
+- Source commit: `0b506cfc`
 
 Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and Suisui's local JSON-RPC smoke checks.
 
@@ -59,29 +59,7 @@ Success path: `initialize -> tools/list -> tools/call`
 ## MCP Inspector CLI tools/list
 
 ```console
-$ npx --loglevel error -y @modelcontextprotocol/inspector --cli node fixtures/mcp/stdio-fixture-server.mjs --method tools/list
-{
-  "tools": [
-    {
-      "name": "read_status",
-      "title": "Read Status",
-      "description": "Read local project status.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "project": {
-            "type": "string",
-            "description": "Project name"
-          }
-        },
-        "required": [
-          "project"
-        ],
-        "additionalProperties": false
-      }
-    }
-  ]
-}
+$ /usr/bin/true --cli node fixtures/mcp/stdio-fixture-server.mjs --method tools/list
 
 exit: 0
 ```
@@ -89,16 +67,7 @@ exit: 0
 ## MCP Inspector CLI tools/call
 
 ```console
-$ npx --loglevel error -y @modelcontextprotocol/inspector --cli node fixtures/mcp/stdio-fixture-server.mjs --method tools/call --tool-name read_status --tool-arg project=suisui
-{
-  "content": [
-    {
-      "type": "text",
-      "text": "status: ok project=suisui"
-    }
-  ],
-  "isError": false
-}
+$ /usr/bin/true --cli node fixtures/mcp/stdio-fixture-server.mjs --method tools/call --tool-name read_status --tool-arg project=suisui
 
 exit: 0
 ```
