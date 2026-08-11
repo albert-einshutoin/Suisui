@@ -594,12 +594,12 @@ private struct InboxTriageRail: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-            InboxActionPanel(
-                task: task,
-                viewModel: viewModel,
-                memoDraft: $memoDraft,
-                memoCaptureID: $memoCaptureID
-            )
+                InboxActionPanel(
+                    task: task,
+                    viewModel: viewModel,
+                    memoDraft: $memoDraft,
+                    memoCaptureID: $memoCaptureID
+                )
             }
             .scrollIndicators(.visible)
             .accessibilityIdentifier("inbox-reference-detail")
