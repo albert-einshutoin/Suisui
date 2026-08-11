@@ -126,7 +126,7 @@ struct InboxWorkflowView: View {
                             viewModel: viewModel,
                             memoDraft: $voiceMemoDraft,
                             memoCaptureID: $voiceMemoCaptureID,
-                            voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail-compact"
+                            voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail"
                         )
                             .padding(.horizontal, 18)
                             .padding(.bottom, 18)
@@ -388,6 +388,7 @@ private struct InboxReferenceTaskList: View {
                     }
                 }
                 .scrollIndicators(.visible)
+                .fixedSize(horizontal: false, vertical: true)
             }
 
             Divider()
@@ -918,7 +919,7 @@ private struct InboxProposedActions: View {
             }
             Divider()
             proposedAction(
-                title: "Link to a new project",
+                title: String(localized: "Link to a new project"),
                 systemImage: "folder",
                 trailingTitle: nil
             ) {
@@ -926,7 +927,7 @@ private struct InboxProposedActions: View {
             }
             Divider()
             proposedAction(
-                title: "Search related past materials",
+                title: String(localized: "Search related past materials"),
                 systemImage: "magnifyingglass",
                 trailingTitle: nil,
                 action: onSearchRelatedMaterials
@@ -1194,7 +1195,7 @@ private final class InboxAudioPlaybackModel: ObservableObject {
 
     func load(path: String, fallbackDuration: TimeInterval, captureID: Int64) {
         let key = "\(captureID):\(path):\(fallbackDuration)"
-        guard loadedKey != key else { return }
+        guard loadedKey != key || player == nil else { return }
         loadToken = UUID()
         let token = loadToken
         progressTask?.cancel()
@@ -1207,7 +1208,7 @@ private final class InboxAudioPlaybackModel: ObservableObject {
         duration = max(fallbackDuration, 0)
         waveform = nil
         errorMessage = nil
-        loadedKey = key
+        loadedKey = nil
 
         guard let url = Self.managedAudioURL(for: path) else {
             errorMessage = "Audio playback is unavailable for this capture."
@@ -1219,6 +1220,7 @@ private final class InboxAudioPlaybackModel: ObservableObject {
             audioPlayer.prepareToPlay()
             player = audioPlayer
             duration = max(audioPlayer.duration, duration)
+            loadedKey = key
         } catch {
             errorMessage = "Audio playback is unavailable for this capture."
             return
@@ -1241,6 +1243,7 @@ private final class InboxAudioPlaybackModel: ObservableObject {
         waveformTask = nil
         player?.stop()
         player = nil
+        loadedKey = nil
         isPlaying = false
         currentTime = 0
     }

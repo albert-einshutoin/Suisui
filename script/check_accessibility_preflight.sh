@@ -131,7 +131,6 @@ REQUIRED_FUNCTIONAL_SURFACE_ANCHORS=(
   "project-board::inbox-row-triage-summary-"
   "project-board::inbox-action-grid"
   "project-board::inbox-voice-intake-detail"
-  "project-board::inbox-voice-intake-detail-compact"
   "project-board::inbox-voice-transcript-preview"
   "project-board::inbox-voice-waveform"
   "project-board::inbox-voice-transcript"

@@ -1335,7 +1335,10 @@ private func writeInboxVoiceFixture(duration: Double, to url: URL) throws {
 
     for frame in 0..<frameCount {
         let time = Double(frame) / Double(sampleRate)
-        let sample = Int16(sin(time * 2 * Double.pi * 220) * 8_000)
+        // Modulate the tone so the generated fixture exercises the same
+        // variable-peak waveform rendering as a real voice memo.
+        let envelope = 0.3 + 0.7 * (0.5 + 0.5 * sin(time * 2 * Double.pi * 0.75))
+        let sample = Int16((sin(time * 2 * Double.pi * 220) * 8_000 * envelope).rounded())
         appendInt16(sample)
     }
 
