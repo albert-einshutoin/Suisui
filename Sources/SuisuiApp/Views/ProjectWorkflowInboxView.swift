@@ -111,7 +111,8 @@ struct InboxWorkflowView: View {
                         viewModel: viewModel,
                         memoDraft: $voiceMemoDraft,
                         memoCaptureID: $voiceMemoCaptureID,
-                        voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail"
+                        voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail",
+                        fillsAvailableHeight: true
                     )
                         .frame(minWidth: 340, idealWidth: 400, maxWidth: 440)
                         .padding(.vertical, 18)
@@ -126,7 +127,8 @@ struct InboxWorkflowView: View {
                             viewModel: viewModel,
                             memoDraft: $voiceMemoDraft,
                             memoCaptureID: $voiceMemoCaptureID,
-                            voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail"
+                            voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail",
+                            fillsAvailableHeight: false
                         )
                             .padding(.horizontal, 18)
                             .padding(.bottom, 18)
@@ -689,6 +691,7 @@ private struct InboxTriageRail: View {
     @Binding var memoDraft: String
     @Binding var memoCaptureID: Int64?
     let voiceDetailAccessibilityIdentifier: String
+    let fillsAvailableHeight: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -704,7 +707,11 @@ private struct InboxTriageRail: View {
             .scrollIndicators(.visible)
             .accessibilityIdentifier("inbox-reference-detail")
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: fillsAvailableHeight ? .infinity : nil,
+            alignment: .topLeading
+        )
         .background(.background, in: RoundedRectangle(cornerRadius: 12))
         .overlay {
             RoundedRectangle(cornerRadius: 12)
