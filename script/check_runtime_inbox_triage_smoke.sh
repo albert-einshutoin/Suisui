@@ -455,6 +455,7 @@ create_inbox_item() {
   local title="$1"
   local task_id=""
 
+  pressButtonContaining "inbox-quick-add-button" >&2
   waitForTextFieldContaining "inbox-quick-add-title"
   setTextFieldContaining "inbox-quick-add-title" "$title" >&2
   waitForTextFieldContaining "$title"

@@ -7030,6 +7030,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(textInputHelper.contains("postToPid(pid)"))
         XCTAssertFalse(textInputHelper.contains("NSWorkspace.shared.runningApplications.first"))
         XCTAssertTrue(script.contains("pressButtonContaining \"workflow-task-row-$task_id\""))
+        XCTAssertTrue(
+            script.contains(
+                "pressButtonContaining \"inbox-quick-add-button\" >&2\n  waitForTextFieldContaining \"inbox-quick-add-title\""
+            )
+        )
         XCTAssertTrue(script.contains("pressButtonContaining \"inbox-action-make-task\""))
         XCTAssertTrue(script.contains("pressButtonUntilSQLiteValue \"schedule inbox item\" \"inbox-action-schedule-today\""))
         XCTAssertTrue(script.contains("pressButtonUntilSQLiteValue \"review later inbox item\" \"inbox-action-review-later\""))
