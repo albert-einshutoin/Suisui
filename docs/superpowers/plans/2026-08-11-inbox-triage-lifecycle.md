@@ -10,6 +10,8 @@
 
 **Design:** `docs/superpowers/specs/2026-08-11-inbox-triage-lifecycle-and-voice-playback-design.md`
 
+**Implementation status (2026-08-11):** Tasks 1–7 and final automated validation are complete. The supported-matrix visual inspection remains a manual follow-up because this implementation turn validated the visible runtime path at the wide smoke size only.
+
 ---
 
 ## File map
@@ -34,7 +36,7 @@
 - Create: `Sources/SuisuiCore/WorkManagement/InboxTriage.swift`
 - Test: `Tests/SuisuiCoreTests/ProjectBoardStoreTests.swift`
 
-- [ ] **Step 1: Write failing tests for disposition invariants and next local 09:00**
+- [x] **Step 1: Write failing tests for disposition invariants and next local 09:00**
 
 Add tests that construct valid records, reject an invalid `reviewAt` combination, and prove DST-safe scheduling:
 
@@ -59,7 +61,7 @@ func testInboxReviewLaterDateIsNextLocalNineAcrossDST() throws {
 }
 ```
 
-- [ ] **Step 2: Run the focused tests and verify the red state**
+- [x] **Step 2: Run the focused tests and verify the red state**
 
 Run:
 
@@ -69,7 +71,7 @@ swift test --filter ProjectBoardStoreTests.testInboxReviewLater
 
 Expected: compilation fails because `InboxTriageRecord` and `InboxReviewClock` do not exist.
 
-- [ ] **Step 3: Add the minimal domain types**
+- [x] **Step 3: Add the minimal domain types**
 
 Create the focused file with these contracts:
 
@@ -135,12 +137,12 @@ public enum InboxReviewClock {
 }
 ```
 
-- [ ] **Step 4: Re-run the focused tests**
+- [x] **Step 4: Re-run the focused tests**
 
 Run: `swift test --filter ProjectBoardStoreTests.testInboxReviewLater`
 Expected: both tests pass.
 
-- [ ] **Step 5: Commit the domain slice**
+- [x] **Step 5: Commit the domain slice**
 
 ```bash
 git add Sources/SuisuiCore/WorkManagement/InboxTriage.swift Tests/SuisuiCoreTests/ProjectBoardStoreTests.swift
@@ -155,7 +157,7 @@ git commit -m "feat(inbox): define triage disposition and review clock"
 - Modify: `Sources/SuisuiCore/WorkManagement/WorkManagementSQLiteStore.swift`
 - Test: `Tests/SuisuiCoreTests/ProjectBoardStoreTests.swift`
 
-- [ ] **Step 1: Write migration and model mapping tests**
+- [x] **Step 1: Write migration and model mapping tests**
 
 Add tests that migrate a database containing an Inbox Task, assert the backfilled state, run migrations again, and load `createdAt`:
 
@@ -188,7 +190,7 @@ func testSQLiteProjectBoardTaskExposesStableCreatedAt() throws {
 }
 ```
 
-- [ ] **Step 2: Run the tests and verify failure**
+- [x] **Step 2: Run the tests and verify failure**
 
 Run:
 
@@ -199,7 +201,7 @@ swift test --filter ProjectBoardStoreTests.testSQLiteProjectBoardTaskExposesStab
 
 Expected: the table does not exist and `ProjectBoardTask` has no `createdAt` property.
 
-- [ ] **Step 3: Add migration `0035_create_inbox_triage_records`**
+- [x] **Step 3: Add migration `0035_create_inbox_triage_records`**
 
 Append a migration containing the schema and backfill from the approved design:
 
@@ -234,7 +236,7 @@ JOIN projects ON projects.id = tasks.project_id
 WHERE LOWER(projects.title) = 'inbox';
 ```
 
-- [ ] **Step 4: Add `createdAt` with a defaulted initializer argument**
+- [x] **Step 4: Add `createdAt` with a defaulted initializer argument**
 
 Add `public var createdAt: String?`, accept `createdAt: String? = nil` immediately before `updatedAt`, and map `record.createdAt` in `makeBoardTask`. Preserve `createdAt` in in-memory task copies and Undo snapshots rather than stamping a new value.
 
@@ -243,7 +245,7 @@ public var createdAt: String?
 public var updatedAt: String?
 ```
 
-- [ ] **Step 5: Run migration and model tests**
+- [x] **Step 5: Run migration and model tests**
 
 Run:
 
@@ -254,7 +256,7 @@ swift test --filter ProjectBoardStoreTests.testSQLiteProjectBoardTaskExposesStab
 
 Expected: PASS with an idempotent backfill and non-empty creation timestamp.
 
-- [ ] **Step 6: Commit the persistence foundation**
+- [x] **Step 6: Commit the persistence foundation**
 
 ```bash
 git add Sources/SuisuiCore/Database/SQLiteDatabaseClient.swift Sources/SuisuiCore/WorkManagement/WorkManagementModels.swift Sources/SuisuiCore/WorkManagement/WorkManagementSQLiteStore.swift Tests/SuisuiCoreTests/ProjectBoardStoreTests.swift
@@ -269,7 +271,7 @@ git commit -m "feat(inbox): persist triage state and capture time"
 - Modify: `Sources/SuisuiCore/WorkManagement/WorkManagementSQLiteStore.swift`
 - Test: `Tests/SuisuiCoreTests/ProjectBoardStoreTests.swift`
 
-- [ ] **Step 1: Write failing atomicity and restart tests**
+- [x] **Step 1: Write failing atomicity and restart tests**
 
 Add tests for Make Task, Review Later, Make Project, Schedule Today, completion, reopening, Undo, and a trigger-induced state write failure:
 
@@ -307,12 +309,12 @@ func testSQLiteInboxTriageRollsBackTaskWhenStateWriteFails() throws {
 }
 ```
 
-- [ ] **Step 2: Run the tests and verify failure**
+- [x] **Step 2: Run the tests and verify failure**
 
 Run: `swift test --filter ProjectBoardStoreTests.testSQLiteInbox`
 Expected: compile failures for the new store methods.
 
-- [ ] **Step 3: Add store contracts and mutation snapshot**
+- [x] **Step 3: Add store contracts and mutation snapshot**
 
 Add these requirements to `ProjectBoardStore`:
 
@@ -371,7 +373,7 @@ extension ProjectBoardTask {
 
 The double optional lets callers distinguish “preserve due date” from “clear due date”; only this focused helper uses it.
 
-- [ ] **Step 4: Implement SQLite state decoding and upsert**
+- [x] **Step 4: Implement SQLite state decoding and upsert**
 
 Add private helpers that query only requested task IDs, validate raw enum/date values, and write through one UPSERT:
 
@@ -386,7 +388,7 @@ ON CONFLICT(task_id) DO UPDATE SET
 
 An absent record derives from Task state using the migration rules and is persisted by the next mutation.
 
-- [ ] **Step 5: Implement each action inside `connection.transaction`**
+- [x] **Step 5: Implement each action inside `connection.transaction`**
 
 Use one transaction and the existing task/project stores:
 
@@ -425,16 +427,16 @@ return try connection.transaction {
 
 Use a focused private draft helper in `InboxTriage.swift`; do not duplicate field copying in four branches.
 
-- [ ] **Step 6: Implement Undo in one transaction**
+- [x] **Step 6: Implement Undo in one transaction**
 
 Restore the original Task fields and state. For Make Project, recreate/relink behavior stays coordinated by the existing ViewModel capture path; delete the created Project only after the Task restore succeeds. On any failure, roll back the full SQLite mutation.
 
-- [ ] **Step 7: Re-run the atomicity tests**
+- [x] **Step 7: Re-run the atomicity tests**
 
 Run: `swift test --filter ProjectBoardStoreTests.testSQLiteInbox`
 Expected: all focused mutation, restart, and forced-failure tests pass.
 
-- [ ] **Step 8: Commit the atomic store slice**
+- [x] **Step 8: Commit the atomic store slice**
 
 ```bash
 git add Sources/SuisuiCore/WorkManagement/InboxTriage.swift Sources/SuisuiCore/WorkManagement/WorkManagementStore.swift Sources/SuisuiCore/WorkManagement/WorkManagementSQLiteStore.swift Tests/SuisuiCoreTests/ProjectBoardStoreTests.swift
@@ -450,12 +452,12 @@ git commit -m "feat(inbox): make triage mutations atomic"
 - Modify: `Sources/SuisuiApp/Composition/MenuBarRuntimeFactory.swift`
 - Modify: `Sources/SuisuiApp/Composition/ProjectBoardRuntimeFactory.swift`
 
-- [ ] **Step 1: Run a build to list every missing conformance**
+- [x] **Step 1: Run a build to list every missing conformance**
 
 Run: `swift test --filter ProjectBoardStoreTests.testSQLiteInboxMakeTaskAndUndoAreAtomicAcrossRestart`
 Expected: compiler lists the remaining `ProjectBoardStore` conformers.
 
-- [ ] **Step 2: Implement real in-memory semantics**
+- [x] **Step 2: Implement real in-memory semantics**
 
 Add an `inboxRecordsByTaskID` dictionary to `InMemoryProjectBoardStore`. `createInboxTask`, `performInboxTriage` (including completion and reopening), and `undoInboxTriage` must copy the same state transitions as SQLite and restore the entire pre-mutation snapshot on thrown errors.
 
@@ -469,11 +471,11 @@ func loadInboxTriageRecords(taskIDs: Set<Int64>) throws -> [Int64: InboxTriageRe
 }
 ```
 
-- [ ] **Step 3: Make counting/failing/unavailable stores explicit**
+- [x] **Step 3: Make counting/failing/unavailable stores explicit**
 
 Counting stores delegate to their base store. Unavailable and always-failing stores throw their existing sanitized failure from all new mutation methods. Do not add a protocol default that silently performs a non-atomic classification.
 
-- [ ] **Step 4: Run the owning suites**
+- [x] **Step 4: Run the owning suites**
 
 Run:
 
@@ -485,7 +487,7 @@ swift test --filter WorkManagementSourceContractTests
 
 Expected: all pass with no missing conformances.
 
-- [ ] **Step 5: Commit test-double parity**
+- [x] **Step 5: Commit test-double parity**
 
 ```bash
 git add Tests/SuisuiCoreTests/Support/LocalRuntimeTestDoubles.swift Tests/SuisuiCoreTests/ExternalTaskInteropTests.swift Tests/SuisuiCoreTests/ProjectBoardStoreTests.swift Sources/SuisuiApp/Composition/MenuBarRuntimeFactory.swift Sources/SuisuiApp/Composition/ProjectBoardRuntimeFactory.swift
@@ -500,7 +502,7 @@ git commit -m "test(inbox): align stores with triage contract"
 - Test: `Tests/SuisuiCoreTests/ProjectBoardStoreTests.swift`
 - Test: `Tests/SuisuiCoreTests/InboxCaptureStoreTests.swift`
 
-- [ ] **Step 1: Write failing ViewModel behavior tests**
+- [x] **Step 1: Write failing ViewModel behavior tests**
 
 Cover initial Unprocessed filter, Make Task visibility, Review Later 08:59/09:00, next selection, completion/reopening through Edit-menu Undo, direct triage Undo, and Voice capture relink:
 
@@ -522,16 +524,16 @@ func testMakeTaskLeavesInboxHistoryButAdvancesUnprocessedSelection() throws {
 }
 ```
 
-- [ ] **Step 2: Run the ViewModel tests and verify failure**
+- [x] **Step 2: Run the ViewModel tests and verify failure**
 
 Run: `swift test --filter ProjectBoardStoreTests.testMakeTaskLeavesInboxHistory`
 Expected: Make Task still appears as unprocessed.
 
-- [ ] **Step 3: Cache triage records at load time**
+- [x] **Step 3: Cache triage records at load time**
 
 Add `inboxTriageRecordsByTaskID` beside the existing capture cache. Refresh it from `store.loadInboxTriageRecords` during `load()`. If state loading fails, derive visible `unprocessed` records and publish a sanitized error without hiding Task rows.
 
-- [ ] **Step 4: Replace status/due-only filtering**
+- [x] **Step 4: Replace status/due-only filtering**
 
 Define one business predicate and reuse it for rows, counts, sidebar count, and selection:
 
@@ -557,11 +559,11 @@ private func isInboxUnprocessed(_ task: ProjectBoardTask, at referenceDate: Date
 
 Use explicit optional handling rather than comparing an optional Date directly in the final code.
 
-- [ ] **Step 5: Route four actions and Undo through the store**
+- [x] **Step 5: Route four actions and Undo through the store**
 
 Replace `applyInboxTaskUpdate` and the separate Project creation path with `performInboxTriage`. Preserve feedback strings and capture relinking. Store the returned mutation as the single Inbox Undo token.
 
-- [ ] **Step 6: Add deterministic deferred refresh**
+- [x] **Step 6: Add deterministic deferred refresh**
 
 Expose:
 
@@ -574,7 +576,7 @@ public func refreshInboxReviewAvailability(at referenceDate: Date = Date()) {
 
 Tests pass fixed dates; no test sleeps or production global clock overrides are added.
 
-- [ ] **Step 7: Preserve Inbox state in completion/reopen Board Undo**
+- [x] **Step 7: Preserve Inbox state in completion/reopen Board Undo**
 
 When `toggleTaskCompletion` targets an Inbox Task, call `performInboxTriage` with `.complete` or `.reopen` instead of updating only the Task row. Extend the existing Undo entry:
 
@@ -590,7 +592,7 @@ enum BoardOperationUndoEntry: Equatable, Sendable {
 
 After completing a recurring Task, detect the regenerated Task with the existing before/after ID diff and retain it in the entry. `undoLastBoardOperation()` first deletes that regenerated Task only when it is still untouched, then calls `store.undoInboxTriage(mutation)`. If either operation fails, keep the Undo entry so the user can retry; tests must prove the original disposition, status, and selection are restored together.
 
-- [ ] **Step 8: Run ViewModel and capture suites**
+- [x] **Step 8: Run ViewModel and capture suites**
 
 Run:
 
@@ -601,7 +603,7 @@ swift test --filter InboxCaptureStoreTests
 
 Expected: classification, selection, Voice relink, restart, and Undo tests pass.
 
-- [ ] **Step 9: Commit ViewModel behavior**
+- [x] **Step 9: Commit ViewModel behavior**
 
 ```bash
 git add Sources/SuisuiCore/App/BoardOperationUndo.swift Sources/SuisuiCore/App/ProjectBoard.swift Tests/SuisuiCoreTests/ProjectBoardStoreTests.swift Tests/SuisuiCoreTests/InboxCaptureStoreTests.swift
@@ -616,7 +618,7 @@ git commit -m "fix(inbox): honor persisted triage lifecycle"
 - Modify: `Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings`
 - Test: `Tests/SuisuiCoreTests/AppExperienceSourceTests.swift`
 
-- [ ] **Step 1: Write failing source contracts**
+- [x] **Step 1: Write failing source contracts**
 
 Assert Quick Add calls `createInboxTask`, sorting uses `createdAt`, state badges exist, and periodic refresh is scoped to Inbox:
 
@@ -630,12 +632,12 @@ func testInboxReferenceUIUsesPersistedTriageLifecycle() throws {
 }
 ```
 
-- [ ] **Step 2: Run the source test and verify failure**
+- [x] **Step 2: Run the source test and verify failure**
 
 Run: `swift test --filter AppExperienceSourceTests.testInboxReferenceUIUsesPersistedTriageLifecycle`
 Expected: all four assertions fail.
 
-- [ ] **Step 3: Make Quick Add success-dependent**
+- [x] **Step 3: Make Quick Add success-dependent**
 
 Replace the direct Inbox-ID path:
 
@@ -653,23 +655,23 @@ private func addInboxTask() {
 }
 ```
 
-- [ ] **Step 4: Sort by stable creation time**
+- [x] **Step 4: Sort by stable creation time**
 
 Parse `createdAt` through the existing timestamp helper or one focused Core helper. Compare ID only when timestamps are equal or missing. Do not sort Voice rows by capture update/memo time.
 
-- [ ] **Step 5: Render disposition and review badges**
+- [x] **Step 5: Render disposition and review badges**
 
 Keep source/interpretation labels and add one state badge derived from the ViewModel record. `reviewLater` displays the localized next-review day/time; `task` and `scheduled` are visible in All/source filters but not Unprocessed.
 
-- [ ] **Step 6: Add the one-minute visible refresh**
+- [x] **Step 6: Add the one-minute visible refresh**
 
 Use `TimelineView(.periodic(from: .now, by: 60))` around the Inbox workflow body and call `refreshInboxReviewAvailability(at:)` only when the emitted minute changes. Avoid a process-wide Timer or Store polling.
 
-- [ ] **Step 7: Add English and Japanese strings**
+- [x] **Step 7: Add English and Japanese strings**
 
 Add concrete translations for `Processed task`, `Scheduled`, `Review tomorrow at %@`, `Review due`, and the sanitized triage load/save errors.
 
-- [ ] **Step 8: Run UI and localization tests**
+- [x] **Step 8: Run UI and localization tests**
 
 Run:
 
@@ -680,7 +682,7 @@ swift test --filter LocalizationStaticTests
 
 Expected: Inbox contracts and both locale tables pass.
 
-- [ ] **Step 9: Commit the UI slice**
+- [x] **Step 9: Commit the UI slice**
 
 ```bash
 git add Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift Sources/SuisuiApp/Resources/en.lproj/Localizable.strings Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings Tests/SuisuiCoreTests/AppExperienceSourceTests.swift
@@ -693,7 +695,7 @@ git commit -m "feat(inbox): surface triage state and deferred review"
 - Modify: `script/check_runtime_inbox_triage_smoke.sh`
 - Modify: `Tests/SuisuiCoreTests/ReleasePipelineTests.swift`
 
-- [ ] **Step 1: Write a failing script contract test**
+- [x] **Step 1: Write a failing script contract test**
 
 Require the smoke to verify the new state table and stable due date:
 
@@ -708,12 +710,12 @@ func testRuntimeInboxTriageSmokeVerifiesDispositionAndReviewDate() throws {
 }
 ```
 
-- [ ] **Step 2: Run the contract test and verify failure**
+- [x] **Step 2: Run the contract test and verify failure**
 
 Run: `swift test --filter ReleasePipelineTests.testRuntimeInboxTriageSmokeVerifiesDispositionAndReviewDate`
 Expected: missing SQL assertions.
 
-- [ ] **Step 3: Update the visible-app smoke**
+- [x] **Step 3: Update the visible-app smoke**
 
 After clicking each existing AX action, query SQLite for:
 
@@ -725,7 +727,7 @@ After clicking each existing AX action, query SQLite for:
 
 Keep Quick Add expansion before locating the text field.
 
-- [ ] **Step 4: Run source contract and real runtime smoke**
+- [x] **Step 4: Run source contract and real runtime smoke**
 
 Run:
 
@@ -736,7 +738,7 @@ swift test --filter ReleasePipelineTests.testRuntimeInboxTriageSmoke
 
 Expected: the visible app completes Quick Add, four classifications, and Undo; every SQLite postcondition is `1`.
 
-- [ ] **Step 5: Commit runtime evidence**
+- [x] **Step 5: Commit runtime evidence**
 
 ```bash
 git add script/check_runtime_inbox_triage_smoke.sh Tests/SuisuiCoreTests/ReleasePipelineTests.swift
@@ -748,7 +750,7 @@ git commit -m "test(inbox): verify persisted triage lifecycle at runtime"
 **Files:**
 - Review all files changed in Tasks 1-7.
 
-- [ ] **Step 1: Run focused suites**
+- [x] **Step 1: Run focused suites**
 
 ```bash
 swift test --filter InboxCaptureStoreTests
@@ -759,7 +761,7 @@ swift test --filter ReleasePipelineTests
 
 Expected: all pass.
 
-- [ ] **Step 2: Run accessibility and security gates**
+- [x] **Step 2: Run accessibility and security gates**
 
 ```bash
 ./script/check_accessibility_preflight.sh --source-only
@@ -768,7 +770,7 @@ Expected: all pass.
 
 Expected: both print `OK` and exit 0.
 
-- [ ] **Step 3: Run full tests and build**
+- [x] **Step 3: Run full tests and build**
 
 ```bash
 swift test
@@ -782,11 +784,11 @@ Expected: full suite and build pass; diff check is silent.
 
 Capture Inbox in English/Japanese, Light/Dark, and wide/compact widths. Confirm the right rail moves below at compact width, no horizontal scrolling appears, Review Later badges remain readable, and the sidebar is unchanged.
 
-- [ ] **Step 5: Self-review business invariants**
+- [x] **Step 5: Self-review business invariants**
 
 Confirm one source of truth for disposition, no `dueAt` reuse for Review Later, no non-atomic SQLite production path, no hidden migrated Task, selection changes only after successful persistence, and comments explain the atomicity/backfill reasons.
 
-- [ ] **Step 6: Commit only if validation required a corrective diff**
+- [x] **Step 6: Commit only if validation required a corrective diff**
 
 ```bash
 git add Sources/SuisuiCore/WorkManagement/InboxTriage.swift Sources/SuisuiCore/Database/SQLiteDatabaseClient.swift Sources/SuisuiCore/WorkManagement/WorkManagementModels.swift Sources/SuisuiCore/WorkManagement/WorkManagementStore.swift Sources/SuisuiCore/WorkManagement/WorkManagementSQLiteStore.swift Sources/SuisuiCore/App/BoardOperationUndo.swift Sources/SuisuiCore/App/ProjectBoard.swift Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift Tests/SuisuiCoreTests/Support/LocalRuntimeTestDoubles.swift Tests/SuisuiCoreTests/ProjectBoardStoreTests.swift Tests/SuisuiCoreTests/InboxCaptureStoreTests.swift Tests/SuisuiCoreTests/AppExperienceSourceTests.swift Tests/SuisuiCoreTests/ReleasePipelineTests.swift script/check_runtime_inbox_triage_smoke.sh
