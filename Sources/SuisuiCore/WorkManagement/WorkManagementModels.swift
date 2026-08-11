@@ -722,3 +722,49 @@ public enum InboxTriageFilter: String, CaseIterable, Identifiable, Sendable {
         }
     }
 }
+
+/// Categories used by the reference Inbox surface. This is intentionally
+/// separate from `InboxTriageFilter`: triage filters describe capture origin
+/// and processing state, while the reference tabs describe the user's review
+/// queue. Keeping both contracts lets the workflow retain its existing
+/// lifecycle semantics while presenting the product-facing taxonomy.
+public enum InboxReferenceFilter: String, CaseIterable, Identifiable, Sendable {
+    case all
+    case task
+    case proposal
+    case notification
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .all:
+            "All"
+        case .task:
+            "Tasks"
+        case .proposal:
+            "Proposals"
+        case .notification:
+            "Notifications"
+        }
+    }
+
+    public var category: InboxReferenceCategory? {
+        switch self {
+        case .all:
+            nil
+        case .task:
+            .task
+        case .proposal:
+            .proposal
+        case .notification:
+            .notification
+        }
+    }
+}
+
+public enum InboxReferenceCategory: String, Sendable {
+    case task
+    case proposal
+    case notification
+}

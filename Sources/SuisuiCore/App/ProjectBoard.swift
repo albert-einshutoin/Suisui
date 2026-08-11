@@ -3670,6 +3670,52 @@ public final class ProjectBoardViewModel: ObservableObject {
         }.count
     }
 
+    /// Returns the product-facing category used by the reference Inbox tabs.
+    /// The mapping is derived from cached capture metadata so rendering the
+    /// list does not perform a store read for every row.
+    public func inboxReferenceCategory(for task: ProjectBoardTask) -> InboxReferenceCategory {
+        let captures = captureRecords(for: task.id)
+        let interpretation = captures
+            .compactMap(\.interpretationSummary)
+            .joined(separator: " ")
+        let searchableText = [task.title, task.detail, interpretation]
+            .joined(separator: " ")
+            .lowercased()
+
+        if Self.inboxNotificationKeywords.contains(where: searchableText.contains) {
+            return .notification
+        }
+        if !interpretation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return .proposal
+        }
+        return .task
+    }
+
+    public func inboxReferenceTasks(
+        for filter: InboxReferenceFilter,
+        unprocessedOnly: Bool = false,
+        at referenceDate: Date? = nil
+    ) -> [ProjectBoardTask] {
+        let effectiveReferenceDate = referenceDate ?? inboxVisibilityReferenceDate ?? readModelNow()
+        return inboxTasks.filter { task in
+            guard !unprocessedOnly || isInboxUnprocessed(task, at: effectiveReferenceDate) else {
+                return false
+            }
+            guard filter != .all else {
+                return true
+            }
+            return inboxReferenceCategory(for: task) == filter.category
+        }
+    }
+
+    public func inboxReferenceCount(for filter: InboxReferenceFilter) -> Int {
+        inboxReferenceTasks(for: filter).count
+    }
+
+    private static let inboxNotificationKeywords = [
+        "notification", "alert", "お知らせ", "通知", "アラート"
+    ]
+
     public func inboxTriageSummary(for task: ProjectBoardTask) -> InboxTriageSummary {
         let captures = captureRecords(for: task.id)
         guard let capture = captures.first else {

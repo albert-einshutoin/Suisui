@@ -6682,6 +6682,35 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelReferenceInboxTabsMapTasksProposalsAndNotifications() throws {
+        let bundle = try makeStoreBundle()
+        let captures = SQLiteInboxCaptureStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(store: bundle.board, inboxCaptureStore: captures)
+        viewModel.load()
+
+        let task = try XCTUnwrap(viewModel.createInboxTask(title: "Prepare presentation"))
+        let proposal = try XCTUnwrap(viewModel.createInboxTask(title: "Draft launch plan"))
+        _ = try captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: proposal.id,
+            audioFilePath: "/tmp/proposal.m4a",
+            durationSeconds: 8,
+            transcript: "Prepare the launch plan",
+            interpretationSummary: "Suggested proposal for the launch plan",
+            memo: nil,
+            transcriptionStatus: .succeeded
+        ))
+        let notification = try XCTUnwrap(viewModel.createInboxTask(title: "Release notification"))
+        viewModel.load()
+
+        XCTAssertEqual(viewModel.inboxReferenceCategory(for: task), .task)
+        XCTAssertEqual(viewModel.inboxReferenceCategory(for: proposal), .proposal)
+        XCTAssertEqual(viewModel.inboxReferenceCategory(for: notification), .notification)
+        XCTAssertEqual(viewModel.inboxReferenceTasks(for: .task).map(\.id), [task.id])
+        XCTAssertEqual(viewModel.inboxReferenceCount(for: .proposal), 1)
+        XCTAssertEqual(viewModel.inboxReferenceTasks(for: .all, unprocessedOnly: true).count, 3)
+    }
+
+    @MainActor
     func testInboxTriageCountUsesCachedCapturesWithoutRefreshingStore() throws {
         let captureStore = CountingInboxCaptureStore()
         let viewModel = ProjectBoardViewModel(
