@@ -379,8 +379,7 @@ private struct InboxReferenceTaskList: View {
                                 referenceDate: referenceDate,
                                 projectTitle: viewModel.projectTitle(for: task),
                                 isSelected: viewModel.selectedTaskID == task.id,
-                                onSelect: { onSelectTask(task) },
-                                onToggleCompletion: { viewModel.toggleTaskCompletion(id: task.id) }
+                                onSelect: { onSelectTask(task) }
                             )
                             if index < tasks.count - 1 {
                                 Divider()
@@ -419,21 +418,15 @@ private struct InboxReferenceTaskRow: View {
     let projectTitle: String
     let isSelected: Bool
     let onSelect: () -> Void
-    let onToggleCompletion: () -> Void
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            Button(action: onToggleCompletion) {
-                Image(systemName: task.status == .done ? "checkmark.circle.fill" : referenceIcon)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(iconTint)
-                    .frame(width: 34, height: 34)
-                    .background(iconTint.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("workflow-task-completion-\(task.id)")
-            .accessibilityLabel(task.status == .done ? "Reopen task \(task.title)" : "Complete task \(task.title)")
-            .accessibilityHint("Updates the task status in the local Suisui database without opening the inspector.")
+            Image(systemName: task.status == .done ? "checkmark.circle.fill" : referenceIcon)
+                .font(.body.weight(.medium))
+                .foregroundStyle(iconTint)
+                .frame(width: 34, height: 34)
+                .background(iconTint.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+                .accessibilityHidden(true)
 
             Button(action: onSelect) {
                 HStack(alignment: .center, spacing: 12) {
@@ -488,6 +481,10 @@ private struct InboxReferenceTaskRow: View {
     }
 
     private var metadata: String {
+        guard task.sourceCommand == "ui-evidence" else {
+            let date = task.todayDueDisplayLabel() ?? task.updatedAt ?? String(localized: "Unscheduled")
+            return "\(String(localized: String.LocalizationValue(summary.sourceLabel))) · \(date)"
+        }
         switch task.title.lowercased() {
         case let title where title.contains("プレゼン") || title.contains("presentation"):
             return String(localized: "Inbox reference presentation metadata")
@@ -510,6 +507,9 @@ private struct InboxReferenceTaskRow: View {
     }
 
     private var referenceTag: String {
+        guard task.sourceCommand == "ui-evidence" else {
+            return String(localized: String.LocalizationValue(summary.interpretationLabel))
+        }
         switch task.title.lowercased() {
         case let title where title.contains("プレゼン") || title.contains("presentation"):
             return String(localized: "Presentation materials")
@@ -535,6 +535,16 @@ private struct InboxReferenceTaskRow: View {
     }
 
     private var iconTint: Color {
+        guard task.sourceCommand == "ui-evidence" else {
+            switch category {
+            case .task:
+                return .blue
+            case .proposal:
+                return .orange
+            case .notification:
+                return .purple
+            }
+        }
         let title = task.title.lowercased()
         if title.contains("キックオフ") || title.contains("kickoff") {
             return .green
@@ -556,6 +566,16 @@ private struct InboxReferenceTaskRow: View {
     }
 
     private var referenceIcon: String {
+        guard task.sourceCommand == "ui-evidence" else {
+            switch category {
+            case .task:
+                return "checkmark"
+            case .proposal:
+                return "sparkles"
+            case .notification:
+                return "bell"
+            }
+        }
         let title = task.title.lowercased()
         if title.contains("キックオフ") || title.contains("kickoff") {
             return "clock"
@@ -869,13 +889,30 @@ private struct InboxProposedActions: View {
     let task: ProjectBoardTask?
     @ObservedObject var viewModel: ProjectBoardViewModel
     let onSearchRelatedMaterials: () -> Void
+    @State private var isEditingSuggestedTask = false
+    @State private var editedSuggestedTaskTitle = ""
+
+    private var suggestedActionTitle: String {
+        if let interpretation = viewModel.selectedInboxCaptureRecords.first?.interpretationSummary,
+           !interpretation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return interpretation
+        }
+        guard let task else {
+            return String(localized: "Add task")
+        }
+        return String(format: String(localized: "Add %@"), task.title)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             proposedAction(
-                title: "Add presentation preparation task",
+                title: suggestedActionTitle,
                 systemImage: "checkmark",
-                trailingTitle: "Edit"
+                trailingTitle: String(localized: "Edit"),
+                trailingAction: {
+                    editedSuggestedTaskTitle = task?.title ?? ""
+                    isEditingSuggestedTask = true
+                }
             ) {
                 viewModel.markSelectedTaskAsTask()
             }
@@ -901,13 +938,30 @@ private struct InboxProposedActions: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.secondary.opacity(0.14))
         }
+        .alert("Edit proposed task", isPresented: $isEditingSuggestedTask) {
+            TextField("Task title", text: $editedSuggestedTaskTitle)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") {
+                let title = editedSuggestedTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let task, !title.isEmpty else { return }
+                viewModel.updateSelectedTask(
+                    title: title,
+                    detail: task.detail,
+                    status: task.status,
+                    priority: task.priority,
+                    dueAt: task.dueAt,
+                    recurrence: task.recurrence
+                )
+            }
+        }
     }
 
     @ViewBuilder
     private func proposedAction(
-        title: LocalizedStringKey,
+        title: String,
         systemImage: String,
-        trailingTitle: LocalizedStringKey?,
+        trailingTitle: String? = nil,
+        trailingAction: (() -> Void)? = nil,
         action: @escaping () -> Void
     ) -> some View {
         HStack(spacing: 8) {
@@ -927,8 +981,8 @@ private struct InboxProposedActions: View {
             }
             .buttonStyle(.plain)
 
-            if let trailingTitle {
-                Button(trailingTitle) { action() }
+            if let trailingTitle, let trailingAction {
+                Button(trailingTitle, action: trailingAction)
                     .buttonStyle(.borderless)
                     .font(.caption)
                     .foregroundStyle(.blue)
@@ -1031,7 +1085,11 @@ private struct InboxSelectedItemContext: View {
 
                 if let capture = viewModel.selectedInboxCaptureRecords.first,
                    let parsed = SuisuiTimestampDisplay.parse(capture.createdAt) {
-                    Text(String(format: String(localized: "Today %@ · Taro Yamada (you)"), SuisuiTimestampDisplay.time(parsed.date)))
+                    let time = SuisuiTimestampDisplay.time(parsed.date)
+                    let attribution = task.sourceCommand == "ui-evidence"
+                        ? String(format: String(localized: "Today %@ · Taro Yamada (you)"), time)
+                        : String(format: String(localized: "Voice Memo · %@"), time)
+                    Text(attribution)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -1125,31 +1183,34 @@ private final class InboxAudioPlaybackModel: ObservableObject {
     @Published private(set) var isPlaying = false
     @Published private(set) var currentTime: TimeInterval = 0
     @Published private(set) var duration: TimeInterval = 0
+    @Published private(set) var waveform: [CGFloat]?
     @Published private(set) var errorMessage: String?
 
     private var player: AVAudioPlayer?
     private var progressTask: Task<Void, Never>?
-    private var loadedPath: String?
+    private var waveformTask: Task<Void, Never>?
+    private var loadedKey: String?
+    private var loadToken = UUID()
 
-    func load(path: String, fallbackDuration: TimeInterval) {
-        guard loadedPath != path else { return }
+    func load(path: String, fallbackDuration: TimeInterval, captureID: Int64) {
+        let key = "\(captureID):\(path):\(fallbackDuration)"
+        guard loadedKey != key else { return }
+        loadToken = UUID()
+        let token = loadToken
         progressTask?.cancel()
         progressTask = nil
+        waveformTask?.cancel()
+        waveformTask = nil
         player = nil
         isPlaying = false
         currentTime = 0
         duration = max(fallbackDuration, 0)
+        waveform = nil
         errorMessage = nil
-        loadedPath = path
+        loadedKey = key
 
-        // Capture paths are persisted input, so only regular files are opened.
-        // This avoids treating a missing/invalid path as a playback success and
-        // keeps the visual review surface usable with transcript-only records.
-        let url = URL(fileURLWithPath: path).standardizedFileURL
-        var isDirectory: ObjCBool = false
-        guard !path.isEmpty,
-              FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
-              !isDirectory.boolValue else {
+        guard let url = Self.managedAudioURL(for: path) else {
+            errorMessage = "Audio playback is unavailable for this capture."
             return
         }
 
@@ -1160,6 +1221,86 @@ private final class InboxAudioPlaybackModel: ObservableObject {
             duration = max(audioPlayer.duration, duration)
         } catch {
             errorMessage = "Audio playback is unavailable for this capture."
+            return
+        }
+
+        waveformTask = Task { @MainActor [weak self] in
+            let samples = await Task.detached(priority: .utility) {
+                Self.waveformSamples(for: url)
+            }.value
+            guard let self, self.loadToken == token else { return }
+            self.waveform = samples
+        }
+    }
+
+    func stop() {
+        loadToken = UUID()
+        progressTask?.cancel()
+        progressTask = nil
+        waveformTask?.cancel()
+        waveformTask = nil
+        player?.stop()
+        player = nil
+        isPlaying = false
+        currentTime = 0
+    }
+
+    private static func managedAudioURL(for path: String) -> URL? {
+        guard !path.isEmpty,
+              let root = try? SuisuiAppDatabaseLocation.applicationSupportDirectoryURL(createDirectory: false)
+                  .appendingPathComponent("InboxAudio", isDirectory: true) else {
+            return nil
+        }
+        let canonicalRoot = root.resolvingSymlinksInPath().standardizedFileURL
+        let candidate = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL
+        let rootPath = canonicalRoot.path.hasSuffix("/") ? canonicalRoot.path : canonicalRoot.path + "/"
+        guard candidate.path.hasPrefix(rootPath) else {
+            return nil
+        }
+
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
+              !isDirectory.boolValue,
+              let attributes = try? FileManager.default.attributesOfItem(atPath: candidate.path),
+              attributes[.type] as? FileAttributeType == .typeRegular else {
+            return nil
+        }
+        return candidate
+    }
+
+    nonisolated private static func waveformSamples(for url: URL) -> [CGFloat]? {
+        do {
+            let audioFile = try AVAudioFile(forReading: url)
+            let totalFrames = max(audioFile.length, 0)
+            guard totalFrames > 0 else { return Array(repeating: 0, count: 64) }
+            let format = audioFile.processingFormat
+            let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4096)
+            guard let buffer else { return nil }
+            var peaks = [Float](repeating: 0, count: 64)
+            var framesRead: Int64 = 0
+
+            while framesRead < totalFrames {
+                buffer.frameLength = 0
+                try audioFile.read(into: buffer, frameCount: 4096)
+                let frameLength = Int(buffer.frameLength)
+                guard frameLength > 0,
+                      let channelData = buffer.floatChannelData?.pointee else {
+                    break
+                }
+                for index in 0..<frameLength {
+                    let magnitude = abs(channelData[index])
+                    let position = Double(framesRead + Int64(index)) / Double(totalFrames)
+                    let bucket = min(63, max(0, Int(position * 64)))
+                    peaks[bucket] = max(peaks[bucket], magnitude)
+                }
+                framesRead += Int64(frameLength)
+            }
+
+            let maximum = peaks.max() ?? 0
+            guard maximum > 0 else { return Array(repeating: 0, count: 64) }
+            return peaks.map { CGFloat($0 / maximum) }
+        } catch {
+            return nil
         }
     }
 
@@ -1174,7 +1315,11 @@ private final class InboxAudioPlaybackModel: ObservableObject {
             progressTask?.cancel()
             progressTask = nil
         } else {
-            player.play()
+            guard player.play() else {
+                errorMessage = "Audio playback is unavailable for this capture."
+                isPlaying = false
+                return
+            }
             isPlaying = true
             startProgressTracking()
         }
@@ -1279,11 +1424,22 @@ private struct InboxVoiceIntakeDetail: View {
             .accessibilityHint("Summarizes the selected Inbox capture metadata for review.")
             .onAppear {
                 resetMemoDraft(for: capture)
-                playback.load(path: capture.audioFilePath, fallbackDuration: capture.durationSeconds)
+                playback.load(
+                    path: capture.audioFilePath,
+                    fallbackDuration: capture.durationSeconds,
+                    captureID: capture.id
+                )
             }
             .onChange(of: capture.id) { _, _ in
                 resetMemoDraft(for: capture)
-                playback.load(path: capture.audioFilePath, fallbackDuration: capture.durationSeconds)
+                playback.load(
+                    path: capture.audioFilePath,
+                    fallbackDuration: capture.durationSeconds,
+                    captureID: capture.id
+                )
+            }
+            .onDisappear {
+                playback.stop()
             }
         }
     }
@@ -1311,19 +1467,30 @@ private struct InboxVoiceIntakeDetail: View {
                 .accessibilityIdentifier("inbox-voice-playback-toggle")
                 .accessibilityLabel(playback.isPlaying ? "Pause voice memo" : "Play voice memo")
 
-                HStack(alignment: .center, spacing: 2) {
-                    ForEach(waveformBars.indices, id: \.self) { index in
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(index < Int(Double(waveformBars.count) * playbackProgress)
-                                ? Color.accentColor
-                                : Color.accentColor.opacity(0.38))
-                            .frame(maxWidth: .infinity, minHeight: 4, maxHeight: waveformBars[index])
+                Group {
+                    if let waveform = playback.waveform {
+                        HStack(alignment: .center, spacing: 2) {
+                            ForEach(waveform.indices, id: \.self) { index in
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(index < Int(Double(waveform.count) * playbackProgress)
+                                        ? Color.accentColor
+                                        : Color.accentColor.opacity(0.38))
+                                    .frame(
+                                        maxWidth: .infinity,
+                                        minHeight: 4,
+                                        maxHeight: 4 + waveform[index] * 26
+                                    )
+                            }
+                        }
+                    } else {
+                        ProgressView(value: playbackProgress)
+                            .progressViewStyle(.linear)
+                            .padding(.horizontal, 4)
                     }
                 }
                 .frame(height: 34)
                 .accessibilityIdentifier("inbox-voice-waveform")
-                .accessibilityLabel("Voice waveform")
-                .accessibilityValue("Waveform preview")
+                .accessibilityHidden(true)
 
                 Text(localizedInboxCaptureDuration(capture.durationSeconds))
                     .font(.caption.monospacedDigit())
@@ -1347,10 +1514,6 @@ private struct InboxVoiceIntakeDetail: View {
             "Transcript-only voice capture, duration %@, waveform preview",
             localizedInboxCaptureDuration(capture.durationSeconds)
         ))
-    }
-
-    private var waveformBars: [CGFloat] {
-        [10, 16, 22, 12, 18, 26, 14, 20, 28, 16, 24, 12, 18, 30, 20, 14, 24, 18, 28, 12, 20, 26, 16, 22, 30, 14, 18, 24, 12, 28, 20, 16, 26, 14, 22, 30, 18, 12, 24, 16, 28, 20, 14, 26, 18, 22, 12, 24, 16]
     }
 
     private var playbackProgress: Double {

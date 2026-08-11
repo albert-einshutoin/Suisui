@@ -632,7 +632,6 @@
 "Task list" = "タスク一覧";
 "Task metadata" = "タスクメタデータ";
 "Task summary" = "タスクサマリー";
-"Task title" = "タスク名";
 "Tasks" = "タスク";
 "This hides the project from the active board and deadline summaries. Existing local tasks are kept in the Suisui database." = "この操作でプロジェクトはアクティブボードと期限サマリーから非表示になります。既存のローカルタスクはSuisuiデータベースに残ります。";
 "This permanently removes the project, its local tasks, deadline rules, artifact links, calendar links, and reminder links from Suisui." = "この操作はプロジェクト、ローカルタスク、期限ルール、成果物リンク、カレンダーリンク、リマインダーリンクをSuisuiから完全に削除します。";
@@ -2201,6 +2200,11 @@
 "Related" = "関連";
 "Unassigned" = "未設定";
 "Today %@ · Taro Yamada (you)" = "今日 %@ · 山田 太郎 (あなた)";
+"Voice Memo · %@" = "音声メモ · %@";
+"Add %@" = "%@を追加";
+"Add task" = "タスクを追加";
+"Edit proposed task" = "提案タスクを編集";
+"Task title" = "タスク名";
 "No related materials" = "関連する資料はありません";
 "This removes the selected Inbox item. You can undo the deletion from the Edit menu." = "選択した受信箱アイテムを削除します。編集メニューから削除を取り消せます。";
 "Including Done" = "完了済みを含む";

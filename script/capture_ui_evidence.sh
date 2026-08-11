@@ -1283,7 +1283,8 @@ seed_capture_database() {
   local database_path="$1"
   local seed_output
   seed_output="$(
-    SUISUI_LANGUAGE_PREFERENCE="$EVIDENCE_LOCALE" "$VISUAL_FIXTURE_SEEDER_BIN" \
+    HOME="$EVIDENCE_HOME" CFFIXED_USER_HOME="$EVIDENCE_HOME" \
+      SUISUI_LANGUAGE_PREFERENCE="$EVIDENCE_LOCALE" "$VISUAL_FIXTURE_SEEDER_BIN" \
       --database "$database_path" \
       --evidence-home "$EVIDENCE_HOME" \
       --evidence-home-marker-token "$EVIDENCE_HOME_MARKER_TOKEN" \

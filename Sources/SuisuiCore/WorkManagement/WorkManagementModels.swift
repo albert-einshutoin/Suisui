@@ -201,6 +201,9 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
     public var createdAt: String?
     public var updatedAt: String?
     public var recurrence: String?
+    /// Retained only for deterministic evidence isolation; ordinary board
+    /// consumers do not need the original command that created a task.
+    public var sourceCommand: String?
 
     public init(
         id: Int64,
@@ -213,7 +216,8 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
         completedAt: String? = nil,
         createdAt: String? = nil,
         updatedAt: String? = nil,
-        recurrence: String? = nil
+        recurrence: String? = nil,
+        sourceCommand: String? = nil
     ) {
         self.id = id
         self.projectID = projectID
@@ -226,6 +230,7 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.recurrence = recurrence
+        self.sourceCommand = sourceCommand
     }
 
     /// The label every board surface shows for a due date. `dueAt` stays the

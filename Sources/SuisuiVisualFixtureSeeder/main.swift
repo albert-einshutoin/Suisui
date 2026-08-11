@@ -1300,6 +1300,65 @@ private struct InboxReferenceFixture {
     }
 }
 
+private func writeInboxVoiceFixture(duration: Double, to url: URL) throws {
+    let sampleRate: UInt32 = 8_000
+    let frameCount = max(1, Int((duration * Double(sampleRate)).rounded()))
+    let dataSize = frameCount * MemoryLayout<Int16>.size
+    var data = Data(capacity: 44 + dataSize)
+
+    func appendUInt16(_ value: UInt16) {
+        var littleEndian = value.littleEndian
+        withUnsafeBytes(of: &littleEndian) { data.append(contentsOf: $0) }
+    }
+    func appendUInt32(_ value: UInt32) {
+        var littleEndian = value.littleEndian
+        withUnsafeBytes(of: &littleEndian) { data.append(contentsOf: $0) }
+    }
+    func appendInt16(_ value: Int16) {
+        var littleEndian = value.littleEndian
+        withUnsafeBytes(of: &littleEndian) { data.append(contentsOf: $0) }
+    }
+
+    data.append(contentsOf: Data("RIFF".utf8))
+    appendUInt32(UInt32(36 + dataSize))
+    data.append(contentsOf: Data("WAVE".utf8))
+    data.append(contentsOf: Data("fmt ".utf8))
+    appendUInt32(16)
+    appendUInt16(1)
+    appendUInt16(1)
+    appendUInt32(sampleRate)
+    appendUInt32(sampleRate * 2)
+    appendUInt16(2)
+    appendUInt16(16)
+    data.append(contentsOf: Data("data".utf8))
+    appendUInt32(UInt32(dataSize))
+
+    for frame in 0..<frameCount {
+        let time = Double(frame) / Double(sampleRate)
+        let sample = Int16(sin(time * 2 * Double.pi * 220) * 8_000)
+        appendInt16(sample)
+    }
+
+    let audioRoot = url.deletingLastPathComponent()
+    let createStatus = audioRoot.path.withCString { mkdir($0, S_IRWXU) }
+    guard createStatus == 0 || errno == EEXIST else {
+        throw SeederError.invalidCaptureFixture("Inbox audio directory could not be created")
+    }
+    let directoryDescriptor = audioRoot.path.withCString {
+        open($0, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+    }
+    guard directoryDescriptor >= 0 else {
+        throw SeederError.invalidCaptureFixture("Inbox audio directory could not be opened securely")
+    }
+    defer { close(directoryDescriptor) }
+    var directoryInfo = stat()
+    guard fstat(directoryDescriptor, &directoryInfo) == 0,
+          (directoryInfo.st_mode & S_IFMT) == S_IFDIR else {
+        throw SeederError.invalidCaptureFixture("Inbox audio directory is not a regular directory")
+    }
+    try data.write(to: url, options: .atomic)
+}
+
 private func seedCaptureFixtures(
     connection: SQLiteConnection,
     referenceInstant: Date
@@ -1574,11 +1633,15 @@ private func seedCaptureFixtures(
             title: inbox.titles[6],
             table: "tasks"
         )
+        let audioRoot = try SuisuiAppDatabaseLocation.applicationSupportDirectoryURL(createDirectory: true)
+            .appendingPathComponent("InboxAudio", isDirectory: true)
         for (title, duration, transcript, interpretation) in inbox.voiceCaptures {
             let taskID = try requiredCaptureID(connection, title: title, table: "tasks")
             guard let taskIDValue = Int64(taskID) else {
                 throw SeederError.invalidCaptureFixture("Inbox voice task identifier could not be bound")
             }
+            let audioURL = audioRoot.appendingPathComponent("ui-evidence-inbox-\(taskIDValue).wav")
+            try writeInboxVoiceFixture(duration: duration, to: audioURL)
             try connection.execute(
                 """
                 INSERT INTO inbox_capture_records (
@@ -1586,13 +1649,14 @@ private func seedCaptureFixtures(
                     transcript, interpretation_summary, memo,
                     classification_status, transcription_status, created_at
                 ) VALUES (
-                    ?, 'voice_memo', '/tmp/suisui-ui-evidence-redacted.m4a', ?,
+                    ?, 'voice_memo', ?, ?,
                     ?, ?, NULL,
                     'unclassified', 'succeeded', ?
                 );
                 """,
                 parameters: [
                     .integer(taskIDValue),
+                    .text(audioURL.path),
                     .real(duration),
                     .text(transcript),
                     .text(interpretation),

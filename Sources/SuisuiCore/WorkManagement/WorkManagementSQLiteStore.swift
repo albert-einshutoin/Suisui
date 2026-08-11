@@ -819,7 +819,11 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             completedAt: record.completedAt,
             createdAt: record.createdAt,
             updatedAt: record.updatedAt,
-            recurrence: record.recurrence
+            recurrence: record.recurrence,
+            // Only expose the deterministic evidence marker to the
+            // presentation layer. Other source commands are persistence
+            // details and would make board snapshots noisier and less stable.
+            sourceCommand: record.sourceCommand == "ui-evidence" ? record.sourceCommand : nil
         )
     }
 

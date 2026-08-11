@@ -636,7 +636,6 @@
 "Task list" = "Task list";
 "Task metadata" = "Task metadata";
 "Task summary" = "Task summary";
-"Task title" = "Task title";
 "Tasks" = "Tasks";
 "This hides the project from the active board and deadline summaries. Existing local tasks are kept in the Suisui database." = "This hides the project from the active board and deadline summaries. Existing local tasks are kept in the Suisui database.";
 "This permanently removes the project, its local tasks, deadline rules, artifact links, calendar links, and reminder links from Suisui." = "This permanently removes the project, its local tasks, deadline rules, artifact links, calendar links, and reminder links from Suisui.";
@@ -2201,6 +2200,11 @@
 "Related" = "Related";
 "Unassigned" = "Unassigned";
 "Today %@ · Taro Yamada (you)" = "Today %@ · Taro Yamada (you)";
+"Voice Memo · %@" = "Voice Memo · %@";
+"Add %@" = "Add %@";
+"Add task" = "Add task";
+"Edit proposed task" = "Edit proposed task";
+"Task title" = "Task title";
 "No related materials" = "No related materials";
 "This removes the selected Inbox item. You can undo the deletion from the Edit menu." = "This removes the selected Inbox item. You can undo the deletion from the Edit menu.";
 "Including Done" = "Including Done";
