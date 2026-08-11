@@ -134,8 +134,8 @@ struct InboxWorkflowView: View {
                 .scrollIndicators(.visible)
                 .accessibilityIdentifier("inbox-compact-workflow-scroll")
             }
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("inbox-workflow")
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("inbox-workflow")
             .onAppear {
                 refreshInboxReviewAvailability(at: timeline.date)
                 viewModel.ensureSelectedInboxTaskIsVisible()
