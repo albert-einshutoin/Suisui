@@ -2193,6 +2193,12 @@
 "Search related past materials" = "関連する過去の資料を検索";
 "Link to a new project" = "新しいプロジェクトへ紐づける";
 "Add presentation preparation task" = "プレゼン資料作成のタスクを追加";
+"Convert to Task" = "タスクに変換";
+"Review Later Inbox" = "後で対応";
+"Inbox Transcript" = "文字起こし";
+"Show AI Interpretation and Note" = "AIの解釈とメモを表示";
+"Received" = "受信日時";
+"Related" = "関連";
 "No related materials" = "関連する資料はありません";
 "This removes the selected Inbox item. You can undo the deletion from the Edit menu." = "選択した受信箱アイテムを削除します。編集メニューから削除を取り消せます。";
 "Including Done" = "完了済みを含む";

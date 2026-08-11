@@ -2193,6 +2193,12 @@
 "Search related past materials" = "Search related past materials";
 "Link to a new project" = "Link to a new project";
 "Add presentation preparation task" = "Add presentation preparation task";
+"Convert to Task" = "Convert to Task";
+"Review Later Inbox" = "Review Later";
+"Inbox Transcript" = "Transcript";
+"Show AI Interpretation and Note" = "Show AI Interpretation and Note";
+"Received" = "Received";
+"Related" = "Related";
 "No related materials" = "No related materials";
 "This removes the selected Inbox item. You can undo the deletion from the Edit menu." = "This removes the selected Inbox item. You can undo the deletion from the Edit menu.";
 "Including Done" = "Including Done";

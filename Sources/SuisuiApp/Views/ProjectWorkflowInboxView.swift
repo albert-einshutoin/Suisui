@@ -594,12 +594,12 @@ private struct InboxTriageRail: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                InboxActionPanel(
-                    task: task,
-                    viewModel: viewModel,
-                    memoDraft: $memoDraft,
-                    memoCaptureID: $memoCaptureID
-                )
+            InboxActionPanel(
+                task: task,
+                viewModel: viewModel,
+                memoDraft: $memoDraft,
+                memoCaptureID: $memoCaptureID
+            )
             }
             .scrollIndicators(.visible)
             .accessibilityIdentifier("inbox-reference-detail")
@@ -624,6 +624,7 @@ private struct InboxActionPanel: View {
     @Binding var memoCaptureID: Int64?
     @State private var isDeleteConfirmationPresented = false
     @State private var isRelatedSearchPresented = false
+    @State private var showsAdvancedVoiceMetadata = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -634,19 +635,20 @@ private struct InboxActionPanel: View {
                 // items repeat their lightweight source and interpretation.
                 manualSummary: task != nil && viewModel.selectedInboxCaptureRecords.isEmpty
                     ? task.map { viewModel.inboxTriageSummary(for: $0) }
-                    : nil
+                    : nil,
+                onShowAdvancedVoiceMetadata: { showsAdvancedVoiceMetadata = true }
             )
 
             HStack(spacing: 8) {
                 Button {
                     viewModel.markSelectedTaskAsTask()
                 } label: {
-                    Label("Make Task", systemImage: "checkmark.circle")
+                    Label("Convert to Task", systemImage: "checkmark.circle")
                 }
                 .buttonStyle(.borderedProminent)
                 .accessibilityIdentifier("inbox-detail-make-task")
 
-                Button("Review Later") {
+                Button("Review Later Inbox") {
                     viewModel.deferSelectedTaskForLater()
                 }
                 .buttonStyle(.bordered)
@@ -663,6 +665,7 @@ private struct InboxActionPanel: View {
                 taskTitle: task?.title ?? "Selected Inbox item",
                 memoDraft: $memoDraft,
                 memoCaptureID: $memoCaptureID,
+                showsAdvancedMetadata: showsAdvancedVoiceMetadata,
                 onSaveMemo: { memo in
                     viewModel.updateSelectedInboxCaptureMemo(memo)
                 }
@@ -908,12 +911,17 @@ private struct InboxSelectedItemContext: View {
     let task: ProjectBoardTask?
     @ObservedObject var viewModel: ProjectBoardViewModel
     let manualSummary: InboxTriageSummary?
+    let onShowAdvancedVoiceMetadata: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             if let task {
                 HStack(alignment: .center, spacing: 8) {
-                    Text(LocalizedStringKey(manualSummary?.sourceLabel ?? "Voice"))
+                    Text(
+                        viewModel.selectedInboxCaptureRecords.isEmpty
+                            ? LocalizedStringKey(manualSummary?.sourceLabel ?? "Voice")
+                            : LocalizedStringKey("Voice Memo")
+                    )
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.blue)
                     Spacer(minLength: 8)
@@ -923,6 +931,11 @@ private struct InboxSelectedItemContext: View {
                         }
                         Button("Review Later", systemImage: "clock") {
                             viewModel.deferSelectedTaskForLater()
+                        }
+                        if !viewModel.selectedInboxCaptureRecords.isEmpty {
+                            Button("Show AI Interpretation and Note", systemImage: "sparkles") {
+                                onShowAdvancedVoiceMetadata()
+                            }
                         }
                     }
                     .labelStyle(.iconOnly)
@@ -1095,6 +1108,7 @@ private struct InboxVoiceIntakeDetail: View {
     let taskTitle: String
     @Binding var memoDraft: String
     @Binding var memoCaptureID: Int64?
+    let showsAdvancedMetadata: Bool
     let onSaveMemo: (String) -> Void
     @StateObject private var playback = InboxAudioPlaybackModel()
 
@@ -1105,12 +1119,6 @@ private struct InboxVoiceIntakeDetail: View {
                     Text("Voice Memo")
                         .font(.headline)
                     Spacer(minLength: 8)
-                    Text(localizedInboxCaptureSource(capture.sourceKind))
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.blue)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(Color.blue.opacity(0.10), in: Capsule())
                 }
 
                 voicePlayback(capture)
@@ -1128,7 +1136,7 @@ private struct InboxVoiceIntakeDetail: View {
                 .accessibilityIdentifier("inbox-voice-source-metadata")
 
                 HStack {
-                    Text("Transcript")
+                    Text("Inbox Transcript")
                         .font(.headline)
                     Spacer(minLength: 8)
                     Button("Copy") {
@@ -1149,17 +1157,19 @@ private struct InboxVoiceIntakeDetail: View {
                     .accessibilityValue(transcriptReviewText(for: capture))
                 .accessibilityIdentifier("inbox-voice-transcript")
 
-                DisclosureGroup("AI Interpretation") {
-                    detailSection(
-                        title: "Interpretation",
-                        value: interpretationReviewText(for: capture),
-                        systemImage: interpretationSystemImage(for: capture)
-                    )
-                    .accessibilityIdentifier("inbox-voice-interpretation")
-                }
+                if showsAdvancedMetadata {
+                    DisclosureGroup("AI Interpretation", isExpanded: .constant(true)) {
+                        detailSection(
+                            title: "Interpretation",
+                            value: interpretationReviewText(for: capture),
+                            systemImage: interpretationSystemImage(for: capture)
+                        )
+                        .accessibilityIdentifier("inbox-voice-interpretation")
+                    }
 
-                DisclosureGroup("Note") {
-                    memoEditor(for: capture)
+                    DisclosureGroup("Note", isExpanded: .constant(true)) {
+                        memoEditor(for: capture)
+                    }
                 }
 
                 Text(reviewStatusText(for: capture))
