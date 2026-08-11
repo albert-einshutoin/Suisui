@@ -492,29 +492,29 @@ verify_single_value "Inbox project exists" "SELECT CASE WHEN count(*) >= 1 THEN 
 
 make_task_id="$(create_inbox_item "AX Runtime Inbox Make Task")"
 pressButtonContaining "inbox-action-make-task"
-verify_single_value "make-task keeps inbox item open" "SELECT CASE WHEN status='backlog' AND due_at IS NULL AND project_id=$inbox_project_id THEN 1 ELSE 0 END FROM tasks WHERE id=$make_task_id;" "1"
+verify_single_value "make-task persists Inbox disposition" "SELECT CASE WHEN t.status='backlog' AND t.due_at IS NULL AND t.project_id=$inbox_project_id AND r.disposition='task' AND r.review_at IS NULL THEN 1 ELSE 0 END FROM tasks t JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.id=$make_task_id;" "1"
 
 schedule_task_id="$(create_inbox_item "AX Runtime Inbox Schedule")"
-pressButtonUntilSQLiteValue "schedule inbox item" "inbox-action-schedule-today" "SELECT CASE WHEN status='planned' AND due_at IS NOT NULL AND project_id=$inbox_project_id THEN 1 ELSE 0 END FROM tasks WHERE id=$schedule_task_id;" "1"
-pressButtonUntilSQLiteValue "undo inbox schedule" "inbox-classification-undo" "SELECT CASE WHEN status='backlog' AND due_at IS NULL AND project_id=$inbox_project_id THEN 1 ELSE 0 END FROM tasks WHERE id=$schedule_task_id;" "1"
+pressButtonUntilSQLiteValue "schedule inbox item" "inbox-action-schedule-today" "SELECT CASE WHEN t.status='planned' AND t.due_at IS NOT NULL AND t.project_id=$inbox_project_id AND r.disposition='scheduled' AND r.review_at IS NULL THEN 1 ELSE 0 END FROM tasks t JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.id=$schedule_task_id;" "1"
+pressButtonUntilSQLiteValue "undo inbox schedule" "inbox-classification-undo" "SELECT CASE WHEN t.status='backlog' AND t.due_at IS NULL AND t.project_id=$inbox_project_id AND r.disposition='unprocessed' AND r.review_at IS NULL THEN 1 ELSE 0 END FROM tasks t JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.id=$schedule_task_id;" "1"
 
 review_task_id="$(create_inbox_item "AX Runtime Inbox Review Later")"
-# Review Later is meaningful only when an item already has scheduling state.
-# Seed that precondition directly so the AX path covers the Review Later button,
-# not a preceding feedback banner from Schedule Today.
+# Review Later must preserve any existing due date while writing its own
+# deferred review timestamp. Seed scheduling state directly so the AX path
+# covers the Review Later button rather than a preceding feedback banner.
 terminate_app
 wait_for_no_app_process
 "$SQLITE3" "$database_path" "UPDATE tasks SET status='planned', due_at='2026-06-23T09:00:00Z', updated_at=CURRENT_TIMESTAMP WHERE id=$review_task_id;"
 launch_app_for_inbox
 pressButtonContaining "workflow-task-row-$review_task_id"
 verify_single_value "prepared review-later inbox item" "SELECT CASE WHEN status='planned' AND due_at IS NOT NULL AND project_id=$inbox_project_id THEN 1 ELSE 0 END FROM tasks WHERE id=$review_task_id;" "1"
-pressButtonUntilSQLiteValue "review later inbox item" "inbox-action-review-later" "SELECT CASE WHEN status='backlog' AND due_at IS NULL AND project_id=$inbox_project_id THEN 1 ELSE 0 END FROM tasks WHERE id=$review_task_id;" "1"
-pressButtonUntilSQLiteValue "undo inbox review later" "inbox-classification-undo" "SELECT CASE WHEN status='planned' AND due_at IS NOT NULL AND project_id=$inbox_project_id THEN 1 ELSE 0 END FROM tasks WHERE id=$review_task_id;" "1"
+pressButtonUntilSQLiteValue "review later inbox item" "inbox-action-review-later" "SELECT CASE WHEN t.status='planned' AND t.due_at='2026-06-23T09:00:00Z' AND r.disposition='review_later' AND r.review_at IS NOT NULL THEN 1 ELSE 0 END FROM tasks t JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.id=$review_task_id;" "1"
+pressButtonUntilSQLiteValue "undo inbox review later" "inbox-classification-undo" "SELECT CASE WHEN t.status='planned' AND t.due_at='2026-06-23T09:00:00Z' AND r.disposition='unprocessed' AND r.review_at IS NULL THEN 1 ELSE 0 END FROM tasks t JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.id=$review_task_id;" "1"
 
 project_task_id="$(create_inbox_item "AX Runtime Inbox Project Conversion")"
 pressButtonUntilSQLiteValue "convert inbox item to project" "inbox-action-make-project" "SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END FROM projects WHERE title='AX Runtime Inbox Project Conversion';" "1"
-verify_single_value "converted inbox item moved into project" "SELECT CASE WHEN t.status='planned' AND p.title='AX Runtime Inbox Project Conversion' THEN 1 ELSE 0 END FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.id=$project_task_id;" "1"
+verify_single_value "converted inbox item moved into project" "SELECT CASE WHEN t.status='planned' AND p.title='AX Runtime Inbox Project Conversion' AND r.disposition='project' THEN 1 ELSE 0 END FROM tasks t JOIN projects p ON p.id = t.project_id JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.id=$project_task_id;" "1"
 pressButtonUntilSQLiteValue "undo inbox project conversion" "inbox-classification-undo" "SELECT count(*) FROM projects WHERE title='AX Runtime Inbox Project Conversion';" "0"
-verify_single_value "restored inbox project conversion item" "SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END FROM tasks t JOIN projects p ON p.id = t.project_id WHERE p.title='Inbox' AND t.title='AX Runtime Inbox Project Conversion' AND t.status='backlog' AND t.due_at IS NULL;" "1"
+verify_single_value "restored inbox project conversion item" "SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END FROM tasks t JOIN projects p ON p.id = t.project_id JOIN inbox_triage_records r ON r.task_id=t.id WHERE p.title='Inbox' AND t.title='AX Runtime Inbox Project Conversion' AND t.status='backlog' AND t.due_at IS NULL AND r.disposition='unprocessed' AND r.review_at IS NULL;" "1"
 
 printf "OK: runtime inbox triage smoke covered quick add, make-task, schedule, review-later, project conversion, and undo through the visible app\n"

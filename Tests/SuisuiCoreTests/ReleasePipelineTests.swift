@@ -7045,12 +7045,22 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("inbox-quick-add-title"))
         XCTAssertTrue(script.contains("inbox-quick-add-button"))
         XCTAssertTrue(script.contains("SELECT id FROM projects WHERE title='Inbox'"))
-        XCTAssertTrue(script.contains("status='planned' AND due_at IS NOT NULL"))
-        XCTAssertTrue(script.contains("status='backlog' AND due_at IS NULL"))
+        XCTAssertTrue(script.contains("t.status='planned' AND t.due_at IS NOT NULL"))
+        XCTAssertTrue(script.contains("t.status='backlog' AND t.due_at IS NULL"))
         XCTAssertTrue(script.contains("SELECT count(*) FROM projects WHERE title='AX Runtime Inbox Project Conversion';"))
         XCTAssertTrue(script.contains("OK: runtime inbox triage smoke covered quick add, make-task, schedule, review-later, project conversion, and undo through the visible app"))
         XCTAssertFalse(script.contains(":memory:"))
         XCTAssertFalse(script.contains("not implemented yet"))
+    }
+
+    func testRuntimeInboxTriageSmokeVerifiesDispositionAndReviewDate() throws {
+        let script = try readPackageFile("script/check_runtime_inbox_triage_smoke.sh")
+
+        XCTAssertTrue(script.contains("inbox_triage_records"))
+        XCTAssertTrue(script.contains("disposition='task'"))
+        XCTAssertTrue(script.contains("disposition='review_later'"))
+        XCTAssertTrue(script.contains("review_at IS NOT NULL"))
+        XCTAssertTrue(script.contains("due_at IS NULL"))
     }
 
     func testRuntimeTodayCompleteSmokeScriptVerifiesVisibleRowCompletionPersistsToSQLite() throws {
