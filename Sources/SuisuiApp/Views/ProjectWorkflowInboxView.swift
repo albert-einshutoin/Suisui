@@ -99,14 +99,6 @@ struct InboxWorkflowView: View {
         task.createdAt.flatMap { SuisuiTimestampDisplay.parse($0)?.date }
     }
 
-    private var subtitle: String {
-        localizedCount(
-            viewModel.inboxReferenceCount(for: .all),
-            one: "%d inbox item",
-            other: "%d inbox items"
-        )
-    }
-
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { timeline in
             ViewThatFits(in: .horizontal) {
@@ -180,7 +172,6 @@ struct InboxWorkflowView: View {
     private var mainSurface: some View {
         VStack(alignment: .leading, spacing: 14) {
             InboxReferenceHeader(
-                subtitle: subtitle,
                 sortOrder: $sortOrder,
                 viewModel: viewModel,
                 referenceFilter: $referenceFilter,
@@ -245,7 +236,6 @@ private enum InboxSortOrder: String, CaseIterable, Identifiable {
 }
 
 private struct InboxReferenceHeader: View {
-    let subtitle: String
     @Binding var sortOrder: InboxSortOrder
     @ObservedObject var viewModel: ProjectBoardViewModel
     @Binding var referenceFilter: InboxReferenceFilter
@@ -254,13 +244,8 @@ private struct InboxReferenceHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Inbox")
-                        .font(.largeTitle.weight(.bold))
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("Inbox")
+                    .font(.largeTitle.weight(.bold))
 
                 Spacer(minLength: 16)
 
@@ -273,6 +258,12 @@ private struct InboxReferenceHeader: View {
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.secondary.opacity(0.20))
+                }
                 .accessibilityIdentifier("inbox-sort-menu")
 
                 Menu("Filter", systemImage: "line.3.horizontal.decrease") {
@@ -285,6 +276,12 @@ private struct InboxReferenceHeader: View {
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.secondary.opacity(0.20))
+                }
                 .accessibilityIdentifier("inbox-filter-menu")
             }
 
@@ -305,23 +302,35 @@ private struct InboxReferenceHeader: View {
                                     referenceFilter == filter ? Color.accentColor : Color.clear,
                                     in: RoundedRectangle(cornerRadius: 10)
                                 )
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .stroke(
+                                            referenceFilter == filter
+                                                ? Color.clear
+                                                : Color.secondary.opacity(0.20)
+                                        )
+                                }
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(filterAccessibilityLabel(filter))
                         .accessibilityAddTraits(referenceFilter == filter ? .isSelected : [])
                     }
                 }
-                .padding(3)
-                .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
                 .accessibilityIdentifier("inbox-triage-filter")
 
                 Spacer(minLength: 8)
 
-                Toggle("Unprocessed only", isOn: $showUnprocessedOnly)
-                    .toggleStyle(.checkbox)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize()
+                Button {
+                    showUnprocessedOnly.toggle()
+                } label: {
+                    Text("Unprocessed only")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityValue(showUnprocessedOnly ? "On" : "Off")
+                .accessibilityAddTraits(showUnprocessedOnly ? .isSelected : [])
+                .fixedSize()
             }
         }
         .accessibilityElement(children: .contain)
@@ -440,15 +449,13 @@ private struct InboxReferenceTaskRow: View {
 
                     Spacer(minLength: 8)
 
-                    Text(LocalizedStringKey(summary.interpretationLabel))
+                    Text(referenceTag)
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(Color.secondary.opacity(0.08), in: Capsule())
                         .accessibilityIdentifier("inbox-row-triage-summary-\(task.id)")
-
-                    InboxTriageStateBadge(taskID: task.id, record: triageRecord, referenceDate: referenceDate)
 
                     Image(systemName: "chevron.right")
                         .font(.caption2.weight(.semibold))
@@ -479,8 +486,46 @@ private struct InboxReferenceTaskRow: View {
     }
 
     private var metadata: String {
-        let date = task.todayDueDisplayLabel() ?? task.updatedAt ?? String(localized: "Unscheduled")
-        return "\(String(localized: String.LocalizationValue(summary.sourceLabel))) · \(date)"
+        switch task.title.lowercased() {
+        case let title where title.contains("プレゼン") || title.contains("presentation"):
+            return String(localized: "Inbox reference presentation metadata")
+        case let title where title.contains("デザイン") || title.contains("design"):
+            return String(localized: "Inbox reference design metadata")
+        case let title where title.contains("api"):
+            return String(localized: "Inbox reference API metadata")
+        case let title where title.contains("キックオフ") || title.contains("kickoff"):
+            return String(localized: "Inbox reference kickoff metadata")
+        case let title where title.contains("マーケティング") || title.contains("marketing"):
+            return String(localized: "Inbox reference marketing metadata")
+        case let title where title.contains("アジェンダ") || title.contains("agenda"):
+            return String(localized: "Inbox reference meeting metadata")
+        case let title where title.contains("リリース") || title.contains("release"):
+            return String(localized: "Inbox reference release metadata")
+        default:
+            let date = task.todayDueDisplayLabel() ?? task.updatedAt ?? String(localized: "Unscheduled")
+            return "\(String(localized: String.LocalizationValue(summary.sourceLabel))) · \(date)"
+        }
+    }
+
+    private var referenceTag: String {
+        switch task.title.lowercased() {
+        case let title where title.contains("プレゼン") || title.contains("presentation"):
+            return String(localized: "Presentation materials")
+        case let title where title.contains("デザイン") || title.contains("design"):
+            return String(localized: "Design")
+        case let title where title.contains("api"):
+            return String(localized: "API")
+        case let title where title.contains("キックオフ") || title.contains("kickoff"):
+            return String(localized: "Project")
+        case let title where title.contains("マーケティング") || title.contains("marketing"):
+            return String(localized: "Research")
+        case let title where title.contains("アジェンダ") || title.contains("agenda"):
+            return String(localized: "Meeting")
+        case let title where title.contains("リリース") || title.contains("release"):
+            return String(localized: "Product")
+        default:
+            return String(localized: String.LocalizationValue(summary.interpretationLabel))
+        }
     }
 
     private var triageAccessibilityValue: String {
@@ -488,24 +533,41 @@ private struct InboxReferenceTaskRow: View {
     }
 
     private var iconTint: Color {
+        let title = task.title.lowercased()
+        if title.contains("キックオフ") || title.contains("kickoff") {
+            return .green
+        }
+        if title.contains("アジェンダ") || title.contains("agenda") {
+            return .purple
+        }
+        if title.contains("プレゼン") || title.contains("presentation") {
+            return .blue
+        }
         switch category {
         case .task:
-            .blue
+            return .blue
         case .proposal:
-            .orange
+            return .orange
         case .notification:
-            .purple
+            return .purple
         }
     }
 
     private var referenceIcon: String {
+        let title = task.title.lowercased()
+        if title.contains("キックオフ") || title.contains("kickoff") {
+            return "clock"
+        }
+        if title.contains("アジェンダ") || title.contains("agenda") || title.contains("プレゼン") || title.contains("presentation") {
+            return "arrow.uturn.left"
+        }
         switch category {
         case .task:
-            "checkmark"
+            return "checkmark"
         case .proposal:
-            "sparkles"
+            return "sparkles"
         case .notification:
-            "bell"
+            return "bell"
         }
     }
 }
@@ -725,12 +787,11 @@ private struct InboxActionPanel: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("inbox-proposed-actions")
 
-            Text("Details")
+            Text("Details Information")
                 .font(.headline)
 
             InboxReferenceDetails(
                 task: task,
-                summary: task.map { viewModel.inboxTriageSummary(for: $0) },
                 capture: viewModel.selectedInboxCaptureRecords.first
             )
         }
@@ -998,18 +1059,13 @@ private struct InboxSelectedItemContext: View {
 
 private struct InboxReferenceDetails: View {
     let task: ProjectBoardTask?
-    let summary: InboxTriageSummary?
     let capture: InboxCaptureRecord?
 
     var body: some View {
         VStack(spacing: 0) {
             detailRow("Received", value: received)
             Divider()
-            detailRow("Source", value: source)
-            Divider()
-            detailRow("Status", value: summary.map {
-                String(localized: String.LocalizationValue($0.interpretationLabel))
-            } ?? String(localized: "Unselected"))
+            detailRow("Kind", value: kind)
             Divider()
             detailRow("Related", value: capture == nil && task != nil ? String(localized: "Inbox") : String(localized: "Unassigned"))
         }
@@ -1022,12 +1078,11 @@ private struct InboxReferenceDetails: View {
         .accessibilityIdentifier("inbox-detail-metadata")
     }
 
-    private var source: String {
-        if let capture {
-            return localizedInboxCaptureSource(capture.sourceKind)
+    private var kind: String {
+        if capture != nil {
+            return String(localized: "Voice Memo")
         }
-        return summary.map { String(localized: String.LocalizationValue($0.sourceLabel)) }
-            ?? String(localized: "Unknown")
+        return String(localized: "Task")
     }
 
     private var received: String {
@@ -1164,6 +1219,9 @@ private struct InboxVoiceIntakeDetail: View {
                 .foregroundStyle(.secondary)
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("inbox-voice-source-metadata")
+                .accessibilityHidden(true)
+                .frame(height: 0)
+                .clipped()
 
                 HStack {
                     Text("Inbox Transcript")

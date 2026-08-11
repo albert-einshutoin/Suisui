@@ -3617,7 +3617,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"inbox-reference-task-list\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"inbox-reference-detail\")"))
         XCTAssertTrue(source.contains("Text(\"Proposed Actions\")"))
-        XCTAssertTrue(source.contains("Text(\"Details\")"))
+        XCTAssertTrue(source.contains("Text(\"Details Information\")"))
         XCTAssertTrue(source.contains("confirmationDialog("))
         XCTAssertFalse(source.contains("WorkflowTaskSurface("))
     }
