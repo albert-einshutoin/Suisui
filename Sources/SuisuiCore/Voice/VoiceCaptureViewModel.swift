@@ -1094,13 +1094,20 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
 
         do {
-            inboxCaptureResult = try inboxCaptureSaver.saveTranscribedCapture(
+            let result = try inboxCaptureSaver.saveTranscribedCapture(
                 audio: recordedAudio,
                 transcript: STTTranscript(text: draft.normalizedText, duration: recordedAudio.duration),
                 transcriptionErrorMessage: nil,
                 at: date,
                 createdAt: createdAt
             )
+            if result.capture.audioFilePath != recordedAudio.fileURL.path {
+                // The Inbox service has copied the recording into its managed
+                // store. The temporary source is no longer needed and must
+                // not remain on disk after a successful save.
+                removeOwnedTemporaryRecording(at: recordedAudio.fileURL)
+            }
+            inboxCaptureResult = result
             savedInboxAudioURL = recordedAudio.fileURL
             auditErrorMessage = nil
         } catch {

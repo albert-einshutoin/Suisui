@@ -59,11 +59,13 @@ extension AppRuntimeFactory {
             )
             let projectBoardStore = SQLiteProjectBoardStore(connection: connection)
             let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)
+            let inboxAudioFileStore = try ManagedInboxAudioFileStore()
             inboxCaptureService = InboxVoiceCaptureService(
                 audioRecorder: audioRecorder,
                 sttProvider: sttProvider,
                 projectBoardStore: projectBoardStore,
-                inboxCaptureStore: inboxCaptureStore
+                inboxCaptureStore: inboxCaptureStore,
+                inboxAudioPersister: inboxAudioFileStore
             )
             developmentProjectProvider = {
                 approvedDevelopmentProject(from: projectStore)
