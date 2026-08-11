@@ -17,6 +17,7 @@ struct InboxWorkflowView: View {
     // does not rewrite the shared capture order or persistence model.
     @State private var sortOrder: InboxSortOrder = .newest
     @State private var isQuickAddExpanded = false
+    @State private var lastReviewRefreshMinute: Date?
     @FocusState private var isQuickAddFocused: Bool
 
     init(
@@ -46,14 +47,41 @@ struct InboxWorkflowView: View {
     private var tasks: [ProjectBoardTask] {
         switch sortOrder {
         case .newest:
-            viewModel.filteredInboxTasks.sorted { $0.id > $1.id }
+            sortByCaptureDate(viewModel.filteredInboxTasks, descending: true)
         case .oldest:
-            viewModel.filteredInboxTasks.sorted { $0.id < $1.id }
+            sortByCaptureDate(viewModel.filteredInboxTasks, descending: false)
         case .title:
             viewModel.filteredInboxTasks.sorted {
                 $0.title.localizedStandardCompare($1.title) == .orderedAscending
             }
         }
+    }
+
+    private func sortByCaptureDate(
+        _ tasks: [ProjectBoardTask],
+        descending: Bool
+    ) -> [ProjectBoardTask] {
+        tasks.sorted { lhs, rhs in
+            let lhsDate = captureDate(for: lhs)
+            let rhsDate = captureDate(for: rhs)
+            switch (lhsDate, rhsDate) {
+            case let (lhsDate?, rhsDate?):
+                if lhsDate != rhsDate {
+                    return descending ? lhsDate > rhsDate : lhsDate < rhsDate
+                }
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            case (nil, nil):
+                break
+            }
+            return descending ? lhs.id > rhs.id : lhs.id < rhs.id
+        }
+    }
+
+    private func captureDate(for task: ProjectBoardTask) -> Date? {
+        task.createdAt.flatMap { SuisuiTimestampDisplay.parse($0)?.date }
     }
 
     private var subtitle: String {
@@ -72,58 +100,73 @@ struct InboxWorkflowView: View {
     }
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 0) {
-                mainSurface
-                Divider()
-                    .padding(.vertical, 18)
-                InboxTriageRail(
-                    task: viewModel.selectedTask,
-                    viewModel: viewModel,
-                    memoDraft: $voiceMemoDraft,
-                    memoCaptureID: $voiceMemoCaptureID
-                )
-                    .frame(minWidth: 340, idealWidth: 400, maxWidth: 440)
-                    .padding(.vertical, 18)
-                    .padding(.trailing, 18)
-            }
-
-            ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 0) {
+        TimelineView(.periodic(from: .now, by: 60)) { timeline in
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 0) {
                     mainSurface
+                    Divider()
+                        .padding(.vertical, 18)
                     InboxTriageRail(
                         task: viewModel.selectedTask,
                         viewModel: viewModel,
                         memoDraft: $voiceMemoDraft,
                         memoCaptureID: $voiceMemoCaptureID
                     )
-                        .padding(.horizontal, 18)
-                        .padding(.bottom, 18)
+                        .frame(minWidth: 340, idealWidth: 400, maxWidth: 440)
+                        .padding(.vertical, 18)
+                        .padding(.trailing, 18)
                 }
+
+                ScrollView(.vertical) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        mainSurface
+                        InboxTriageRail(
+                            task: viewModel.selectedTask,
+                            viewModel: viewModel,
+                            memoDraft: $voiceMemoDraft,
+                            memoCaptureID: $voiceMemoCaptureID
+                        )
+                            .padding(.horizontal, 18)
+                            .padding(.bottom, 18)
+                    }
+                }
+                .defaultScrollAnchor(.top)
+                .scrollIndicators(.visible)
+                .accessibilityIdentifier("inbox-compact-workflow-scroll")
             }
-            .defaultScrollAnchor(.top)
-            .scrollIndicators(.visible)
-            .accessibilityIdentifier("inbox-compact-workflow-scroll")
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("inbox-workflow")
+            .onAppear {
+                refreshInboxReviewAvailability(at: timeline.date)
+                viewModel.ensureSelectedInboxTaskIsVisible()
+                consumeQuickAddFocusRequestIfNeeded()
+            }
+            .onChange(of: timeline.date) { _, date in
+                refreshInboxReviewAvailability(at: date)
+            }
+            .onChange(of: requestsQuickAddFocus) { _, _ in
+                consumeQuickAddFocusRequestIfNeeded()
+            }
+            .onChange(of: tasks.map(\.id)) { _, _ in
+                viewModel.ensureSelectedInboxTaskIsVisible()
+            }
+            .onChange(of: viewModel.selectedTaskID) { _, _ in
+                // Hydrate from the newly selected capture so this parent observer
+                // and the child capture observer converge regardless of call order.
+                let capture = viewModel.selectedInboxCaptureRecords.first
+                voiceMemoCaptureID = capture?.id
+                voiceMemoDraft = capture?.memo ?? ""
+            }
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("inbox-workflow")
-        .onAppear {
-            viewModel.ensureSelectedInboxTaskIsVisible()
-            consumeQuickAddFocusRequestIfNeeded()
+    }
+
+    private func refreshInboxReviewAvailability(at date: Date) {
+        let minute = Calendar.autoupdatingCurrent.dateInterval(of: .minute, for: date)?.start ?? date
+        guard lastReviewRefreshMinute != minute else {
+            return
         }
-        .onChange(of: requestsQuickAddFocus) { _, _ in
-            consumeQuickAddFocusRequestIfNeeded()
-        }
-        .onChange(of: tasks.map(\.id)) { _, _ in
-            viewModel.ensureSelectedInboxTaskIsVisible()
-        }
-        .onChange(of: viewModel.selectedTaskID) { _, _ in
-            // Hydrate from the newly selected capture so this parent observer
-            // and the child capture observer converge regardless of call order.
-            let capture = viewModel.selectedInboxCaptureRecords.first
-            voiceMemoCaptureID = capture?.id
-            voiceMemoDraft = capture?.memo ?? ""
-        }
+        lastReviewRefreshMinute = minute
+        viewModel.refreshInboxReviewAvailability(at: date)
     }
 
     private var mainSurface: some View {
@@ -136,6 +179,7 @@ struct InboxWorkflowView: View {
             InboxReferenceTaskList(
                 tasks: tasks,
                 viewModel: viewModel,
+                referenceDate: Date(),
                 onSelectTask: selectInboxTask,
                 quickTitle: $quickTitle,
                 isQuickAddExpanded: $isQuickAddExpanded,
@@ -149,10 +193,14 @@ struct InboxWorkflowView: View {
 
     private func addInboxTask() {
         let title = quickTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty, let inboxID = viewModel.inboxProject?.id else {
+        guard !title.isEmpty else {
             return
         }
-        _ = viewModel.createTask(title: title, projectID: inboxID, status: .backlog)
+        guard viewModel.createInboxTask(title: title) != nil else {
+            isQuickAddExpanded = true
+            isQuickAddFocused = true
+            return
+        }
         quickTitle = ""
         isQuickAddExpanded = false
     }
@@ -276,6 +324,7 @@ private struct InboxReferenceHeader: View {
 private struct InboxReferenceTaskList: View {
     let tasks: [ProjectBoardTask]
     @ObservedObject var viewModel: ProjectBoardViewModel
+    let referenceDate: Date
     let onSelectTask: (ProjectBoardTask) -> Void
     @Binding var quickTitle: String
     @Binding var isQuickAddExpanded: Bool
@@ -298,6 +347,8 @@ private struct InboxReferenceTaskList: View {
                             InboxReferenceTaskRow(
                                 task: task,
                                 summary: viewModel.inboxTriageSummary(for: task),
+                                triageRecord: viewModel.inboxTriageRecord(for: task),
+                                referenceDate: referenceDate,
                                 projectTitle: viewModel.projectTitle(for: task),
                                 isSelected: viewModel.selectedTaskID == task.id,
                                 onSelect: { onSelectTask(task) },
@@ -334,6 +385,8 @@ private struct InboxReferenceTaskList: View {
 private struct InboxReferenceTaskRow: View {
     let task: ProjectBoardTask
     let summary: InboxTriageSummary
+    let triageRecord: InboxTriageRecord?
+    let referenceDate: Date
     let projectTitle: String
     let isSelected: Bool
     let onSelect: () -> Void
@@ -377,6 +430,8 @@ private struct InboxReferenceTaskRow: View {
                         .background(Color.secondary.opacity(0.08), in: Capsule())
                         .accessibilityIdentifier("inbox-row-triage-summary-\(task.id)")
 
+                    InboxTriageStateBadge(taskID: task.id, record: triageRecord, referenceDate: referenceDate)
+
                     Image(systemName: "chevron.right")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.tertiary)
@@ -416,6 +471,45 @@ private struct InboxReferenceTaskRow: View {
             .red
         default:
             .secondary
+        }
+    }
+}
+
+private struct InboxTriageStateBadge: View {
+    let taskID: Int64
+    let record: InboxTriageRecord?
+    let referenceDate: Date
+
+    var body: some View {
+        Text(stateLabel)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.accentColor.opacity(0.08), in: Capsule())
+            .accessibilityIdentifier("inbox-row-disposition-\(taskID)")
+    }
+
+    private var stateLabel: String {
+        switch record?.disposition {
+        case .task:
+            return String(localized: "Processed task")
+        case .scheduled:
+            return String(localized: "Inbox scheduled")
+        case .project:
+            return String(localized: "Inbox project")
+        case .reviewLater:
+            guard let rawReviewAt = record?.reviewAt,
+                  let parsed = SuisuiTimestampDisplay.parse(rawReviewAt) else {
+                return String(localized: "Review due")
+            }
+            let display = SuisuiTimestampDisplay.absolute(parsed, calendar: .autoupdatingCurrent)
+            if parsed.date <= referenceDate {
+                return String(localized: "Review due")
+            }
+            return String(format: String(localized: "Review tomorrow at %@"), display)
+        case .unprocessed, nil:
+            return String(localized: "Unprocessed")
         }
     }
 }

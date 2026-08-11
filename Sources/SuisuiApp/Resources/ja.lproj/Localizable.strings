@@ -717,6 +717,13 @@
 "AI Suggested" = "AI提案";
 "Manual" = "手動追加";
 "Unprocessed" = "未整理";
+"Processed task" = "タスク化済み";
+"Inbox scheduled" = "予定済み";
+"Inbox project" = "プロジェクト";
+"Review tomorrow at %@" = "%@ に確認";
+"Review due" = "確認時刻";
+"Inbox triage state unavailable." = "Inboxの整理状態を取得できません。";
+"Inbox triage update failed." = "Inboxの整理状態を保存できません。";
 "Inbox Filter" = "Inboxフィルタ";
 "Inbox filter" = "Inboxフィルタ";
 "Filters Inbox items by source and interpretation status." = "Inbox項目をソースと解釈状態で絞り込みます。";

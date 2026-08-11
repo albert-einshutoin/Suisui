@@ -3614,6 +3614,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains("WorkflowTaskSurface("))
     }
 
+    func testInboxReferenceUIUsesPersistedTriageLifecycle() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift")
+
+        XCTAssertTrue(source.contains("viewModel.createInboxTask(title: title)"))
+        XCTAssertTrue(source.contains("task.createdAt"))
+        XCTAssertTrue(source.contains("viewModel.inboxTriageRecord(for:"))
+        XCTAssertTrue(source.contains("viewModel.refreshInboxReviewAvailability(at:"))
+    }
+
     func testInboxSelectionKeepsTriageInWorkflowInsteadOfInspector() throws {
         let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
         let workflowSource = try readProjectWorkflowSources()

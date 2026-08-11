@@ -722,6 +722,13 @@
 "AI Suggested" = "AI Suggested";
 "Manual" = "Manual";
 "Unprocessed" = "Unprocessed";
+"Processed task" = "Processed task";
+"Inbox scheduled" = "Scheduled";
+"Inbox project" = "Project";
+"Review tomorrow at %@" = "Review tomorrow at %@";
+"Review due" = "Review due";
+"Inbox triage state unavailable." = "Inbox triage state unavailable.";
+"Inbox triage update failed." = "Inbox triage update failed.";
 "Inbox Filter" = "Inbox Filter";
 "Inbox filter" = "Inbox filter";
 "Filters Inbox items by source and interpretation status." = "Filters Inbox items by source and interpretation status.";
