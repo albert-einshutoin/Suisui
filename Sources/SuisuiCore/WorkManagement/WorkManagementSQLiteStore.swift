@@ -574,6 +574,7 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             priority: try ProjectTaskPriority.normalized(record.priority, column: "tasks.priority"),
             dueAt: record.dueAt,
             completedAt: record.completedAt,
+            createdAt: record.createdAt,
             updatedAt: record.updatedAt,
             recurrence: record.recurrence
         )

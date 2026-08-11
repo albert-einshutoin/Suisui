@@ -34,6 +34,97 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(ISO8601DateFormatter().string(from: result), "2026-03-09T16:00:00Z")
     }
 
+    func testInboxTriageMigrationBackfillsOnlyInboxTasks() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeTriage = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0035_create_inbox_triage_records"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: migrationsBeforeTriage)
+        try connection.execute(
+            """
+            INSERT INTO projects (title, status) VALUES ('Inbox', 'active');
+            INSERT INTO projects (title, status) VALUES ('Other', 'active');
+            """
+        )
+        let inboxRow = try XCTUnwrap(
+            connection.queryRows("SELECT id FROM projects WHERE title = 'Inbox' LIMIT 1;").first
+        )
+        let inboxID = try inboxRow.int64("id")
+        let otherProjectRow = try XCTUnwrap(
+            connection.queryRows("SELECT id FROM projects WHERE title != 'Inbox' LIMIT 1;").first
+        )
+        let otherProjectID = try otherProjectRow.int64("id")
+
+        try connection.execute(
+            """
+            INSERT INTO tasks (project_id, title, status, due_at, created_at, updated_at)
+            VALUES (?, 'Completed inbox', 'completed', NULL, '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z');
+            """,
+            parameters: [.integer(inboxID)]
+        )
+        try connection.execute(
+            """
+            INSERT INTO tasks (project_id, title, status, due_at, created_at, updated_at)
+            VALUES (?, 'Scheduled inbox', 'planned', '2026-08-12T10:00:00Z', '2026-08-01T00:01:00Z', '2026-08-01T00:01:00Z');
+            """,
+            parameters: [.integer(inboxID)]
+        )
+        try connection.execute(
+            """
+            INSERT INTO tasks (project_id, title, status, due_at, created_at, updated_at)
+            VALUES (?, 'Unprocessed inbox', 'planned', NULL, '2026-08-01T00:02:00Z', '2026-08-01T00:02:00Z');
+            """,
+            parameters: [.integer(inboxID)]
+        )
+        try connection.execute(
+            """
+            INSERT INTO tasks (project_id, title, status, due_at, created_at, updated_at)
+            VALUES (?, 'Other project task', 'planned', NULL, '2026-08-01T00:03:00Z', '2026-08-01T00:03:00Z');
+            """,
+            parameters: [.integer(otherProjectID)]
+        )
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT disposition FROM inbox_triage_records ORDER BY task_id;"
+            ),
+            ["task", "scheduled", "unprocessed"]
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT COUNT(*) FROM inbox_triage_records WHERE review_at IS NOT NULL;"
+            ),
+            ["0"]
+        )
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        XCTAssertEqual(
+            try connection.queryStrings("SELECT COUNT(*) FROM inbox_triage_records;"),
+            ["3"]
+        )
+    }
+
+    func testProjectBoardTaskExposesPersistedCreatedAt() throws {
+        let stores = try makeStoreBundle()
+        let inboxID = try XCTUnwrap(stores.board.loadSnapshot().projects.first?.id)
+        let record = try stores.tasks.create(
+            title: "Capture timestamp",
+            projectID: inboxID,
+            status: "planned"
+        )
+
+        let task = try XCTUnwrap(
+            stores.board.loadSnapshot().projects.first?.tasks.first { $0.id == record.id }
+        )
+
+        XCTAssertEqual(task.createdAt, record.createdAt)
+        XCTAssertNotNil(task.createdAt)
+    }
+
     func testSQLiteBoardStoreCreatesDefaultProjectWithoutMockTasks() throws {
         let store = try makeStore()
 

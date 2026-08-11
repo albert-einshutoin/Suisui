@@ -2146,6 +2146,51 @@ public enum CoreMigrations {
                     """
                 )
             },
+            DatabaseMigration(
+                id: "0035_create_inbox_triage_records"
+            ) { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS inbox_triage_records (
+                        task_id INTEGER PRIMARY KEY
+                            REFERENCES tasks(id) ON DELETE CASCADE,
+                        disposition TEXT NOT NULL
+                            CHECK(disposition IN (
+                                'unprocessed', 'task', 'scheduled',
+                                'review_later', 'project'
+                            )),
+                        review_at TEXT,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        CHECK(
+                            (disposition = 'review_later' AND review_at IS NOT NULL)
+                            OR (disposition <> 'review_later' AND review_at IS NULL)
+                        )
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_inbox_triage_records_review
+                    ON inbox_triage_records(disposition, review_at, task_id);
+
+                    -- Keep legacy Inbox rows visible without inferring a processed
+                    -- state from a missing Voice capture classification.
+                    INSERT OR IGNORE INTO inbox_triage_records (
+                        task_id,
+                        disposition,
+                        review_at
+                    )
+                    SELECT
+                        tasks.id,
+                        CASE
+                            WHEN tasks.status = 'completed' THEN 'task'
+                            WHEN tasks.due_at IS NOT NULL THEN 'scheduled'
+                            ELSE 'unprocessed'
+                        END,
+                        NULL
+                    FROM tasks
+                    INNER JOIN projects ON projects.id = tasks.project_id
+                    WHERE projects.title = 'Inbox';
+                    """
+                )
+            },
         ]
     }
 }
