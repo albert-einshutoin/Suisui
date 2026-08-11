@@ -695,17 +695,15 @@ private struct InboxTriageRail: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                InboxActionPanel(
-                    task: task,
-                    viewModel: viewModel,
-                    memoDraft: $memoDraft,
-                    memoCaptureID: $memoCaptureID,
-                    voiceDetailAccessibilityIdentifier: voiceDetailAccessibilityIdentifier
-                )
+            if fillsAvailableHeight {
+                ScrollView {
+                    actionPanel
+                }
+                .scrollIndicators(.visible)
+                .accessibilityIdentifier("inbox-reference-detail")
+            } else {
+                actionPanel
             }
-            .scrollIndicators(.visible)
-            .accessibilityIdentifier("inbox-reference-detail")
         }
         .frame(
             maxWidth: .infinity,
@@ -719,8 +717,18 @@ private struct InboxTriageRail: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inbox-triage-rail")
-        .accessibilityLabel("Inbox triage station")
-        .accessibilityHint("Keeps selected Inbox item review and classification actions visible without opening the task inspector.")
+            .accessibilityLabel("Inbox triage station")
+            .accessibilityHint("Keeps selected Inbox item review and classification actions visible without opening the task inspector.")
+    }
+
+    private var actionPanel: some View {
+        InboxActionPanel(
+            task: task,
+            viewModel: viewModel,
+            memoDraft: $memoDraft,
+            memoCaptureID: $memoCaptureID,
+            voiceDetailAccessibilityIdentifier: voiceDetailAccessibilityIdentifier
+        )
     }
 }
 
