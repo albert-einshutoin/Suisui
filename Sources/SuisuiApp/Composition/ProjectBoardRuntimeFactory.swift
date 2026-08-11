@@ -178,6 +178,27 @@ private struct UnavailableProjectBoardStore: ProjectBoardStore {
         throw error
     }
 
+    func loadInboxTriageRecords(taskIDs: Set<Int64>) throws -> [Int64: InboxTriageRecord] {
+        throw error
+    }
+
+    func createInboxTask(title: String) throws -> ProjectBoardTask {
+        throw error
+    }
+
+    func performInboxTriage(
+        taskID: Int64,
+        action: InboxTriageAction,
+        referenceDate: Date,
+        calendar: Calendar
+    ) throws -> InboxTriageMutation {
+        throw error
+    }
+
+    func undoInboxTriage(_ mutation: InboxTriageMutation) throws -> ProjectBoardTask {
+        throw error
+    }
+
     func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
         throw error
     }
