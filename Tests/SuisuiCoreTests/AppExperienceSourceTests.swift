@@ -3536,7 +3536,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(inboxWorkflowSource.contains("waveformSamples(for: url)"))
         XCTAssertFalse(inboxWorkflowSource.contains("private var waveformBars"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-workflow\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-triage-rail\")"))
+        XCTAssertTrue(workflowSource.contains("fillsAvailableHeight ? \"inbox-triage-rail\" : \"inbox-action-panel\""))
         XCTAssertTrue(workflowSource.contains(".accessibilityLabel(\"Inbox triage station\")"))
         XCTAssertTrue(workflowSource.contains("without opening the task inspector"))
         XCTAssertTrue(workflowSource.contains("onSelectTask: selectInboxTask"))

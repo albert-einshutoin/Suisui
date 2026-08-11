@@ -716,8 +716,8 @@ private struct InboxTriageRail: View {
                 .stroke(Color.secondary.opacity(0.20))
         }
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("inbox-triage-rail")
-            .accessibilityLabel("Inbox triage station")
+        .accessibilityIdentifier(fillsAvailableHeight ? "inbox-triage-rail" : "inbox-action-panel")
+            .accessibilityLabel(fillsAvailableHeight ? "Inbox triage station" : "Inbox classification actions")
             .accessibilityHint("Keeps selected Inbox item review and classification actions visible without opening the task inspector.")
     }
 
@@ -727,7 +727,8 @@ private struct InboxTriageRail: View {
             viewModel: viewModel,
             memoDraft: $memoDraft,
             memoCaptureID: $memoCaptureID,
-            voiceDetailAccessibilityIdentifier: voiceDetailAccessibilityIdentifier
+            voiceDetailAccessibilityIdentifier: voiceDetailAccessibilityIdentifier,
+            accessibilityIdentifier: fillsAvailableHeight ? "inbox-action-panel" : "inbox-action-panel-content"
         )
     }
 }
@@ -738,6 +739,7 @@ private struct InboxActionPanel: View {
     @Binding var memoDraft: String
     @Binding var memoCaptureID: Int64?
     let voiceDetailAccessibilityIdentifier: String
+    let accessibilityIdentifier: String
     @State private var isDeleteConfirmationPresented = false
     @State private var isRelatedSearchPresented = false
     @State private var showsAdvancedVoiceMetadata = false
@@ -839,7 +841,7 @@ private struct InboxActionPanel: View {
         }
         .padding(18)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("inbox-action-panel")
+        .accessibilityIdentifier(accessibilityIdentifier)
         .accessibilityLabel("Inbox classification actions")
         .accessibilityHint("Choose how to classify the selected Inbox item.")
         .confirmationDialog(
