@@ -8116,6 +8116,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("failure_reason=performance-bootstrap-exited"))
         XCTAssertTrue(script.contains("terminate_app || true"))
         XCTAssertTrue(script.contains("QUIESCENCE_PROCESS_FILE=\"$OUTPUT_DIR/runner-quiescence-processes.tsv\""))
+        XCTAssertTrue(script.contains("APP_RAW_STDERR_FILE=\"$PERFORMANCE_HOME/app-stderr.raw.log\""))
+        XCTAssertTrue(script.contains("APP_STDERR_DIAGNOSTIC_FILE=\"$OUTPUT_DIR/app-stderr-sanitized.log\""))
+        XCTAssertTrue(script.contains("APP_UNIFIED_DIAGNOSTIC_FILE=\"$OUTPUT_DIR/app-unified-log-sanitized.log\""))
         XCTAssertTrue(script.contains("ps -Ao pid=,%cpu=,ucomm="))
         XCTAssertFalse(script.contains("ps -Ao pid=,%cpu=,command="))
 
@@ -8161,6 +8164,7 @@ final class ReleasePipelineTests: XCTestCase {
         let harness = """
         set -u
         BOOTSTRAP_EXIT_FILE="$RECEIPT_PATH"
+        capture_app_failure_diagnostics() { :; }
         \(recorderSource)
         /bin/sh -c 'kill -TRAP $$' &
         APP_PID=$!
@@ -8191,6 +8195,7 @@ final class ReleasePipelineTests: XCTestCase {
         APP_LAUNCH_IDENTITY=expected
         ax_emit_failure_category() { :; }
         ax_process_matches_identity() { return 1; }
+        capture_app_failure_diagnostics() { :; }
         \(recorderSource)
         \(terminatorSource)
         /bin/sh -c 'kill -TRAP $$' &
@@ -8220,6 +8225,7 @@ final class ReleasePipelineTests: XCTestCase {
         APP_LAUNCH_IDENTITY=expected
         ax_emit_failure_category() { :; }
         ax_process_matches_identity() { kill -0 "$1" 2>/dev/null; }
+        capture_app_failure_diagnostics() { :; }
         \(recorderSource)
         \(terminatorSource)
         /bin/sleep 30 &
@@ -8237,6 +8243,27 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(expectedEvidence.contains("wait_status=143"))
         XCTAssertTrue(expectedEvidence.contains("termination=harness-term"))
         XCTAssertTrue(expectedEvidence.contains("failure_reason=none"))
+
+        let sanitizerStart = try XCTUnwrap(script.range(of: "sanitize_app_diagnostic_stream() {"))
+        let sanitizerEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\ncapture_app_failure_diagnostics()", range: sanitizerStart.upperBound..<script.endIndex)
+        )
+        let sanitizerSource = String(script[sanitizerStart.lowerBound..<sanitizerEnd.lowerBound]) + "\n}"
+        let sensitiveDiagnostic = """
+        fatal path=/Users/alice/private/app token=super-secret alice@example.com
+        temp=/var/folders/aa/bb/cc UUID=123E4567-E89B-12D3-A456-426614174000
+        """
+        let sanitized = try runTool(
+            ["/bin/bash", "-c", "\(sanitizerSource)\nprintf '%s' \"$DIAGNOSTIC\" | sanitize_app_diagnostic_stream"],
+            environment: ["DIAGNOSTIC": sensitiveDiagnostic]
+        )
+        XCTAssertEqual(sanitized.exitCode, 0, sanitized.output)
+        for secret in ["alice", "super-secret", "alice@example.com", "123E4567-E89B-12D3-A456-426614174000"] {
+            XCTAssertFalse(sanitized.output.contains(secret), sanitized.output)
+        }
+        XCTAssertTrue(sanitized.output.contains("token=<redacted>"))
+        XCTAssertTrue(sanitized.output.contains("<redacted-email>"))
+        XCTAssertTrue(sanitized.output.contains("<redacted-uuid>"))
     }
 
     func testReleaseLaunchPerformanceAcceptsOnlyAnExplicitVerifiedPrebuiltApp() throws {

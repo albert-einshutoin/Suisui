@@ -26,6 +26,9 @@ TIMELINE_FILE="$OUTPUT_DIR/launch-timeline.tsv"
 QUIESCENCE_FILE="$OUTPUT_DIR/runner-quiescence.tsv"
 QUIESCENCE_PROCESS_FILE="$OUTPUT_DIR/runner-quiescence-processes.tsv"
 BOOTSTRAP_EXIT_FILE="$OUTPUT_DIR/bootstrap-exit.env"
+APP_RAW_STDERR_FILE="$PERFORMANCE_HOME/app-stderr.raw.log"
+APP_STDERR_DIAGNOSTIC_FILE="$OUTPUT_DIR/app-stderr-sanitized.log"
+APP_UNIFIED_DIAGNOSTIC_FILE="$OUTPUT_DIR/app-unified-log-sanitized.log"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_PRESS_ELEMENT_HELPER="${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}"
 AX_MARKER_HELPER="${AX_MARKER_HELPER:-$ROOT_DIR/script/ui_evidence_ax_marker_check.swift}"
@@ -125,6 +128,38 @@ source "$AX_HELPERS"
 # smoke default. This changes only observer cadence, never the product budget.
 AX_WAIT_POLL_INTERVAL_SECONDS=0.05
 export AX_WAIT_POLL_INTERVAL_SECONDS
+
+sanitize_app_diagnostic_stream() {
+  sed -E \
+    -e 's#(/Users/)[^/[:space:]]+#\1<redacted>#g' \
+    -e 's#(/var/folders/)[^[:space:]]+#\1<redacted>#g' \
+    -e 's#[[:alnum:]._%+-]+@[[:alnum:].-]+[.][[:alpha:]]{2,}#<redacted-email>#g' \
+    -e 's#[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}#<redacted-uuid>#g' \
+    -e 's#(token|secret|password|api[_-]?key)[[:space:]]*[=:][[:space:]]*[^[:space:]]+#\1=<redacted>#Ig' \
+    -e 's#ghp_[A-Za-z0-9]{20,}#<redacted-token>#g' \
+    -e 's#github_pat_[A-Za-z0-9_]{20,}#<redacted-token>#g' \
+    -e 's#AKIA[0-9A-Z]{16}#<redacted-key>#g'
+}
+
+capture_app_failure_diagnostics() {
+  local failed_pid="${1:-}"
+  if [[ -f "$APP_RAW_STDERR_FILE" ]]; then
+    tail -c 32768 "$APP_RAW_STDERR_FILE" 2>/dev/null \
+      | sanitize_app_diagnostic_stream \
+      >"$APP_STDERR_DIAGNOSTIC_FILE" || printf '%s\n' "diagnostic-unavailable" >"$APP_STDERR_DIAGNOSTIC_FILE"
+  else
+    printf '%s\n' "diagnostic-unavailable" >"$APP_STDERR_DIAGNOSTIC_FILE"
+  fi
+  if [[ "$failed_pid" =~ ^[0-9]+$ ]]; then
+    /usr/bin/log show --last 2m --style compact \
+      --predicate "processIdentifier == $failed_pid" 2>/dev/null \
+      | tail -n 120 \
+      | sanitize_app_diagnostic_stream \
+      >"$APP_UNIFIED_DIAGNOSTIC_FILE" || printf '%s\n' "diagnostic-unavailable" >"$APP_UNIFIED_DIAGNOSTIC_FILE"
+  else
+    printf '%s\n' "diagnostic-unavailable" >"$APP_UNIFIED_DIAGNOSTIC_FILE"
+  fi
+}
 
 APP_PID=""
 APP_LAUNCH_PID=""
@@ -319,7 +354,7 @@ open_app() {
     SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 SUISUI_DATABASE_PATH="$PERFORMANCE_DATABASE_PATH" \
     SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="today" \
     SUISUI_LAUNCH_TIMELINE_PATH="$timeline_path" \
-    "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
+    "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>>"$APP_RAW_STDERR_FILE" &
   APP_LAUNCH_PID=$!
   APP_LAUNCH_IDENTITY="$(ax_wait_for_owned_process_identity "$APP_LAUNCH_PID" "$APP_BINARY" 3)" || {
     ax_emit_failure_category "launch" "performance-launch-identity-unavailable"
@@ -393,6 +428,7 @@ wait_for_database_schema() {
 
 record_unexpected_bootstrap_exit() {
   local wait_status="unavailable"
+  local failed_pid="${APP_PID:-}"
   if [[ "${APP_PID:-}" =~ ^[0-9]+$ ]]; then
     # Never block on an unexpected process that is still running. A child that
     # already exited remains waitable, so its raw status can be recorded.
@@ -406,6 +442,7 @@ record_unexpected_bootstrap_exit() {
   fi
   printf 'status=failed\nwait_status=%s\ntermination=unexpected-exit\nfailure_reason=performance-bootstrap-exited\n' \
     "$wait_status" >"$BOOTSTRAP_EXIT_FILE"
+  capture_app_failure_diagnostics "$failed_pid"
 }
 
 require_bootstrap_process_alive() {
@@ -471,6 +508,7 @@ terminate_bootstrap_app() {
   if [[ "$wait_status" != "$expected_wait_status" ]]; then
     printf 'status=failed\nwait_status=%s\ntermination=unexpected-exit\nfailure_reason=performance-bootstrap-exited\n' \
       "$wait_status" >"$BOOTSTRAP_EXIT_FILE"
+    capture_app_failure_diagnostics "$bootstrap_pid"
     ax_emit_failure_category "launch" "performance-bootstrap-exited"
     echo "BLOCKER: performance bootstrap app exited with unexpected wait status $wait_status" >&2
     return 1
