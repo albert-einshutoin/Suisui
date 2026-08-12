@@ -1,12 +1,43 @@
 import Foundation
 import SuisuiCore
 
+/// Canonicalizes the managed root and every playback candidate before a file
+/// is opened. Keeping this rule in one value prevents import, cleanup, player,
+/// and waveform code from drifting into subtly different path checks.
+struct ManagedInboxAudioPathValidator: Sendable {
+    private let canonicalRootURL: URL
+
+    init(rootURL: URL) {
+        canonicalRootURL = rootURL.resolvingSymlinksInPath().standardizedFileURL
+    }
+
+    func validatedManagedURL(_ url: URL) throws -> URL {
+        let candidate = url.resolvingSymlinksInPath().standardizedFileURL
+        let rootPath = canonicalRootURL.path
+        let rootPrefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+        guard url.isFileURL,
+              candidate.path.hasPrefix(rootPrefix),
+              isRegularFile(candidate) else {
+            throw InboxAudioPlaybackError.recordingUnavailable
+        }
+        return candidate
+    }
+
+    private func isRegularFile(_ url: URL) -> Bool {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+            return false
+        }
+        return attributes[.type] as? FileAttributeType == .typeRegular
+    }
+}
+
 /// Owns completed Inbox recordings so playback never depends on a temporary
 /// URL that can disappear when the app or the OS cleans its temp directory.
 @MainActor
 final class ManagedInboxAudioFileStore: InboxAudioPersisting {
     private let fileManager: FileManager
     private let rootURL: URL
+    let validator: ManagedInboxAudioPathValidator
 
     convenience init(fileManager: FileManager = .default) throws {
         let appSupportURL = try SuisuiAppDatabaseLocation.applicationSupportDirectoryURL(
@@ -22,7 +53,13 @@ final class ManagedInboxAudioFileStore: InboxAudioPersisting {
     init(rootURL: URL, fileManager: FileManager = .default) throws {
         self.fileManager = fileManager
         self.rootURL = rootURL.standardizedFileURL
-        try fileManager.createDirectory(at: self.rootURL, withIntermediateDirectories: true)
+        self.validator = ManagedInboxAudioPathValidator(rootURL: rootURL)
+        try fileManager.createDirectory(
+            at: self.rootURL,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: self.rootURL.path)
     }
 
     func importRecording(from sourceURL: URL) throws -> URL {
@@ -39,8 +76,21 @@ final class ManagedInboxAudioFileStore: InboxAudioPersisting {
         let destination = rootURL
             .appendingPathComponent(UUID().uuidString, isDirectory: false)
             .appendingPathExtension(extensionName)
-        try fileManager.copyItem(at: source, to: destination)
-        return destination
+        let staging = rootURL.appendingPathComponent(".import-\(UUID().uuidString)", isDirectory: false)
+        do {
+            try fileManager.copyItem(at: source, to: staging)
+            try fileManager.moveItem(at: staging, to: destination)
+            try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
+            return destination
+        } catch {
+            try? fileManager.removeItem(at: staging)
+            try? fileManager.removeItem(at: destination)
+            throw error
+        }
+    }
+
+    func validatedManagedURL(_ url: URL) throws -> URL {
+        try validator.validatedManagedURL(url)
     }
 
     /// Migrates the recorder's legacy temporary output exactly once. Only the
@@ -105,10 +155,6 @@ final class ManagedInboxAudioFileStore: InboxAudioPersisting {
     }
 
     private func canonicalManagedPath(for url: URL) -> String? {
-        let candidate = url.resolvingSymlinksInPath().standardizedFileURL
-        let rootPath = rootURL.resolvingSymlinksInPath().standardizedFileURL.path
-        let rootPrefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
-        guard candidate.path.hasPrefix(rootPrefix) else { return nil }
-        return candidate.path
+        try? validator.validatedManagedURL(url).path
     }
 }
