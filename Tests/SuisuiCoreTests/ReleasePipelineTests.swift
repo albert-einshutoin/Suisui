@@ -8106,6 +8106,76 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("wait_for_marker \"project-board-command-palette\""))
     }
 
+    func testReleaseLaunchPerformanceFailsClosedWhenBootstrapExitsBeforeQuiescence() throws {
+        let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
+
+        XCTAssertTrue(script.contains("BOOTSTRAP_EXIT_FILE=\"$OUTPUT_DIR/bootstrap-exit.env\""))
+        XCTAssertTrue(script.contains("record_unexpected_bootstrap_exit()"))
+        XCTAssertTrue(script.contains("require_bootstrap_process_alive()"))
+        XCTAssertTrue(script.contains("failure_reason=performance-bootstrap-exited"))
+        XCTAssertTrue(script.contains("terminate_app || true"))
+        XCTAssertTrue(script.contains("QUIESCENCE_PROCESS_FILE=\"$OUTPUT_DIR/runner-quiescence-processes.tsv\""))
+        XCTAssertTrue(script.contains("ps -Ao pid=,%cpu=,ucomm="))
+        XCTAssertFalse(script.contains("ps -Ao pid=,%cpu=,command="))
+
+        let schemaFunction = try XCTUnwrap(script.range(of: "wait_for_database_schema()"))
+        let schemaFunctionEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\nseed_production_fixture()", range: schemaFunction.upperBound..<script.endIndex)
+        )
+        let schemaSource = String(script[schemaFunction.lowerBound..<schemaFunctionEnd.lowerBound])
+        XCTAssertLessThan(
+            try XCTUnwrap(schemaSource.range(of: "ax_process_matches_identity")).lowerBound,
+            try XCTUnwrap(schemaSource.range(of: "sqlite3 -batch -noheader")).lowerBound
+        )
+
+        let preparationFunction = try XCTUnwrap(script.range(of: "prepare_production_fixture()"))
+        let preparationEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\ntry_click_destination()", range: preparationFunction.upperBound..<script.endIndex)
+        )
+        let preparationSource = String(script[preparationFunction.lowerBound..<preparationEnd.lowerBound])
+        let statements = [
+            "open_app",
+            "wait_for_database_schema",
+            "require_bootstrap_process_alive",
+            "terminate_app",
+            "seed_production_fixture"
+        ]
+        let indices = try statements.map { statement in
+            try XCTUnwrap(preparationSource.range(of: statement)).lowerBound
+        }
+        XCTAssertTrue(zip(indices, indices.dropFirst()).allSatisfy(<))
+
+        let recorderStart = try XCTUnwrap(script.range(of: "record_unexpected_bootstrap_exit() {"))
+        let recorderEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\nrequire_bootstrap_process_alive()", range: recorderStart.upperBound..<script.endIndex)
+        )
+        let recorderSource = String(script[recorderStart.lowerBound..<recorderEnd.lowerBound]) + "\n}"
+        let receiptRoot = packageRoot().appendingPathComponent(
+            ".build/test-performance-bootstrap-exit-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: receiptRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: receiptRoot) }
+        let receipt = receiptRoot.appendingPathComponent("bootstrap-exit.env")
+        let harness = """
+        set -u
+        BOOTSTRAP_EXIT_FILE="$RECEIPT_PATH"
+        \(recorderSource)
+        /bin/sh -c 'exit 133' &
+        APP_PID=$!
+        record_unexpected_bootstrap_exit
+        cat "$BOOTSTRAP_EXIT_FILE"
+        """
+        let recorded = try runTool(
+            ["/bin/bash", "-c", harness],
+            environment: ["RECEIPT_PATH": receipt.path]
+        )
+        XCTAssertEqual(recorded.exitCode, 0, recorded.output)
+        XCTAssertTrue(recorded.output.contains("exit_status=133"))
+        XCTAssertTrue(recorded.output.contains("termination=signal-5"))
+        XCTAssertTrue(recorded.output.contains("failure_reason=performance-bootstrap-exited"))
+    }
+
     func testReleaseLaunchPerformanceAcceptsOnlyAnExplicitVerifiedPrebuiltApp() throws {
         let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
 

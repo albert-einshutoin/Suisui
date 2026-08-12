@@ -24,6 +24,8 @@ SUMMARY_FILE="$OUTPUT_DIR/summary.md"
 SAMPLES_FILE="$OUTPUT_DIR/samples.tsv"
 TIMELINE_FILE="$OUTPUT_DIR/launch-timeline.tsv"
 QUIESCENCE_FILE="$OUTPUT_DIR/runner-quiescence.tsv"
+QUIESCENCE_PROCESS_FILE="$OUTPUT_DIR/runner-quiescence-processes.tsv"
+BOOTSTRAP_EXIT_FILE="$OUTPUT_DIR/bootstrap-exit.env"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_PRESS_ELEMENT_HELPER="${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}"
 AX_MARKER_HELPER="${AX_MARKER_HELPER:-$ROOT_DIR/script/ui_evidence_ax_marker_check.swift}"
@@ -227,6 +229,14 @@ wait_for_runner_quiescence() {
   done
 
   elapsed_ms=$(($(monotonic_ms) - started_ms))
+  {
+    printf '%s\t%s\t%s\n' "pid" "cpu_percent" "process"
+    # `ucomm` exposes only the executable name, never arguments or workspace
+    # paths, so the failure artifact remains useful without leaking user data.
+    LC_ALL=C ps -Ao pid=,%cpu=,ucomm= 2>/dev/null \
+      | sort -k2,2nr \
+      | awk 'NR <= 12'
+  } >"$QUIESCENCE_PROCESS_FILE" || printf '%s\n' "diagnostic-unavailable" >"$QUIESCENCE_PROCESS_FILE"
   printf -- '- Result: `FAIL` after `%sms`; runner never produced `%s` consecutive samples at or above `%s%%` CPU idle.\n' \
     "$elapsed_ms" "$RUNNER_QUIESCENCE_REQUIRED_IDLE_SAMPLES" \
     "$RUNNER_QUIESCENCE_MIN_CPU_IDLE_PERCENT" >>"$SUMMARY_FILE"
@@ -251,7 +261,7 @@ terminate_app() {
 }
 
 cleanup() {
-  terminate_app
+  terminate_app || true
   rm -f "$AX_PRESS_ELEMENT_HELPER_EXECUTABLE" "$AX_MARKER_HELPER_EXECUTABLE"
 }
 
@@ -362,15 +372,15 @@ wait_for_visible_window() {
 wait_for_database_schema() {
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if [[ -f "$PERFORMANCE_DATABASE_PATH" ]] &&
-      [[ "$(sqlite3 -batch -noheader "$PERFORMANCE_DATABASE_PATH" \
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('projects', 'tasks');" 2>/dev/null || true)" == "2" ]]; then
-      return 0
-    fi
     if ! ax_process_matches_identity "$APP_PID" "$APP_BINARY" "$APP_IDENTITY"; then
       ax_emit_failure_category "launch" "performance-bootstrap-exited"
       echo "BLOCKER: performance bootstrap app exited before its database schema was ready" >&2
       return 1
+    fi
+    if [[ -f "$PERFORMANCE_DATABASE_PATH" ]] &&
+      [[ "$(sqlite3 -batch -noheader "$PERFORMANCE_DATABASE_PATH" \
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('projects', 'tasks');" 2>/dev/null || true)" == "2" ]]; then
+      return 0
     fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       ax_emit_failure_category "launch" "performance-database-schema-unavailable"
@@ -379,6 +389,36 @@ wait_for_database_schema() {
     fi
     sleep 0.2
   done
+}
+
+record_unexpected_bootstrap_exit() {
+  local exit_status="unavailable"
+  local termination="unknown"
+  if [[ "${APP_PID:-}" =~ ^[0-9]+$ ]]; then
+    if wait "$APP_PID" 2>/dev/null; then
+      exit_status=0
+      termination="unexpected-zero-exit"
+    else
+      exit_status=$?
+      if [[ "$exit_status" =~ ^[0-9]+$ ]] && (( exit_status >= 128 )); then
+        termination="signal-$((exit_status - 128))"
+      else
+        termination="nonzero-exit"
+      fi
+    fi
+  fi
+  printf 'status=failed\nexit_status=%s\ntermination=%s\nfailure_reason=performance-bootstrap-exited\n' \
+    "$exit_status" "$termination" >"$BOOTSTRAP_EXIT_FILE"
+}
+
+require_bootstrap_process_alive() {
+  if ax_process_matches_identity "$APP_PID" "$APP_BINARY" "$APP_IDENTITY"; then
+    return 0
+  fi
+  record_unexpected_bootstrap_exit
+  ax_emit_failure_category "launch" "performance-bootstrap-exited"
+  echo "BLOCKER: performance bootstrap app exited after creating its database schema" >&2
+  return 1
 }
 
 seed_production_fixture() {
@@ -419,8 +459,16 @@ SQL
 prepare_production_fixture() {
   rm -f "$PERFORMANCE_DATABASE_PATH" "$PERFORMANCE_DATABASE_PATH-wal" "$PERFORMANCE_DATABASE_PATH-shm"
   open_app
-  wait_for_database_schema
+  if ! wait_for_database_schema; then
+    if ! ax_process_matches_identity "$APP_PID" "$APP_BINARY" "$APP_IDENTITY"; then
+      record_unexpected_bootstrap_exit
+    fi
+    return 1
+  fi
+  require_bootstrap_process_alive
   terminate_app
+  printf 'status=passed\nexit_status=terminated-by-harness\ntermination=expected\nfailure_reason=none\n' \
+    >"$BOOTSTRAP_EXIT_FILE"
   seed_production_fixture
 }
 
