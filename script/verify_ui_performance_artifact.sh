@@ -122,6 +122,9 @@ fi
 if [[ -s "$SPECIAL_FILE_LIST" ]]; then
   failure "app-special-file-invalid"
 fi
+if ! /usr/bin/codesign --verify --deep --strict "$EXTRACTED_APP" >/dev/null 2>&1; then
+  failure "app-signature-invalid"
+fi
 
 VALIDATED_MANIFEST_RECEIPT="$RECEIPT_DIRECTORY/validated-artifact-manifest.env"
 VERIFICATION_RECEIPT="$RECEIPT_DIRECTORY/artifact-verification.env"

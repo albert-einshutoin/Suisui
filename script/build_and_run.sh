@@ -465,8 +465,14 @@ if [[ -n "$SPARKLE_FEED_URL" && -n "$SPARKLE_PUBLIC_ED_KEY" ]]; then
   /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string $SPARKLE_PUBLIC_ED_KEY" "$INFO_PLIST"
 fi
 
-if [[ "$BUILD_CONFIGURATION" == "debug" ]]; then
+if [[ "$BUILD_CONFIGURATION" == "debug" || "$RELEASE_BUILD_PURPOSE" == "performance" ]]; then
+  # The performance app crosses a runner boundary before launch. Ad-hoc signing
+  # seals the completed bundle so macOS does not reject the linker-signed binary
+  # after resources and frameworks have been assembled around it.
   codesign --force --deep --sign - "$APP_BUNDLE" >/dev/null
+  if [[ "$RELEASE_BUILD_PURPOSE" == "performance" ]]; then
+    codesign --verify --deep --strict "$APP_BUNDLE"
+  fi
 fi
 
 activate_app() {

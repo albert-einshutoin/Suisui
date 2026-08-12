@@ -201,6 +201,19 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(result.output.contains("Building for debugging"), result.output)
     }
 
+    func testPerformanceReleaseArtifactIsAdHocSignedAndVerifiedAcrossRunnerBoundary() throws {
+        let builder = try readPackageFile("script/build_and_run.sh")
+        let verifier = try readPackageFile("script/verify_ui_performance_artifact.sh")
+
+        XCTAssertTrue(builder.contains(
+            "[[ \"$BUILD_CONFIGURATION\" == \"debug\" || \"$RELEASE_BUILD_PURPOSE\" == \"performance\" ]]"
+        ))
+        XCTAssertTrue(builder.contains("codesign --force --deep --sign - \"$APP_BUNDLE\""))
+        XCTAssertTrue(builder.contains("codesign --verify --deep --strict \"$APP_BUNDLE\""))
+        XCTAssertTrue(verifier.contains("/usr/bin/codesign --verify --deep --strict \"$EXTRACTED_APP\""))
+        XCTAssertTrue(verifier.contains("failure \"app-signature-invalid\""))
+    }
+
     func testAccessibilitySourceAnchorCountContractAllowsCoverageGrowth() throws {
         let output = "OK: accessibility source anchors are present (92 anchors)\n"
 
@@ -8176,6 +8189,15 @@ final class ReleasePipelineTests: XCTestCase {
         )
         XCTAssertTrue(receipt.contains("verification=passed"))
         XCTAssertTrue(receipt.contains("source_commit=\(expectedCommit)"))
+
+        let unsigned = try makePerformanceArtifactFixture(
+            expectedCommit: expectedCommit,
+            signsAppBundle: false
+        )
+        defer { try? FileManager.default.removeItem(at: unsigned.root) }
+        let unsignedRejection = try runPerformanceArtifactVerifier(unsigned, expectedCommit)
+        XCTAssertNotEqual(unsignedRejection.exitCode, 0)
+        XCTAssertTrue(unsignedRejection.output.contains("failure_reason=app-signature-invalid"))
 
         let duplicateManifest = try makePerformanceArtifactFixture(expectedCommit: expectedCommit)
         defer { try? FileManager.default.removeItem(at: duplicateManifest.root) }
@@ -17596,7 +17618,8 @@ final class ReleasePipelineTests: XCTestCase {
         binarySymlinkTarget: String? = nil,
         additionalSymlinkTarget: String? = nil,
         archiveEntrySubstitution: String? = nil,
-        includesSpecialFile: Bool = false
+        includesSpecialFile: Bool = false,
+        signsAppBundle: Bool = true
     ) throws -> PerformanceArtifactFixture {
         let root = packageRoot()
             .appendingPathComponent(".build/test-ui-performance-artifact-\(UUID().uuidString)", isDirectory: true)
@@ -17614,6 +17637,31 @@ final class ReleasePipelineTests: XCTestCase {
         } else {
             try "#!/bin/sh\nexit 0\n".write(to: binary, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary.path)
+        }
+        let infoPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+          <key>CFBundleExecutable</key>
+          <string>Suisui</string>
+          <key>CFBundleIdentifier</key>
+          <string>com.suisui.performance-artifact-fixture</string>
+          <key>CFBundlePackageType</key>
+          <string>APPL</string>
+        </dict>
+        </plist>
+        """
+        try infoPlist.write(
+            to: appDirectory.appendingPathComponent("Contents/Info.plist"),
+            atomically: true,
+            encoding: .utf8
+        )
+        if signsAppBundle, binarySymlinkTarget == nil {
+            let signed = try runTool([
+                "/usr/bin/codesign", "--force", "--deep", "--sign", "-", appDirectory.path
+            ])
+            XCTAssertEqual(signed.exitCode, 0, signed.output)
         }
         if includesSpecialFile {
             let fifo = appDirectory.appendingPathComponent("Contents/runtime.pipe")
