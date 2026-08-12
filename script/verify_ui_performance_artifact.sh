@@ -112,15 +112,14 @@ for resource_bundle_name in "${REQUIRED_RESOURCE_BUNDLE_NAMES[@]}"; do
   fi
 done
 REQUIRED_RESOURCE_FILES=(
-  "Suisui_Suisui.bundle/Contents/Info.plist"
-  "Suisui_Suisui.bundle/Contents/Resources/en.lproj/Localizable.strings"
-  "Suisui_Suisui.bundle/Contents/Resources/ja.lproj/Localizable.strings"
-  "Suisui_SuisuiCore.bundle/Contents/Info.plist"
-  "Suisui_SuisuiCore.bundle/Contents/Resources/action-plan.schema.json"
-  "Suisui_SuisuiCore.bundle/Contents/Resources/en.lproj/Localizable.strings"
-  "Suisui_SuisuiCore.bundle/Contents/Resources/ja.lproj/Localizable.strings"
-  "SwiftTerm_SwiftTerm.bundle/Contents/Info.plist"
-  "SwiftTerm_SwiftTerm.bundle/Contents/Resources/default.metallib"
+  "Suisui_Suisui.bundle/Info.plist"
+  "Suisui_Suisui.bundle/en.lproj/Localizable.strings"
+  "Suisui_Suisui.bundle/ja.lproj/Localizable.strings"
+  "Suisui_SuisuiCore.bundle/Info.plist"
+  "Suisui_SuisuiCore.bundle/action-plan.schema.json"
+  "Suisui_SuisuiCore.bundle/en.lproj/Localizable.strings"
+  "Suisui_SuisuiCore.bundle/ja.lproj/Localizable.strings"
+  "SwiftTerm_SwiftTerm.bundle/Shaders.metal"
 )
 for resource_file in "${REQUIRED_RESOURCE_FILES[@]}"; do
   resource_path="$EXTRACTED_APP/Contents/Resources/$resource_file"

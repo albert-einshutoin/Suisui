@@ -227,13 +227,225 @@ final class ReleasePipelineTests: XCTestCase {
             XCTAssertTrue(verifier.contains(bundleName), "fresh-runner verifier must require \(bundleName)")
         }
         XCTAssertTrue(builder.contains("RESOURCE_BUNDLE_DESTINATION=\"$APP_RESOURCES/$resource_bundle_name\""))
-        XCTAssertTrue(builder.contains("--build-system swiftbuild"))
+        XCTAssertFalse(builder.contains("--build-system swiftbuild"))
         XCTAssertTrue(builder.contains("--arch arm64"))
         XCTAssertTrue(builder.contains("--scratch-path \"$SWIFTPM_APP_SCRATCH_PATH\""))
-        XCTAssertFalse(builder.contains("normalize_swiftpm_resource_accessors.sh"))
-        XCTAssertTrue(builder.contains("Contents/Resources/default.metallib"))
+        XCTAssertTrue(builder.contains("normalize_swiftpm_resource_accessors.sh"))
+        XCTAssertTrue(builder.contains("relink_normalized_swiftpm_product.sh"))
+        XCTAssertTrue(builder.contains("verify_linked_macos_sdk.sh"))
+        let relinker = try readPackageFile("script/relink_normalized_swiftpm_product.sh")
+        XCTAssertTrue(relinker.contains("xcrun --sdk macosx --show-sdk-path"))
+        XCTAssertTrue(relinker.contains("SDKROOT=\"$ACTIVE_SDK_PATH\" \"$SWIFT_BUILD_TOOL\""))
+        XCTAssertTrue(relinker.contains("--no-db \"$TARGET_NAME\""))
+        XCTAssertTrue(builder.contains("Shaders.metal"))
         XCTAssertFalse(builder.contains("/usr/bin/ditto \"$RESOURCE_BUNDLE\" \"$APP_RESOURCES\""))
         XCTAssertTrue(verifier.contains("failure \"app-resource-bundle-invalid\""))
+    }
+
+    func testSwiftPMResourceAccessorNormalizerMakesNativeBuildsPortableAndIsIdempotent() throws {
+        let buildDirectory = packageRoot()
+            .appendingPathComponent(".build/test-resource-accessor-normalizer-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: buildDirectory) }
+
+        let targets = [
+            ("Suisui", "Suisui_Suisui.bundle"),
+            ("SuisuiCore", "Suisui_SuisuiCore.bundle"),
+            ("SwiftTerm", "SwiftTerm_SwiftTerm.bundle")
+        ]
+        for (target, bundleName) in targets {
+            let accessor = buildDirectory
+                .appendingPathComponent("\(target).build/DerivedSources/resource_bundle_accessor.swift")
+            try FileManager.default.createDirectory(
+                at: accessor.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let source = """
+            import Foundation
+
+            extension Foundation.Bundle {
+                static nonisolated let module: Bundle = {
+                    let mainPath = Bundle.main.bundleURL.appendingPathComponent("\(bundleName)").path
+                    let buildPath = "/private/tmp/checkout/.build/arm64-apple-macosx/debug/\(bundleName)"
+
+                    let preferredBundle = Bundle(path: mainPath)
+                    guard let bundle = preferredBundle ?? Bundle(path: buildPath) else {
+                        Swift.fatalError("could not load resource bundle: from \\(mainPath) or \\(buildPath)")
+                    }
+                    return bundle
+                }()
+            }
+            """
+            try source.write(to: accessor, atomically: true, encoding: .utf8)
+        }
+
+        for _ in 0..<2 {
+            let result = try runScript(
+                "script/normalize_swiftpm_resource_accessors.sh",
+                arguments: [buildDirectory.path]
+            )
+            XCTAssertEqual(result.exitCode, 0, result.output)
+        }
+
+        for (target, bundleName) in targets {
+            let accessor = buildDirectory
+                .appendingPathComponent("\(target).build/DerivedSources/resource_bundle_accessor.swift")
+            let source = try String(contentsOf: accessor, encoding: .utf8)
+            XCTAssertTrue(source.contains(
+                "let mainPath = (Bundle.main.resourceURL ?? Bundle.main.bundleURL).appendingPathComponent(\"\(bundleName)\").path"
+            ))
+            XCTAssertTrue(source.contains("let buildPath = mainPath"))
+            XCTAssertFalse(source.contains("/private/tmp/checkout"))
+        }
+    }
+
+    func testSwiftPMResourceAccessorNormalizerFailsClosedWhenGeneratedTemplateDrifts() throws {
+        let buildDirectory = packageRoot()
+            .appendingPathComponent(".build/test-resource-accessor-drift-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: buildDirectory) }
+
+        for target in ["Suisui", "SuisuiCore", "SwiftTerm"] {
+            let accessor = buildDirectory
+                .appendingPathComponent("\(target).build/DerivedSources/resource_bundle_accessor.swift")
+            try FileManager.default.createDirectory(
+                at: accessor.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try "unexpected generated accessor\n".write(to: accessor, atomically: true, encoding: .utf8)
+        }
+
+        let result = try runScript(
+            "script/normalize_swiftpm_resource_accessors.sh",
+            arguments: [buildDirectory.path]
+        )
+        XCTAssertNotEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("generated resource accessor template is unsupported"), result.output)
+    }
+
+    func testStandaloneSwiftPMRelinkManifestKeepsOnlyExecutableBuildTools() throws {
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-swiftpm-relink-manifest-\(UUID().uuidString)", isDirectory: true)
+        let sourcePlan = fixtureDirectory.appendingPathComponent("native.yaml")
+        let destinationPlan = fixtureDirectory.appendingPathComponent("standalone.yaml")
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        try """
+        client:
+          name: basic
+          file-system: device-agnostic
+        tools: {}
+        targets:
+          main: ["<binary>"]
+        default: main
+        nodes: {}
+        commands:
+          "copy":
+            tool: copy-tool
+            inputs: ["input"]
+            outputs: ["output"]
+          "write":
+            tool: write-auxiliary-file
+            inputs: ["<contents>"]
+            outputs: ["generated"]
+          "plan":
+            tool: package-structure-tool
+            inputs: ["Package.swift"]
+            outputs: ["<PackageStructure>"]
+          "compile":
+            tool: shell
+            inputs: ["source.swift"]
+            outputs: ["object.o"]
+            args: ["/usr/bin/true"]
+        """.write(to: sourcePlan, atomically: true, encoding: .utf8)
+
+        let result = try runScript(
+            "script/prepare_swiftpm_relink_manifest.sh",
+            arguments: [sourcePlan.path, destinationPlan.path]
+        )
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        let normalized = try String(contentsOf: destinationPlan, encoding: .utf8)
+        XCTAssertTrue(normalized.contains("name: swift-build"))
+        XCTAssertEqual(normalized.components(separatedBy: "tool: phony").count - 1, 3)
+        XCTAssertTrue(normalized.contains("tool: shell"))
+        XCTAssertFalse(normalized.contains("tool: copy-tool"))
+        XCTAssertFalse(normalized.contains("tool: write-auxiliary-file"))
+        XCTAssertFalse(normalized.contains("tool: package-structure-tool"))
+    }
+
+    func testStandaloneSwiftPMRelinkManifestFailsClosedOnUnknownBuildTool() throws {
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-swiftpm-relink-unknown-\(UUID().uuidString)", isDirectory: true)
+        let sourcePlan = fixtureDirectory.appendingPathComponent("native.yaml")
+        let destinationPlan = fixtureDirectory.appendingPathComponent("standalone.yaml")
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        try """
+        client:
+          name: basic
+        tools: {}
+        targets: {}
+        default: main
+        nodes: {}
+        commands:
+          "future":
+            tool: future-planning-tool
+            inputs: []
+            outputs: []
+        """.write(to: sourcePlan, atomically: true, encoding: .utf8)
+
+        let result = try runScript(
+            "script/prepare_swiftpm_relink_manifest.sh",
+            arguments: [sourcePlan.path, destinationPlan.path]
+        )
+        XCTAssertNotEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("contains unsupported tool: future-planning-tool"), result.output)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destinationPlan.path))
+    }
+
+    func testLinkedMacOSSDKVerifierAcceptsActiveSDKAndRejectsLegacySDKMetadata() throws {
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-linked-macos-sdk-\(UUID().uuidString)", isDirectory: true)
+        let source = fixtureDirectory.appendingPathComponent("main.swift")
+        let activeBinary = fixtureDirectory.appendingPathComponent("active-sdk")
+        let legacyBinary = fixtureDirectory.appendingPathComponent("legacy-sdk")
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+        try "print(\"linked sdk fixture\")\n".write(to: source, atomically: true, encoding: .utf8)
+
+        let sdkPath = try runTool(["xcrun", "--sdk", "macosx", "--show-sdk-path"])
+        XCTAssertEqual(sdkPath.exitCode, 0, sdkPath.output)
+        let compile = try runTool([
+            "xcrun", "swiftc",
+            "-target", "arm64-apple-macosx14.0",
+            "-sdk", sdkPath.output.trimmingCharacters(in: .whitespacesAndNewlines),
+            "-o", activeBinary.path,
+            source.path
+        ])
+        XCTAssertEqual(compile.exitCode, 0, compile.output)
+
+        let activeResult = try runScript(
+            "script/verify_linked_macos_sdk.sh",
+            arguments: [activeBinary.path]
+        )
+        XCTAssertEqual(activeResult.exitCode, 0, activeResult.output)
+        XCTAssertTrue(activeResult.output.contains("linked against the active macOS SDK"), activeResult.output)
+
+        let rewrite = try runTool([
+            "xcrun", "vtool",
+            "-set-build-version", "macos", "14.0", "14.0",
+            "-replace",
+            "-output", legacyBinary.path,
+            activeBinary.path
+        ])
+        XCTAssertEqual(rewrite.exitCode, 0, rewrite.output)
+        let legacyResult = try runScript(
+            "script/verify_linked_macos_sdk.sh",
+            arguments: [legacyBinary.path]
+        )
+        XCTAssertNotEqual(legacyResult.exitCode, 0, legacyResult.output)
+        XCTAssertTrue(legacyResult.output.contains("linked macOS SDK mismatch"), legacyResult.output)
+        XCTAssertTrue(legacyResult.output.contains("got '14.0'"), legacyResult.output)
     }
 
     func testAccessibilitySourceAnchorCountContractAllowsCoverageGrowth() throws {
@@ -18089,19 +18301,19 @@ final class ReleasePipelineTests: XCTestCase {
             switch resourceBundleName {
             case "Suisui_Suisui.bundle":
                 markerNames = [
-                    "Contents/Info.plist",
-                    "Contents/Resources/en.lproj/Localizable.strings",
-                    "Contents/Resources/ja.lproj/Localizable.strings"
+                    "Info.plist",
+                    "en.lproj/Localizable.strings",
+                    "ja.lproj/Localizable.strings"
                 ]
             case "Suisui_SuisuiCore.bundle":
                 markerNames = [
-                    "Contents/Info.plist",
-                    "Contents/Resources/action-plan.schema.json",
-                    "Contents/Resources/en.lproj/Localizable.strings",
-                    "Contents/Resources/ja.lproj/Localizable.strings"
+                    "Info.plist",
+                    "action-plan.schema.json",
+                    "en.lproj/Localizable.strings",
+                    "ja.lproj/Localizable.strings"
                 ]
             default:
-                markerNames = ["Contents/Info.plist", "Contents/Resources/default.metallib"]
+                markerNames = ["Shaders.metal"]
             }
             for markerName in markerNames
             where "\(resourceBundleName)/\(markerName)" != omittedRuntimeResourceRelativePath {

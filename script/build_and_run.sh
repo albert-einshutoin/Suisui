@@ -24,7 +24,6 @@ SWIFTPM_CACHE_PATH="${SUISUI_SWIFTPM_CACHE_PATH:-$ROOT_DIR/.build/swiftpm-cache}
 SWIFTPM_APP_SCRATCH_PATH="${SUISUI_SWIFTPM_APP_SCRATCH_PATH:-$ROOT_DIR/.build/app-package}"
 mkdir -p "$TMPDIR" "$SWIFTPM_MODULECACHE_OVERRIDE" "$SWIFTPM_CACHE_PATH" "$SWIFTPM_APP_SCRATCH_PATH"
 SWIFT_BUILD_ARGS=(
-  --build-system swiftbuild
   --arch arm64
   --cache-path "$SWIFTPM_CACHE_PATH"
   --manifest-cache local
@@ -124,6 +123,9 @@ APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 APP_LOCALIZATION_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Resources"
 APP_ICON_SOURCE="$ROOT_DIR/packaging/Suisui.icns"
+RESOURCE_ACCESSOR_NORMALIZER="$ROOT_DIR/script/normalize_swiftpm_resource_accessors.sh"
+RESOURCE_PRODUCT_RELINKER="$ROOT_DIR/script/relink_normalized_swiftpm_product.sh"
+LINKED_SDK_VERIFIER="$ROOT_DIR/script/verify_linked_macos_sdk.sh"
 REQUIRED_RESOURCE_BUNDLE_NAMES=(
   "Suisui_Suisui.bundle"
   "Suisui_SuisuiCore.bundle"
@@ -132,6 +134,14 @@ REQUIRED_RESOURCE_BUNDLE_NAMES=(
 
 if [[ ! -r "$AX_HELPERS" ]]; then
   echo "missing accessibility helpers: $AX_HELPERS" >&2
+  exit 2
+fi
+if [[ ! -x "$RESOURCE_ACCESSOR_NORMALIZER" ]]; then
+  echo "missing SwiftPM resource accessor normalizer: $RESOURCE_ACCESSOR_NORMALIZER" >&2
+  exit 2
+fi
+if [[ ! -x "$RESOURCE_PRODUCT_RELINKER" || ! -x "$LINKED_SDK_VERIFIER" ]]; then
+  echo "missing native SwiftPM product verification helpers" >&2
   exit 2
 fi
 
@@ -364,20 +374,42 @@ if [[ "$RELEASE_BUILD_PURPOSE" == "distribution" ]]; then
   SUISUI_SPARKLE_CONFIG_QUIET=1 "$ROOT_DIR/script/validate_sparkle_release_config.sh"
 fi
 
-case "$BUILD_CONFIGURATION" in
-  debug)
-    swift build "${SWIFT_BUILD_ARGS[@]}" --product "$SWIFT_PRODUCT_NAME"
-    BUILD_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" --show-bin-path)"
-    ;;
-  release)
-    swift build "${SWIFT_BUILD_ARGS[@]}" -c release --product "$SWIFT_PRODUCT_NAME"
-    BUILD_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" -c release --show-bin-path)"
-    ;;
-  *)
-    echo "SUISUI_BUILD_CONFIGURATION must be debug or release" >&2
-    exit 2
-    ;;
-esac
+build_suisui_product() {
+  case "$BUILD_CONFIGURATION" in
+    debug)
+      swift build "${SWIFT_BUILD_ARGS[@]}" --product "$SWIFT_PRODUCT_NAME"
+      ;;
+    release)
+      swift build "${SWIFT_BUILD_ARGS[@]}" -c release --product "$SWIFT_PRODUCT_NAME"
+      ;;
+    *)
+      echo "SUISUI_BUILD_CONFIGURATION must be debug or release" >&2
+      exit 2
+      ;;
+  esac
+}
+
+swiftpm_product_directory() {
+  case "$BUILD_CONFIGURATION" in
+    debug)
+      swift build "${SWIFT_BUILD_ARGS[@]}" --show-bin-path
+      ;;
+    release)
+      swift build "${SWIFT_BUILD_ARGS[@]}" -c release --show-bin-path
+      ;;
+  esac
+}
+
+build_suisui_product
+BUILD_DIR="$(swiftpm_product_directory)"
+# Native SwiftPM preserves the macOS 26-linked SwiftUI window behavior used by
+# the product and visual contract, but its generated fallback embeds the local
+# checkout. Normalize that generated source, then relink before packaging.
+"$RESOURCE_PRODUCT_RELINKER" \
+  "$SWIFTPM_APP_SCRATCH_PATH" \
+  "$BUILD_DIR" \
+  "$BUILD_CONFIGURATION" \
+  "$SWIFT_PRODUCT_NAME"
 
 BUILD_BINARY="$BUILD_DIR/$SWIFT_PRODUCT_NAME"
 
@@ -389,6 +421,7 @@ chmod +x "$APP_BINARY"
 if ! otool -l "$APP_BINARY" | grep -F "@executable_path/../Frameworks" >/dev/null; then
   install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BINARY"
 fi
+"$LINKED_SDK_VERIFIER" "$APP_BINARY"
 
 for resource_bundle_name in "${REQUIRED_RESOURCE_BUNDLE_NAMES[@]}"; do
   RESOURCE_BUNDLE_SOURCE="$BUILD_DIR/$resource_bundle_name"
@@ -401,21 +434,21 @@ for resource_bundle_name in "${REQUIRED_RESOURCE_BUNDLE_NAMES[@]}"; do
   case "$resource_bundle_name" in
     Suisui_Suisui.bundle)
       RESOURCE_BUNDLE_MARKERS=(
-        "Contents/Info.plist"
-        "Contents/Resources/en.lproj/Localizable.strings"
-        "Contents/Resources/ja.lproj/Localizable.strings"
+        "Info.plist"
+        "en.lproj/Localizable.strings"
+        "ja.lproj/Localizable.strings"
       )
       ;;
     Suisui_SuisuiCore.bundle)
       RESOURCE_BUNDLE_MARKERS=(
-        "Contents/Info.plist"
-        "Contents/Resources/action-plan.schema.json"
-        "Contents/Resources/en.lproj/Localizable.strings"
-        "Contents/Resources/ja.lproj/Localizable.strings"
+        "Info.plist"
+        "action-plan.schema.json"
+        "en.lproj/Localizable.strings"
+        "ja.lproj/Localizable.strings"
       )
       ;;
     SwiftTerm_SwiftTerm.bundle)
-      RESOURCE_BUNDLE_MARKERS=("Contents/Info.plist" "Contents/Resources/default.metallib")
+      RESOURCE_BUNDLE_MARKERS=("Shaders.metal")
       ;;
   esac
   for resource_bundle_marker in "${RESOURCE_BUNDLE_MARKERS[@]}"; do
