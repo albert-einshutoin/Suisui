@@ -5,6 +5,15 @@ import SwiftUI
 import AppKit
 #endif
 
+/// The reference filters are view-local, so selection must be reconciled
+/// against the IDs rendered by this view rather than the ViewModel's filter.
+func inboxVisibleSelectionID(current: Int64?, visibleTaskIDs: [Int64]) -> Int64? {
+    guard let current, visibleTaskIDs.contains(current) else {
+        return visibleTaskIDs.first
+    }
+    return current
+}
+
 struct InboxWorkflowView: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
     var selectInboxTask: (ProjectBoardTask) -> Void = { _ in }
@@ -149,7 +158,7 @@ struct InboxWorkflowView: View {
         .accessibilityIdentifier("inbox-workflow")
             .onAppear {
                 refreshInboxReviewAvailability(at: timeline.date)
-                viewModel.ensureSelectedInboxTaskIsVisible()
+                synchronizeSelection(with: tasks.map(\.id))
                 consumeQuickAddFocusRequestIfNeeded()
             }
             .onChange(of: timeline.date) { _, date in
@@ -158,10 +167,11 @@ struct InboxWorkflowView: View {
             .onChange(of: requestsQuickAddFocus) { _, _ in
                 consumeQuickAddFocusRequestIfNeeded()
             }
-            .onChange(of: tasks.map(\.id)) { _, _ in
-                viewModel.ensureSelectedInboxTaskIsVisible()
+            .onChange(of: tasks.map(\.id)) { _, visibleTaskIDs in
+                synchronizeSelection(with: visibleTaskIDs)
             }
             .onChange(of: viewModel.selectedTaskID) { _, _ in
+                synchronizeSelection(with: tasks.map(\.id))
                 // Hydrate from the newly selected capture so this parent observer
                 // and the child capture observer converge regardless of call order.
                 let capture = viewModel.selectedInboxCaptureRecords.first
@@ -178,6 +188,17 @@ struct InboxWorkflowView: View {
         }
         lastReviewRefreshMinute = minute
         viewModel.refreshInboxReviewAvailability(at: date)
+    }
+
+    private func synchronizeSelection(with visibleTaskIDs: [Int64]) {
+        let visibleSelectionID = inboxVisibleSelectionID(
+            current: viewModel.selectedTaskID,
+            visibleTaskIDs: visibleTaskIDs
+        )
+        guard visibleSelectionID != viewModel.selectedTaskID else {
+            return
+        }
+        viewModel.selectedTaskID = visibleSelectionID
     }
 
     private func mainSurface(referenceContentTopPadding: CGFloat) -> some View {

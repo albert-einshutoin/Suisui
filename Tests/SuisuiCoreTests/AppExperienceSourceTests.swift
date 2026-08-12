@@ -7450,7 +7450,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(seederSource.contains("Confirm project board to task card to inspector path before public alpha."))
         XCTAssertTrue(seederSource.contains("'Inbox', 'active'"))
         XCTAssertTrue(seederSource.contains("title: \"Inbox\""))
-        XCTAssertTrue(workflowSource.contains("ensureSelectedInboxTaskIsVisible"))
+        XCTAssertTrue(workflowSource.contains("synchronizeSelection(with: tasks.map(\\.id))"))
+        XCTAssertTrue(workflowSource.contains(
+            ".onChange(of: tasks.map(\\.id)) { _, visibleTaskIDs in"
+        ))
+        XCTAssertTrue(workflowSource.contains("synchronizeSelection(with: visibleTaskIDs)"))
 
         XCTAssertTrue(script.contains("capture_project_board_destination"))
         XCTAssertTrue(script.contains("SUISUI_OPEN_SETTINGS_ON_LAUNCH=1"))
