@@ -23,6 +23,7 @@ PERFORMANCE_DATABASE_PATH="${SUISUI_PERFORMANCE_DATABASE_PATH:-$PERFORMANCE_HOME
 SUMMARY_FILE="$OUTPUT_DIR/summary.md"
 SAMPLES_FILE="$OUTPUT_DIR/samples.tsv"
 TIMELINE_FILE="$OUTPUT_DIR/launch-timeline.tsv"
+QUIESCENCE_FILE="$OUTPUT_DIR/runner-quiescence.tsv"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_PRESS_ELEMENT_HELPER="${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}"
 AX_MARKER_HELPER="${AX_MARKER_HELPER:-$ROOT_DIR/script/ui_evidence_ax_marker_check.swift}"
@@ -67,6 +68,13 @@ MAX_DESTINATION_SWITCH_MS="${SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS:-$DEFA
 # environment prevents callers from weakening release evidence.
 COLD_LAUNCH_SAMPLE_COUNT=3
 DESTINATION_SAMPLE_COUNT=3
+# Release compilation can leave a hosted runner CPU-bound immediately before
+# launch. Keep these policy values source-owned so callers cannot weaken the
+# product budget by skipping the bounded idle proof.
+RUNNER_QUIESCENCE_MINIMUM_SETTLE_SECONDS=10
+RUNNER_QUIESCENCE_MAX_WAIT_SECONDS=60
+RUNNER_QUIESCENCE_MIN_CPU_IDLE_PERCENT=80
+RUNNER_QUIESCENCE_REQUIRED_IDLE_SAMPLES=3
 
 require_positive_integer_budget() {
   local name="$1"
@@ -119,6 +127,89 @@ now_ms() {
 monotonic_ms() {
   /usr/bin/perl -MTime::HiRes=clock_gettime,CLOCK_MONOTONIC \
     -e 'printf "%d\n", clock_gettime(CLOCK_MONOTONIC) * 1000'
+}
+
+read_macos_cpu_idle_percent() {
+  local deadline_ms="$1"
+  local snapshot idle_percent
+  snapshot="$(
+    LC_ALL=C /usr/bin/perl -MTime::HiRes=clock_gettime,alarm,CLOCK_MONOTONIC -e '
+      my $deadline_ms = shift @ARGV;
+      my $remaining_seconds =
+        ($deadline_ms - (clock_gettime(CLOCK_MONOTONIC) * 1000)) / 1000;
+      exit 124 if $remaining_seconds <= 0;
+      $SIG{ALRM} = "DEFAULT";
+      alarm($remaining_seconds);
+      exec @ARGV;
+    ' "$deadline_ms" /usr/bin/top -l 1 -n 0 2>/dev/null
+  )" || return 1
+  idle_percent="$(printf '%s\n' "$snapshot" | awk '
+    /^CPU usage:/ {
+      for (field_index = 1; field_index <= NF; field_index += 1) {
+        if ($field_index == "idle") {
+          value = $(field_index - 1)
+          gsub(/%/, "", value)
+          print value
+          exit
+        }
+      }
+    }
+  ')"
+  [[ "$idle_percent" =~ ^[0-9]+([.][0-9]+)?$ ]] || return 1
+  printf '%s\n' "$idle_percent"
+}
+
+wait_for_runner_quiescence() {
+  local started_ms deadline_ms observed_ms elapsed_ms idle_percent
+  local sample_index=0
+  local consecutive_idle_samples=0
+
+  started_ms="$(monotonic_ms)"
+  deadline_ms=$((started_ms + RUNNER_QUIESCENCE_MAX_WAIT_SECONDS * 1000))
+  sleep "$RUNNER_QUIESCENCE_MINIMUM_SETTLE_SECONDS"
+
+  while [[ "$(monotonic_ms)" -lt "$deadline_ms" ]]; do
+    sample_index=$((sample_index + 1))
+    if idle_percent="$(read_macos_cpu_idle_percent "$deadline_ms")"; then
+      if awk -v observed="$idle_percent" -v minimum="$RUNNER_QUIESCENCE_MIN_CPU_IDLE_PERCENT" \
+        'BEGIN { exit !(observed >= minimum) }'; then
+        consecutive_idle_samples=$((consecutive_idle_samples + 1))
+      else
+        consecutive_idle_samples=0
+      fi
+    else
+      idle_percent="unavailable"
+      consecutive_idle_samples=0
+    fi
+
+    observed_ms="$(monotonic_ms)"
+    printf '%s\t%s\t%s\t%s\n' \
+      "$sample_index" "$observed_ms" "$idle_percent" "$consecutive_idle_samples" \
+      >>"$QUIESCENCE_FILE"
+
+    # A sample that completed after the strict deadline cannot establish an
+    # idle precondition for the launch that follows.
+    if [[ "$observed_ms" -le "$deadline_ms" ]] &&
+      (( consecutive_idle_samples >= RUNNER_QUIESCENCE_REQUIRED_IDLE_SAMPLES )); then
+      elapsed_ms=$((observed_ms - started_ms))
+      printf -- '- Result: `PASS` after `%sms` with `%s` consecutive idle samples.\n' \
+        "$elapsed_ms" "$consecutive_idle_samples" >>"$SUMMARY_FILE"
+      printf 'OK: runner quiescence established in %sms (%s%% CPU idle)\n' \
+        "$elapsed_ms" "$idle_percent"
+      return 0
+    fi
+
+    [[ "$observed_ms" -lt "$deadline_ms" ]] || break
+    sleep 1
+  done
+
+  elapsed_ms=$(($(monotonic_ms) - started_ms))
+  printf -- '- Result: `FAIL` after `%sms`; runner never produced `%s` consecutive samples at or above `%s%%` CPU idle.\n' \
+    "$elapsed_ms" "$RUNNER_QUIESCENCE_REQUIRED_IDLE_SAMPLES" \
+    "$RUNNER_QUIESCENCE_MIN_CPU_IDLE_PERCENT" >>"$SUMMARY_FILE"
+  printf 'failure_category=runner-quiescence\n' >&2
+  echo "BLOCKER: runner did not become quiescent within ${RUNNER_QUIESCENCE_MAX_WAIT_SECONDS}s" >&2
+  return 1
 }
 
 terminate_app() {
@@ -529,9 +620,17 @@ trap cleanup EXIT
   printf 'Default cold launch budget: `%sms`\n' "$MAX_COLD_LAUNCH_MS"
   printf 'Default destination switch budget: `%sms`\n' "$MAX_DESTINATION_SWITCH_MS"
   printf '\n'
-  printf '%s\n' '## Samples'
+  printf '%s\n' '## Runner quiescence'
+  printf -- '- Policy: minimum `%ss` settle, then `%s` consecutive samples at or above `%s%%` CPU idle; fail closed after `%ss`.\n' \
+    "$RUNNER_QUIESCENCE_MINIMUM_SETTLE_SECONDS" \
+    "$RUNNER_QUIESCENCE_REQUIRED_IDLE_SAMPLES" \
+    "$RUNNER_QUIESCENCE_MIN_CPU_IDLE_PERCENT" \
+    "$RUNNER_QUIESCENCE_MAX_WAIT_SECONDS"
 } >"$SUMMARY_FILE"
 printf '%s\t%s\n' "label" "elapsed_ms" >"$SAMPLES_FILE"
+printf '%s\t%s\t%s\t%s\n' \
+  "sample" "monotonic_ms" "cpu_idle_percent" "consecutive_idle_samples" \
+  >"$QUIESCENCE_FILE"
 
 terminate_app
 prepare_ax_helpers
@@ -542,6 +641,8 @@ else
   SUISUI_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --build-only
 fi
 prepare_production_fixture
+wait_for_runner_quiescence
+printf '\n%s\n' '## Samples' >>"$SUMMARY_FILE"
 
 for sample_index in $(seq 1 "$COLD_LAUNCH_SAMPLE_COUNT"); do
   measure_cold_launch_sample "$sample_index"

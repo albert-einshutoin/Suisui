@@ -7983,6 +7983,65 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("set -x"))
     }
 
+    func testReleaseLaunchPerformanceWaitsForBoundedRunnerQuiescenceBeforeMeasuring() throws {
+        let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
+
+        XCTAssertTrue(script.contains("RUNNER_QUIESCENCE_MINIMUM_SETTLE_SECONDS=10"))
+        XCTAssertTrue(script.contains("RUNNER_QUIESCENCE_MAX_WAIT_SECONDS=60"))
+        XCTAssertTrue(script.contains("RUNNER_QUIESCENCE_MIN_CPU_IDLE_PERCENT=80"))
+        XCTAssertTrue(script.contains("RUNNER_QUIESCENCE_REQUIRED_IDLE_SAMPLES=3"))
+        XCTAssertTrue(script.contains("QUIESCENCE_FILE=\"$OUTPUT_DIR/runner-quiescence.tsv\""))
+        XCTAssertTrue(script.contains("consecutive_idle_samples"))
+        XCTAssertTrue(script.contains("failure_category=runner-quiescence"))
+        XCTAssertTrue(script.contains("BLOCKER: runner did not become quiescent"))
+        XCTAssertTrue(script.contains("## Runner quiescence"))
+        let quiescenceProbeStart = try XCTUnwrap(
+            script.range(of: "read_macos_cpu_idle_percent()")
+        )
+        let quiescenceProbeEnd = try XCTUnwrap(
+            script.range(
+                of: "terminate_app()",
+                range: quiescenceProbeStart.upperBound..<script.endIndex
+            )
+        )
+        let quiescenceBlock = String(
+            script[quiescenceProbeStart.lowerBound..<quiescenceProbeEnd.lowerBound]
+        )
+        XCTAssertTrue(quiescenceBlock.contains("LC_ALL=C /usr/bin/perl"))
+        XCTAssertTrue(quiescenceBlock.contains("CLOCK_MONOTONIC"))
+        XCTAssertTrue(quiescenceBlock.contains("alarm($remaining_seconds)"))
+        XCTAssertTrue(quiescenceBlock.contains("/usr/bin/top -l 1 -n 0"))
+        XCTAssertTrue(quiescenceBlock.contains("for (field_index = 1;"))
+        XCTAssertFalse(quiescenceBlock.contains("for (index = 1;"))
+        XCTAssertTrue(quiescenceBlock.contains(
+            "read_macos_cpu_idle_percent \"$deadline_ms\""
+        ))
+        XCTAssertFalse(quiescenceBlock.contains(
+            "sleep \"$RUNNER_QUIESCENCE_MAX_WAIT_SECONDS\""
+        ))
+
+        let fixture = try XCTUnwrap(script.range(of: "prepare_production_fixture\n"))
+        let quiescence = try XCTUnwrap(
+            script.range(
+                of: "wait_for_runner_quiescence\n",
+                range: fixture.upperBound..<script.endIndex
+            )
+        )
+        let launchSamples = try XCTUnwrap(
+            script.range(
+                of: "for sample_index in $(seq 1 \"$COLD_LAUNCH_SAMPLE_COUNT\")",
+                range: quiescence.upperBound..<script.endIndex
+            )
+        )
+        XCTAssertLessThan(fixture.lowerBound, quiescence.lowerBound)
+        XCTAssertLessThan(quiescence.lowerBound, launchSamples.lowerBound)
+
+        XCTAssertTrue(script.contains("DEFAULT_COLD_LAUNCH_BUDGET_MS=1000"))
+        XCTAssertTrue(script.contains("COLD_LAUNCH_SAMPLE_COUNT=3"))
+        XCTAssertTrue(script.contains("median_elapsed_ms"))
+        XCTAssertTrue(script.contains("wait_for_marker \"project-board-command-palette\""))
+    }
+
     func testReleaseLaunchPerformanceDestinationRetryIsBoundedAndIdentityPinned() throws {
         let eventualSuccess = try runPerformanceDestinationRetryFixture(
             helperSucceedsOnAttempt: 3,
