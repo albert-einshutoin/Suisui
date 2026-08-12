@@ -659,6 +659,7 @@ click_sidebar_destination() {
   local destination_identifier="$1"
   local destination_label="$2"
   if ! "$AX_PRESS_ELEMENT_HELPER_EXECUTABLE" "$APP_PID" "$destination_identifier"; then
+    capture_current_app_failure_diagnostics
     ax_emit_failure_category "product-marker" "performance-destination-unavailable"
     echo "BLOCKER: performance smoke could not select $destination_label in owned app pid $APP_PID" >&2
     return 1

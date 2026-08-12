@@ -251,6 +251,7 @@ final class CIGateWorkflowTests: XCTestCase {
         let sensitiveFixture = """
         public-marker=keep-me
         path="/Users/alice/My Private App/config.json" volume='/Volumes/Secret Disk/work'
+        TMPDIR=/tmp/private-job-name/cache temp=/private/tmp/provider/cache
         Authorization: Bearer bearer-provider-value Authorization: Basic basic-provider-value
         PASSWORD="alpha beta" 'api_key': 'quoted secret value'
         sk_live_providerfixture1234 glpat-providerfixture1234 AIzaProviderFixture1234567890
@@ -260,6 +261,9 @@ final class CIGateWorkflowTests: XCTestCase {
         -----BEGIN PRIVATE KEY-----
         private-key-body-value
         -----END PRIVATE KEY-----
+        -----BEGIN ENCRYPTED PRIVATE KEY-----
+        encrypted-private-key-body-value
+        -----END ENCRYPTED PRIVATE KEY-----
         """
         let helperPath = repositoryRoot.appendingPathComponent("script/ci_redact_stream.sh").path
         let sanitized = try runBash(
@@ -275,7 +279,8 @@ final class CIGateWorkflowTests: XCTestCase {
             "basic-provider-value", "alpha beta", "quoted secret value",
             "sk_live_providerfixture1234", "glpat-providerfixture1234",
             "AIzaProviderFixture1234567890", "password-value", "Project/private.txt",
-            "leaked-tail", "private-key-body-value"
+            "leaked-tail", "private-key-body-value", "private-job-name",
+            "provider/cache", "encrypted-private-key-body-value"
         ] {
             XCTAssertFalse(sanitized.output.contains(privateValue), sanitized.output)
         }

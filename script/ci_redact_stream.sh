@@ -6,10 +6,10 @@
 ci_redact_stream() {
   LC_ALL=C /usr/bin/perl -ne '
     if ($inside_private_key) {
-      $inside_private_key = 0 if /-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/;
+      $inside_private_key = 0 if /-----END [A-Z0-9 ]*PRIVATE KEY-----/;
       next;
     }
-    if (/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/) {
+    if (/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/) {
       print "<redacted>\n";
       $inside_private_key = 1;
       next;
@@ -18,7 +18,7 @@ ci_redact_stream() {
       print "<path>\n";
       next;
     }
-    if (m{/(?:private/)?var/folders/} || m{(?:^|[[:space:]"\x27])(?:/var)?/tmp/}) {
+    if (m{/(?:private/)?var/folders/} || m{/(?:private/)?tmp/}) {
       print "<temp-path>\n";
       next;
     }
