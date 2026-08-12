@@ -16,6 +16,11 @@ DESTINATION_DIRECTORY="$2"
 APP_NAME="$3"
 EXPECTED_SOURCE_COMMIT="$4"
 RECEIPT_DIRECTORY="$5"
+REQUIRED_RESOURCE_BUNDLE_NAMES=(
+  "Suisui_Suisui.bundle"
+  "Suisui_SuisuiCore.bundle"
+  "SwiftTerm_SwiftTerm.bundle"
+)
 
 if [[ ! "$APP_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ || "$APP_NAME" == "." || "$APP_NAME" == ".." ]]; then
   failure "app-name-invalid"
@@ -100,6 +105,29 @@ if [[ ! -d "$EXTRACTED_APP" || -L "$EXTRACTED_APP" ||
       ! -f "$EXTRACTED_BINARY" || -L "$EXTRACTED_BINARY" || ! -x "$EXTRACTED_BINARY" ]]; then
   failure "app-binary-invalid"
 fi
+for resource_bundle_name in "${REQUIRED_RESOURCE_BUNDLE_NAMES[@]}"; do
+  resource_bundle="$EXTRACTED_APP/Contents/Resources/$resource_bundle_name"
+  if [[ ! -d "$resource_bundle" || -L "$resource_bundle" ]]; then
+    failure "app-resource-bundle-invalid"
+  fi
+done
+REQUIRED_RESOURCE_FILES=(
+  "Suisui_Suisui.bundle/Contents/Info.plist"
+  "Suisui_Suisui.bundle/Contents/Resources/en.lproj/Localizable.strings"
+  "Suisui_Suisui.bundle/Contents/Resources/ja.lproj/Localizable.strings"
+  "Suisui_SuisuiCore.bundle/Contents/Info.plist"
+  "Suisui_SuisuiCore.bundle/Contents/Resources/action-plan.schema.json"
+  "Suisui_SuisuiCore.bundle/Contents/Resources/en.lproj/Localizable.strings"
+  "Suisui_SuisuiCore.bundle/Contents/Resources/ja.lproj/Localizable.strings"
+  "SwiftTerm_SwiftTerm.bundle/Contents/Info.plist"
+  "SwiftTerm_SwiftTerm.bundle/Contents/Resources/default.metallib"
+)
+for resource_file in "${REQUIRED_RESOURCE_FILES[@]}"; do
+  resource_path="$EXTRACTED_APP/Contents/Resources/$resource_file"
+  if [[ ! -f "$resource_path" || -L "$resource_path" ]]; then
+    failure "app-resource-bundle-invalid"
+  fi
+done
 
 # Framework bundles legitimately contain internal symlinks. Resolve every link
 # after extraction and accept it only when the final target remains in this app.

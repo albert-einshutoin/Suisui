@@ -21,10 +21,13 @@ fi
 export TMPDIR="$BUILD_AND_RUN_TMPDIR/"
 export SWIFTPM_MODULECACHE_OVERRIDE="${SWIFTPM_MODULECACHE_OVERRIDE:-$ROOT_DIR/.build/module-cache}"
 SWIFTPM_CACHE_PATH="${SUISUI_SWIFTPM_CACHE_PATH:-$ROOT_DIR/.build/swiftpm-cache}"
-mkdir -p "$TMPDIR" "$SWIFTPM_MODULECACHE_OVERRIDE" "$SWIFTPM_CACHE_PATH"
+SWIFTPM_APP_SCRATCH_PATH="${SUISUI_SWIFTPM_APP_SCRATCH_PATH:-$ROOT_DIR/.build/app-package}"
+mkdir -p "$TMPDIR" "$SWIFTPM_MODULECACHE_OVERRIDE" "$SWIFTPM_CACHE_PATH" "$SWIFTPM_APP_SCRATCH_PATH"
 SWIFT_BUILD_ARGS=(
+  --build-system swiftbuild
   --cache-path "$SWIFTPM_CACHE_PATH"
   --manifest-cache local
+  --scratch-path "$SWIFTPM_APP_SCRATCH_PATH"
 )
 
 if [[ ! -f "$METADATA_FILE" ]]; then
@@ -120,6 +123,11 @@ APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 APP_LOCALIZATION_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Resources"
 APP_ICON_SOURCE="$ROOT_DIR/packaging/Suisui.icns"
+REQUIRED_RESOURCE_BUNDLE_NAMES=(
+  "Suisui_Suisui.bundle"
+  "Suisui_SuisuiCore.bundle"
+  "SwiftTerm_SwiftTerm.bundle"
+)
 
 if [[ ! -r "$AX_HELPERS" ]]; then
   echo "missing accessibility helpers: $AX_HELPERS" >&2
@@ -371,7 +379,6 @@ case "$BUILD_CONFIGURATION" in
 esac
 
 BUILD_BINARY="$BUILD_DIR/$SWIFT_PRODUCT_NAME"
-RESOURCE_BUNDLE="$BUILD_DIR/Suisui_SuisuiCore.bundle"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS"
@@ -382,10 +389,44 @@ if ! otool -l "$APP_BINARY" | grep -F "@executable_path/../Frameworks" >/dev/nul
   install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BINARY"
 fi
 
-if [[ -d "$RESOURCE_BUNDLE" ]]; then
+for resource_bundle_name in "${REQUIRED_RESOURCE_BUNDLE_NAMES[@]}"; do
+  RESOURCE_BUNDLE_SOURCE="$BUILD_DIR/$resource_bundle_name"
+  RESOURCE_BUNDLE_DESTINATION="$APP_RESOURCES/$resource_bundle_name"
+  if [[ ! -d "$RESOURCE_BUNDLE_SOURCE" || -L "$RESOURCE_BUNDLE_SOURCE" ]]; then
+    echo "BLOCKER: required SwiftPM resource bundle is unavailable: $resource_bundle_name" >&2
+    exit 1
+  fi
+  RESOURCE_BUNDLE_MARKERS=()
+  case "$resource_bundle_name" in
+    Suisui_Suisui.bundle)
+      RESOURCE_BUNDLE_MARKERS=(
+        "Contents/Info.plist"
+        "Contents/Resources/en.lproj/Localizable.strings"
+        "Contents/Resources/ja.lproj/Localizable.strings"
+      )
+      ;;
+    Suisui_SuisuiCore.bundle)
+      RESOURCE_BUNDLE_MARKERS=(
+        "Contents/Info.plist"
+        "Contents/Resources/action-plan.schema.json"
+        "Contents/Resources/en.lproj/Localizable.strings"
+        "Contents/Resources/ja.lproj/Localizable.strings"
+      )
+      ;;
+    SwiftTerm_SwiftTerm.bundle)
+      RESOURCE_BUNDLE_MARKERS=("Contents/Info.plist" "Contents/Resources/default.metallib")
+      ;;
+  esac
+  for resource_bundle_marker in "${RESOURCE_BUNDLE_MARKERS[@]}"; do
+    if [[ ! -f "$RESOURCE_BUNDLE_SOURCE/$resource_bundle_marker" ||
+          -L "$RESOURCE_BUNDLE_SOURCE/$resource_bundle_marker" ]]; then
+      echo "BLOCKER: required SwiftPM resource bundle is incomplete: $resource_bundle_name" >&2
+      exit 1
+    fi
+  done
   mkdir -p "$APP_RESOURCES"
-  /usr/bin/ditto "$RESOURCE_BUNDLE" "$APP_RESOURCES"
-fi
+  /usr/bin/ditto "$RESOURCE_BUNDLE_SOURCE" "$RESOURCE_BUNDLE_DESTINATION"
+done
 
 copy_app_localizations
 

@@ -214,6 +214,27 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(verifier.contains("failure \"app-signature-invalid\""))
     }
 
+    func testPerformanceReleaseArtifactPreservesRequiredSwiftPMResourceBundles() throws {
+        let builder = try readPackageFile("script/build_and_run.sh")
+        let verifier = try readPackageFile("script/verify_ui_performance_artifact.sh")
+
+        for bundleName in [
+            "Suisui_Suisui.bundle",
+            "Suisui_SuisuiCore.bundle",
+            "SwiftTerm_SwiftTerm.bundle"
+        ] {
+            XCTAssertTrue(builder.contains(bundleName), "builder must package \(bundleName)")
+            XCTAssertTrue(verifier.contains(bundleName), "fresh-runner verifier must require \(bundleName)")
+        }
+        XCTAssertTrue(builder.contains("RESOURCE_BUNDLE_DESTINATION=\"$APP_RESOURCES/$resource_bundle_name\""))
+        XCTAssertTrue(builder.contains("--build-system swiftbuild"))
+        XCTAssertTrue(builder.contains("--scratch-path \"$SWIFTPM_APP_SCRATCH_PATH\""))
+        XCTAssertFalse(builder.contains("normalize_swiftpm_resource_accessors.sh"))
+        XCTAssertTrue(builder.contains("Contents/Resources/default.metallib"))
+        XCTAssertFalse(builder.contains("/usr/bin/ditto \"$RESOURCE_BUNDLE\" \"$APP_RESOURCES\""))
+        XCTAssertTrue(verifier.contains("failure \"app-resource-bundle-invalid\""))
+    }
+
     func testAccessibilitySourceAnchorCountContractAllowsCoverageGrowth() throws {
         let output = "OK: accessibility source anchors are present (92 anchors)\n"
 
@@ -8557,6 +8578,31 @@ final class ReleasePipelineTests: XCTestCase {
         )
         XCTAssertTrue(receipt.contains("verification=passed"))
         XCTAssertTrue(receipt.contains("source_commit=\(expectedCommit)"))
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: valid.destinationDirectory
+                .appendingPathComponent(
+                    "Suisui.app/Contents/Resources/Suisui_SuisuiCore.bundle/Contents/Info.plist"
+                ).path
+        ))
+
+        let missingResourceBundle = try makePerformanceArtifactFixture(
+            expectedCommit: expectedCommit,
+            omittedRuntimeResourceBundle: "Suisui_SuisuiCore.bundle"
+        )
+        defer { try? FileManager.default.removeItem(at: missingResourceBundle.root) }
+        let missingResourceRejection = try runPerformanceArtifactVerifier(missingResourceBundle, expectedCommit)
+        XCTAssertNotEqual(missingResourceRejection.exitCode, 0)
+        XCTAssertTrue(missingResourceRejection.output.contains("failure_reason=app-resource-bundle-invalid"))
+
+        let missingResourcePayload = try makePerformanceArtifactFixture(
+            expectedCommit: expectedCommit,
+            omittedRuntimeResourceRelativePath:
+                "Suisui_SuisuiCore.bundle/Contents/Resources/action-plan.schema.json"
+        )
+        defer { try? FileManager.default.removeItem(at: missingResourcePayload.root) }
+        let missingPayloadRejection = try runPerformanceArtifactVerifier(missingResourcePayload, expectedCommit)
+        XCTAssertNotEqual(missingPayloadRejection.exitCode, 0)
+        XCTAssertTrue(missingPayloadRejection.output.contains("failure_reason=app-resource-bundle-invalid"))
 
         let unsigned = try makePerformanceArtifactFixture(
             expectedCommit: expectedCommit,
@@ -17987,7 +18033,9 @@ final class ReleasePipelineTests: XCTestCase {
         additionalSymlinkTarget: String? = nil,
         archiveEntrySubstitution: String? = nil,
         includesSpecialFile: Bool = false,
-        signsAppBundle: Bool = true
+        signsAppBundle: Bool = true,
+        omittedRuntimeResourceBundle: String? = nil,
+        omittedRuntimeResourceRelativePath: String? = nil
     ) throws -> PerformanceArtifactFixture {
         let root = packageRoot()
             .appendingPathComponent(".build/test-ui-performance-artifact-\(UUID().uuidString)", isDirectory: true)
@@ -18025,6 +18073,44 @@ final class ReleasePipelineTests: XCTestCase {
             atomically: true,
             encoding: .utf8
         )
+        let resourceDirectory = appDirectory
+            .appendingPathComponent("Contents/Resources", isDirectory: true)
+        try FileManager.default.createDirectory(at: resourceDirectory, withIntermediateDirectories: true)
+        for resourceBundleName in [
+            "Suisui_Suisui.bundle",
+            "Suisui_SuisuiCore.bundle",
+            "SwiftTerm_SwiftTerm.bundle"
+        ] where resourceBundleName != omittedRuntimeResourceBundle {
+            let resourceBundle = resourceDirectory.appendingPathComponent(resourceBundleName, isDirectory: true)
+            try FileManager.default.createDirectory(at: resourceBundle, withIntermediateDirectories: true)
+            let markerNames: [String]
+            switch resourceBundleName {
+            case "Suisui_Suisui.bundle":
+                markerNames = [
+                    "Contents/Info.plist",
+                    "Contents/Resources/en.lproj/Localizable.strings",
+                    "Contents/Resources/ja.lproj/Localizable.strings"
+                ]
+            case "Suisui_SuisuiCore.bundle":
+                markerNames = [
+                    "Contents/Info.plist",
+                    "Contents/Resources/action-plan.schema.json",
+                    "Contents/Resources/en.lproj/Localizable.strings",
+                    "Contents/Resources/ja.lproj/Localizable.strings"
+                ]
+            default:
+                markerNames = ["Contents/Info.plist", "Contents/Resources/default.metallib"]
+            }
+            for markerName in markerNames
+            where "\(resourceBundleName)/\(markerName)" != omittedRuntimeResourceRelativePath {
+                let markerURL = resourceBundle.appendingPathComponent(markerName)
+                try FileManager.default.createDirectory(
+                    at: markerURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try "fixture\n".write(to: markerURL, atomically: true, encoding: .utf8)
+            }
+        }
         if signsAppBundle, binarySymlinkTarget == nil {
             let signed = try runTool([
                 "/usr/bin/codesign", "--force", "--deep", "--sign", "-", appDirectory.path
