@@ -202,6 +202,9 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
 
         return try connection.transaction {
             let inbox = try ensureActiveInboxProject()
+            // Quick capture writes through TaskStore directly, so preserve the
+            // same completed-project reactivation invariant as createTask.
+            try prepareProjectForTaskMutation(projectID: inbox.id, taskStatus: .backlog)
             let record = try taskStore.create(
                 title: normalizedTitle,
                 projectID: inbox.id,
@@ -313,8 +316,22 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     @discardableResult
     public func undoInboxTriage(_ mutation: InboxTriageMutation) throws -> ProjectBoardTask {
         try connection.transaction {
-            let restoredTask = try applyTaskUndoSnapshot(mutation.originalTask)
-            try upsertInboxTriageRecord(mutation.originalRecord)
+            // Classification Undo updates an existing task; delete Undo reaches
+            // the same boundary after cascade removal and must recreate it.
+            // Keeping both branches here makes task + triage restoration one
+            // SQLite transaction while allowing the recreated task a new ID.
+            let restoredTask = if try taskStore.exists(id: mutation.originalTask.id) {
+                try applyTaskUndoSnapshot(mutation.originalTask)
+            } else {
+                try restoreTask(from: mutation.originalTask)
+            }
+            let restoredRecord = try InboxTriageRecord(
+                taskID: restoredTask.id,
+                disposition: mutation.originalRecord.disposition,
+                reviewAt: mutation.originalRecord.reviewAt,
+                updatedAt: mutation.originalRecord.updatedAt
+            )
+            try upsertInboxTriageRecord(restoredRecord)
             if let createdProjectID = mutation.createdProjectID {
                 // Re-linking the Task first leaves the generated Project empty,
                 // so deletion cannot orphan the restored Inbox Task.

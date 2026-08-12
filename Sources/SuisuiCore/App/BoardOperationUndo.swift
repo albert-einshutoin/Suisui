@@ -15,6 +15,14 @@ public enum BoardOperationUndoEntry: Equatable, Sendable {
     /// rows are recreated after the task so SQLite's foreign key remains valid
     /// and the managed audio paths stay reachable for Undo playback.
     case restoreTaskWithCaptures(snapshot: ProjectBoardTask, captures: [InboxCaptureRecord])
+    /// Inverse of deleting an Inbox task. The triage record is remapped to the
+    /// recreated task ID, and captures participate in the same rollback unit so
+    /// Undo never exposes a task with only part of its Inbox lifecycle restored.
+    case restoreInboxTask(
+        snapshot: ProjectBoardTask,
+        triageRecord: InboxTriageRecord,
+        captures: [InboxCaptureRecord]
+    )
     /// Inverse of a status move (keyboard, card controls, or a single-card
     /// drag & drop): put the previous status back.
     case revertStatus(snapshot: ProjectBoardTask)
