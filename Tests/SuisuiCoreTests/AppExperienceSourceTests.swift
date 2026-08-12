@@ -3710,7 +3710,12 @@ final class AppExperienceSourceTests: XCTestCase {
                 ".accessibilityElement(children: .contain)\n        .accessibilityIdentifier(\"inbox-selected-context\")"
             )
         )
-        XCTAssertFalse(workflowSource.contains(".opacity(0.01)"))
+        // The voice seek control deliberately uses a nearly transparent native
+        // slider over the visible waveform so AX and keyboard actions remain real.
+        let permittedTransparentSliderCount = workflowSource.components(
+            separatedBy: ".opacity(0.01)"
+        ).count - 1
+        XCTAssertEqual(permittedTransparentSliderCount, 1)
         XCTAssertFalse(workflowSource.contains(".frame(width: 1, height: 1)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-review-later\")"))
         XCTAssertTrue(workflowSource.contains("keyboardShortcut: \"1\""))

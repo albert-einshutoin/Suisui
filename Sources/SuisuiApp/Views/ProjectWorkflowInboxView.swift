@@ -775,6 +775,7 @@ private struct InboxActionPanel: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .frame(minHeight: 36)
                 .accessibilityIdentifier("inbox-detail-make-task")
 
                 Button("Review Later Inbox") {
@@ -782,6 +783,7 @@ private struct InboxActionPanel: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
+                .frame(minHeight: 36)
                 .keyboardShortcut("4", modifiers: [.command, .control])
                 .accessibilityIdentifier("inbox-action-review-later")
 
@@ -790,6 +792,7 @@ private struct InboxActionPanel: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
+                .frame(minHeight: 36)
             }
             .disabled(task == nil)
             .accessibilityElement(children: .contain)
@@ -845,6 +848,7 @@ private struct InboxActionPanel: View {
             .disabled(task == nil)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("inbox-proposed-actions")
+            .padding(.bottom, 8)
 
             Text("Details Information")
                 .font(.headline)
@@ -854,7 +858,9 @@ private struct InboxActionPanel: View {
                 capture: viewModel.selectedInboxCaptureRecords.first
             )
         }
-        .padding(18)
+        .padding(.horizontal, 18)
+        .padding(.top, 18)
+        .padding(.bottom, 30)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(accessibilityIdentifier)
         .accessibilityLabel("Inbox classification actions")
@@ -990,7 +996,7 @@ private struct InboxProposedActions: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .padding(.vertical, 9)
+        .padding(.vertical, 13)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
         .accessibilityIdentifier("inbox-proposed-action-\(systemImage)")
@@ -1211,7 +1217,7 @@ private struct InboxReferenceDetails: View {
                 .lineLimit(2)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.vertical, 14)
     }
 }
 

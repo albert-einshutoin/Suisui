@@ -2015,6 +2015,7 @@
 "Retries the selected Inbox recording" = "選択中の受信箱録音の再生を再試行します";
 "Plays or pauses the selected Inbox recording" = "選択中の受信箱録音を再生または一時停止します";
 "Changes the current Inbox recording position" = "受信箱録音の再生位置を変更します";
+"Retry voice memo" = "音声メモの再生を再試行";
 "Create project" = "プロジェクトを作成";
 "Update project" = "プロジェクトを更新";
 "List projects" = "プロジェクト一覧を表示";
