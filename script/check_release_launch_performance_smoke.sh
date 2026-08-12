@@ -449,7 +449,10 @@ open_app() {
     ax_emit_failure_category "launch" "performance-owned-identity-unavailable"
     return 1
   }
-  ax_wait_for_pid_owned_process "$APP_NAME" "$APP_PID" "$TIMEOUT_SECONDS" "$APP_BINARY"
+  if ! ax_wait_for_pid_owned_process "$APP_NAME" "$APP_PID" "$TIMEOUT_SECONDS" "$APP_BINARY"; then
+    capture_current_app_failure_diagnostics
+    return 1
+  fi
 }
 
 wait_for_launch_milestone() {

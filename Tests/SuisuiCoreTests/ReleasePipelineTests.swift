@@ -8330,6 +8330,49 @@ final class ReleasePipelineTests: XCTestCase {
             ]
         )
         XCTAssertEqual(measuredFailure.exitCode, 0, measuredFailure.output)
+
+        let openStart = try XCTUnwrap(script.range(of: "open_app() {"))
+        let openEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\nwait_for_launch_milestone()", range: openStart.upperBound..<script.endIndex)
+        )
+        let openSource = String(script[openStart.lowerBound..<openEnd.lowerBound]) + "\n}"
+        let ownedProcessFailureReceipt = receiptRoot.appendingPathComponent("owned-process-failure-captured")
+        let ownedProcessFailure = try runTool(
+            [
+                "/bin/bash", "-c", """
+                set -u
+                APP_BINARY="$RECEIPT_ROOT/fixture-app"
+                APP_STDERR_FIFO="$RECEIPT_ROOT/fixture-stderr"
+                printf '#!/bin/sh\nsleep 30\n' >"$APP_BINARY"
+                chmod +x "$APP_BINARY"
+                : >"$APP_STDERR_FIFO"
+                APP_STDERR_CAPTURE_PID=$$
+                TRACK_LAUNCH_MILESTONES=0
+                TIMELINE_FILE="$RECEIPT_ROOT/timeline"
+                OUTPUT_DIR="$RECEIPT_ROOT"
+                PERFORMANCE_HOME="$RECEIPT_ROOT/home"
+                PERFORMANCE_DATABASE_PATH="$RECEIPT_ROOT/database.sqlite3"
+                TIMEOUT_SECONDS=1
+                APP_NAME=Suisui
+                start_app_stderr_capture() { return 0; }
+                ax_wait_for_owned_process_identity() { printf 'fixture-identity'; }
+                ax_wait_for_owned_app_pid() { printf '%s' "$1"; }
+                ax_wait_for_pid_owned_process() { return 1; }
+                capture_current_app_failure_diagnostics() { printf captured >"$CAPTURE_RECEIPT"; }
+                ax_emit_failure_category() { :; }
+                \(openSource)
+                if open_app; then exit 9; fi
+                kill -TERM "$APP_LAUNCH_PID" 2>/dev/null || true
+                wait "$APP_LAUNCH_PID" 2>/dev/null || true
+                test "$(cat "$CAPTURE_RECEIPT")" = captured
+                """
+            ],
+            environment: [
+                "CAPTURE_RECEIPT": ownedProcessFailureReceipt.path,
+                "RECEIPT_ROOT": receiptRoot.path
+            ]
+        )
+        XCTAssertEqual(ownedProcessFailure.exitCode, 0, ownedProcessFailure.output)
     }
 
     func testReleaseLaunchPerformanceAcceptsOnlyAnExplicitVerifiedPrebuiltApp() throws {
