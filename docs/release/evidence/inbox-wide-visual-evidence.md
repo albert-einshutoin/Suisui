@@ -13,6 +13,10 @@ voice playback, transcript, proposed actions, and detail information.
 - Dark Inbox: `ui-screenshots/inbox-wide-dark.png`
 - Light Inbox voice detail: `ui-screenshots/inbox-voice-wide-light.png`
 - Dark Inbox voice detail: `ui-screenshots/inbox-voice-wide-dark.png`
+- Japanese light Inbox: `ui-screenshots-ja/inbox-wide-light.png`
+- Japanese dark Inbox: `ui-screenshots-ja/inbox-wide-dark.png`
+- Japanese light Inbox voice detail: `ui-screenshots-ja/inbox-voice-wide-light.png`
+- Japanese dark Inbox voice detail: `ui-screenshots-ja/inbox-voice-wide-dark.png`
 
 Capture command:
 
@@ -24,4 +28,7 @@ SUISUI_VISUAL_BASELINE_VIEWPORT=1400x975 \
 
 Runtime behavior was independently verified by
 `script/check_runtime_inbox_triage_smoke.sh`, including quick add, task
-classification, schedule, review later, project conversion, and Undo.
+classification, schedule, review later, project conversion, and Undo. Voice
+playback was independently verified by
+`script/check_runtime_inbox_voice_playback_smoke.sh`, including restart,
+play/pause, progress, seek, selection stop, and missing-audio fallback.
