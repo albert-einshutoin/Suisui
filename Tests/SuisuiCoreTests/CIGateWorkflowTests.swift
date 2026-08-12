@@ -68,6 +68,27 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(workflow.contains(".tmp/ci-artifacts/ui-performance"))
     }
 
+    func testPerformanceGateWaitsForOtherMacOSUIGatesBeforeMeasuring() throws {
+        let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        let performanceStart = try XCTUnwrap(workflow.range(of: "\n  ui-performance:"))
+        let performanceJob = String(workflow[performanceStart.lowerBound...])
+        let needsStart = try XCTUnwrap(performanceJob.range(of: "    needs:\n"))
+        let conditionStart = try XCTUnwrap(
+            performanceJob.range(
+                of: "    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}",
+                range: needsStart.upperBound..<performanceJob.endIndex
+            )
+        )
+        let dependencies = String(
+            performanceJob[needsStart.upperBound..<conditionStart.lowerBound]
+        )
+
+        XCTAssertTrue(dependencies.contains("      - test_strategy\n"))
+        XCTAssertTrue(dependencies.contains("      - full_validation\n"))
+        XCTAssertTrue(dependencies.contains("      - ui-runtime\n"))
+        XCTAssertTrue(dependencies.contains("      - ui-visual\n"))
+    }
+
     func testVisualRequiredCheckAggregatorFailsClosedForUnknownSelectorResults() throws {
         let workflow = try readRepositoryFile(".github/workflows/ci.yml")
         let script = try visualAggregatorScript(from: workflow)

@@ -327,6 +327,9 @@ jobs:
     needs:
       - test_strategy
       - full_validation
+      # Do not mix release cold-launch evidence with concurrent macOS UI work.
+      - ui-runtime
+      - ui-visual
     if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}
     runs-on: macos-26
     timeout-minutes: 30
