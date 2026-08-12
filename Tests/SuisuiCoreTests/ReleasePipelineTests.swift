@@ -8019,7 +8019,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("/usr/bin/swiftc \"$AX_MARKER_HELPER\" -o \"$AX_MARKER_HELPER_EXECUTABLE\""))
         XCTAssertTrue(script.contains("\"$AX_PRESS_ELEMENT_HELPER_EXECUTABLE\" \"$APP_PID\" \"$destination_identifier\""))
         XCTAssertFalse(script.contains("/usr/bin/swift \"$AX_PRESS_ELEMENT_HELPER\""))
-        XCTAssertTrue(script.contains("prepare_ax_helpers\nif [[ \"$SUISUI_PERFORMANCE_PROFILE\" == \"release\" ]]"))
+        XCTAssertTrue(script.contains("prepare_ax_helpers\nif [[ \"$SUISUI_PERFORMANCE_USE_PREBUILT_APP\" == \"1\" ]]"))
         XCTAssertFalse(script.contains("ax_click_sidebar_destination"))
         XCTAssertTrue(script.contains("ax_wait_for_ax_identifier"))
         XCTAssertTrue(script.contains("samples.tsv"))
@@ -8042,7 +8042,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("BLOCKER: runner did not become quiescent"))
         XCTAssertTrue(script.contains("## Runner quiescence"))
         let quiescenceProbeStart = try XCTUnwrap(
-            script.range(of: "read_macos_cpu_idle_percent()")
+            script.range(of: "parse_macos_cpu_idle_percent()")
         )
         let quiescenceProbeEnd = try XCTUnwrap(
             script.range(
@@ -8090,6 +8090,18 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("COLD_LAUNCH_SAMPLE_COUNT=3"))
         XCTAssertTrue(script.contains("median_elapsed_ms"))
         XCTAssertTrue(script.contains("wait_for_marker \"project-board-command-palette\""))
+    }
+
+    func testReleaseLaunchPerformanceAcceptsOnlyAnExplicitVerifiedPrebuiltApp() throws {
+        let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
+
+        XCTAssertTrue(script.contains("SUISUI_PERFORMANCE_USE_PREBUILT_APP=\"${SUISUI_PERFORMANCE_USE_PREBUILT_APP:-0}\""))
+        XCTAssertTrue(script.contains("SUISUI_PERFORMANCE_USE_PREBUILT_APP must be 0 or 1"))
+        XCTAssertTrue(script.contains("release performance profile is required for a prebuilt app"))
+        XCTAssertTrue(script.contains("prebuilt performance app is unavailable or not executable"))
+        XCTAssertTrue(script.contains("if [[ \"$SUISUI_PERFORMANCE_USE_PREBUILT_APP\" == \"1\" ]]; then"))
+        XCTAssertTrue(script.contains("OK: using verified prebuilt release app for performance measurement"))
+        XCTAssertTrue(script.contains("SUISUI_RELEASE_BUILD_PURPOSE=performance"))
     }
 
     func testReleaseLaunchPerformanceQuiescenceUsesTheSecondMacOSTopSample() throws {

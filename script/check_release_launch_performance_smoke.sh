@@ -30,6 +30,7 @@ AX_MARKER_HELPER="${AX_MARKER_HELPER:-$ROOT_DIR/script/ui_evidence_ax_marker_che
 AX_PRESS_ELEMENT_HELPER_EXECUTABLE="$OUTPUT_DIR/ui-evidence-ax-press-element.$$"
 AX_MARKER_HELPER_EXECUTABLE="$OUTPUT_DIR/ui-evidence-ax-marker-checker.$$"
 SUISUI_PERFORMANCE_PROFILE="${SUISUI_PERFORMANCE_PROFILE:-release}"
+SUISUI_PERFORMANCE_USE_PREBUILT_APP="${SUISUI_PERFORMANCE_USE_PREBUILT_APP:-0}"
 
 case "$SUISUI_PERFORMANCE_PROFILE" in
   release)
@@ -75,6 +76,15 @@ RUNNER_QUIESCENCE_MINIMUM_SETTLE_SECONDS=10
 RUNNER_QUIESCENCE_MAX_WAIT_SECONDS=60
 RUNNER_QUIESCENCE_MIN_CPU_IDLE_PERCENT=80
 RUNNER_QUIESCENCE_REQUIRED_IDLE_SAMPLES=3
+
+if [[ "$SUISUI_PERFORMANCE_USE_PREBUILT_APP" != "0" && "$SUISUI_PERFORMANCE_USE_PREBUILT_APP" != "1" ]]; then
+  echo "BLOCKER: SUISUI_PERFORMANCE_USE_PREBUILT_APP must be 0 or 1" >&2
+  exit 2
+fi
+if [[ "$SUISUI_PERFORMANCE_USE_PREBUILT_APP" == "1" && "$SUISUI_PERFORMANCE_PROFILE" != "release" ]]; then
+  echo "BLOCKER: release performance profile is required for a prebuilt app" >&2
+  exit 2
+fi
 
 require_positive_integer_budget() {
   local name="$1"
@@ -643,7 +653,13 @@ printf '%s\t%s\t%s\t%s\n' \
 
 terminate_app
 prepare_ax_helpers
-if [[ "$SUISUI_PERFORMANCE_PROFILE" == "release" ]]; then
+if [[ "$SUISUI_PERFORMANCE_USE_PREBUILT_APP" == "1" ]]; then
+  if [[ ! -d "$APP_BUNDLE" || ! -x "$APP_BINARY" ]]; then
+    echo "BLOCKER: prebuilt performance app is unavailable or not executable" >&2
+    exit 2
+  fi
+  echo "OK: using verified prebuilt release app for performance measurement"
+elif [[ "$SUISUI_PERFORMANCE_PROFILE" == "release" ]]; then
   SUISUI_RELEASE_BUILD_PURPOSE=performance \
     SUISUI_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --build-only
 else

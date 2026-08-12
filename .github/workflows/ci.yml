@@ -322,17 +322,14 @@ jobs:
           echo "status=passed"
           echo "locales=en-US,ja-JP"
 
-  ui-performance:
-    name: UI Performance (production route)
+  ui-performance-build:
+    name: UI Performance Build (release artifact)
     needs:
       - test_strategy
       - full_validation
-      # Do not mix release cold-launch evidence with concurrent macOS UI work.
-      - ui-runtime
-      - ui-visual
     if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - name: Checkout tested revision
         uses: actions/checkout@v4
@@ -348,6 +345,113 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-swift-6-
 
+      - name: Build immutable release performance app
+        run: |
+          set -euo pipefail
+          source packaging/app_metadata.env
+          artifact_dir=.tmp/ui-performance-app
+          archive="$artifact_dir/$APP_NAME.app.tar.gz"
+          manifest="$artifact_dir/manifest.env"
+          rm -rf "$artifact_dir"
+          mkdir -p "$artifact_dir"
+          SUISUI_RELEASE_BUILD_PURPOSE=performance \
+            SUISUI_BUILD_CONFIGURATION=release ./script/build_and_run.sh --build-only
+          COPYFILE_DISABLE=1 /usr/bin/tar -czf "$archive" -C dist "$APP_NAME.app"
+          archive_sha256="$(shasum -a 256 "$archive" | awk '{print $1}')"
+          source_commit="$(git rev-parse HEAD)"
+          printf 'format_version=1\nsource_commit=%s\nbuild_configuration=release\narchive_sha256=%s\n' \
+            "$source_commit" "$archive_sha256" >"$manifest"
+
+      - name: Upload immutable release performance app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/ui-performance-app
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 1
+
+  ui-performance:
+    name: UI Performance (production route)
+    needs:
+      - test_strategy
+      - full_validation
+      # Do not mix release cold-launch evidence with concurrent macOS UI work.
+      - ui-runtime
+      - ui-visual
+      - ui-performance-build
+    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Checkout tested revision
+        uses: actions/checkout@v4
+
+      - name: Download immutable release performance app
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/ui-performance-app
+
+      - name: Verify immutable performance app artifact
+        run: |
+          set -euo pipefail
+          source packaging/app_metadata.env
+          artifact_dir=.tmp/ui-performance-app
+          archive="$artifact_dir/$APP_NAME.app.tar.gz"
+          manifest="$artifact_dir/manifest.env"
+          [[ -f "$archive" && -f "$manifest" ]] || {
+            echo "failure_category=performance-artifact" >&2
+            echo "failure_reason=artifact-files-missing" >&2
+            exit 1
+          }
+          [[ "$(wc -l <"$manifest" | tr -d ' ')" == "4" ]] || {
+            echo "failure_category=performance-artifact" >&2
+            echo "failure_reason=manifest-shape-invalid" >&2
+            exit 1
+          }
+          manifest_value() {
+            local key="$1"
+            awk -F= -v key="$key" '
+              $1 == key {
+                count += 1
+                if (NF == 2) value = $2
+                else invalid = 1
+              }
+              END { if (count == 1 && !invalid) print value }
+            ' "$manifest"
+          }
+          format_version="$(manifest_value format_version)"
+          source_commit="$(manifest_value source_commit)"
+          build_configuration="$(manifest_value build_configuration)"
+          expected_sha256="$(manifest_value archive_sha256)"
+          actual_sha256="$(shasum -a 256 "$archive" | awk '{print $1}')"
+          [[ "$format_version" == "1" && "$source_commit" =~ ^[0-9a-f]{40}$ &&
+            "$source_commit" == "$(git rev-parse HEAD)" && "$build_configuration" == "release" &&
+            "$expected_sha256" =~ ^[0-9a-f]{64}$ && "$actual_sha256" == "$expected_sha256" ]] || {
+            echo "failure_category=performance-artifact" >&2
+            echo "failure_reason=manifest-verification-failed" >&2
+            exit 1
+          }
+          if ! /usr/bin/tar -tzf "$archive" | awk \
+            -v root="$APP_NAME.app/" \
+            -v expected_binary="$APP_NAME.app/Contents/MacOS/$APP_NAME" '
+            index($0, root) != 1 || $0 ~ /(^|\/)\.\.(\/|$)/ || $0 ~ /^\// { unsafe = 1 }
+            $0 == expected_binary { binary_found = 1 }
+            END { exit unsafe || !binary_found }
+          '; then
+            echo "failure_category=performance-artifact" >&2
+            echo "failure_reason=archive-entry-unsafe" >&2
+            exit 1
+          fi
+          mkdir -p dist
+          /usr/bin/tar -xzf "$archive" -C dist
+          [[ -x "dist/$APP_NAME.app/Contents/MacOS/$APP_NAME" ]] || {
+            echo "failure_category=performance-artifact" >&2
+            echo "failure_reason=app-binary-not-executable" >&2
+            exit 1
+          }
+
       - name: Measure production runtime
         env:
           SUISUI_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
@@ -355,6 +459,7 @@ jobs:
           SUISUI_PERFORMANCE_BUILD_CONFIGURATION: release
           SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS: 1000
           SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS: 3000
+          SUISUI_PERFORMANCE_USE_PREBUILT_APP: 1
         run: ./scripts/ci.sh ui-performance
 
       - name: Upload sanitized performance diagnostics

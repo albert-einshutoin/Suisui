@@ -15,8 +15,9 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(workflow.contains("name: SwiftPM macOS"))
         XCTAssertTrue(workflow.contains("name: UI Runtime (production route)"))
         XCTAssertTrue(workflow.contains("name: UI Visual (live baseline)"))
+        XCTAssertTrue(workflow.contains("name: UI Performance Build (release artifact)"))
         XCTAssertTrue(workflow.contains("name: UI Performance (production route)"))
-        XCTAssertGreaterThanOrEqual(workflow.components(separatedBy: "runs-on: macos-26").count - 1, 4)
+        XCTAssertGreaterThanOrEqual(workflow.components(separatedBy: "runs-on: macos-26").count - 1, 5)
 
         XCTAssertTrue(workflow.contains("run: ./ci/run-full.sh"))
         XCTAssertTrue(fullRunner.contains("./scripts/ci.sh swiftpm"))
@@ -52,6 +53,7 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(workflow.contains("SUISUI_PERFORMANCE_BUILD_CONFIGURATION: release"))
         XCTAssertTrue(workflow.contains("SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS: 1000"))
         XCTAssertTrue(workflow.contains("SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS: 3000"))
+        XCTAssertTrue(workflow.contains("SUISUI_PERFORMANCE_USE_PREBUILT_APP: 1"))
         XCTAssertFalse(workflow.contains("SUISUI_LAUNCH_RECOVERY_MODE"))
     }
 
@@ -87,6 +89,36 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(dependencies.contains("      - full_validation\n"))
         XCTAssertTrue(dependencies.contains("      - ui-runtime\n"))
         XCTAssertTrue(dependencies.contains("      - ui-visual\n"))
+        XCTAssertTrue(dependencies.contains("      - ui-performance-build\n"))
+    }
+
+    func testPerformanceMeasurementUsesVerifiedReleaseArtifactOnAFreshRunner() throws {
+        let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        let buildStart = try XCTUnwrap(workflow.range(of: "\n  ui-performance-build:"))
+        let measureStart = try XCTUnwrap(
+            workflow.range(of: "\n  ui-performance:", range: buildStart.upperBound..<workflow.endIndex)
+        )
+        let buildJob = String(workflow[buildStart.lowerBound..<measureStart.lowerBound])
+        let measureJob = String(workflow[measureStart.lowerBound...])
+
+        XCTAssertTrue(buildJob.contains("SUISUI_RELEASE_BUILD_PURPOSE=performance"))
+        XCTAssertTrue(buildJob.contains("SUISUI_BUILD_CONFIGURATION=release ./script/build_and_run.sh --build-only"))
+        XCTAssertTrue(buildJob.contains("COPYFILE_DISABLE=1 /usr/bin/tar -czf"))
+        XCTAssertTrue(buildJob.contains("archive_sha256="))
+        XCTAssertTrue(buildJob.contains("source_commit="))
+        XCTAssertTrue(buildJob.contains("build_configuration=release"))
+        XCTAssertTrue(buildJob.contains("uses: actions/upload-artifact@v4"))
+        XCTAssertTrue(buildJob.contains("name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}"))
+
+        XCTAssertTrue(measureJob.contains("uses: actions/download-artifact@v4"))
+        XCTAssertTrue(measureJob.contains("name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}"))
+        XCTAssertTrue(measureJob.contains("Verify immutable performance app artifact"))
+        XCTAssertTrue(measureJob.contains("git rev-parse HEAD"))
+        XCTAssertTrue(measureJob.contains("shasum -a 256"))
+        XCTAssertTrue(measureJob.contains("/usr/bin/tar -tzf"))
+        XCTAssertTrue(measureJob.contains("archive-entry-unsafe"))
+        XCTAssertTrue(measureJob.contains("SUISUI_PERFORMANCE_USE_PREBUILT_APP: 1"))
+        XCTAssertFalse(measureJob.contains("Restore Swift build cache"))
     }
 
     func testVisualRequiredCheckAggregatorFailsClosedForUnknownSelectorResults() throws {
@@ -292,7 +324,7 @@ final class CIGateWorkflowTests: XCTestCase {
         )
         let jobEnd = try XCTUnwrap(
             workflow.range(
-                of: "\n\n  ui-performance:",
+                of: "\n\n  ui-performance-build:",
                 range: runMarker.upperBound..<workflow.endIndex
             )
         )
