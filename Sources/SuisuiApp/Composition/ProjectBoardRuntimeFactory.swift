@@ -1,5 +1,11 @@
 import Foundation
+import OSLog
 import SuisuiCore
+
+private let inboxAudioReconciliationLogger = Logger(
+    subsystem: "dev.suisui.app",
+    category: "inbox-audio"
+)
 
 enum ProjectBoardRuntimeBundle: @unchecked Sendable {
     case available(
@@ -57,9 +63,24 @@ extension AppRuntimeFactory {
     static func makeProjectBoardViewModel(runtime: ProjectBoardRuntimeBundle) -> ProjectBoardViewModel {
         switch runtime {
         case let .available(connection, projectBoardStore, externalTaskLinkStore, assistantQueueStore, executionReceiptStore, googleCalendarSyncStatus):
+            let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)
+            do {
+                let inboxAudioFileStore = try ManagedInboxAudioFileStore()
+                try reconcileManagedInboxAudio(
+                    captureStore: inboxCaptureStore,
+                    audioStore: inboxAudioFileStore
+                )
+            } catch {
+                // Audio maintenance is auxiliary to the Inbox read model. Keep
+                // transcripts and triage available, and avoid logging an error
+                // description that could contain a private recording path.
+                inboxAudioReconciliationLogger.error(
+                    "Inbox audio reconciliation failed category=audio_reconciliation_failed"
+                )
+            }
             return ProjectBoardViewModel(
                 store: projectBoardStore,
-                inboxCaptureStore: SQLiteInboxCaptureStore(connection: connection),
+                inboxCaptureStore: inboxCaptureStore,
                 assistantQueueStore: assistantQueueStore,
                 assistantQueueExecutionCoordinatorFactory: {
                     makeAssistantQueueExecutionCoordinator(
@@ -96,6 +117,39 @@ extension AppRuntimeFactory {
     @MainActor
     static func makeLaunchVisibleProjectBoardViewModel() -> ProjectBoardViewModel {
         makeProjectBoardViewModel(runtime: makeProjectBoardRuntimeBundle())
+    }
+
+    /// Reconciles the managed audio directory before exposing Inbox audio.
+    /// Legacy recorder paths are migrated only when they are app-owned temp
+    /// files; unknown paths remain transcript-only instead of being copied.
+    @MainActor
+    static func reconcileManagedInboxAudio(
+        captureStore: SQLiteInboxCaptureStore,
+        audioStore: ManagedInboxAudioFileStore
+    ) throws {
+        for capture in try captureStore.listAll() {
+            guard let managedURL = try audioStore.migrateLegacyRecordingIfNeeded(
+                from: URL(fileURLWithPath: capture.audioFilePath)
+            ) else {
+                continue
+            }
+            guard managedURL.path != URL(fileURLWithPath: capture.audioFilePath).standardizedFileURL.path else {
+                continue
+            }
+
+            do {
+                _ = try captureStore.updateAudioFilePath(id: capture.id, audioFilePath: managedURL.path)
+                try? FileManager.default.removeItem(atPath: capture.audioFilePath)
+            } catch {
+                // Do not leave a copied file behind when SQLite could not
+                // commit the new path; the original row remains playable if
+                // its temporary source is still present.
+                audioStore.removeImportedRecording(at: managedURL)
+            }
+        }
+
+        let referencedPaths = Set(try captureStore.listAll().map(\.audioFilePath))
+        try audioStore.removeOrphanedRecordings(referencedPaths: referencedPaths)
     }
 
     private static func makeAssistantQueueExecutionCoordinator(
