@@ -8225,6 +8225,15 @@ final class ReleasePipelineTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: escapingSymlink.root) }
         XCTAssertNotEqual(try runPerformanceArtifactVerifier(escapingSymlink, expectedCommit).exitCode, 0)
 
+        let generalEscapingSymlink = try makePerformanceArtifactFixture(
+            expectedCommit: expectedCommit,
+            additionalSymlinkTarget: outsideTarget.path
+        )
+        defer { try? FileManager.default.removeItem(at: generalEscapingSymlink.root) }
+        let symlinkRejection = try runPerformanceArtifactVerifier(generalEscapingSymlink, expectedCommit)
+        XCTAssertNotEqual(symlinkRejection.exitCode, 0)
+        XCTAssertTrue(symlinkRejection.output.contains("failure_reason=app-symlink-escape"))
+
         let traversal = try makePerformanceArtifactFixture(
             expectedCommit: expectedCommit,
             archiveEntrySubstitution: "|Suisui[.]app|../escape.app|"
@@ -8238,6 +8247,27 @@ final class ReleasePipelineTests: XCTestCase {
         )
         defer { try? FileManager.default.removeItem(at: specialFile.root) }
         XCTAssertNotEqual(try runPerformanceArtifactVerifier(specialFile, expectedCommit).exitCode, 0)
+
+        let scanFailure = try makePerformanceArtifactFixture(expectedCommit: expectedCommit)
+        defer { try? FileManager.default.removeItem(at: scanFailure.root) }
+        let commandDirectory = scanFailure.root.appendingPathComponent("commands", isDirectory: true)
+        try FileManager.default.createDirectory(at: commandDirectory, withIntermediateDirectories: true)
+        let failingFind = commandDirectory.appendingPathComponent("find")
+        try "#!/bin/sh\nexit 64\n".write(to: failingFind, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: failingFind.path)
+        let scanRejection = try runPerformanceArtifactVerifier(
+            scanFailure,
+            expectedCommit,
+            environment: ["PATH": "\(commandDirectory.path):/usr/bin:/bin"]
+        )
+        XCTAssertNotEqual(scanRejection.exitCode, 0)
+        XCTAssertTrue(scanRejection.output.contains("failure_reason=app-tree-scan-failed"))
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: scanFailure.destinationDirectory.appendingPathComponent("Suisui.app").path
+        ))
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: scanFailure.receiptDirectory.appendingPathComponent("artifact-verification.env").path
+        ))
     }
 
     func testReleaseLaunchPerformanceDestinationRetryIsBoundedAndIdentityPinned() throws {
@@ -17564,6 +17594,7 @@ final class ReleasePipelineTests: XCTestCase {
     private func makePerformanceArtifactFixture(
         expectedCommit: String,
         binarySymlinkTarget: String? = nil,
+        additionalSymlinkTarget: String? = nil,
         archiveEntrySubstitution: String? = nil,
         includesSpecialFile: Bool = false
     ) throws -> PerformanceArtifactFixture {
@@ -17588,6 +17619,14 @@ final class ReleasePipelineTests: XCTestCase {
             let fifo = appDirectory.appendingPathComponent("Contents/runtime.pipe")
             let mkfifo = try runTool(["/usr/bin/mkfifo", fifo.path])
             XCTAssertEqual(mkfifo.exitCode, 0, mkfifo.output)
+        }
+        if let additionalSymlinkTarget {
+            let symlinkDirectory = appDirectory.appendingPathComponent("Contents/Resources", isDirectory: true)
+            try FileManager.default.createDirectory(at: symlinkDirectory, withIntermediateDirectories: true)
+            try FileManager.default.createSymbolicLink(
+                atPath: symlinkDirectory.appendingPathComponent("external-resource").path,
+                withDestinationPath: additionalSymlinkTarget
+            )
         }
 
         let archive = artifactDirectory.appendingPathComponent("Suisui.app.tar.gz")
@@ -17623,7 +17662,8 @@ final class ReleasePipelineTests: XCTestCase {
 
     private func runPerformanceArtifactVerifier(
         _ fixture: PerformanceArtifactFixture,
-        _ expectedCommit: String
+        _ expectedCommit: String,
+        environment: [String: String] = [:]
     ) throws -> (exitCode: Int32, output: String) {
         try runTool([
             "/bin/bash",
@@ -17633,7 +17673,7 @@ final class ReleasePipelineTests: XCTestCase {
             "Suisui",
             expectedCommit,
             fixture.receiptDirectory.path
-        ])
+        ], environment: environment)
     }
 
     private func orderedShellStatementIndices(

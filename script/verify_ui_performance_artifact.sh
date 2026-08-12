@@ -103,15 +103,23 @@ fi
 
 # Framework bundles legitimately contain internal symlinks. Resolve every link
 # after extraction and accept it only when the final target remains in this app.
+SYMLINK_LIST="$STAGING_ROOT/app-symlinks.list"
+if ! find "$EXTRACTED_APP" -type l -print0 >"$SYMLINK_LIST"; then
+  failure "app-tree-scan-failed"
+fi
 while IFS= read -r -d '' link_path; do
   resolved_path="$(/bin/realpath "$link_path" 2>/dev/null)" || failure "app-symlink-invalid"
   case "$resolved_path" in
     "$EXTRACTED_APP"/*) ;;
     *) failure "app-symlink-escape" ;;
   esac
-done < <(find "$EXTRACTED_APP" -type l -print0)
+done <"$SYMLINK_LIST"
 
-if [[ -n "$(find "$EXTRACTED_APP" ! -type d ! -type f ! -type l -print -quit)" ]]; then
+SPECIAL_FILE_LIST="$STAGING_ROOT/app-special-files.list"
+if ! find "$EXTRACTED_APP" ! -type d ! -type f ! -type l -print -quit >"$SPECIAL_FILE_LIST"; then
+  failure "app-tree-scan-failed"
+fi
+if [[ -s "$SPECIAL_FILE_LIST" ]]; then
   failure "app-special-file-invalid"
 fi
 
