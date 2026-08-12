@@ -7063,6 +7063,42 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("due_at IS NULL"))
     }
 
+    func testRuntimeInboxVoicePlaybackSmokeUsesManagedAudioAndPIDScopedVisibleControls() throws {
+        let script = try readPackageFile("script/check_runtime_inbox_voice_playback_smoke.sh")
+
+        XCTAssertTrue(script.contains("SuisuiVisualFixtureSeeder"))
+        XCTAssertTrue(script.contains("HOME=\"$runtime_home\" CFFIXED_USER_HOME=\"$runtime_home\""))
+        XCTAssertTrue(script.contains("Application Support/Suisui/InboxAudio"))
+        XCTAssertTrue(script.contains("SUISUI_DATABASE_PATH=\"$database_path\""))
+        XCTAssertTrue(script.contains("SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=\"inbox\""))
+        XCTAssertTrue(script.contains("SUISUI_PROJECT_BOARD_SELECTED_TASK_ID=\"$inbox_voice_task_id\""))
+        XCTAssertTrue(script.contains("first process whose unix id is targetPID"))
+        XCTAssertTrue(script.contains("repeat with currentWindow in windows"))
+        XCTAssertTrue(script.contains("ui_evidence_ax_press_element.swift"))
+        XCTAssertTrue(script.contains("/usr/bin/swiftc \"$AX_PRESS_HELPER_SOURCE\""))
+        XCTAssertTrue(script.contains("\"$ax_press_helper\" \"$app_pid\" \"$identifier\""))
+        XCTAssertTrue(script.contains("inbox-voice-playback-toggle"))
+        XCTAssertTrue(script.contains("inbox-voice-seek"))
+        XCTAssertTrue(script.contains("Pause voice memo"))
+        XCTAssertTrue(script.contains("Play voice memo"))
+        XCTAssertTrue(script.contains("AXIncrement"))
+        XCTAssertTrue(script.contains("AXUIElementCreateApplication"))
+        XCTAssertTrue(script.contains("increment-max"))
+        XCTAssertTrue(script.contains("SUISUI_UI_EVIDENCE_AX_REQUIRE_EXACT_IDENTIFIER=1"))
+        XCTAssertTrue(script.contains("SUISUI_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1"))
+        XCTAssertTrue(script.contains("initial_playback_value"))
+        XCTAssertTrue(script.contains("playing_playback_value"))
+        XCTAssertTrue(script.contains("seeked_playback_value"))
+        XCTAssertTrue(script.contains("terminate_app\nsleep 1\nlaunch_app_for_inbox"))
+        XCTAssertTrue(script.contains(">\"$app_log\" 2>&1 &"))
+        XCTAssertTrue(script.contains("rm -rf \"$tmp_dir\""))
+        XCTAssertTrue(script.contains("OK: runtime inbox voice playback smoke verified restart, play, pause, progress, and seek through the visible Inbox UI"))
+        XCTAssertFalse(script.contains("killall"))
+        XCTAssertFalse(script.contains("pkill"))
+        XCTAssertFalse(script.contains("open -a"))
+        XCTAssertFalse(script.contains(":memory:"))
+    }
+
     func testRuntimeTodayCompleteSmokeScriptVerifiesVisibleRowCompletionPersistsToSQLite() throws {
         let script = try readPackageFile("script/check_runtime_today_complete_smoke.sh")
 
