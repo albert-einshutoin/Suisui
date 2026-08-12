@@ -8795,7 +8795,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(
             atPath: valid.destinationDirectory
                 .appendingPathComponent(
-                    "Suisui.app/Contents/Resources/Suisui_SuisuiCore.bundle/Contents/Info.plist"
+                    "Suisui.app/Contents/Resources/Suisui_SuisuiCore.bundle/Info.plist"
                 ).path
         ))
 
@@ -8811,7 +8811,7 @@ final class ReleasePipelineTests: XCTestCase {
         let missingResourcePayload = try makePerformanceArtifactFixture(
             expectedCommit: expectedCommit,
             omittedRuntimeResourceRelativePath:
-                "Suisui_SuisuiCore.bundle/Contents/Resources/action-plan.schema.json"
+                "Suisui_SuisuiCore.bundle/action-plan.schema.json"
         )
         defer { try? FileManager.default.removeItem(at: missingResourcePayload.root) }
         let missingPayloadRejection = try runPerformanceArtifactVerifier(missingResourcePayload, expectedCommit)
