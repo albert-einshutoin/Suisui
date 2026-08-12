@@ -1684,6 +1684,8 @@
 "Transcript only" = "Transcript only";
 "Voice memo playback" = "Voice memo playback";
 "Playable voice memo, duration %@" = "Playable voice memo, duration %@";
+"Audio playback is unavailable for this capture." = "Audio playback is unavailable for this capture.";
+"The Inbox recording could not be played." = "The Inbox recording could not be played.";
 "%lld connector policies stay out of Settings until connect, check, revoke, and audit UI is complete. %lld connector send paths remain Assistant Queue draft-only." = "%lld connector policies stay out of Settings until connect, check, revoke, and audit UI is complete. %lld connector send paths remain Assistant Queue draft-only.";
 "Loading MCP settings..." = "Loading MCP settings...";
 "Loading Sync settings..." = "Loading Sync settings...";

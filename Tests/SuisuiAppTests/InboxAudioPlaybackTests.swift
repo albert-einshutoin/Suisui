@@ -73,6 +73,25 @@ final class InboxAudioPlaybackTests: XCTestCase {
     }
 
     @MainActor
+    func testControllerTransitionsToFailedWhenPlaybackEngineReportsDecodeFailure() async throws {
+        let fixture = try AudioFixture()
+        defer { fixture.remove() }
+        let engine = FakeInboxAudioPlaybackEngine(duration: 8)
+        let controller = InboxAudioPlaybackController(
+            engine: engine,
+            waveformLoader: CountingWaveformLoader(samples: [1])
+        )
+
+        controller.load(captureID: 1, fileURL: fixture.managedAudio)
+        try controller.play()
+        engine.failDecoding()
+
+        await waitUntil {
+            controller.state == .failed(InboxAudioPlaybackError.playbackFailed.userMessage)
+        }
+    }
+
+    @MainActor
     func testControllerCachesOnlyCurrentCaptureByIDAndModificationDate() async throws {
         let fixture = try AudioFixture()
         defer { fixture.remove() }
@@ -152,6 +171,27 @@ final class InboxAudioPlaybackTests: XCTestCase {
         XCTAssertEqual(samples, Array(repeating: 0, count: 64))
     }
 
+    func testAVFoundationWaveformPropagatesCallerCancellationToDetachedReader() async throws {
+        let fixture = try AudioFixture()
+        defer { fixture.remove() }
+        try writeAudioFixture(to: fixture.managedAudio, amplitude: 0.5, duration: 120)
+        let loader = AVFoundationInboxWaveformLoader(
+            validator: ManagedInboxAudioPathValidator(rootURL: fixture.root)
+        )
+
+        let loadTask = Task {
+            try await loader.loadWaveform(from: fixture.managedAudio)
+        }
+        loadTask.cancel()
+
+        do {
+            _ = try await loadTask.value
+            XCTFail("A cancelled waveform load must not finish successfully")
+        } catch is CancellationError {
+            // The detached reader cooperatively observes the caller's cancellation.
+        }
+    }
+
     @MainActor
     func testAVFoundationPlayerLoadsSeeksAndStopsValidatedManagedAudio() throws {
         let fixture = try AudioFixture()
@@ -191,6 +231,7 @@ private final class FakeInboxAudioPlaybackEngine: InboxAudioPlaybackEngine {
     var currentTime: TimeInterval = 0
     private(set) var isPlaying = false
     private(set) var stopCount = 0
+    var terminalEventHandler: (@MainActor @Sendable (InboxAudioPlaybackTerminalEvent) -> Void)?
 
     init(duration: TimeInterval) {
         self.duration = duration
@@ -230,6 +271,12 @@ private final class FakeInboxAudioPlaybackEngine: InboxAudioPlaybackEngine {
     func finish(at value: TimeInterval) {
         currentTime = value
         isPlaying = false
+        terminalEventHandler?(.finishedSuccessfully)
+    }
+
+    func failDecoding() {
+        isPlaying = false
+        terminalEventHandler?(.decodingFailed)
     }
 }
 
@@ -288,7 +335,7 @@ private struct AudioFixture {
     }
 }
 
-private func writeAudioFixture(to url: URL, amplitude: Float) throws {
+private func writeAudioFixture(to url: URL, amplitude: Float, duration: Int = 1) throws {
     let format = AVAudioFormat(standardFormatWithSampleRate: 22_050, channels: 1)!
     let frameCount = AVAudioFrameCount(format.sampleRate)
     let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)!
@@ -298,5 +345,8 @@ private func writeAudioFixture(to url: URL, amplitude: Float) throws {
         samples[frame] = sin(2 * .pi * 440 * Float(frame) / Float(format.sampleRate)) * amplitude
     }
     let file = try AVAudioFile(forWriting: url, settings: format.settings)
-    try file.write(from: buffer)
+    for _ in 0 ..< duration {
+        buffer.frameLength = frameCount
+        try file.write(from: buffer)
+    }
 }

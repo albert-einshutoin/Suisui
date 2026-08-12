@@ -10,13 +10,18 @@ enum InboxAudioPlaybackError: Error, Equatable, LocalizedError {
     var userMessage: String {
         switch self {
         case .recordingUnavailable:
-            "Audio playback is unavailable for this capture."
+            String(localized: "Audio playback is unavailable for this capture.")
         case .playbackFailed:
-            "The Inbox recording could not be played."
+            String(localized: "The Inbox recording could not be played.")
         }
     }
 
     var errorDescription: String? { userMessage }
+}
+
+enum InboxAudioPlaybackTerminalEvent: Sendable {
+    case finishedSuccessfully
+    case decodingFailed
 }
 
 @MainActor
@@ -24,6 +29,7 @@ protocol InboxAudioPlaybackEngine: AnyObject, Sendable {
     var duration: TimeInterval { get }
     var currentTime: TimeInterval { get set }
     var isPlaying: Bool { get }
+    var terminalEventHandler: (@MainActor @Sendable (InboxAudioPlaybackTerminalEvent) -> Void)? { get set }
 
     func managedModificationDate(for fileURL: URL) throws -> Date
     func load(_ fileURL: URL) throws
@@ -37,12 +43,14 @@ protocol InboxAudioWaveformLoading: Sendable {
 }
 
 @MainActor
-final class AVFoundationInboxAudioPlayer: InboxAudioPlaybackEngine {
+final class AVFoundationInboxAudioPlayer: NSObject, InboxAudioPlaybackEngine, AVAudioPlayerDelegate {
     private let validator: ManagedInboxAudioPathValidator
     private var player: AVAudioPlayer?
+    var terminalEventHandler: (@MainActor @Sendable (InboxAudioPlaybackTerminalEvent) -> Void)?
 
     init(validator: ManagedInboxAudioPathValidator) {
         self.validator = validator
+        super.init()
     }
 
     var duration: TimeInterval { player?.duration ?? 0 }
@@ -72,6 +80,7 @@ final class AVFoundationInboxAudioPlayer: InboxAudioPlaybackEngine {
             guard loadedPlayer.prepareToPlay() else {
                 throw InboxAudioPlaybackError.playbackFailed
             }
+            loadedPlayer.delegate = self
             player = loadedPlayer
         } catch let error as InboxAudioPlaybackError {
             throw error
@@ -95,6 +104,31 @@ final class AVFoundationInboxAudioPlayer: InboxAudioPlaybackEngine {
         player?.currentTime = 0
         player = nil
     }
+
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor [weak self] in
+            self?.handleTerminalEvent(
+                for: player,
+                event: flag ? .finishedSuccessfully : .decodingFailed
+            )
+        }
+    }
+
+    nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: (any Error)?) {
+        Task { @MainActor [weak self] in
+            self?.handleTerminalEvent(for: player, event: .decodingFailed)
+        }
+    }
+
+    private func handleTerminalEvent(
+        for reportingPlayer: AVAudioPlayer,
+        event: InboxAudioPlaybackTerminalEvent
+    ) {
+        // A stopped player may report after a new selection loads; only the
+        // active player is allowed to change the controller's state.
+        guard reportingPlayer === player else { return }
+        terminalEventHandler?(event)
+    }
 }
 
 struct AVFoundationInboxWaveformLoader: InboxAudioWaveformLoading {
@@ -106,9 +140,16 @@ struct AVFoundationInboxWaveformLoader: InboxAudioWaveformLoading {
 
     func loadWaveform(from fileURL: URL) async throws -> [Double] {
         let managedURL = try validator.validatedManagedURL(fileURL)
-        return try await Task.detached(priority: .utility) {
+        // AVAudioFile reads stay off the caller's executor, while the explicit
+        // handler restores cancellation propagation lost by Task.detached.
+        let readTask = Task.detached(priority: .utility) {
             try Self.readWaveform(from: managedURL)
-        }.value
+        }
+        return try await withTaskCancellationHandler {
+            try await readTask.value
+        } onCancel: {
+            readTask.cancel()
+        }
     }
 
     private static func readWaveform(from fileURL: URL) throws -> [Double] {
@@ -176,6 +217,14 @@ final class InboxAudioPlaybackController: ObservableObject {
     @Published private(set) var waveform: [Double]?
 
     var isPlaying: Bool { state == .playing }
+    var isPlayable: Bool {
+        switch state {
+        case .paused, .playing:
+            true
+        case .idle, .loading, .failed:
+            false
+        }
+    }
     var errorMessage: String? {
         guard case let .failed(message) = state else { return nil }
         return message
@@ -196,13 +245,16 @@ final class InboxAudioPlaybackController: ObservableObject {
     init(engine: any InboxAudioPlaybackEngine, waveformLoader: any InboxAudioWaveformLoading) {
         self.engine = engine
         self.waveformLoader = waveformLoader
+        engine.terminalEventHandler = { [weak self] event in
+            self?.handleTerminalEvent(event)
+        }
     }
 
     static func live() -> InboxAudioPlaybackController {
         do {
-            let rootURL = try SuisuiAppDatabaseLocation.applicationSupportDirectoryURL(createDirectory: false)
-                .appendingPathComponent("InboxAudio", isDirectory: true)
-            let validator = ManagedInboxAudioPathValidator(rootURL: rootURL)
+            // Reuse the store's root hardening so playback cannot accept an
+            // InboxAudio leaf symlink that startup maintenance would reject.
+            let validator = try ManagedInboxAudioFileStore().validator
             return InboxAudioPlaybackController(
                 engine: AVFoundationInboxAudioPlayer(validator: validator),
                 waveformLoader: AVFoundationInboxWaveformLoader(validator: validator)
@@ -314,6 +366,18 @@ final class InboxAudioPlaybackController: ObservableObject {
         }
     }
 
+    private func handleTerminalEvent(_ event: InboxAudioPlaybackTerminalEvent) {
+        switch event {
+        case .finishedSuccessfully:
+            progressTask?.cancel()
+            progressTask = nil
+            currentTime = engine.currentTime
+            state = selectedKey == nil ? .idle : .paused
+        case .decodingFailed:
+            fail(with: .playbackFailed)
+        }
+    }
+
     private func fail(with error: InboxAudioPlaybackError) {
         reset(stoppingEngine: selectedKey != nil)
         state = .failed(error.userMessage)
@@ -342,6 +406,7 @@ private final class UnavailableInboxAudioPlaybackEngine: InboxAudioPlaybackEngin
         set {}
     }
     var isPlaying: Bool { false }
+    var terminalEventHandler: (@MainActor @Sendable (InboxAudioPlaybackTerminalEvent) -> Void)?
 
     func managedModificationDate(for fileURL: URL) throws -> Date {
         throw InboxAudioPlaybackError.recordingUnavailable

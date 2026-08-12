@@ -2010,6 +2010,8 @@
 "Selects this task without changing task status or Calendar." = "タスクの状態やカレンダーを変更せず、このタスクを選択します。";
 "Memo: %@" = "メモ: %@";
 "Playable voice memo, duration %@" = "再生可能な音声メモ、長さ%@";
+"Audio playback is unavailable for this capture." = "この音声入力は再生できません。";
+"The Inbox recording could not be played." = "受信箱の録音を再生できませんでした。";
 "Create project" = "プロジェクトを作成";
 "Update project" = "プロジェクトを更新";
 "List projects" = "プロジェクト一覧を表示";

@@ -1330,9 +1330,10 @@ private struct InboxVoiceIntakeDetail: View {
                         .background(Color.accentColor, in: Circle())
                 }
                 .buttonStyle(.plain)
+                .disabled(!playback.isPlayable)
                 .accessibilityIdentifier("inbox-voice-playback-toggle")
                 .accessibilityLabel(playback.isPlaying ? "Pause voice memo" : "Play voice memo")
-                .accessibilityValue(playbackAccessibilityValue)
+                .accessibilityValue(playback.errorMessage ?? playbackAccessibilityValue)
 
                 Group {
                     if let waveform = playback.waveform {
@@ -1367,6 +1368,7 @@ private struct InboxVoiceIntakeDetail: View {
                     in: 0...max(playback.duration, 1)
                 )
                 .controlSize(.small)
+                .disabled(!playback.isPlayable)
                 .accessibilityIdentifier("inbox-voice-seek")
                 .accessibilityLabel("Voice memo position")
                 .accessibilityValue(
@@ -1391,7 +1393,7 @@ private struct InboxVoiceIntakeDetail: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inbox-voice-transcript-preview")
         .accessibilityLabel("Voice memo playback")
-        .accessibilityValue(localizedDisplay(
+        .accessibilityValue(playback.errorMessage ?? localizedDisplay(
             "Playable voice memo, duration %@",
             localizedInboxCaptureDuration(capture.durationSeconds)
         ))
