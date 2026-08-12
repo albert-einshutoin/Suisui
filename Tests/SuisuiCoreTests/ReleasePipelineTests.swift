@@ -8060,7 +8060,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(quiescenceBlock.contains("/usr/bin/top -l 1 -n 0"))
         XCTAssertTrue(quiescenceBlock.contains("parse_macos_cpu_idle_percent"))
         XCTAssertTrue(quiescenceBlock.contains("END {"))
-        XCTAssertTrue(quiescenceBlock.contains("print last_idle_percent"))
+        XCTAssertTrue(quiescenceBlock.contains("sample_count == 2"))
+        XCTAssertTrue(quiescenceBlock.contains("print second_idle_percent"))
         XCTAssertTrue(quiescenceBlock.contains("for (field_index = 1;"))
         XCTAssertFalse(quiescenceBlock.contains("for (index = 1;"))
         XCTAssertTrue(quiescenceBlock.contains(
@@ -8098,8 +8099,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SUISUI_PERFORMANCE_USE_PREBUILT_APP=\"${SUISUI_PERFORMANCE_USE_PREBUILT_APP:-0}\""))
         XCTAssertTrue(script.contains("SUISUI_PERFORMANCE_USE_PREBUILT_APP must be 0 or 1"))
         XCTAssertTrue(script.contains("release performance profile is required for a prebuilt app"))
-        XCTAssertTrue(script.contains("prebuilt performance app is unavailable or not executable"))
+        XCTAssertTrue(script.contains("SUISUI_PERFORMANCE_ARTIFACT_DIR is required for a prebuilt app"))
         XCTAssertTrue(script.contains("if [[ \"$SUISUI_PERFORMANCE_USE_PREBUILT_APP\" == \"1\" ]]; then"))
+        XCTAssertTrue(script.contains("script/verify_ui_performance_artifact.sh"))
         XCTAssertTrue(script.contains("OK: using verified prebuilt release app for performance measurement"))
         XCTAssertTrue(script.contains("SUISUI_RELEASE_BUILD_PURPOSE=performance"))
     }
@@ -8129,6 +8131,113 @@ final class ReleasePipelineTests: XCTestCase {
         )
         XCTAssertEqual(parsed.exitCode, 0, parsed.output)
         XCTAssertEqual(parsed.output.trimmingCharacters(in: .whitespacesAndNewlines), "93.75")
+
+        for invalidOutput in [
+            "CPU usage: 5.00% user, 15.00% sys, 80.00% idle",
+            """
+            CPU usage: 5.00% user, 15.00% sys, 80.00% idle
+            CPU usage: unavailable
+            """
+        ] {
+            let rejected = try runTool(
+                ["/bin/bash", "-c", harness],
+                environment: ["TOP_FIXTURE": invalidOutput]
+            )
+            XCTAssertNotEqual(
+                rejected.exitCode,
+                0,
+                "The interval probe must fail closed unless top emits exactly two valid CPU samples."
+            )
+        }
+    }
+
+    func testUIPerformanceArtifactVerifierAcceptsOnlyImmutableSafeReleaseArchive() throws {
+        let expectedCommit = String(repeating: "a", count: 40)
+        let valid = try makePerformanceArtifactFixture(expectedCommit: expectedCommit)
+        defer { try? FileManager.default.removeItem(at: valid.root) }
+
+        let accepted = try runTool([
+            "/bin/bash",
+            packageRoot().appendingPathComponent("script/verify_ui_performance_artifact.sh").path,
+            valid.artifactDirectory.path,
+            valid.destinationDirectory.path,
+            "Suisui",
+            expectedCommit,
+            valid.receiptDirectory.path
+        ])
+        XCTAssertEqual(accepted.exitCode, 0, accepted.output)
+        let verifiedBinary = valid.destinationDirectory
+            .appendingPathComponent("Suisui.app/Contents/MacOS/Suisui")
+        XCTAssertTrue(FileManager.default.isExecutableFile(atPath: verifiedBinary.path))
+        XCTAssertFalse(try verifiedBinary.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink ?? true)
+        let receipt = try String(
+            contentsOf: valid.receiptDirectory.appendingPathComponent("artifact-verification.env"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(receipt.contains("verification=passed"))
+        XCTAssertTrue(receipt.contains("source_commit=\(expectedCommit)"))
+
+        let duplicateManifest = try makePerformanceArtifactFixture(expectedCommit: expectedCommit)
+        defer { try? FileManager.default.removeItem(at: duplicateManifest.root) }
+        let duplicateURL = duplicateManifest.artifactDirectory.appendingPathComponent("manifest.env")
+        let duplicateHandle = try FileHandle(forWritingTo: duplicateURL)
+        try duplicateHandle.seekToEnd()
+        try duplicateHandle.write(contentsOf: Data("source_commit=\(expectedCommit)\n".utf8))
+        try duplicateHandle.close()
+        XCTAssertNotEqual(try runPerformanceArtifactVerifier(duplicateManifest, expectedCommit).exitCode, 0)
+
+        let mismatchedChecksum = try makePerformanceArtifactFixture(expectedCommit: expectedCommit)
+        defer { try? FileManager.default.removeItem(at: mismatchedChecksum.root) }
+        let mismatchManifest = mismatchedChecksum.artifactDirectory.appendingPathComponent("manifest.env")
+        var mismatchText = try String(contentsOf: mismatchManifest, encoding: .utf8)
+        mismatchText = mismatchText.replacingOccurrences(
+            of: "archive_sha256=",
+            with: "archive_sha256=0"
+        )
+        try mismatchText.write(to: mismatchManifest, atomically: true, encoding: .utf8)
+        XCTAssertNotEqual(try runPerformanceArtifactVerifier(mismatchedChecksum, expectedCommit).exitCode, 0)
+
+        let wrongCommit = try makePerformanceArtifactFixture(expectedCommit: expectedCommit)
+        defer { try? FileManager.default.removeItem(at: wrongCommit.root) }
+        XCTAssertNotEqual(
+            try runPerformanceArtifactVerifier(wrongCommit, String(repeating: "b", count: 40)).exitCode,
+            0
+        )
+
+        let debugConfiguration = try makePerformanceArtifactFixture(expectedCommit: expectedCommit)
+        defer { try? FileManager.default.removeItem(at: debugConfiguration.root) }
+        let debugManifest = debugConfiguration.artifactDirectory.appendingPathComponent("manifest.env")
+        var debugText = try String(contentsOf: debugManifest, encoding: .utf8)
+        debugText = debugText.replacingOccurrences(
+            of: "build_configuration=release",
+            with: "build_configuration=debug"
+        )
+        try debugText.write(to: debugManifest, atomically: true, encoding: .utf8)
+        XCTAssertNotEqual(try runPerformanceArtifactVerifier(debugConfiguration, expectedCommit).exitCode, 0)
+
+        let outsideTarget = valid.root.appendingPathComponent("outside-tool")
+        try "outside".write(to: outsideTarget, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: outsideTarget.path)
+        let escapingSymlink = try makePerformanceArtifactFixture(
+            expectedCommit: expectedCommit,
+            binarySymlinkTarget: outsideTarget.path
+        )
+        defer { try? FileManager.default.removeItem(at: escapingSymlink.root) }
+        XCTAssertNotEqual(try runPerformanceArtifactVerifier(escapingSymlink, expectedCommit).exitCode, 0)
+
+        let traversal = try makePerformanceArtifactFixture(
+            expectedCommit: expectedCommit,
+            archiveEntrySubstitution: "|Suisui[.]app|../escape.app|"
+        )
+        defer { try? FileManager.default.removeItem(at: traversal.root) }
+        XCTAssertNotEqual(try runPerformanceArtifactVerifier(traversal, expectedCommit).exitCode, 0)
+
+        let specialFile = try makePerformanceArtifactFixture(
+            expectedCommit: expectedCommit,
+            includesSpecialFile: true
+        )
+        defer { try? FileManager.default.removeItem(at: specialFile.root) }
+        XCTAssertNotEqual(try runPerformanceArtifactVerifier(specialFile, expectedCommit).exitCode, 0)
     }
 
     func testReleaseLaunchPerformanceDestinationRetryIsBoundedAndIdentityPinned() throws {
@@ -17443,6 +17552,88 @@ final class ReleasePipelineTests: XCTestCase {
         // reports. Draining while the child is running prevents the child bash
         // process from blocking on a full stdout/stderr pipe.
         return (process.terminationStatus, String(data: outputBuffer.data, encoding: .utf8) ?? "")
+    }
+
+    private struct PerformanceArtifactFixture {
+        let root: URL
+        let artifactDirectory: URL
+        let destinationDirectory: URL
+        let receiptDirectory: URL
+    }
+
+    private func makePerformanceArtifactFixture(
+        expectedCommit: String,
+        binarySymlinkTarget: String? = nil,
+        archiveEntrySubstitution: String? = nil,
+        includesSpecialFile: Bool = false
+    ) throws -> PerformanceArtifactFixture {
+        let root = packageRoot()
+            .appendingPathComponent(".build/test-ui-performance-artifact-\(UUID().uuidString)", isDirectory: true)
+        let sourceDirectory = root.appendingPathComponent("source", isDirectory: true)
+        let appDirectory = sourceDirectory.appendingPathComponent("Suisui.app", isDirectory: true)
+        let executableDirectory = appDirectory.appendingPathComponent("Contents/MacOS", isDirectory: true)
+        let binary = executableDirectory.appendingPathComponent("Suisui")
+        let artifactDirectory = root.appendingPathComponent("artifact", isDirectory: true)
+        let destinationDirectory = root.appendingPathComponent("destination", isDirectory: true)
+        let receiptDirectory = root.appendingPathComponent("receipt", isDirectory: true)
+        try FileManager.default.createDirectory(at: executableDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: artifactDirectory, withIntermediateDirectories: true)
+        if let binarySymlinkTarget {
+            try FileManager.default.createSymbolicLink(atPath: binary.path, withDestinationPath: binarySymlinkTarget)
+        } else {
+            try "#!/bin/sh\nexit 0\n".write(to: binary, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary.path)
+        }
+        if includesSpecialFile {
+            let fifo = appDirectory.appendingPathComponent("Contents/runtime.pipe")
+            let mkfifo = try runTool(["/usr/bin/mkfifo", fifo.path])
+            XCTAssertEqual(mkfifo.exitCode, 0, mkfifo.output)
+        }
+
+        let archive = artifactDirectory.appendingPathComponent("Suisui.app.tar.gz")
+        var tarArguments = ["/usr/bin/tar", "-czf", archive.path]
+        if let archiveEntrySubstitution {
+            tarArguments += ["-s", archiveEntrySubstitution]
+        }
+        tarArguments += ["-C", sourceDirectory.path, "Suisui.app"]
+        let tar = try runTool(tarArguments, environment: ["COPYFILE_DISABLE": "1"])
+        XCTAssertEqual(tar.exitCode, 0, tar.output)
+
+        let archiveData = try Data(contentsOf: archive)
+        let archiveSHA256 = SHA256.hash(data: archiveData).map { String(format: "%02x", $0) }.joined()
+        let manifest = """
+        format_version=1
+        source_commit=\(expectedCommit)
+        build_configuration=release
+        archive_sha256=\(archiveSHA256)
+
+        """
+        try manifest.write(
+            to: artifactDirectory.appendingPathComponent("manifest.env"),
+            atomically: true,
+            encoding: .utf8
+        )
+        return PerformanceArtifactFixture(
+            root: root,
+            artifactDirectory: artifactDirectory,
+            destinationDirectory: destinationDirectory,
+            receiptDirectory: receiptDirectory
+        )
+    }
+
+    private func runPerformanceArtifactVerifier(
+        _ fixture: PerformanceArtifactFixture,
+        _ expectedCommit: String
+    ) throws -> (exitCode: Int32, output: String) {
+        try runTool([
+            "/bin/bash",
+            packageRoot().appendingPathComponent("script/verify_ui_performance_artifact.sh").path,
+            fixture.artifactDirectory.path,
+            fixture.destinationDirectory.path,
+            "Suisui",
+            expectedCommit,
+            fixture.receiptDirectory.path
+        ])
     }
 
     private func orderedShellStatementIndices(

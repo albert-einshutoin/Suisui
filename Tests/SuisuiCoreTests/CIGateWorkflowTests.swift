@@ -112,11 +112,7 @@ final class CIGateWorkflowTests: XCTestCase {
 
         XCTAssertTrue(measureJob.contains("uses: actions/download-artifact@v4"))
         XCTAssertTrue(measureJob.contains("name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}"))
-        XCTAssertTrue(measureJob.contains("Verify immutable performance app artifact"))
-        XCTAssertTrue(measureJob.contains("git rev-parse HEAD"))
-        XCTAssertTrue(measureJob.contains("shasum -a 256"))
-        XCTAssertTrue(measureJob.contains("/usr/bin/tar -tzf"))
-        XCTAssertTrue(measureJob.contains("archive-entry-unsafe"))
+        XCTAssertTrue(measureJob.contains("SUISUI_PERFORMANCE_ARTIFACT_DIR:"))
         XCTAssertTrue(measureJob.contains("SUISUI_PERFORMANCE_USE_PREBUILT_APP: 1"))
         XCTAssertFalse(measureJob.contains("Restore Swift build cache"))
     }

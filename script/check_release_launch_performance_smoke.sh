@@ -143,17 +143,21 @@ parse_macos_cpu_idle_percent() {
   local idle_percent
   idle_percent="$(awk '
     /^CPU usage:/ {
+      sample_count += 1
+      if (sample_count != 2) {
+        next
+      }
       for (field_index = 1; field_index <= NF; field_index += 1) {
         if ($field_index == "idle") {
           value = $(field_index - 1)
           gsub(/%/, "", value)
-          last_idle_percent = value
+          second_idle_percent = value
         }
       }
     }
     END {
-      if (last_idle_percent != "") {
-        print last_idle_percent
+      if (sample_count == 2 && second_idle_percent != "") {
+        print second_idle_percent
       }
     }
   ')"
@@ -654,8 +658,21 @@ printf '%s\t%s\t%s\t%s\n' \
 terminate_app
 prepare_ax_helpers
 if [[ "$SUISUI_PERFORMANCE_USE_PREBUILT_APP" == "1" ]]; then
-  if [[ ! -d "$APP_BUNDLE" || ! -x "$APP_BINARY" ]]; then
-    echo "BLOCKER: prebuilt performance app is unavailable or not executable" >&2
+  performance_artifact_dir="${SUISUI_PERFORMANCE_ARTIFACT_DIR:-}"
+  if [[ -z "$performance_artifact_dir" ]]; then
+    echo "BLOCKER: SUISUI_PERFORMANCE_ARTIFACT_DIR is required for a prebuilt app" >&2
+    exit 2
+  fi
+  # The measurement process owns verification so a local caller cannot label a
+  # stale or debug bundle as trusted merely by setting the prebuilt flag.
+  "$ROOT_DIR/script/verify_ui_performance_artifact.sh" \
+    "$performance_artifact_dir" \
+    "$ROOT_DIR/dist" \
+    "$APP_NAME" \
+    "$(git rev-parse HEAD)" \
+    "$OUTPUT_DIR"
+  if [[ ! -f "$APP_BINARY" || -L "$APP_BINARY" || ! -x "$APP_BINARY" ]]; then
+    echo "BLOCKER: verified prebuilt performance app is unavailable or not executable" >&2
     exit 2
   fi
   echo "OK: using verified prebuilt release app for performance measurement"
