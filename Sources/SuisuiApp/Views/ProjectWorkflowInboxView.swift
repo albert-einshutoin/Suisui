@@ -599,13 +599,16 @@ private struct InboxReferenceTaskRow: View {
             return "clock"
         }
         if title.contains("アジェンダ") || title.contains("agenda") || title.contains("プレゼン") || title.contains("presentation") {
-            return "arrow.uturn.left"
+            return "waveform"
+        }
+        if title.contains("api") || title.contains("リリース") || title.contains("release") {
+            return "sparkle"
         }
         switch category {
         case .task:
             return "checkmark"
         case .proposal:
-            return "sparkles"
+            return "sparkle"
         case .notification:
             return "bell"
         }

@@ -2207,7 +2207,7 @@
 "Received" = "受信日時";
 "Related" = "関連";
 "Unassigned" = "未設定";
-"Today %@ · Taro Yamada (you)" = "今日 %@ · 山田 太郎 (あなた)";
+"Today %@ · Taro Yamada (you)" = "今日 %@ · 山田太郎（あなた）";
 "Voice Memo · %@" = "音声メモ · %@";
 "Add %@" = "%@を追加";
 "Add task" = "タスクを追加";

@@ -1334,7 +1334,7 @@ private func writeInboxVoiceFixture(duration: Double, to url: URL) throws {
     appendUInt32(UInt32(dataSize))
 
     var envelopeSeed: UInt64 = 0x5A17_C9E3
-    var smoothedPeak = 0.55
+    var smoothedPeak = 0.78
     let speechEnvelope = (0...64).map { _ in
         // A fixed LCG makes visual evidence reproducible. Smoothing adjacent
         // targets avoids clicks while retaining irregular speech-like peaks
@@ -1342,8 +1342,8 @@ private func writeInboxVoiceFixture(duration: Double, to url: URL) throws {
         envelopeSeed &*= 6_364_136_223_846_793_005
         envelopeSeed &+= 1_442_695_040_888_963_407
         let unitPeak = Double(envelopeSeed >> 11) / Double(1 << 53)
-        let targetPeak = 0.18 + unitPeak * 0.82
-        smoothedPeak += (targetPeak - smoothedPeak) * 0.52
+        let targetPeak = 0.65 + unitPeak * 0.35
+        smoothedPeak += (targetPeak - smoothedPeak) * 0.35
         return smoothedPeak
     }
 

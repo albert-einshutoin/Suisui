@@ -3653,6 +3653,8 @@ final class AppExperienceSourceTests: XCTestCase {
     func testInboxDetailUsesReferenceMatchedVerticalMetrics() throws {
         let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift")
         let seederSource = try readPackageFile("Sources/SuisuiVisualFixtureSeeder/main.swift")
+        let english = try readPackageFile("Sources/SuisuiApp/Resources/en.lproj/Localizable.strings")
+        let japanese = try readPackageFile("Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings")
         let actionStyleStart = try XCTUnwrap(
             source.range(of: "private struct InboxTriageActionButtonStyle")
         )
@@ -3706,12 +3708,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(seederSource.contains("var envelopeSeed: UInt64 = 0x5A17_C9E3"))
         XCTAssertTrue(seederSource.contains("let speechEnvelope = (0...64).map"))
         XCTAssertTrue(seederSource.contains("envelopeSeed &*= 6_364_136_223_846_793_005"))
-        XCTAssertTrue(seederSource.contains("smoothedPeak += (targetPeak - smoothedPeak) * 0.52"))
+        XCTAssertTrue(seederSource.contains("let targetPeak = 0.65 + unitPeak * 0.35"))
+        XCTAssertTrue(seederSource.contains("smoothedPeak += (targetPeak - smoothedPeak) * 0.35"))
         XCTAssertTrue(seederSource.contains("let easedBlend = blend * blend * (3 - 2 * blend)"))
         XCTAssertFalse(seederSource.contains("sin(progress *"))
         XCTAssertTrue(source.contains("mainSurface(referenceContentTopPadding: 10)"))
         XCTAssertTrue(source.contains("mainSurface(referenceContentTopPadding: 0)"))
         XCTAssertTrue(source.contains(".padding(.bottom, referenceContentTopPadding)"))
+        XCTAssertTrue(source.contains("return \"waveform\""))
+        XCTAssertTrue(source.contains("return \"sparkle\""))
+        XCTAssertFalse(source.contains("return \"arrow.uturn.left\""))
+        XCTAssertTrue(japanese.contains("\"Inbox reference presentation metadata\" = \"山田さんからの音声メモ · 今日 10:15\";"))
+        XCTAssertTrue(japanese.contains("\"Today %@ · Taro Yamada (you)\" = \"今日 %@ · 山田太郎（あなた）\";"))
+        XCTAssertTrue(english.contains("\"Today %@ · Taro Yamada (you)\" = \"Today %@ · Taro Yamada (you)\";"))
     }
 
     func testInboxReferenceUIUsesPersistedTriageLifecycle() throws {
