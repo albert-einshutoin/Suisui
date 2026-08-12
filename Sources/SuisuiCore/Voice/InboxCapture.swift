@@ -136,9 +136,24 @@ public protocol InboxCaptureStore {
     func get(id: Int64) throws -> InboxCaptureRecord
     func list(taskID: Int64) throws -> [InboxCaptureRecord]
     func list(taskIDs: Set<Int64>) throws -> [Int64: [InboxCaptureRecord]]
+    /// Returns every persisted capture for startup audio reconciliation.
+    func listAll() throws -> [InboxCaptureRecord]
     func updateMemo(id: Int64, memo: String?) throws -> InboxCaptureRecord
+    /// Repoints a capture after a legacy temporary recording is migrated.
+    func updateAudioFilePath(id: Int64, audioFilePath: String) throws -> InboxCaptureRecord
     func relinkCaptures(fromTaskID: Int64, toTaskID: Int64) throws -> Int
     func delete(id: Int64) throws
+}
+
+public extension InboxCaptureStore {
+    // Existing integrations may provide only the read model used by Inbox.
+    // Startup reconciliation is an additive capability, so older test doubles
+    // remain valid and simply opt out until they implement the richer contract.
+    func listAll() throws -> [InboxCaptureRecord] { [] }
+
+    func updateAudioFilePath(id: Int64, audioFilePath: String) throws -> InboxCaptureRecord {
+        throw InboxCaptureStoreError.notFound(id)
+    }
 }
 
 public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendable {
@@ -248,6 +263,15 @@ public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendab
         return recordsByTaskID
     }
 
+    public func listAll() throws -> [InboxCaptureRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return try connection.queryRows(
+            "SELECT * FROM inbox_capture_records ORDER BY id ASC;"
+        ).map(Self.record(row:))
+    }
+
     @discardableResult
     public func updateMemo(id: Int64, memo: String?) throws -> InboxCaptureRecord {
         lock.lock()
@@ -265,6 +289,25 @@ public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendab
             WHERE id = ?;
             """,
             parameters: [SQLiteValue(normalizedMemo), .integer(id)]
+        )
+        return try getLocked(id: id)
+    }
+
+    @discardableResult
+    public func updateAudioFilePath(id: Int64, audioFilePath: String) throws -> InboxCaptureRecord {
+        let normalizedPath = try requiredTrimmedPath(audioFilePath)
+        lock.lock()
+        defer { lock.unlock() }
+
+        _ = try getLocked(id: id)
+        try connection.execute(
+            """
+            UPDATE inbox_capture_records
+            SET audio_file_path = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?;
+            """,
+            parameters: [.text(normalizedPath), .integer(id)]
         )
         return try getLocked(id: id)
     }

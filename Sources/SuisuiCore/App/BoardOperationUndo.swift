@@ -11,6 +11,10 @@ public enum BoardOperationUndoEntry: Equatable, Sendable {
     /// preserving detail, due date, priority, recurrence, and the original
     /// completion timestamp.
     case restoreTask(snapshot: ProjectBoardTask)
+    /// Inverse of deleting a task that owns Inbox voice captures. The capture
+    /// rows are recreated after the task so SQLite's foreign key remains valid
+    /// and the managed audio paths stay reachable for Undo playback.
+    case restoreTaskWithCaptures(snapshot: ProjectBoardTask, captures: [InboxCaptureRecord])
     /// Inverse of a status move (keyboard, card controls, or a single-card
     /// drag & drop): put the previous status back.
     case revertStatus(snapshot: ProjectBoardTask)

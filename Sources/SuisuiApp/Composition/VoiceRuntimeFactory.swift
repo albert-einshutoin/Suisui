@@ -60,6 +60,10 @@ extension AppRuntimeFactory {
             let projectBoardStore = SQLiteProjectBoardStore(connection: connection)
             let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)
             let inboxAudioFileStore = try ManagedInboxAudioFileStore()
+            try reconcileManagedInboxAudio(
+                captureStore: inboxCaptureStore,
+                audioStore: inboxAudioFileStore
+            )
             inboxCaptureService = InboxVoiceCaptureService(
                 audioRecorder: audioRecorder,
                 sttProvider: sttProvider,
@@ -129,6 +133,39 @@ extension AppRuntimeFactory {
             )
         }
         return viewModel
+    }
+
+    /// Reconciles the managed audio directory before exposing voice capture.
+    /// Legacy recorder paths are migrated only when they are app-owned temp
+    /// files; unknown paths remain transcript-only instead of being copied.
+    @MainActor
+    private static func reconcileManagedInboxAudio(
+        captureStore: SQLiteInboxCaptureStore,
+        audioStore: ManagedInboxAudioFileStore
+    ) throws {
+        for capture in try captureStore.listAll() {
+            guard let managedURL = try audioStore.migrateLegacyRecordingIfNeeded(
+                from: URL(fileURLWithPath: capture.audioFilePath)
+            ) else {
+                continue
+            }
+            guard managedURL.path != URL(fileURLWithPath: capture.audioFilePath).standardizedFileURL.path else {
+                continue
+            }
+
+            do {
+                _ = try captureStore.updateAudioFilePath(id: capture.id, audioFilePath: managedURL.path)
+                try? FileManager.default.removeItem(atPath: capture.audioFilePath)
+            } catch {
+                // Do not leave a copied file behind when SQLite could not
+                // commit the new path; the original row remains playable if
+                // its temporary source is still present.
+                audioStore.removeImportedRecording(at: managedURL)
+            }
+        }
+
+        let referencedPaths = Set(try captureStore.listAll().map(\.audioFilePath))
+        try audioStore.removeOrphanedRecordings(referencedPaths: referencedPaths)
     }
 
     private static func voiceConversationSessionID() -> UUID {

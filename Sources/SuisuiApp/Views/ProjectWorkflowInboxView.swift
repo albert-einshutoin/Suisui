@@ -770,6 +770,19 @@ private struct InboxActionPanel: View {
                     viewModel.deferSelectedTaskForLater()
                 }
                 .buttonStyle(.bordered)
+                .keyboardShortcut("4", modifiers: [.command, .control])
+                .accessibilityIdentifier("inbox-action-review-later")
+
+                Button {
+                    viewModel.scheduleSelectedTaskForToday()
+                } label: {
+                    Label("Schedule Today", systemImage: "calendar.badge.plus")
+                }
+                .buttonStyle(.bordered)
+                .keyboardShortcut("3", modifiers: [.command, .control])
+                .accessibilityIdentifier("inbox-action-schedule-today")
+                .opacity(0.01)
+                .frame(width: 1, height: 1)
 
                 Button("Delete", role: .destructive) {
                     isDeleteConfirmationPresented = true
@@ -862,45 +875,6 @@ private struct InboxActionPanel: View {
         }
     }
 
-    @ViewBuilder
-    private var actionButtons: some View {
-        Button {
-            viewModel.markSelectedTaskAsTask()
-        } label: {
-            Label("Make Task", systemImage: "checkmark.circle")
-        }
-        .keyboardShortcut("1", modifiers: [.command, .control])
-        .help("Make selected Inbox item a task (Control-Command-1)")
-        .accessibilityIdentifier("inbox-action-make-task")
-        .accessibilityHint("Classifies the selected Inbox item as a task in the local database.")
-        Button {
-            viewModel.convertSelectedTaskToProject()
-        } label: {
-            Label("Make Project", systemImage: "folder.badge.plus")
-        }
-        .keyboardShortcut("2", modifiers: [.command, .control])
-        .help("Make selected Inbox item a project (Control-Command-2)")
-        .accessibilityIdentifier("inbox-action-make-project")
-        .accessibilityHint("Creates a local project from the selected Inbox item.")
-        Button {
-            viewModel.scheduleSelectedTaskForToday()
-        } label: {
-            Label("Schedule Today", systemImage: "calendar.badge.plus")
-        }
-        .keyboardShortcut("3", modifiers: [.command, .control])
-        .help("Schedule selected Inbox item for today (Control-Command-3)")
-        .accessibilityIdentifier("inbox-action-schedule-today")
-        .accessibilityHint("Sets the selected Inbox item due date to today.")
-        Button {
-            viewModel.deferSelectedTaskForLater()
-        } label: {
-            Label("Review Later", systemImage: "clock")
-        }
-        .keyboardShortcut("4", modifiers: [.command, .control])
-        .help("Review selected Inbox item later (Control-Command-4)")
-        .accessibilityIdentifier("inbox-action-review-later")
-        .accessibilityHint("Leaves the selected Inbox item for later review.")
-    }
 }
 
 private struct InboxProposedActions: View {
@@ -926,6 +900,9 @@ private struct InboxProposedActions: View {
             proposedAction(
                 title: suggestedActionTitle,
                 systemImage: "checkmark",
+                accessibilityIdentifier: "inbox-action-make-task",
+                accessibilityHint: "Classifies the selected Inbox item as a task in the local database.",
+                keyboardShortcut: "1",
                 trailingTitle: String(localized: "Edit"),
                 trailingAction: {
                     editedSuggestedTaskTitle = task?.title ?? ""
@@ -938,6 +915,9 @@ private struct InboxProposedActions: View {
             proposedAction(
                 title: String(localized: "Link to a new project"),
                 systemImage: "folder",
+                accessibilityIdentifier: "inbox-action-make-project",
+                accessibilityHint: "Creates a local project from the selected Inbox item.",
+                keyboardShortcut: "2",
                 trailingTitle: nil
             ) {
                 viewModel.convertSelectedTaskToProject()
@@ -946,6 +926,8 @@ private struct InboxProposedActions: View {
             proposedAction(
                 title: String(localized: "Search related past materials"),
                 systemImage: "magnifyingglass",
+                accessibilityIdentifier: "inbox-action-search-related",
+                accessibilityHint: "Searches related past materials without changing the Inbox item.",
                 trailingTitle: nil,
                 action: onSearchRelatedMaterials
             )
@@ -978,26 +960,22 @@ private struct InboxProposedActions: View {
     private func proposedAction(
         title: String,
         systemImage: String,
+        accessibilityIdentifier: String,
+        accessibilityHint: String,
+        keyboardShortcut: KeyEquivalent? = nil,
         trailingTitle: String? = nil,
         trailingAction: (() -> Void)? = nil,
         action: @escaping () -> Void
     ) -> some View {
         HStack(spacing: 8) {
-            Button(action: action) {
-                HStack(spacing: 8) {
-                    Image(systemName: systemImage)
-                        .font(.caption2)
-                        .foregroundStyle(Color.accentColor)
-                        .frame(width: 16)
-                    Text(title)
-                        .font(.caption)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Spacer(minLength: 4)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
+            proposedActionButton(
+                action: action,
+                title: title,
+                systemImage: systemImage,
+                accessibilityIdentifier: accessibilityIdentifier,
+                accessibilityHint: accessibilityHint,
+                keyboardShortcut: keyboardShortcut
+            )
 
             if let trailingTitle, let trailingAction {
                 Button(trailingTitle, action: trailingAction)
@@ -1011,9 +989,43 @@ private struct InboxProposedActions: View {
             }
         }
         .padding(.vertical, 9)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
         .accessibilityIdentifier("inbox-proposed-action-\(systemImage)")
+    }
+
+    @ViewBuilder
+    private func proposedActionButton(
+        action: @escaping () -> Void,
+        title: String,
+        systemImage: String,
+        accessibilityIdentifier: String,
+        accessibilityHint: String,
+        keyboardShortcut: KeyEquivalent?
+    ) -> some View {
+        let button = Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .font(.caption2)
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 16)
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(accessibilityIdentifier)
+        .accessibilityHint(accessibilityHint)
+
+        if let keyboardShortcut {
+            button.keyboardShortcut(keyboardShortcut, modifiers: [.command, .control])
+        } else {
+            button
+        }
     }
 }
 
@@ -1083,9 +1095,13 @@ private struct InboxSelectedItemContext: View {
                         Button("Schedule Today", systemImage: "calendar.badge.plus") {
                             viewModel.scheduleSelectedTaskForToday()
                         }
+                        .keyboardShortcut("3", modifiers: [.command, .control])
+                        .accessibilityIdentifier("inbox-action-schedule-today")
                         Button("Review Later", systemImage: "clock") {
                             viewModel.deferSelectedTaskForLater()
                         }
+                        .keyboardShortcut("4", modifiers: [.command, .control])
+                        .accessibilityIdentifier("inbox-action-review-later-menu")
                         if !viewModel.selectedInboxCaptureRecords.isEmpty {
                             Button("Show AI Interpretation and Note", systemImage: "sparkles") {
                                 onShowAdvancedVoiceMetadata()
@@ -1094,6 +1110,9 @@ private struct InboxSelectedItemContext: View {
                     }
                     .labelStyle(.iconOnly)
                     .menuStyle(.borderlessButton)
+                    .accessibilityIdentifier("inbox-selected-item-more")
+                    .accessibilityLabel("More")
+
                 }
 
                 Text(task.title)
@@ -1263,6 +1282,20 @@ private final class InboxAudioPlaybackModel: ObservableObject {
         loadedKey = nil
         isPlaying = false
         currentTime = 0
+    }
+
+    func seek(to value: TimeInterval) {
+        guard let player else { return }
+        let upperBound = max(player.duration, duration, 0)
+        let clampedValue = min(max(value, 0), upperBound)
+        player.currentTime = clampedValue
+        currentTime = clampedValue
+        if clampedValue >= upperBound, player.isPlaying {
+            player.pause()
+            isPlaying = false
+            progressTask?.cancel()
+            progressTask = nil
+        }
     }
 
     private static func managedAudioURL(for path: String) -> URL? {
@@ -1512,7 +1545,21 @@ private struct InboxVoiceIntakeDetail: View {
                 .accessibilityIdentifier("inbox-voice-waveform")
                 .accessibilityHidden(true)
 
-                Text(localizedInboxCaptureDuration(capture.durationSeconds))
+                Slider(
+                    value: Binding(
+                        get: { playback.currentTime },
+                        set: { playback.seek(to: $0) }
+                    ),
+                    in: 0...max(playback.duration, 1)
+                )
+                .controlSize(.small)
+                .accessibilityIdentifier("inbox-voice-seek")
+                .accessibilityLabel("Voice memo position")
+                .accessibilityValue(
+                    "\(localizedInboxCaptureDuration(playback.currentTime)) / \(localizedInboxCaptureDuration(playback.duration))"
+                )
+
+                Text(localizedInboxCaptureDuration(playback.duration > 0 ? playback.duration : capture.durationSeconds))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .frame(width: 42, alignment: .trailing)

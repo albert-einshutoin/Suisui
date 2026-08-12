@@ -1799,6 +1799,7 @@
 "Undo the last board task change" = "Undo the last board task change";
 "Reverts the most recent task completion, move, edit, or delete on the Project Board." = "Reverts the most recent task completion, move, edit, or delete on the Project Board.";
 "Undo: restored the deleted task." = "Undo: restored the deleted task.";
+"Undo: restored the deleted task and voice memo." = "Undo: restored the deleted task and voice memo.";
 "Undo: moved the task back." = "Undo: moved the task back.";
 "Undo: restored the task details." = "Undo: restored the task details.";
 "Undo: reopened the completed task." = "Undo: reopened the completed task.";
@@ -1935,6 +1936,7 @@
 "Validates and stores the project directory entered in the path field." = "Validates and stores the project directory entered in the path field.";
 "Enter an absolute path beginning with /." = "Enter an absolute path beginning with /.";
 "Voice memo" = "Voice memo";
+"Voice memo position" = "Voice memo position";
 "Unclassified" = "Unclassified";
 "Classified" = "Classified";
 "Dismissed" = "Dismissed";

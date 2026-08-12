@@ -8364,6 +8364,33 @@ public final class ProjectBoardViewModel: ObservableObject {
                 let restored = try store.restoreTask(from: snapshot)
                 restoredSelection = (restored.projectID, restored.id)
                 feedbackMessage = String(localized: "Undo: restored the deleted task.")
+            case .restoreTaskWithCaptures(let snapshot, let captures):
+                let restored = try store.restoreTask(from: snapshot)
+                do {
+                    guard let inboxCaptureStore else {
+                        throw InboxCaptureStoreError.linkedTaskMissing
+                    }
+                    for capture in captures {
+                        _ = try inboxCaptureStore.createVoiceCapture(InboxVoiceCaptureDraft(
+                            taskID: restored.id,
+                            audioFilePath: capture.audioFilePath,
+                            durationSeconds: capture.durationSeconds,
+                            transcript: capture.transcript,
+                            interpretationSummary: capture.interpretationSummary,
+                            memo: capture.memo,
+                            classificationStatus: capture.classificationStatus,
+                            transcriptionStatus: capture.transcriptionStatus,
+                            createdAt: capture.createdAt
+                        ))
+                    }
+                } catch {
+                    // Keep the undo atomic from the user's perspective: a
+                    // task without its voice capture is not a valid restore.
+                    try? store.deleteTask(id: restored.id)
+                    throw error
+                }
+                restoredSelection = (restored.projectID, restored.id)
+                feedbackMessage = String(localized: "Undo: restored the deleted task and voice memo.")
             case .revertStatus(let snapshot):
                 let reverted = try store.applyTaskUndoSnapshot(snapshot)
                 restoredSelection = (reverted.projectID, reverted.id)
@@ -8715,10 +8742,28 @@ public final class ProjectBoardViewModel: ObservableObject {
         beginRecoverableOperation(taskID: selectedTaskID)
 
         let deletedTask = selectedTask
+        let deletedCaptures: [InboxCaptureRecord]
+        do {
+            deletedCaptures = try inboxCaptureStore?.list(taskID: selectedTaskID) ?? []
+        } catch {
+            recordFailure(
+                .saveFailed(Self.userFacingMessage(for: error)),
+                taskID: selectedTaskID,
+                retryAction: .deleteTask(id: selectedTaskID)
+            )
+            return
+        }
         do {
             try store.deleteTask(id: selectedTaskID)
             if let deletedTask {
-                boardOperationUndo.push(.restoreTask(snapshot: deletedTask))
+                if deletedCaptures.isEmpty {
+                    boardOperationUndo.push(.restoreTask(snapshot: deletedTask))
+                } else {
+                    boardOperationUndo.push(.restoreTaskWithCaptures(
+                        snapshot: deletedTask,
+                        captures: deletedCaptures
+                    ))
+                }
             }
             self.selectedTaskID = nil
             load()

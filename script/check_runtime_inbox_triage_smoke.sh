@@ -361,6 +361,106 @@ APPLESCRIPT
   done
 }
 
+pressMenuItemContaining() {
+  local fragment="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT'
+on run argv
+  set appName to item 1 of argv
+  set fragment to item 2 of argv
+  tell application "System Events"
+    if not (exists process appName) then error appName & " process is not visible to System Events"
+    tell process appName
+      set axItems to entire contents of front window
+      repeat with axItem in axItems
+        set itemRole to ""
+        try
+          set itemRole to role of axItem as text
+        end try
+        if itemRole is "AXMenuItem" then
+          set itemName to ""
+          set itemTitle to ""
+          set itemIdentifier to ""
+          try
+            set itemName to name of axItem as text
+          end try
+          try
+            set itemTitle to value of attribute "AXTitle" of axItem as text
+          end try
+          try
+            set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
+          end try
+          if (itemIdentifier & " " & itemName & " " & itemTitle) contains fragment then
+            perform action "AXPress" of axItem
+            return "pressed menu item " & fragment
+          end if
+        end if
+      end repeat
+    end tell
+  end tell
+  error "menu item signal not found: " & fragment
+end run
+APPLESCRIPT
+    then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: failed to press menu item in AX tree: $fragment" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+pressAXActionContaining() {
+  local fragment="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT'
+on run argv
+  set appName to item 1 of argv
+  set fragment to item 2 of argv
+  tell application "System Events"
+    if not (exists process appName) then error appName & " process is not visible to System Events"
+    tell process appName
+      set axItems to entire contents of front window
+      repeat with axItem in axItems
+        set itemIdentifier to ""
+        set itemName to ""
+        set itemTitle to ""
+        try
+          set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
+        end try
+        try
+          set itemName to name of axItem as text
+        end try
+        try
+          set itemTitle to value of attribute "AXTitle" of axItem as text
+        end try
+        if (itemIdentifier & " " & itemName & " " & itemTitle) contains fragment then
+          try
+            perform action "AXPress" of axItem
+            return "pressed AX action " & fragment
+          end try
+        end if
+      end repeat
+    end tell
+  end tell
+  error "AX action signal not found: " & fragment
+end run
+APPLESCRIPT
+    then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: failed to press AX action: $fragment" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
 setTextFieldContaining() {
   local fragment="$1"
   local replacement="$2"
@@ -496,6 +596,7 @@ verify_single_value "make-task persists Inbox disposition" "SELECT CASE WHEN t.s
 
 schedule_task_id="$(create_inbox_item "AX Runtime Inbox Schedule")"
 pressButtonUntilSQLiteValue "schedule inbox item" "inbox-action-schedule-today" "SELECT CASE WHEN t.status='planned' AND t.due_at IS NOT NULL AND t.project_id=$inbox_project_id AND r.disposition='scheduled' AND r.review_at IS NULL THEN 1 ELSE 0 END FROM tasks t JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.id=$schedule_task_id;" "1"
+verify_single_value "schedule inbox item" "SELECT CASE WHEN t.status='planned' AND t.due_at IS NOT NULL AND t.project_id=$inbox_project_id AND r.disposition='scheduled' AND r.review_at IS NULL THEN 1 ELSE 0 END FROM tasks t JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.id=$schedule_task_id;" "1"
 pressButtonUntilSQLiteValue "undo inbox schedule" "inbox-classification-undo" "SELECT CASE WHEN t.status='backlog' AND t.due_at IS NULL AND t.project_id=$inbox_project_id AND r.disposition='unprocessed' AND r.review_at IS NULL THEN 1 ELSE 0 END FROM tasks t JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.id=$schedule_task_id;" "1"
 
 review_task_id="$(create_inbox_item "AX Runtime Inbox Review Later")"

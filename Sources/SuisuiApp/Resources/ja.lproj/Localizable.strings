@@ -1787,6 +1787,7 @@
 "Undo the last board task change" = "直前のボードのタスク変更を元に戻します";
 "Reverts the most recent task completion, move, edit, or delete on the Project Board." = "プロジェクトボードで直前に行ったタスクの完了・移動・編集・削除を元に戻します。";
 "Undo: restored the deleted task." = "元に戻す: 削除したタスクを復元しました。";
+"Undo: restored the deleted task and voice memo." = "元に戻す: 削除したタスクと音声メモを復元しました。";
 "Undo: moved the task back." = "元に戻す: タスクを元のステータスに戻しました。";
 "Undo: restored the task details." = "元に戻す: タスクの内容を復元しました。";
 "Undo: reopened the completed task." = "元に戻す: 完了したタスクを再オープンしました。";
@@ -1929,6 +1930,7 @@
 "Validates and stores the project directory entered in the path field." = "入力欄のプロジェクトディレクトリを検証して保存します。";
 "Enter an absolute path beginning with /." = "/ から始まる絶対パスを入力してください。";
 "Voice memo" = "音声メモ";
+"Voice memo position" = "音声メモの再生位置";
 "Unclassified" = "未分類";
 "Classified" = "分類済み";
 "Dismissed" = "対象外";
