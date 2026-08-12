@@ -624,9 +624,14 @@ launch_route_and_wait_for_markers() {
   # its AX route subtree is queryable; only a window-classified failure gets
   # one clean relaunch below.
   case_deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
-  if ! wait_for_marker_until "project-board-command-palette" "" "$case_deadline"; then
-    route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
-    return 1
+  if [[ "$route_id" != "inbox" ]]; then
+    # Inbox owns its reference-matched sort/filter header and intentionally
+    # hides the native window toolbar. Other routes still prove the global
+    # command-palette marker before their route-specific AX contract.
+    if ! wait_for_marker_until "project-board-command-palette" "" "$case_deadline"; then
+      route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
+      return 1
+    fi
   fi
   if ! wait_for_marker_until "$route_sidebar_marker" "" "$case_deadline"; then
     route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"

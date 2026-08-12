@@ -7293,6 +7293,17 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("set -x"))
     }
 
+    func testRuntimeRouteDoesNotRequireToolbarMarkerWhenInboxIntentionallyHidesToolbar() throws {
+        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let script = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
+
+        XCTAssertTrue(boardSource.contains("selectedDestination == .inbox ? .hidden : .automatic"))
+        XCTAssertTrue(script.contains("if [[ \"$route_id\" != \"inbox\" ]]; then"))
+        XCTAssertTrue(script.contains("wait_for_marker_until \"project-board-command-palette\" \"\" \"$case_deadline\""))
+        XCTAssertTrue(script.contains("wait_for_marker_until \"$route_sidebar_marker\" \"\" \"$case_deadline\""))
+        XCTAssertTrue(script.contains("wait_for_marker_until \"$route_content_marker\" \"$route_text\" \"$case_deadline\""))
+    }
+
     func testRuntimeTodayWindowSizeMatchesVisualManifestAndRecordsSafeMismatchDiagnostics() throws {
         let script = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
         let manifestData = try Data(
