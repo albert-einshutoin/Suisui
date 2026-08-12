@@ -8570,15 +8570,18 @@ final class ProjectBoardStoreTests: XCTestCase {
     @MainActor
     func testInboxReviewLaterBecomesVisibleAtNextLocalNine() throws {
         let store = InMemoryProjectBoardStore()
+        let referenceDate = try isoDate("2026-08-11T08:59:00Z")
         let viewModel = ProjectBoardViewModel(
             store: store,
+            // Keep every derived Inbox read model on the scenario clock. Using
+            // wall time here would make the pre-boundary assertion expire.
+            readModelNow: { referenceDate },
             readModelCalendar: { self.utcCalendar() }
         )
         viewModel.load()
         let task = try XCTUnwrap(viewModel.createInboxTask(title: "Review later"))
         viewModel.selectedTaskID = task.id
 
-        let referenceDate = try isoDate("2026-08-11T08:59:00Z")
         viewModel.deferSelectedTaskForLater(referenceDate: referenceDate)
 
         XCTAssertTrue(viewModel.filteredInboxTasks.isEmpty)
