@@ -7220,6 +7220,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("CPU_CONVERGENCE_TIMEOUT_SECONDS - (case_deadline - SECONDS)"))
         XCTAssertTrue(script.contains("MAX_TOOLBAR_LAYOUT_DEPTH=\"${SUISUI_RUNTIME_TODAY_MAX_TOOLBAR_LAYOUT_DEPTH:-1}\""))
         XCTAssertTrue(script.contains("SUISUI_RUNTIME_TODAY_MAX_TOOLBAR_LAYOUT_DEPTH must be a non-negative integer"))
+        XCTAssertTrue(script.contains("runtime_preview_temporal_key()"))
+        XCTAssertTrue(script.contains("runtime_preview_build_policy()"))
+        XCTAssertTrue(script.contains("runtime_preview_temporal_key 1"))
+        XCTAssertTrue(script.contains("runtime_preview_temporal_key \"$preview_build_count\""))
+        XCTAssertTrue(script.contains("product-temporal-cache-context-changed"))
+        XCTAssertTrue(script.contains("printf '2 product-temporal-cache-context-changed'"))
         XCTAssertTrue(script.contains("case_deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))"))
         XCTAssertTrue(script.contains("RUNTIME_WINDOW_ATTEMPTS=2"))
         XCTAssertTrue(script.contains("launch_route_and_wait_for_markers \"$route_artifact_dir/window-attempt-1.err\""))
@@ -7260,9 +7266,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(waitForDatabaseTableSource.contains("2>/dev/null"))
         XCTAssertTrue(script.contains("toolbar-recursion-diagnostic"))
         XCTAssertTrue(script.contains("capture_runtime_route_diagnostics"))
-        XCTAssertTrue(script.contains("route_start_day_key"))
-        XCTAssertTrue(script.contains("allowed_preview_build_count=2"))
-        XCTAssertTrue(script.contains("route crossed the local day boundary"))
+        XCTAssertTrue(script.contains("runtime_preview_temporal_key"))
+        XCTAssertTrue(script.contains("runtime_preview_build_policy"))
+        XCTAssertTrue(script.contains("first_preview_build_key"))
+        XCTAssertTrue(script.contains("current_preview_build_key"))
+        XCTAssertTrue(script.contains("printf '2 product-temporal-cache-context-changed'"))
+        XCTAssertTrue(script.contains("A same-block rebuild remains a hard failure."))
         XCTAssertTrue(script.contains("processID == $app_pid"))
         XCTAssertTrue(script.contains("preview-build-count"))
         XCTAssertTrue(script.contains("toolbar-layout-max-depth"))
@@ -7302,6 +7311,43 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("wait_for_marker_until \"project-board-command-palette\" \"\" \"$case_deadline\""))
         XCTAssertTrue(script.contains("wait_for_marker_until \"$route_sidebar_marker\" \"\" \"$case_deadline\""))
         XCTAssertTrue(script.contains("wait_for_marker_until \"$route_content_marker\" \"$route_text\" \"$case_deadline\""))
+    }
+
+    func testRuntimeTodayPreviewDiagnosticAllowsOnlyOneChangedProductTemporalContext() throws {
+        let script = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
+        let functionStart = try XCTUnwrap(script.range(of: "runtime_preview_build_policy() {"))
+        let functionEnd = try XCTUnwrap(
+            script.range(of: "\n\ncapture_runtime_route_diagnostics() {", range: functionStart.upperBound..<script.endIndex)
+        )
+        let functionSource = String(script[functionStart.lowerBound..<functionEnd.lowerBound])
+        let harness = """
+        set -euo pipefail
+        \(functionSource)
+        runtime_preview_build_policy "$1" "$2" "$3"
+        """
+
+        let singleBuild = try runTool(["/bin/bash", "-c", harness, "harness", "1", "1330", "1330"])
+        let sameKeyRebuild = try runTool(["/bin/bash", "-c", harness, "harness", "2", "1330", "1330"])
+        let changedKeyRebuild = try runTool(["/bin/bash", "-c", harness, "harness", "2", "1330", "1400"])
+        let thirdBuild = try runTool(["/bin/bash", "-c", harness, "harness", "3", "1330", "1400"])
+        XCTAssertEqual(singleBuild.exitCode, 0, singleBuild.output)
+        XCTAssertEqual(sameKeyRebuild.exitCode, 0, sameKeyRebuild.output)
+        XCTAssertEqual(changedKeyRebuild.exitCode, 0, changedKeyRebuild.output)
+        XCTAssertEqual(thirdBuild.exitCode, 0, thirdBuild.output)
+        XCTAssertEqual(singleBuild.output, "1 single-time-block")
+        XCTAssertEqual(sameKeyRebuild.output, "1 single-time-block")
+        XCTAssertEqual(changedKeyRebuild.output, "2 product-temporal-cache-context-changed")
+        XCTAssertEqual(thirdBuild.output, "1 single-time-block")
+
+        for arguments in [
+            ["invalid", "1330", "1400"],
+            ["2", "invalid", "1400"],
+            ["2", "1330", "invalid"]
+        ] {
+            let invalid = try runTool(["/bin/bash", "-c", harness, "harness"] + arguments)
+            XCTAssertNotEqual(invalid.exitCode, 0, invalid.output)
+            XCTAssertTrue(invalid.output.isEmpty, invalid.output)
+        }
     }
 
     func testRuntimeTodayWindowSizeMatchesVisualManifestAndRecordsSafeMismatchDiagnostics() throws {
@@ -8010,7 +8056,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(quiescenceBlock.contains("LC_ALL=C /usr/bin/perl"))
         XCTAssertTrue(quiescenceBlock.contains("CLOCK_MONOTONIC"))
         XCTAssertTrue(quiescenceBlock.contains("alarm($remaining_seconds)"))
-        XCTAssertTrue(quiescenceBlock.contains("/usr/bin/top -l 1 -n 0"))
+        XCTAssertTrue(quiescenceBlock.contains("/usr/bin/top -l 2 -s 1 -n 0"))
+        XCTAssertFalse(quiescenceBlock.contains("/usr/bin/top -l 1 -n 0"))
+        XCTAssertTrue(quiescenceBlock.contains("parse_macos_cpu_idle_percent"))
+        XCTAssertTrue(quiescenceBlock.contains("END {"))
+        XCTAssertTrue(quiescenceBlock.contains("print last_idle_percent"))
         XCTAssertTrue(quiescenceBlock.contains("for (field_index = 1;"))
         XCTAssertFalse(quiescenceBlock.contains("for (index = 1;"))
         XCTAssertTrue(quiescenceBlock.contains(
@@ -8040,6 +8090,33 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("COLD_LAUNCH_SAMPLE_COUNT=3"))
         XCTAssertTrue(script.contains("median_elapsed_ms"))
         XCTAssertTrue(script.contains("wait_for_marker \"project-board-command-palette\""))
+    }
+
+    func testReleaseLaunchPerformanceQuiescenceUsesTheSecondMacOSTopSample() throws {
+        let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
+        let functionStart = try XCTUnwrap(script.range(of: "parse_macos_cpu_idle_percent() {"))
+        let functionEnd = try XCTUnwrap(
+            script.range(of: "\n\nread_macos_cpu_idle_percent() {", range: functionStart.upperBound..<script.endIndex)
+        )
+        let functionSource = String(script[functionStart.lowerBound..<functionEnd.lowerBound])
+        let harness = """
+        set -euo pipefail
+        \(functionSource)
+        printf '%s\n' "$TOP_FIXTURE" | parse_macos_cpu_idle_percent
+        """
+        let topOutput = """
+        Processes: 501 total, 3 running, 498 sleeping
+        CPU usage: 22.22% user, 11.12% sys, 66.66% idle
+        Processes: 501 total, 2 running, 499 sleeping
+        CPU usage: 4.10% user, 2.15% sys, 93.75% idle
+        """
+
+        let parsed = try runTool(
+            ["/bin/bash", "-c", harness],
+            environment: ["TOP_FIXTURE": topOutput]
+        )
+        XCTAssertEqual(parsed.exitCode, 0, parsed.output)
+        XCTAssertEqual(parsed.output.trimmingCharacters(in: .whitespacesAndNewlines), "93.75")
     }
 
     func testReleaseLaunchPerformanceDestinationRetryIsBoundedAndIdentityPinned() throws {

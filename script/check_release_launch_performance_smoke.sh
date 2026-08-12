@@ -129,9 +129,31 @@ monotonic_ms() {
     -e 'printf "%d\n", clock_gettime(CLOCK_MONOTONIC) * 1000'
 }
 
+parse_macos_cpu_idle_percent() {
+  local idle_percent
+  idle_percent="$(awk '
+    /^CPU usage:/ {
+      for (field_index = 1; field_index <= NF; field_index += 1) {
+        if ($field_index == "idle") {
+          value = $(field_index - 1)
+          gsub(/%/, "", value)
+          last_idle_percent = value
+        }
+      }
+    }
+    END {
+      if (last_idle_percent != "") {
+        print last_idle_percent
+      }
+    }
+  ')"
+  [[ "$idle_percent" =~ ^[0-9]+([.][0-9]+)?$ ]] || return 1
+  printf '%s\n' "$idle_percent"
+}
+
 read_macos_cpu_idle_percent() {
   local deadline_ms="$1"
-  local snapshot idle_percent
+  local snapshot
   snapshot="$(
     LC_ALL=C /usr/bin/perl -MTime::HiRes=clock_gettime,alarm,CLOCK_MONOTONIC -e '
       my $deadline_ms = shift @ARGV;
@@ -141,22 +163,9 @@ read_macos_cpu_idle_percent() {
       $SIG{ALRM} = "DEFAULT";
       alarm($remaining_seconds);
       exec @ARGV;
-    ' "$deadline_ms" /usr/bin/top -l 1 -n 0 2>/dev/null
+    ' "$deadline_ms" /usr/bin/top -l 2 -s 1 -n 0 2>/dev/null
   )" || return 1
-  idle_percent="$(printf '%s\n' "$snapshot" | awk '
-    /^CPU usage:/ {
-      for (field_index = 1; field_index <= NF; field_index += 1) {
-        if ($field_index == "idle") {
-          value = $(field_index - 1)
-          gsub(/%/, "", value)
-          print value
-          exit
-        }
-      }
-    }
-  ')"
-  [[ "$idle_percent" =~ ^[0-9]+([.][0-9]+)?$ ]] || return 1
-  printf '%s\n' "$idle_percent"
+  printf '%s\n' "$snapshot" | parse_macos_cpu_idle_percent
 }
 
 wait_for_runner_quiescence() {
