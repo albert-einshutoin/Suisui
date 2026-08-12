@@ -3532,8 +3532,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(inboxWorkflowSource.contains("voiceDetailAccessibilityIdentifier: \"inbox-voice-intake-detail\""))
         XCTAssertFalse(inboxWorkflowSource.contains("inbox-voice-intake-detail-compact"))
         XCTAssertTrue(inboxWorkflowSource.contains("task.sourceCommand == \"ui-evidence\""))
-        XCTAssertTrue(inboxWorkflowSource.contains("managedAudioURL(for: path)"))
-        XCTAssertTrue(inboxWorkflowSource.contains("waveformSamples(for: url)"))
+        XCTAssertTrue(inboxWorkflowSource.contains("InboxAudioPlaybackController.live()"))
+        XCTAssertTrue(inboxWorkflowSource.contains("fileURL: URL(fileURLWithPath: capture.audioFilePath)"))
         XCTAssertFalse(inboxWorkflowSource.contains("private var waveformBars"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-workflow\")"))
         XCTAssertTrue(workflowSource.contains("fillsAvailableHeight ? \"inbox-triage-rail\" : \"inbox-action-panel\""))
@@ -3592,8 +3592,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-source-metadata\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-review-status\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityElement(children: .contain)"))
-        XCTAssertTrue(workflowSource.contains("Voice transcript preview"))
-        XCTAssertTrue(workflowSource.contains("Transcript-only voice capture, duration %@, waveform preview"))
+        XCTAssertTrue(workflowSource.contains("Voice memo playback"))
+        XCTAssertTrue(workflowSource.contains("Playable voice memo, duration %@"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-playback-toggle\")"))
+        XCTAssertTrue(workflowSource.contains("playbackAccessibilityValue"))
+        XCTAssertFalse(workflowSource.contains("Transcript-only voice capture, duration %@, waveform preview"))
         XCTAssertFalse(workflowSource.contains("Playback unavailable in this MVP"))
         XCTAssertFalse(workflowSource.contains("Button {} label:"))
         XCTAssertTrue(workflowSource.contains(".accessibilityLabel(title)"))
@@ -3610,7 +3613,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("No AI interpretation yet."))
         XCTAssertTrue(coreSource.contains("private var inboxCaptureRecordsByTaskID: [Int64: [InboxCaptureRecord]]"))
         XCTAssertTrue(coreSource.contains("$0.transcriptionStatus == .succeeded"))
-        XCTAssertTrue(appSource.contains("inboxCaptureStore: SQLiteInboxCaptureStore(connection: connection)"))
+        XCTAssertTrue(appSource.contains("let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)"))
+        XCTAssertTrue(appSource.contains("inboxCaptureStore: inboxCaptureStore"))
         XCTAssertTrue(appSource.contains("Window(\"Voice Command\", id: \"voice-capture\")"))
     }
 
@@ -3689,6 +3693,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("accessibilityIdentifier: \"inbox-action-make-task\""))
         XCTAssertTrue(workflowSource.contains("accessibilityIdentifier: \"inbox-action-make-project\""))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-schedule-today\")"))
+        XCTAssertTrue(
+            workflowSource.contains(
+                ".accessibilityElement(children: .contain)\n        .accessibilityIdentifier(\"inbox-selected-context\")"
+            )
+        )
+        XCTAssertFalse(workflowSource.contains(".opacity(0.01)"))
+        XCTAssertFalse(workflowSource.contains(".frame(width: 1, height: 1)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-review-later\")"))
         XCTAssertTrue(workflowSource.contains("keyboardShortcut: \"1\""))
         XCTAssertTrue(workflowSource.contains("keyboardShortcut: \"2\""))
@@ -5863,6 +5874,72 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceFactory.contains("let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)"))
         XCTAssertTrue(voiceFactory.contains("inboxCaptureService = InboxVoiceCaptureService("))
         XCTAssertTrue(voiceFactory.contains("inboxCaptureSaver: inboxCaptureService"))
+    }
+
+    func testProjectBoardRuntimeReconcilesManagedInboxAudioWithoutHidingTranscriptOnFailure() throws {
+        let projectRuntimeSource = try readPackageFile(
+            "Sources/SuisuiApp/Composition/ProjectBoardRuntimeFactory.swift"
+        )
+        let voiceRuntimeSource = try readPackageFile(
+            "Sources/SuisuiApp/Composition/VoiceRuntimeFactory.swift"
+        )
+        let availableStart = try XCTUnwrap(
+            projectRuntimeSource.range(of: "case let .available(")
+        )
+        let unavailableStart = try XCTUnwrap(
+            projectRuntimeSource.range(
+                of: "case let .unavailable(error):",
+                range: availableStart.upperBound..<projectRuntimeSource.endIndex
+            )
+        )
+        let availableRuntime = String(
+            projectRuntimeSource[
+                availableStart.lowerBound..<unavailableStart.lowerBound
+            ]
+        )
+
+        XCTAssertTrue(
+            projectRuntimeSource.contains(
+                "static func reconcileManagedInboxAudio("
+            )
+        )
+        XCTAssertFalse(
+            voiceRuntimeSource.contains(
+                "private static func reconcileManagedInboxAudio("
+            )
+        )
+        XCTAssertTrue(
+            voiceRuntimeSource.contains(
+                "try reconcileManagedInboxAudio("
+            )
+        )
+        XCTAssertTrue(
+            availableRuntime.contains(
+                "let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)"
+            )
+        )
+        XCTAssertTrue(
+            availableRuntime.contains(
+                "let inboxAudioFileStore = try ManagedInboxAudioFileStore()"
+            )
+        )
+        XCTAssertTrue(
+            availableRuntime.contains(
+                "try reconcileManagedInboxAudio("
+            )
+        )
+        XCTAssertTrue(
+            availableRuntime.contains(
+                "inboxCaptureStore: inboxCaptureStore"
+            )
+        )
+        XCTAssertTrue(
+            availableRuntime.contains(
+                "Inbox audio reconciliation failed category=audio_reconciliation_failed"
+            )
+        )
+        XCTAssertFalse(availableRuntime.contains("return .unavailable(error)"))
+        XCTAssertFalse(availableRuntime.contains("error.localizedDescription"))
     }
 
     func testVoiceAssistantQueuePanelRendersWithoutPlanningResponse() throws {

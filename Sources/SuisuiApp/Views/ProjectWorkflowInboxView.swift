@@ -1,7 +1,6 @@
 import Foundation
 import SuisuiCore
 import SwiftUI
-import AVFoundation
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -773,17 +772,6 @@ private struct InboxActionPanel: View {
                 .keyboardShortcut("4", modifiers: [.command, .control])
                 .accessibilityIdentifier("inbox-action-review-later")
 
-                Button {
-                    viewModel.scheduleSelectedTaskForToday()
-                } label: {
-                    Label("Schedule Today", systemImage: "calendar.badge.plus")
-                }
-                .buttonStyle(.bordered)
-                .keyboardShortcut("3", modifiers: [.command, .control])
-                .accessibilityIdentifier("inbox-action-schedule-today")
-                .opacity(0.01)
-                .frame(width: 1, height: 1)
-
                 Button("Delete", role: .destructive) {
                     isDeleteConfirmationPresented = true
                 }
@@ -1153,7 +1141,9 @@ private struct InboxSelectedItemContext: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .accessibilityElement(children: .combine)
+        // Interactive actions must remain separate AX descendants; combining
+        // the context hid the visible More menu from VoiceOver and UI gates.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inbox-selected-context")
     }
 }
@@ -1215,183 +1205,6 @@ private func normalizedInboxDetail(_ detail: String) -> String {
     detail.split(whereSeparator: \.isWhitespace).joined(separator: " ")
 }
 
-@MainActor
-private final class InboxAudioPlaybackModel: ObservableObject {
-    @Published private(set) var isPlaying = false
-    @Published private(set) var currentTime: TimeInterval = 0
-    @Published private(set) var duration: TimeInterval = 0
-    @Published private(set) var waveform: [CGFloat]?
-    @Published private(set) var errorMessage: String?
-
-    private var player: AVAudioPlayer?
-    private var progressTask: Task<Void, Never>?
-    private var waveformTask: Task<Void, Never>?
-    private var loadedKey: String?
-    private var loadToken = UUID()
-
-    func load(path: String, fallbackDuration: TimeInterval, captureID: Int64) {
-        let key = "\(captureID):\(path):\(fallbackDuration)"
-        guard loadedKey != key || player == nil else { return }
-        loadToken = UUID()
-        let token = loadToken
-        progressTask?.cancel()
-        progressTask = nil
-        waveformTask?.cancel()
-        waveformTask = nil
-        player = nil
-        isPlaying = false
-        currentTime = 0
-        duration = max(fallbackDuration, 0)
-        waveform = nil
-        errorMessage = nil
-        loadedKey = nil
-
-        guard let url = Self.managedAudioURL(for: path) else {
-            errorMessage = "Audio playback is unavailable for this capture."
-            return
-        }
-
-        do {
-            let audioPlayer = try AVAudioPlayer(contentsOf: url)
-            audioPlayer.prepareToPlay()
-            player = audioPlayer
-            duration = max(audioPlayer.duration, duration)
-            loadedKey = key
-        } catch {
-            errorMessage = "Audio playback is unavailable for this capture."
-            return
-        }
-
-        waveformTask = Task { @MainActor [weak self] in
-            let samples = await Task.detached(priority: .utility) {
-                Self.waveformSamples(for: url)
-            }.value
-            guard let self, self.loadToken == token else { return }
-            self.waveform = samples
-        }
-    }
-
-    func stop() {
-        loadToken = UUID()
-        progressTask?.cancel()
-        progressTask = nil
-        waveformTask?.cancel()
-        waveformTask = nil
-        player?.stop()
-        player = nil
-        loadedKey = nil
-        isPlaying = false
-        currentTime = 0
-    }
-
-    func seek(to value: TimeInterval) {
-        guard let player else { return }
-        let upperBound = max(player.duration, duration, 0)
-        let clampedValue = min(max(value, 0), upperBound)
-        player.currentTime = clampedValue
-        currentTime = clampedValue
-        if clampedValue >= upperBound, player.isPlaying {
-            player.pause()
-            isPlaying = false
-            progressTask?.cancel()
-            progressTask = nil
-        }
-    }
-
-    private static func managedAudioURL(for path: String) -> URL? {
-        guard !path.isEmpty,
-              let root = try? SuisuiAppDatabaseLocation.applicationSupportDirectoryURL(createDirectory: false)
-                  .appendingPathComponent("InboxAudio", isDirectory: true) else {
-            return nil
-        }
-        let canonicalRoot = root.resolvingSymlinksInPath().standardizedFileURL
-        let candidate = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL
-        let rootPath = canonicalRoot.path.hasSuffix("/") ? canonicalRoot.path : canonicalRoot.path + "/"
-        guard candidate.path.hasPrefix(rootPath) else {
-            return nil
-        }
-
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
-              !isDirectory.boolValue,
-              let attributes = try? FileManager.default.attributesOfItem(atPath: candidate.path),
-              attributes[.type] as? FileAttributeType == .typeRegular else {
-            return nil
-        }
-        return candidate
-    }
-
-    nonisolated private static func waveformSamples(for url: URL) -> [CGFloat]? {
-        do {
-            let audioFile = try AVAudioFile(forReading: url)
-            let totalFrames = max(audioFile.length, 0)
-            guard totalFrames > 0 else { return Array(repeating: 0, count: 64) }
-            let format = audioFile.processingFormat
-            let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4096)
-            guard let buffer else { return nil }
-            var peaks = [Float](repeating: 0, count: 64)
-            var framesRead: Int64 = 0
-
-            while framesRead < totalFrames {
-                buffer.frameLength = 0
-                try audioFile.read(into: buffer, frameCount: 4096)
-                let frameLength = Int(buffer.frameLength)
-                guard frameLength > 0,
-                      let channelData = buffer.floatChannelData?.pointee else {
-                    break
-                }
-                for index in 0..<frameLength {
-                    let magnitude = abs(channelData[index])
-                    let position = Double(framesRead + Int64(index)) / Double(totalFrames)
-                    let bucket = min(63, max(0, Int(position * 64)))
-                    peaks[bucket] = max(peaks[bucket], magnitude)
-                }
-                framesRead += Int64(frameLength)
-            }
-
-            let maximum = peaks.max() ?? 0
-            guard maximum > 0 else { return Array(repeating: 0, count: 64) }
-            return peaks.map { CGFloat($0 / maximum) }
-        } catch {
-            return nil
-        }
-    }
-
-    func toggle() {
-        guard let player else {
-            errorMessage = "Audio playback is unavailable for this capture."
-            return
-        }
-        if player.isPlaying {
-            player.pause()
-            isPlaying = false
-            progressTask?.cancel()
-            progressTask = nil
-        } else {
-            guard player.play() else {
-                errorMessage = "Audio playback is unavailable for this capture."
-                isPlaying = false
-                return
-            }
-            isPlaying = true
-            startProgressTracking()
-        }
-    }
-
-    private func startProgressTracking() {
-        progressTask?.cancel()
-        progressTask = Task { @MainActor [weak self] in
-            while let self, self.player?.isPlaying == true {
-                try? await Task.sleep(nanoseconds: 100_000_000)
-                self.currentTime = self.player?.currentTime ?? 0
-            }
-            guard let self else { return }
-            self.isPlaying = false
-            self.progressTask = nil
-        }
-    }
-}
-
 private struct InboxVoiceIntakeDetail: View {
     let captures: [InboxCaptureRecord]
     let taskTitle: String
@@ -1400,7 +1213,7 @@ private struct InboxVoiceIntakeDetail: View {
     let accessibilityIdentifier: String
     let showsAdvancedMetadata: Bool
     let onSaveMemo: (String) -> Void
-    @StateObject private var playback = InboxAudioPlaybackModel()
+    @StateObject private var playback = InboxAudioPlaybackController.live()
 
     var body: some View {
         if let capture = captures.first {
@@ -1478,17 +1291,17 @@ private struct InboxVoiceIntakeDetail: View {
             .onAppear {
                 resetMemoDraft(for: capture)
                 playback.load(
-                    path: capture.audioFilePath,
-                    fallbackDuration: capture.durationSeconds,
-                    captureID: capture.id
+                    captureID: capture.id,
+                    fileURL: URL(fileURLWithPath: capture.audioFilePath),
+                    fallbackDuration: capture.durationSeconds
                 )
             }
             .onChange(of: capture.id) { _, _ in
                 resetMemoDraft(for: capture)
                 playback.load(
-                    path: capture.audioFilePath,
-                    fallbackDuration: capture.durationSeconds,
-                    captureID: capture.id
+                    captureID: capture.id,
+                    fileURL: URL(fileURLWithPath: capture.audioFilePath),
+                    fallbackDuration: capture.durationSeconds
                 )
             }
             .onDisappear {
@@ -1519,6 +1332,7 @@ private struct InboxVoiceIntakeDetail: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("inbox-voice-playback-toggle")
                 .accessibilityLabel(playback.isPlaying ? "Pause voice memo" : "Play voice memo")
+                .accessibilityValue(playbackAccessibilityValue)
 
                 Group {
                     if let waveform = playback.waveform {
@@ -1576,9 +1390,9 @@ private struct InboxVoiceIntakeDetail: View {
         .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inbox-voice-transcript-preview")
-        .accessibilityLabel("Voice transcript preview")
+        .accessibilityLabel("Voice memo playback")
         .accessibilityValue(localizedDisplay(
-            "Transcript-only voice capture, duration %@, waveform preview",
+            "Playable voice memo, duration %@",
             localizedInboxCaptureDuration(capture.durationSeconds)
         ))
     }
@@ -1586,6 +1400,10 @@ private struct InboxVoiceIntakeDetail: View {
     private var playbackProgress: Double {
         guard playback.duration > 0 else { return 0 }
         return min(max(playback.currentTime / playback.duration, 0), 1)
+    }
+
+    private var playbackAccessibilityValue: String {
+        "\(localizedInboxCaptureDuration(playback.currentTime)) / \(localizedInboxCaptureDuration(playback.duration))"
     }
 
     private func memoEditor(for capture: InboxCaptureRecord) -> some View {

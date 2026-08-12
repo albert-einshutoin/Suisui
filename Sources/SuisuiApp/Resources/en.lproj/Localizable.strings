@@ -1682,8 +1682,8 @@
 "Developer Mode exposes local shell and repository automation controls after explicit approval." = "Developer Mode exposes local shell and repository automation controls after explicit approval.";
 "Developer Mode is enabled. Local shell execution requires explicit approval and starts in %@." = "Developer Mode is enabled. Local shell execution requires explicit approval and starts in %@.";
 "Transcript only" = "Transcript only";
-"Voice transcript preview" = "Voice transcript preview";
-"Transcript-only voice capture, duration %@, waveform preview" = "Transcript-only voice capture, duration %@, waveform preview";
+"Voice memo playback" = "Voice memo playback";
+"Playable voice memo, duration %@" = "Playable voice memo, duration %@";
 "%lld connector policies stay out of Settings until connect, check, revoke, and audit UI is complete. %lld connector send paths remain Assistant Queue draft-only." = "%lld connector policies stay out of Settings until connect, check, revoke, and audit UI is complete. %lld connector send paths remain Assistant Queue draft-only.";
 "Loading MCP settings..." = "Loading MCP settings...";
 "Loading Sync settings..." = "Loading Sync settings...";

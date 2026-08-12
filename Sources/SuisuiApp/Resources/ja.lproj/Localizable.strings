@@ -1671,7 +1671,7 @@
 "Developer Mode exposes local shell and repository automation controls after explicit approval." = "開発者モードでは、明示承認後にローカルシェルとリポジトリ自動化コントロールを表示します。";
 "Developer Mode is enabled. Local shell execution requires explicit approval and starts in %@." = "開発者モードが有効です。ローカルシェル実行には明示承認が必要で、%@ で開始します。";
 "Transcript only" = "文字起こしのみ";
-"Voice transcript preview" = "音声文字起こしプレビュー";
+"Voice memo playback" = "音声メモ再生";
 "%lld connector policies stay out of Settings until connect, check, revoke, and audit UI is complete. %lld connector send paths remain Assistant Queue draft-only." = "%lld件のコネクターポリシーは、接続・確認・取り消し・監査UIが完成するまで設定に表示しません。%lld件のコネクター送信経路はAssistant Queue下書き専用のままです。";
 "Loading MCP settings..." = "MCP設定を読み込み中...";
 "Loading Sync settings..." = "Sync設定を読み込み中...";
@@ -2009,7 +2009,7 @@
 "You can change these later in Settings." = "これらは後から設定で変更できます。";
 "Selects this task without changing task status or Calendar." = "タスクの状態やカレンダーを変更せず、このタスクを選択します。";
 "Memo: %@" = "メモ: %@";
-"Transcript-only voice capture, duration %@, waveform preview" = "文字起こしのみの音声入力、長さ%@、波形プレビュー";
+"Playable voice memo, duration %@" = "再生可能な音声メモ、長さ%@";
 "Create project" = "プロジェクトを作成";
 "Update project" = "プロジェクトを更新";
 "List projects" = "プロジェクト一覧を表示";

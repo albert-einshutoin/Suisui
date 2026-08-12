@@ -258,6 +258,12 @@ pressButtonUntilSQLiteValue() {
   local actual=""
 
   while true; do
+    # Scheduling lives in the real selected-item context menu. Open that
+    # visible menu before each retry so this gate never relies on a hidden
+    # surrogate control or a shortcut whose dispatch can vary by focus.
+    if [[ "$fragment" == "inbox-action-schedule-today" ]]; then
+      pressButtonContaining "inbox-selected-item-more"
+    fi
     pressButtonContaining "$fragment"
 
     local postcondition_deadline=$((SECONDS + 3))
@@ -310,7 +316,7 @@ on run argv
           try
             set itemRole to role of axItem as text
           end try
-          if itemRole is "AXButton" then
+          if itemRole is "AXButton" or itemRole is "AXMenuItem" or itemRole is "AXMenuButton" or itemRole is "AXPopUpButton" then
             set buttonName to ""
             set buttonTitle to ""
             set buttonDescription to ""
@@ -496,7 +502,6 @@ verify_single_value "make-task persists Inbox disposition" "SELECT CASE WHEN t.s
 
 schedule_task_id="$(create_inbox_item "AX Runtime Inbox Schedule")"
 pressButtonUntilSQLiteValue "schedule inbox item" "inbox-action-schedule-today" "SELECT CASE WHEN t.status='planned' AND t.due_at IS NOT NULL AND t.project_id=$inbox_project_id AND r.disposition='scheduled' AND r.review_at IS NULL THEN 1 ELSE 0 END FROM tasks t JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.id=$schedule_task_id;" "1"
-verify_single_value "schedule inbox item" "SELECT CASE WHEN t.status='planned' AND t.due_at IS NOT NULL AND t.project_id=$inbox_project_id AND r.disposition='scheduled' AND r.review_at IS NULL THEN 1 ELSE 0 END FROM tasks t JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.id=$schedule_task_id;" "1"
 pressButtonUntilSQLiteValue "undo inbox schedule" "inbox-classification-undo" "SELECT CASE WHEN t.status='backlog' AND t.due_at IS NULL AND t.project_id=$inbox_project_id AND r.disposition='unprocessed' AND r.review_at IS NULL THEN 1 ELSE 0 END FROM tasks t JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.id=$schedule_task_id;" "1"
 
 review_task_id="$(create_inbox_item "AX Runtime Inbox Review Later")"
