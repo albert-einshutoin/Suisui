@@ -33,8 +33,7 @@ struct ManagedInboxAudioPathValidator: Sendable {
 
 /// Owns completed Inbox recordings so playback never depends on a temporary
 /// URL that can disappear when the app or the OS cleans its temp directory.
-@MainActor
-final class ManagedInboxAudioFileStore: InboxAudioPersisting {
+final class ManagedInboxAudioFileStore {
     private let fileManager: FileManager
     private let rootURL: URL
     let validator: ManagedInboxAudioPathValidator
@@ -51,15 +50,31 @@ final class ManagedInboxAudioFileStore: InboxAudioPersisting {
     }
 
     init(rootURL: URL, fileManager: FileManager = .default) throws {
-        self.fileManager = fileManager
-        self.rootURL = rootURL.standardizedFileURL
-        self.validator = ManagedInboxAudioPathValidator(rootURL: rootURL)
+        let requestedRootURL = rootURL.standardizedFileURL
+        guard (try? fileManager.destinationOfSymbolicLink(atPath: requestedRootURL.path)) == nil else {
+            throw CocoaError(.fileWriteInvalidFileName)
+        }
         try fileManager.createDirectory(
-            at: self.rootURL,
+            at: requestedRootURL,
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
-        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: self.rootURL.path)
+        guard (try? fileManager.destinationOfSymbolicLink(atPath: requestedRootURL.path)) == nil else {
+            throw CocoaError(.fileWriteInvalidFileName)
+        }
+        let rootAttributes = try fileManager.attributesOfItem(atPath: requestedRootURL.path)
+        guard rootAttributes[.type] as? FileAttributeType == .typeDirectory else {
+            throw CocoaError(.fileWriteInvalidFileName)
+        }
+
+        // Pin every later operation to the directory resolved at startup. A
+        // symlink as the managed root leaf could otherwise redirect cleanup
+        // or imports after validation to a location the app does not own.
+        let canonicalRootURL = requestedRootURL.resolvingSymlinksInPath().standardizedFileURL
+        self.fileManager = fileManager
+        self.rootURL = canonicalRootURL
+        self.validator = ManagedInboxAudioPathValidator(rootURL: canonicalRootURL)
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: canonicalRootURL.path)
     }
 
     func importRecording(from sourceURL: URL) throws -> URL {
@@ -97,14 +112,17 @@ final class ManagedInboxAudioFileStore: InboxAudioPersisting {
     /// app-owned recording prefix is accepted so an arbitrary path in /tmp can
     /// never be copied into the managed Inbox directory during startup.
     func migrateLegacyRecordingIfNeeded(from sourceURL: URL) throws -> URL? {
-        let candidate = sourceURL.standardizedFileURL
+        let candidate = sourceURL.resolvingSymlinksInPath().standardizedFileURL
         if isManagedFile(candidate) {
             return isRegularFile(candidate) ? candidate : nil
         }
 
-        let temporaryRoot = fileManager.temporaryDirectory.standardizedFileURL
+        let temporaryRoot = fileManager.temporaryDirectory
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
         let temporaryPrefix = temporaryRoot.path.hasSuffix("/") ? temporaryRoot.path : temporaryRoot.path + "/"
-        guard candidate.path.hasPrefix(temporaryPrefix),
+        guard sourceURL.isFileURL,
+              candidate.path.hasPrefix(temporaryPrefix),
               candidate.lastPathComponent.hasPrefix("suisui-recording-"),
               isRegularFile(candidate) else {
             return nil
@@ -158,3 +176,7 @@ final class ManagedInboxAudioFileStore: InboxAudioPersisting {
         try? validator.validatedManagedURL(url).path
     }
 }
+
+// Voice capture is MainActor-owned, but startup maintenance uses the same
+// filesystem policy off-main before the board view model is constructed.
+extension ManagedInboxAudioFileStore: InboxAudioPersisting {}

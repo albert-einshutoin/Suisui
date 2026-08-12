@@ -7,6 +7,11 @@ private let inboxAudioReconciliationLogger = Logger(
     category: "inbox-audio"
 )
 
+private enum InboxAudioReconciliationGate {
+    static let lock = NSLock()
+    nonisolated(unsafe) static var hasAttempted = false
+}
+
 enum ProjectBoardRuntimeBundle: @unchecked Sendable {
     case available(
         connection: SQLiteConnection,
@@ -30,7 +35,11 @@ extension AppRuntimeFactory {
             defer {
                 signposter.endInterval("LaunchToRuntimeBundle", launchState)
             }
-            return makeProjectBoardRuntimeBundle()
+            let runtime = makeProjectBoardRuntimeBundle()
+            if case let .available(connection, _, _, _, _, _) = runtime {
+                reconcileManagedInboxAudioOnce(connection: connection)
+            }
+            return runtime
         }.value
     }
 
@@ -64,20 +73,6 @@ extension AppRuntimeFactory {
         switch runtime {
         case let .available(connection, projectBoardStore, externalTaskLinkStore, assistantQueueStore, executionReceiptStore, googleCalendarSyncStatus):
             let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)
-            do {
-                let inboxAudioFileStore = try ManagedInboxAudioFileStore()
-                try reconcileManagedInboxAudio(
-                    captureStore: inboxCaptureStore,
-                    audioStore: inboxAudioFileStore
-                )
-            } catch {
-                // Audio maintenance is auxiliary to the Inbox read model. Keep
-                // transcripts and triage available, and avoid logging an error
-                // description that could contain a private recording path.
-                inboxAudioReconciliationLogger.error(
-                    "Inbox audio reconciliation failed category=audio_reconciliation_failed"
-                )
-            }
             return ProjectBoardViewModel(
                 store: projectBoardStore,
                 inboxCaptureStore: inboxCaptureStore,
@@ -122,7 +117,29 @@ extension AppRuntimeFactory {
     /// Reconciles the managed audio directory before exposing Inbox audio.
     /// Legacy recorder paths are migrated only when they are app-owned temp
     /// files; unknown paths remain transcript-only instead of being copied.
-    @MainActor
+    static func reconcileManagedInboxAudioOnce(connection: SQLiteConnection) {
+        InboxAudioReconciliationGate.lock.lock()
+        defer { InboxAudioReconciliationGate.lock.unlock() }
+        guard InboxAudioReconciliationGate.hasAttempted == false else {
+            return
+        }
+        // A failed maintenance attempt must not be retried for every recreated
+        // window. Board and transcript reads remain available for this process.
+        InboxAudioReconciliationGate.hasAttempted = true
+        do {
+            try reconcileManagedInboxAudio(
+                captureStore: SQLiteInboxCaptureStore(connection: connection),
+                audioStore: ManagedInboxAudioFileStore()
+            )
+        } catch {
+            // Avoid logging an error description that could contain a private
+            // recording path.
+            inboxAudioReconciliationLogger.error(
+                "Inbox audio reconciliation failed category=audio_reconciliation_failed"
+            )
+        }
+    }
+
     static func reconcileManagedInboxAudio(
         captureStore: SQLiteInboxCaptureStore,
         audioStore: ManagedInboxAudioFileStore

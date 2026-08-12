@@ -3471,7 +3471,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("Select an Inbox item to classify."))
         XCTAssertTrue(contextDefinition.contains("lineLimit(2)"))
         XCTAssertTrue(contextDefinition.contains("lineLimit(3)"))
-        XCTAssertTrue(contextDefinition.contains(".accessibilityElement(children: .combine)"))
+        XCTAssertTrue(contextDefinition.contains(".accessibilityElement(children: .contain)"))
+        XCTAssertTrue(contextDefinition.contains(".accessibilityIdentifier(\"inbox-selected-item-more\")"))
         XCTAssertTrue(contextCall.contains(manualSummaryCondition))
         XCTAssertTrue(
             actionPanel.contains(".accessibilityLabel(\"Inbox classification actions\")")
@@ -3596,6 +3597,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("Playable voice memo, duration %@"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-playback-toggle\")"))
         XCTAssertTrue(workflowSource.contains("playbackAccessibilityValue"))
+        XCTAssertTrue(workflowSource.contains(".disabled(!playback.isPlayable)"))
+        XCTAssertTrue(workflowSource.contains("playback.errorMessage ?? playbackAccessibilityValue"))
+        XCTAssertTrue(workflowSource.contains("inbox-voice-playback-error"))
         XCTAssertFalse(workflowSource.contains("Transcript-only voice capture, duration %@, waveform preview"))
         XCTAssertFalse(workflowSource.contains("Playback unavailable in this MVP"))
         XCTAssertFalse(workflowSource.contains("Button {} label:"))
@@ -5883,8 +5887,16 @@ final class AppExperienceSourceTests: XCTestCase {
         let voiceRuntimeSource = try readPackageFile(
             "Sources/SuisuiApp/Composition/VoiceRuntimeFactory.swift"
         )
+        let viewModelRuntimeStart = try XCTUnwrap(
+            projectRuntimeSource.range(
+                of: "static func makeProjectBoardViewModel(runtime: ProjectBoardRuntimeBundle)"
+            )
+        )
         let availableStart = try XCTUnwrap(
-            projectRuntimeSource.range(of: "case let .available(")
+            projectRuntimeSource.range(
+                of: "case let .available(",
+                range: viewModelRuntimeStart.upperBound..<projectRuntimeSource.endIndex
+            )
         )
         let unavailableStart = try XCTUnwrap(
             projectRuntimeSource.range(
@@ -5897,6 +5909,39 @@ final class AppExperienceSourceTests: XCTestCase {
                 availableStart.lowerBound..<unavailableStart.lowerBound
             ]
         )
+        let prepareStart = try XCTUnwrap(
+            projectRuntimeSource.range(of: "static func prepareProjectBoardRuntimeBundle()")
+        )
+        let bundleStart = try XCTUnwrap(
+            projectRuntimeSource.range(
+                of: "static func makeProjectBoardRuntimeBundle()",
+                range: prepareStart.upperBound..<projectRuntimeSource.endIndex
+            )
+        )
+        let prepareRuntime = String(
+            projectRuntimeSource[prepareStart.lowerBound..<bundleStart.lowerBound]
+        )
+        let synchronousViewModelStart = try XCTUnwrap(
+            projectRuntimeSource.range(
+                of: "static func makeProjectBoardViewModel()",
+                range: bundleStart.upperBound..<projectRuntimeSource.endIndex
+            )
+        )
+        let synchronousBundleRuntime = String(
+            projectRuntimeSource[bundleStart.lowerBound..<synchronousViewModelStart.lowerBound]
+        )
+        let onceStart = try XCTUnwrap(
+            projectRuntimeSource.range(of: "static func reconcileManagedInboxAudioOnce(")
+        )
+        let reconciliationStart = try XCTUnwrap(
+            projectRuntimeSource.range(
+                of: "static func reconcileManagedInboxAudio(",
+                range: onceStart.upperBound..<projectRuntimeSource.endIndex
+            )
+        )
+        let onceRuntime = String(
+            projectRuntimeSource[onceStart.lowerBound..<reconciliationStart.lowerBound]
+        )
 
         XCTAssertTrue(
             projectRuntimeSource.contains(
@@ -5908,9 +5953,37 @@ final class AppExperienceSourceTests: XCTestCase {
                 "private static func reconcileManagedInboxAudio("
             )
         )
+        XCTAssertFalse(voiceRuntimeSource.contains("reconcileManagedInboxAudio("))
+        XCTAssertFalse(voiceRuntimeSource.contains("reconcileManagedInboxAudioOnce("))
         XCTAssertTrue(
             voiceRuntimeSource.contains(
-                "try reconcileManagedInboxAudio("
+                "let inboxAudioFileStore = try? ManagedInboxAudioFileStore()"
+            )
+        )
+        XCTAssertTrue(
+            projectRuntimeSource.contains(
+                "private enum InboxAudioReconciliationGate"
+            )
+        )
+        XCTAssertTrue(
+            projectRuntimeSource.contains(
+                "nonisolated(unsafe) static var hasAttempted = false"
+            )
+        )
+        XCTAssertTrue(
+            prepareRuntime.contains(
+                "reconcileManagedInboxAudioOnce(connection: connection)"
+            )
+        )
+        XCTAssertTrue(prepareRuntime.contains("Task.detached(priority: .userInitiated)"))
+        XCTAssertFalse(synchronousBundleRuntime.contains("reconcileManagedInboxAudioOnce("))
+        XCTAssertTrue(onceRuntime.contains("InboxAudioReconciliationGate.lock.lock()"))
+        XCTAssertTrue(onceRuntime.contains("defer { InboxAudioReconciliationGate.lock.unlock() }"))
+        XCTAssertTrue(onceRuntime.contains("guard InboxAudioReconciliationGate.hasAttempted == false"))
+        XCTAssertTrue(onceRuntime.contains("InboxAudioReconciliationGate.hasAttempted = true"))
+        XCTAssertFalse(
+            availableRuntime.contains(
+                "reconcileManagedInboxAudioOnce(connection: connection)"
             )
         )
         XCTAssertTrue(
@@ -5920,21 +5993,11 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertTrue(
             availableRuntime.contains(
-                "let inboxAudioFileStore = try ManagedInboxAudioFileStore()"
-            )
-        )
-        XCTAssertTrue(
-            availableRuntime.contains(
-                "try reconcileManagedInboxAudio("
-            )
-        )
-        XCTAssertTrue(
-            availableRuntime.contains(
                 "inboxCaptureStore: inboxCaptureStore"
             )
         )
         XCTAssertTrue(
-            availableRuntime.contains(
+            projectRuntimeSource.contains(
                 "Inbox audio reconciliation failed category=audio_reconciliation_failed"
             )
         )

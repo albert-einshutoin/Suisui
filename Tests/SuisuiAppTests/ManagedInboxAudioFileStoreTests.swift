@@ -86,4 +86,89 @@ final class ManagedInboxAudioFileStoreTests: XCTestCase {
         XCTAssertNil(try store.migrateLegacyRecordingIfNeeded(from: unrelated))
         XCTAssertTrue(FileManager.default.fileExists(atPath: unrelated.path))
     }
+
+    @MainActor
+    func testInitializationRejectsManagedRootLeafSymlink() throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-managed-inbox-root-symlink-\(UUID().uuidString)", isDirectory: true)
+        let target = fixtureRoot.appendingPathComponent("target", isDirectory: true)
+        let rootSymlink = fixtureRoot.appendingPathComponent("InboxAudio", isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: fixtureRoot)
+        }
+
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: rootSymlink, withDestinationURL: target)
+
+        XCTAssertThrowsError(try ManagedInboxAudioFileStore(rootURL: rootSymlink))
+    }
+
+    @MainActor
+    func testManagedRootPinsCanonicalParentWhenIntermediateSymlinkIsRetargeted() throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-managed-inbox-canonical-root-\(UUID().uuidString)", isDirectory: true)
+        let firstParent = fixtureRoot.appendingPathComponent("first", isDirectory: true)
+        let secondParent = fixtureRoot.appendingPathComponent("second", isDirectory: true)
+        let parentSymlink = fixtureRoot.appendingPathComponent("current", isDirectory: true)
+        let requestedRoot = parentSymlink.appendingPathComponent("InboxAudio", isDirectory: true)
+        let source = fixtureRoot.appendingPathComponent("source.m4a")
+        defer {
+            try? FileManager.default.removeItem(at: fixtureRoot)
+        }
+
+        try FileManager.default.createDirectory(at: firstParent, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondParent, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: parentSymlink, withDestinationURL: firstParent)
+        try Data("fixture-audio".utf8).write(to: source)
+        let store = try ManagedInboxAudioFileStore(rootURL: requestedRoot)
+
+        try FileManager.default.removeItem(at: parentSymlink)
+        try FileManager.default.createSymbolicLink(at: parentSymlink, withDestinationURL: secondParent)
+        let managed = try store.importRecording(from: source)
+
+        XCTAssertTrue(
+            managed.path.hasPrefix(
+                firstParent.appendingPathComponent("InboxAudio", isDirectory: true).path + "/"
+            )
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: secondParent.appendingPathComponent("InboxAudio", isDirectory: true).path
+            )
+        )
+    }
+
+    @MainActor
+    func testLegacyMigrationRejectsTemporaryPathWhoseIntermediateSymlinkEscapesTemporaryRoot() throws {
+        let temporaryRoot = FileManager.default.temporaryDirectory
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+        let fixtureRoot = temporaryRoot
+            .appendingPathComponent("suisui-legacy-intermediate-symlink-\(UUID().uuidString)", isDirectory: true)
+        let outsideRoot = temporaryRoot
+            .deletingLastPathComponent()
+            .appendingPathComponent("suisui-legacy-outside-\(UUID().uuidString)", isDirectory: true)
+        let intermediateSymlink = fixtureRoot.appendingPathComponent("escape", isDirectory: true)
+        let outsideRecording = outsideRoot
+            .appendingPathComponent("suisui-recording-\(UUID().uuidString).m4a")
+        let escapedRecording = intermediateSymlink
+            .appendingPathComponent(outsideRecording.lastPathComponent)
+        let managedRoot = fixtureRoot.appendingPathComponent("managed", isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: fixtureRoot)
+            try? FileManager.default.removeItem(at: outsideRoot)
+        }
+
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: outsideRoot, withIntermediateDirectories: true)
+        try Data("outside-temp-audio".utf8).write(to: outsideRecording)
+        try FileManager.default.createSymbolicLink(
+            at: intermediateSymlink,
+            withDestinationURL: outsideRoot
+        )
+        let store = try ManagedInboxAudioFileStore(rootURL: managedRoot)
+
+        XCTAssertNil(try store.migrateLegacyRecordingIfNeeded(from: escapedRecording))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: outsideRecording.path))
+    }
 }
