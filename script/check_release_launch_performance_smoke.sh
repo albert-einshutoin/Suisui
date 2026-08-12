@@ -451,6 +451,7 @@ open_app() {
   }
   if ! ax_wait_for_pid_owned_process "$APP_NAME" "$APP_PID" "$TIMEOUT_SECONDS" "$APP_BINARY"; then
     capture_current_app_failure_diagnostics
+    ax_emit_failure_category "launch" "performance-owned-process-unavailable"
     return 1
   fi
 }

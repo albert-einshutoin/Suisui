@@ -228,6 +228,7 @@ final class ReleasePipelineTests: XCTestCase {
         }
         XCTAssertTrue(builder.contains("RESOURCE_BUNDLE_DESTINATION=\"$APP_RESOURCES/$resource_bundle_name\""))
         XCTAssertTrue(builder.contains("--build-system swiftbuild"))
+        XCTAssertTrue(builder.contains("--arch arm64"))
         XCTAssertTrue(builder.contains("--scratch-path \"$SWIFTPM_APP_SCRATCH_PATH\""))
         XCTAssertFalse(builder.contains("normalize_swiftpm_resource_accessors.sh"))
         XCTAssertTrue(builder.contains("Contents/Resources/default.metallib"))
@@ -8357,6 +8358,7 @@ final class ReleasePipelineTests: XCTestCase {
             script.range(of: "\n}\n\nwait_for_launch_milestone()", range: openStart.upperBound..<script.endIndex)
         )
         let openSource = String(script[openStart.lowerBound..<openEnd.lowerBound]) + "\n}"
+        XCTAssertTrue(openSource.contains("performance-owned-process-unavailable"))
         let ownedProcessFailureReceipt = receiptRoot.appendingPathComponent("owned-process-failure-captured")
         let ownedProcessFailure = try runTool(
             [

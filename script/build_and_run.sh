@@ -25,6 +25,7 @@ SWIFTPM_APP_SCRATCH_PATH="${SUISUI_SWIFTPM_APP_SCRATCH_PATH:-$ROOT_DIR/.build/ap
 mkdir -p "$TMPDIR" "$SWIFTPM_MODULECACHE_OVERRIDE" "$SWIFTPM_CACHE_PATH" "$SWIFTPM_APP_SCRATCH_PATH"
 SWIFT_BUILD_ARGS=(
   --build-system swiftbuild
+  --arch arm64
   --cache-path "$SWIFTPM_CACHE_PATH"
   --manifest-cache local
   --scratch-path "$SWIFTPM_APP_SCRATCH_PATH"
