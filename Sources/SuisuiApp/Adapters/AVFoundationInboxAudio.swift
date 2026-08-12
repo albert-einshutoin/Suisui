@@ -217,14 +217,21 @@ final class InboxAudioPlaybackController: ObservableObject {
     @Published private(set) var waveform: [Double]?
 
     var isPlaying: Bool { state == .playing }
+    var isRetryAvailable: Bool {
+        guard case .failed = state else { return false }
+        return retryFileURL != nil && selectedKey != nil
+    }
     var isPlayable: Bool {
         switch state {
         case .paused, .playing:
             true
-        case .idle, .loading, .failed:
+        case .failed:
+            isRetryAvailable
+        case .idle, .loading:
             false
         }
     }
+    var isSeekable: Bool { state == .paused || state == .playing }
     var errorMessage: String? {
         guard case let .failed(message) = state else { return nil }
         return message
@@ -241,6 +248,8 @@ final class InboxAudioPlaybackController: ObservableObject {
     private var progressTask: Task<Void, Never>?
     private var waveformTask: Task<Void, Never>?
     private var loadToken = UUID()
+    private var retryFileURL: URL?
+    private var retryFallbackDuration: TimeInterval = 0
 
     init(engine: any InboxAudioPlaybackEngine, waveformLoader: any InboxAudioWaveformLoading) {
         self.engine = engine
@@ -286,6 +295,8 @@ final class InboxAudioPlaybackController: ObservableObject {
             state = .loading
             try engine.load(fileURL)
             duration = max(engine.duration, fallbackDuration, 0)
+            retryFileURL = fileURL
+            retryFallbackDuration = fallbackDuration
             state = .paused
             loadWaveform(from: fileURL, for: key)
         } catch let error as InboxAudioPlaybackError {
@@ -296,12 +307,16 @@ final class InboxAudioPlaybackController: ObservableObject {
     }
 
     func play() throws {
+        if isRetryAvailable {
+            try retryPlayback()
+            return
+        }
         do {
             try engine.play()
             state = .playing
             startProgressTracking()
         } catch {
-            fail(with: .playbackFailed)
+            fail(with: .playbackFailed, preservingLoadedSelection: true)
             throw InboxAudioPlaybackError.playbackFailed
         }
     }
@@ -374,11 +389,45 @@ final class InboxAudioPlaybackController: ObservableObject {
             currentTime = engine.currentTime
             state = selectedKey == nil ? .idle : .paused
         case .decodingFailed:
-            fail(with: .playbackFailed)
+            fail(with: .playbackFailed, preservingLoadedSelection: true)
         }
     }
 
-    private func fail(with error: InboxAudioPlaybackError) {
+    private func retryPlayback() throws {
+        guard let retryFileURL, let selectedKey else {
+            throw InboxAudioPlaybackError.playbackFailed
+        }
+        do {
+            try engine.load(retryFileURL)
+            currentTime = 0
+            duration = max(engine.duration, retryFallbackDuration, 0)
+            if waveform == nil {
+                loadWaveform(from: retryFileURL, for: selectedKey)
+            }
+            try engine.play()
+            state = .playing
+            startProgressTracking()
+        } catch {
+            fail(with: .playbackFailed)
+            throw InboxAudioPlaybackError.playbackFailed
+        }
+    }
+
+    private func fail(
+        with error: InboxAudioPlaybackError,
+        preservingLoadedSelection: Bool = false
+    ) {
+        if preservingLoadedSelection, selectedKey != nil, retryFileURL != nil {
+            loadToken = UUID()
+            progressTask?.cancel()
+            progressTask = nil
+            waveformTask?.cancel()
+            waveformTask = nil
+            engine.stop()
+            currentTime = 0
+            state = .failed(error.userMessage)
+            return
+        }
         reset(stoppingEngine: selectedKey != nil)
         state = .failed(error.userMessage)
     }
@@ -394,6 +443,8 @@ final class InboxAudioPlaybackController: ObservableObject {
         currentTime = 0
         duration = 0
         waveform = nil
+        retryFileURL = nil
+        retryFallbackDuration = 0
         state = .idle
     }
 }

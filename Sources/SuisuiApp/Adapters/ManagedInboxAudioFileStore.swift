@@ -142,9 +142,16 @@ final class ManagedInboxAudioFileStore {
         let children = try fileManager.contentsOfDirectory(
             at: rootURL,
             includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
-            options: [.skipsHiddenFiles]
+            options: []
         )
         for child in children where isRegularFile(child) {
+            // A process can exit between copy and rename. Sweep only our
+            // hidden staging namespace; unrelated hidden metadata in the
+            // managed directory does not become ours to delete.
+            guard !child.lastPathComponent.hasPrefix(".")
+                    || child.lastPathComponent.hasPrefix(".import-") else {
+                continue
+            }
             guard let canonicalPath = canonicalManagedPath(for: child),
                   !canonicalReferences.contains(canonicalPath) else {
                 continue

@@ -70,6 +70,23 @@ final class ManagedInboxAudioFileStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testStartupReconciliationRemovesHiddenInterruptedImportStagingFile() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-managed-inbox-staging-\(UUID().uuidString)", isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let store = try ManagedInboxAudioFileStore(rootURL: root)
+        let interruptedImport = root.appendingPathComponent(".import-interrupted")
+        try Data("private-staging-audio".utf8).write(to: interruptedImport)
+
+        try store.removeOrphanedRecordings(referencedPaths: [])
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: interruptedImport.path))
+    }
+
+    @MainActor
     func testLegacyMigrationRejectsUnownedTemporaryPath() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("suisui-managed-inbox-audio-\(UUID().uuidString)", isDirectory: true)

@@ -73,7 +73,7 @@ final class InboxAudioPlaybackTests: XCTestCase {
     }
 
     @MainActor
-    func testControllerTransitionsToFailedWhenPlaybackEngineReportsDecodeFailure() async throws {
+    func testControllerOffersRetryWhenPlaybackEngineReportsDecodeFailure() async throws {
         let fixture = try AudioFixture()
         defer { fixture.remove() }
         let engine = FakeInboxAudioPlaybackEngine(duration: 8)
@@ -89,6 +89,36 @@ final class InboxAudioPlaybackTests: XCTestCase {
         await waitUntil {
             controller.state == .failed(InboxAudioPlaybackError.playbackFailed.userMessage)
         }
+        XCTAssertTrue(controller.isRetryAvailable)
+        XCTAssertTrue(controller.isPlayable)
+        XCTAssertFalse(controller.isSeekable)
+
+        controller.toggle()
+
+        XCTAssertEqual(controller.state, .playing)
+        XCTAssertEqual(engine.loadCount, 2)
+    }
+
+    @MainActor
+    func testControllerKeepsUnavailableRecordingControlsDisabledWithoutRetry() throws {
+        let fixture = try AudioFixture()
+        defer { fixture.remove() }
+        let engine = FakeInboxAudioPlaybackEngine(duration: 8)
+        let controller = InboxAudioPlaybackController(
+            engine: engine,
+            waveformLoader: CountingWaveformLoader(samples: [1])
+        )
+        let missingAudio = fixture.root.appendingPathComponent("missing.wav")
+
+        controller.load(captureID: 1, fileURL: missingAudio)
+
+        XCTAssertEqual(
+            controller.state,
+            .failed(InboxAudioPlaybackError.recordingUnavailable.userMessage)
+        )
+        XCTAssertFalse(controller.isRetryAvailable)
+        XCTAssertFalse(controller.isPlayable)
+        XCTAssertFalse(controller.isSeekable)
     }
 
     @MainActor
@@ -231,6 +261,7 @@ private final class FakeInboxAudioPlaybackEngine: InboxAudioPlaybackEngine {
     var currentTime: TimeInterval = 0
     private(set) var isPlaying = false
     private(set) var stopCount = 0
+    private(set) var loadCount = 0
     var terminalEventHandler: (@MainActor @Sendable (InboxAudioPlaybackTerminalEvent) -> Void)?
 
     init(duration: TimeInterval) {
@@ -238,6 +269,7 @@ private final class FakeInboxAudioPlaybackEngine: InboxAudioPlaybackEngine {
     }
 
     func load(_ fileURL: URL) throws {
+        loadCount += 1
         currentTime = 0
         isPlaying = false
     }
