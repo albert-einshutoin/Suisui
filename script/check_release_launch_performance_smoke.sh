@@ -392,23 +392,20 @@ wait_for_database_schema() {
 }
 
 record_unexpected_bootstrap_exit() {
-  local exit_status="unavailable"
-  local termination="unknown"
+  local wait_status="unavailable"
   if [[ "${APP_PID:-}" =~ ^[0-9]+$ ]]; then
-    if wait "$APP_PID" 2>/dev/null; then
-      exit_status=0
-      termination="unexpected-zero-exit"
-    else
-      exit_status=$?
-      if [[ "$exit_status" =~ ^[0-9]+$ ]] && (( exit_status >= 128 )); then
-        termination="signal-$((exit_status - 128))"
+    # Never block on an unexpected process that is still running. A child that
+    # already exited remains waitable, so its raw status can be recorded.
+    if ! kill -0 "$APP_PID" >/dev/null 2>&1; then
+      if wait "$APP_PID" 2>/dev/null; then
+        wait_status=0
       else
-        termination="nonzero-exit"
+        wait_status=$?
       fi
     fi
   fi
-  printf 'status=failed\nexit_status=%s\ntermination=%s\nfailure_reason=performance-bootstrap-exited\n' \
-    "$exit_status" "$termination" >"$BOOTSTRAP_EXIT_FILE"
+  printf 'status=failed\nwait_status=%s\ntermination=unexpected-exit\nfailure_reason=performance-bootstrap-exited\n' \
+    "$wait_status" >"$BOOTSTRAP_EXIT_FILE"
 }
 
 require_bootstrap_process_alive() {
@@ -419,6 +416,67 @@ require_bootstrap_process_alive() {
   ax_emit_failure_category "launch" "performance-bootstrap-exited"
   echo "BLOCKER: performance bootstrap app exited after creating its database schema" >&2
   return 1
+}
+
+terminate_bootstrap_app() {
+  local bootstrap_pid="${APP_PID:-}"
+  local deadline wait_status expected_wait_status termination
+
+  if [[ ! "$bootstrap_pid" =~ ^[0-9]+$ || "$bootstrap_pid" != "${APP_LAUNCH_PID:-}" ]] ||
+    ! ax_process_matches_identity "$bootstrap_pid" "$APP_BINARY" "$APP_IDENTITY"; then
+    record_unexpected_bootstrap_exit
+    ax_emit_failure_category "launch" "performance-bootstrap-exited"
+    echo "BLOCKER: performance bootstrap app exited before harness termination" >&2
+    return 1
+  fi
+  if ! kill -TERM "$bootstrap_pid" >/dev/null 2>&1; then
+    record_unexpected_bootstrap_exit
+    ax_emit_failure_category "launch" "performance-bootstrap-termination-failed"
+    echo "BLOCKER: performance bootstrap app could not be terminated by the harness" >&2
+    return 1
+  fi
+
+  expected_wait_status=143
+  termination="harness-term"
+  deadline=$((SECONDS + 3))
+  while ax_process_matches_identity "$bootstrap_pid" "$APP_BINARY" "$APP_IDENTITY" &&
+    [[ "$SECONDS" -lt "$deadline" ]]; do
+    sleep 0.1
+  done
+  if ax_process_matches_identity "$bootstrap_pid" "$APP_BINARY" "$APP_IDENTITY"; then
+    if ! kill -KILL "$bootstrap_pid" >/dev/null 2>&1; then
+      record_unexpected_bootstrap_exit
+      ax_emit_failure_category "launch" "performance-bootstrap-termination-failed"
+      echo "BLOCKER: performance bootstrap app ignored harness termination" >&2
+      return 1
+    fi
+    expected_wait_status=137
+    termination="harness-kill"
+  elif kill -0 "$bootstrap_pid" >/dev/null 2>&1; then
+    record_unexpected_bootstrap_exit
+    ax_emit_failure_category "launch" "performance-bootstrap-identity-changed"
+    echo "BLOCKER: performance bootstrap process identity changed during termination" >&2
+    return 1
+  fi
+
+  if wait "$bootstrap_pid" 2>/dev/null; then
+    wait_status=0
+  else
+    wait_status=$?
+  fi
+  APP_PID=""
+  APP_LAUNCH_PID=""
+  APP_IDENTITY=""
+  APP_LAUNCH_IDENTITY=""
+  if [[ "$wait_status" != "$expected_wait_status" ]]; then
+    printf 'status=failed\nwait_status=%s\ntermination=unexpected-exit\nfailure_reason=performance-bootstrap-exited\n' \
+      "$wait_status" >"$BOOTSTRAP_EXIT_FILE"
+    ax_emit_failure_category "launch" "performance-bootstrap-exited"
+    echo "BLOCKER: performance bootstrap app exited with unexpected wait status $wait_status" >&2
+    return 1
+  fi
+  printf 'status=passed\nwait_status=%s\ntermination=%s\nfailure_reason=none\n' \
+    "$wait_status" "$termination" >"$BOOTSTRAP_EXIT_FILE"
 }
 
 seed_production_fixture() {
@@ -466,9 +524,7 @@ prepare_production_fixture() {
     return 1
   fi
   require_bootstrap_process_alive
-  terminate_app
-  printf 'status=passed\nexit_status=terminated-by-harness\ntermination=expected\nfailure_reason=none\n' \
-    >"$BOOTSTRAP_EXIT_FILE"
+  terminate_bootstrap_app
   seed_production_fixture
 }
 

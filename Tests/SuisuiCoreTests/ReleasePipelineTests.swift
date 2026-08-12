@@ -8112,6 +8112,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("BOOTSTRAP_EXIT_FILE=\"$OUTPUT_DIR/bootstrap-exit.env\""))
         XCTAssertTrue(script.contains("record_unexpected_bootstrap_exit()"))
         XCTAssertTrue(script.contains("require_bootstrap_process_alive()"))
+        XCTAssertTrue(script.contains("terminate_bootstrap_app()"))
         XCTAssertTrue(script.contains("failure_reason=performance-bootstrap-exited"))
         XCTAssertTrue(script.contains("terminate_app || true"))
         XCTAssertTrue(script.contains("QUIESCENCE_PROCESS_FILE=\"$OUTPUT_DIR/runner-quiescence-processes.tsv\""))
@@ -8137,7 +8138,7 @@ final class ReleasePipelineTests: XCTestCase {
             "open_app",
             "wait_for_database_schema",
             "require_bootstrap_process_alive",
-            "terminate_app",
+            "terminate_bootstrap_app",
             "seed_production_fixture"
         ]
         let indices = try statements.map { statement in
@@ -8161,8 +8162,9 @@ final class ReleasePipelineTests: XCTestCase {
         set -u
         BOOTSTRAP_EXIT_FILE="$RECEIPT_PATH"
         \(recorderSource)
-        /bin/sh -c 'exit 133' &
+        /bin/sh -c 'kill -TRAP $$' &
         APP_PID=$!
+        sleep 0.1
         record_unexpected_bootstrap_exit
         cat "$BOOTSTRAP_EXIT_FILE"
         """
@@ -8171,9 +8173,70 @@ final class ReleasePipelineTests: XCTestCase {
             environment: ["RECEIPT_PATH": receipt.path]
         )
         XCTAssertEqual(recorded.exitCode, 0, recorded.output)
-        XCTAssertTrue(recorded.output.contains("exit_status=133"))
-        XCTAssertTrue(recorded.output.contains("termination=signal-5"))
+        XCTAssertTrue(recorded.output.contains("wait_status=133"))
+        XCTAssertTrue(recorded.output.contains("termination=unexpected-exit"))
         XCTAssertTrue(recorded.output.contains("failure_reason=performance-bootstrap-exited"))
+
+        let terminatorStart = try XCTUnwrap(script.range(of: "terminate_bootstrap_app() {"))
+        let terminatorEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\nseed_production_fixture()", range: terminatorStart.upperBound..<script.endIndex)
+        )
+        let terminatorSource = String(script[terminatorStart.lowerBound..<terminatorEnd.lowerBound]) + "\n}"
+        let raceReceipt = receiptRoot.appendingPathComponent("bootstrap-race.env")
+        let raceHarness = """
+        set -u
+        BOOTSTRAP_EXIT_FILE="$RECEIPT_PATH"
+        APP_BINARY=/fixture/Suisui
+        APP_IDENTITY=expected
+        APP_LAUNCH_IDENTITY=expected
+        ax_emit_failure_category() { :; }
+        ax_process_matches_identity() { return 1; }
+        \(recorderSource)
+        \(terminatorSource)
+        /bin/sh -c 'kill -TRAP $$' &
+        APP_PID=$!
+        APP_LAUNCH_PID=$APP_PID
+        sleep 0.1
+        terminate_bootstrap_app
+        """
+        let raced = try runTool(
+            ["/bin/bash", "-c", raceHarness],
+            environment: ["RECEIPT_PATH": raceReceipt.path]
+        )
+        XCTAssertNotEqual(raced.exitCode, 0, raced.output)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: raceReceipt.path), raced.output)
+        let raceEvidence = try String(contentsOf: raceReceipt, encoding: .utf8)
+        XCTAssertTrue(raceEvidence.contains("status=failed"))
+        XCTAssertTrue(raceEvidence.contains("wait_status=133"))
+        XCTAssertTrue(raceEvidence.contains("termination=unexpected-exit"))
+        XCTAssertFalse(raceEvidence.contains("status=passed"))
+
+        let expectedReceipt = receiptRoot.appendingPathComponent("bootstrap-expected.env")
+        let expectedHarness = """
+        set -u
+        BOOTSTRAP_EXIT_FILE="$RECEIPT_PATH"
+        APP_BINARY=/fixture/Suisui
+        APP_IDENTITY=expected
+        APP_LAUNCH_IDENTITY=expected
+        ax_emit_failure_category() { :; }
+        ax_process_matches_identity() { kill -0 "$1" 2>/dev/null; }
+        \(recorderSource)
+        \(terminatorSource)
+        /bin/sleep 30 &
+        APP_PID=$!
+        APP_LAUNCH_PID=$APP_PID
+        terminate_bootstrap_app
+        """
+        let expected = try runTool(
+            ["/bin/bash", "-c", expectedHarness],
+            environment: ["RECEIPT_PATH": expectedReceipt.path]
+        )
+        XCTAssertEqual(expected.exitCode, 0, expected.output)
+        let expectedEvidence = try String(contentsOf: expectedReceipt, encoding: .utf8)
+        XCTAssertTrue(expectedEvidence.contains("status=passed"))
+        XCTAssertTrue(expectedEvidence.contains("wait_status=143"))
+        XCTAssertTrue(expectedEvidence.contains("termination=harness-term"))
+        XCTAssertTrue(expectedEvidence.contains("failure_reason=none"))
     }
 
     func testReleaseLaunchPerformanceAcceptsOnlyAnExplicitVerifiedPrebuiltApp() throws {
