@@ -3603,7 +3603,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".disabled(!playback.isSeekable)"))
         XCTAssertTrue(workflowSource.contains("playback.isRetryAvailable"))
         XCTAssertTrue(workflowSource.contains(".opacity(0.01)"))
-        XCTAssertTrue(workflowSource.contains(".frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)"))
+        XCTAssertTrue(workflowSource.contains(".frame(maxWidth: .infinity, minHeight: 32, maxHeight: 32)"))
         XCTAssertTrue(workflowSource.contains("playback.errorMessage ?? playbackAccessibilityValue"))
         XCTAssertTrue(workflowSource.contains("inbox-voice-playback-error"))
         XCTAssertFalse(workflowSource.contains("Transcript-only voice capture, duration %@, waveform preview"))
@@ -3648,6 +3648,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testInboxDetailUsesReferenceMatchedVerticalMetrics() throws {
         let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift")
+        let seederSource = try readPackageFile("Sources/SuisuiVisualFixtureSeeder/main.swift")
         let actionStyleStart = try XCTUnwrap(
             source.range(of: "private struct InboxTriageActionButtonStyle")
         )
@@ -3673,6 +3674,12 @@ final class AppExperienceSourceTests: XCTestCase {
         let transcript = String(source[voiceStart.lowerBound..<copyTranscriptStart.lowerBound])
 
         XCTAssertTrue(actionStyle.contains(".frame(height: 36)"))
+        XCTAssertTrue(
+            actionStyle.contains("isProminent ? Color.accentColor : Color.clear")
+        )
+        XCTAssertTrue(
+            actionStyle.contains("isProminent ? Color.clear : Color.secondary.opacity(0.20)")
+        )
         XCTAssertTrue(transcript.contains(".lineSpacing(4)"))
         XCTAssertTrue(
             transcript.contains(".frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)")
@@ -3686,6 +3693,17 @@ final class AppExperienceSourceTests: XCTestCase {
                 ".accessibilityIdentifier(\"inbox-proposed-actions\")\n            .padding(.bottom, 8)"
             )
         )
+        XCTAssertTrue(
+            source.contains(".frame(maxWidth: .infinity, minHeight: 32, maxHeight: 32)")
+        )
+        XCTAssertTrue(source.contains(".padding(.top, 8)"))
+        XCTAssertTrue(
+            seederSource.contains("let progress = Double(frame) / Double(max(frameCount - 1, 1))")
+        )
+        XCTAssertTrue(seederSource.contains("sin(progress * 2 * Double.pi * 3)"))
+        XCTAssertTrue(seederSource.contains("sin(progress * 2 * Double.pi * 7 + 0.8)"))
+        XCTAssertTrue(seederSource.contains("sin(progress * 2 * Double.pi * 13 + 1.7)"))
+        XCTAssertFalse(seederSource.contains("sin(time * 2 * Double.pi * 0.75)"))
     }
 
     func testInboxReferenceUIUsesPersistedTriageLifecycle() throws {

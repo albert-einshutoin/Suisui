@@ -891,9 +891,16 @@ private struct InboxTriageActionButtonStyle: ButtonStyle {
             // 36px frame; owning the background keeps the visible target faithful.
             .frame(height: 36)
             .background(
-                isProminent ? Color.accentColor : Color.secondary.opacity(0.12),
+                isProminent ? Color.accentColor : Color.clear,
                 in: Capsule()
             )
+            .overlay {
+                Capsule()
+                    .stroke(
+                        isProminent ? Color.clear : Color.secondary.opacity(0.20),
+                        lineWidth: 1
+                    )
+            }
             .opacity(isEnabled ? (configuration.isPressed ? 0.72 : 1) : 0.45)
     }
 }
@@ -1413,7 +1420,7 @@ private struct InboxVoiceIntakeDetail: View {
                     )
                     .help("Changes the current Inbox recording position")
                 }
-                .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
+                .frame(maxWidth: .infinity, minHeight: 32, maxHeight: 32)
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("inbox-voice-waveform")
 
@@ -1432,6 +1439,9 @@ private struct InboxVoiceIntakeDetail: View {
         }
         .padding(10)
         .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
+        // Preserve the following section's reference position while keeping
+        // the visible player itself at 52px (32px content + 20px padding).
+        .padding(.top, 8)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inbox-voice-transcript-preview")
         .accessibilityLabel("Voice memo playback")

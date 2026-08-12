@@ -1335,9 +1335,17 @@ private func writeInboxVoiceFixture(duration: Double, to url: URL) throws {
 
     for frame in 0..<frameCount {
         let time = Double(frame) / Double(sampleRate)
-        // Modulate the tone so the generated fixture exercises the same
-        // variable-peak waveform rendering as a real voice memo.
-        let envelope = 0.3 + 0.7 * (0.5 + 0.5 * sin(time * 2 * Double.pi * 0.75))
+        let progress = Double(frame) / Double(max(frameCount - 1, 1))
+        // The waveform loader takes 64 peak buckets. A fast time-based
+        // envelope peaks inside every bucket, so use recording-wide phrasing
+        // that keeps the deterministic fixture visually voice-like.
+        let envelope = min(max(
+            0.55
+                + 0.24 * sin(progress * 2 * Double.pi * 3)
+                + 0.14 * sin(progress * 2 * Double.pi * 7 + 0.8)
+                + 0.07 * sin(progress * 2 * Double.pi * 13 + 1.7),
+            0.16
+        ), 1)
         let sample = Int16((sin(time * 2 * Double.pi * 220) * 8_000 * envelope).rounded())
         appendInt16(sample)
     }
