@@ -164,7 +164,10 @@ public final class VoiceCaptureViewModel: ObservableObject {
     // Save-to-Inbox must be tied to the audio that produced the current
     // transcript so a failed new recording cannot reuse stale typed text.
     private var lastTranscribedAudioURL: URL?
-    private var savedInboxAudioURL: URL?
+    // Identifies the source take already persisted to Inbox so repeated Save
+    // cannot duplicate its task. Deletion ownership is tracked separately:
+    // a copied temporary source can be both saved and pending cleanup.
+    private var savedInboxSourceAudioURL: URL?
     private var pendingTemporaryRecordingDeletionURLs: Set<URL> = []
     private var lowLatencyStreamTask: Task<Void, Never>?
     private var lowLatencyStreamID: UUID
@@ -261,7 +264,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.liveIntentPreview = nil
         self.inboxTriageCommandParser = InboxVoiceTriageCommandParser()
         self.lastTranscribedAudioURL = nil
-        self.savedInboxAudioURL = nil
+        self.savedInboxSourceAudioURL = nil
         self.lowLatencyStreamID = UUID()
         self.activeConversationSourceTurnID = nil
         self.conversationCancellationTask = nil
@@ -331,12 +334,14 @@ public final class VoiceCaptureViewModel: ObservableObject {
         audioRecorder: any AudioRecorder,
         sttProvider: any SpeechToTextProvider,
         llmProvider: any LLMProvider,
+        inboxCaptureSaver: (any InboxVoiceCaptureSaving)? = nil,
         temporaryRecordingRemover: @escaping @Sendable (URL) throws -> Void
     ) {
         self.init(
             audioRecorder: audioRecorder,
             sttProvider: sttProvider,
-            llmProvider: llmProvider
+            llmProvider: llmProvider,
+            inboxCaptureSaver: inboxCaptureSaver
         )
         self.temporaryRecordingRemover = temporaryRecordingRemover
     }
@@ -636,7 +641,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     public var canSaveDraftToInbox: Bool {
         inboxCaptureSaver != nil
             && recordedAudio?.fileURL == lastTranscribedAudioURL
-            && recordedAudio?.fileURL != savedInboxAudioURL
+            && recordedAudio?.fileURL != savedInboxSourceAudioURL
             && draft.canGeneratePlan
             && phase != .recording
             && phase != .transcribing
@@ -760,7 +765,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         inboxTriageRequest = nil
         inboxCaptureResult = nil
         lastTranscribedAudioURL = nil
-        savedInboxAudioURL = nil
+        savedInboxSourceAudioURL = nil
         developmentPullRequestAutomationRequest = nil
         autoCreatedTask = nil
         failureRecovery = nil
@@ -902,14 +907,14 @@ public final class VoiceCaptureViewModel: ObservableObject {
             inboxTriageRequest = nil
             inboxCaptureResult = nil
             lastTranscribedAudioURL = audio.fileURL
-            savedInboxAudioURL = nil
+            savedInboxSourceAudioURL = nil
             developmentPullRequestAutomationRequest = nil
             refreshRoutingResult()
             phase = .idle
         } catch {
             removeUnsavedTemporaryRecording()
             lastTranscribedAudioURL = nil
-            savedInboxAudioURL = nil
+            savedInboxSourceAudioURL = nil
             recordingState = audioRecorder.state
             phase = .failed(userMessage(for: error))
         }
@@ -1084,7 +1089,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             auditErrorMessage = "Transcribe audio before saving to Inbox."
             return
         }
-        guard recordedAudio.fileURL != savedInboxAudioURL else {
+        guard recordedAudio.fileURL != savedInboxSourceAudioURL else {
             auditErrorMessage = "This voice capture is already saved to Inbox."
             return
         }
@@ -1108,7 +1113,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 removeOwnedTemporaryRecording(at: recordedAudio.fileURL)
             }
             inboxCaptureResult = result
-            savedInboxAudioURL = recordedAudio.fileURL
+            savedInboxSourceAudioURL = recordedAudio.fileURL
             auditErrorMessage = nil
         } catch {
             inboxCaptureResult = nil
@@ -1637,7 +1642,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
     private func removeUnsavedTemporaryRecording() {
         guard let url = recordedAudio?.fileURL,
-              url != savedInboxAudioURL
+              url != savedInboxSourceAudioURL
         else {
             return
         }
@@ -1667,9 +1672,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     }
 
     private func retryPendingTemporaryRecordingDeletions() {
-        for candidate in pendingTemporaryRecordingDeletionURLs
-            where candidate != savedInboxAudioURL?.standardizedFileURL
-        {
+        for candidate in pendingTemporaryRecordingDeletionURLs {
             removeOwnedTemporaryRecording(at: candidate)
         }
     }
@@ -1685,6 +1688,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         fileManager: FileManager = .default
     ) -> Int {
         let prefixes = [
+            "suisui-recording-",
             "suisui-conversation-",
             "suisui-low-latency-",
         ]
