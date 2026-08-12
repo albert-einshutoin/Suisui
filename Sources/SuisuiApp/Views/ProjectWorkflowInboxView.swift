@@ -113,9 +113,10 @@ struct InboxWorkflowView: View {
                         voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail",
                         fillsAvailableHeight: true
                     )
-                        .frame(minWidth: 340, idealWidth: 400, maxWidth: 440)
-                        .padding(.vertical, 18)
-                        .padding(.trailing, 18)
+                        .frame(minWidth: 340, idealWidth: 400, maxWidth: 420)
+                        .padding(.top, -12)
+                        .padding(.bottom, 18)
+                        .padding(.trailing, 30)
                 }
                 // The wide and compact branches contain AppKit-backed controls.
                 // Distinct identities prevent SwiftUI from reusing their native
@@ -196,7 +197,9 @@ struct InboxWorkflowView: View {
                 addInboxTask: addInboxTask
             )
         }
-        .padding(18)
+        .padding(.horizontal, 18)
+        .padding(.top, -12)
+        .padding(.bottom, 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
@@ -253,7 +256,7 @@ private struct InboxReferenceHeader: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 12) {
                 Text("Inbox")
-                    .font(.largeTitle.weight(.bold))
+                    .font(.system(size: 28, weight: .bold))
 
                 Spacer(minLength: 16)
 
@@ -268,6 +271,7 @@ private struct InboxReferenceHeader: View {
                 .fixedSize()
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
+                .frame(minHeight: 36)
                 .overlay {
                     RoundedRectangle(cornerRadius: 10)
                         .stroke(Color.secondary.opacity(0.20))
@@ -286,6 +290,7 @@ private struct InboxReferenceHeader: View {
                 .fixedSize()
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
+                .frame(minHeight: 36)
                 .overlay {
                     RoundedRectangle(cornerRadius: 10)
                         .stroke(Color.secondary.opacity(0.20))
@@ -306,6 +311,7 @@ private struct InboxReferenceHeader: View {
                                 .foregroundStyle(referenceFilter == filter ? .white : .primary)
                                 .padding(.horizontal, 13)
                                 .padding(.vertical, 8)
+                                .frame(minHeight: 36)
                                 .background(
                                     referenceFilter == filter ? Color.accentColor : Color.clear,
                                     in: RoundedRectangle(cornerRadius: 10)
@@ -475,8 +481,8 @@ private struct InboxReferenceTaskRow: View {
             .accessibilityIdentifier("workflow-task-row-\(task.id)")
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, minHeight: 84, alignment: .leading)
         .background(isSelected ? Color.accentColor.opacity(0.08) : Color.clear)
         .overlay(alignment: .leading) {
             if isSelected {
@@ -768,12 +774,14 @@ private struct InboxActionPanel: View {
                     Label("Convert to Task", systemImage: "checkmark.circle")
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.large)
                 .accessibilityIdentifier("inbox-detail-make-task")
 
                 Button("Review Later Inbox") {
                     viewModel.deferSelectedTaskForLater()
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.large)
                 .keyboardShortcut("4", modifiers: [.command, .control])
                 .accessibilityIdentifier("inbox-action-review-later")
 
@@ -781,6 +789,7 @@ private struct InboxActionPanel: View {
                     isDeleteConfirmationPresented = true
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.large)
             }
             .disabled(task == nil)
             .accessibilityElement(children: .contain)
@@ -1283,10 +1292,6 @@ private struct InboxVoiceIntakeDetail: View {
                     }
                 }
 
-                Text(reviewStatusText(for: capture))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(reviewStatusColor(for: capture))
-                    .accessibilityIdentifier("inbox-voice-review-status")
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier(accessibilityIdentifier)
@@ -1337,10 +1342,15 @@ private struct InboxVoiceIntakeDetail: View {
                 .buttonStyle(.plain)
                 .disabled(!playback.isPlayable)
                 .accessibilityIdentifier("inbox-voice-playback-toggle")
-                .accessibilityLabel(playback.isPlaying ? "Pause voice memo" : "Play voice memo")
+                .accessibilityLabel(
+                    playback.isRetryAvailable
+                        ? "Retry voice memo"
+                        : (playback.isPlaying ? "Pause voice memo" : "Play voice memo")
+                )
                 .accessibilityValue(playback.errorMessage ?? playbackAccessibilityValue)
+                .help(playbackHelp)
 
-                Group {
+                ZStack {
                     if let waveform = playback.waveform {
                         HStack(alignment: .center, spacing: 2) {
                             ForEach(waveform.indices, id: \.self) { index in
@@ -1360,25 +1370,29 @@ private struct InboxVoiceIntakeDetail: View {
                             .progressViewStyle(.linear)
                             .padding(.horizontal, 4)
                     }
-                }
-                .frame(height: 34)
-                .accessibilityIdentifier("inbox-voice-waveform")
-                .accessibilityHidden(true)
 
-                Slider(
-                    value: Binding(
-                        get: { playback.currentTime },
-                        set: { playback.seek(to: $0) }
-                    ),
-                    in: 0...max(playback.duration, 1)
-                )
-                .controlSize(.small)
-                .disabled(!playback.isPlayable)
-                .accessibilityIdentifier("inbox-voice-seek")
-                .accessibilityLabel("Voice memo position")
-                .accessibilityValue(
-                    "\(localizedInboxCaptureDuration(playback.currentTime)) / \(localizedInboxCaptureDuration(playback.duration))"
-                )
+                    // Keep the native slider as the hit-testing and AX layer,
+                    // while the dense waveform owns the reference-matched
+                    // visual track across the full available width.
+                    Slider(
+                        value: Binding(
+                            get: { playback.currentTime },
+                            set: { playback.seek(to: $0) }
+                        ),
+                        in: 0...max(playback.duration, 1)
+                    )
+                    .opacity(0.01)
+                    .disabled(!playback.isSeekable)
+                    .accessibilityIdentifier("inbox-voice-seek")
+                    .accessibilityLabel("Voice memo position")
+                    .accessibilityValue(
+                        "\(localizedInboxCaptureDuration(playback.currentTime)) / \(localizedInboxCaptureDuration(playback.duration))"
+                    )
+                    .help("Changes the current Inbox recording position")
+                }
+                .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("inbox-voice-waveform")
 
                 Text(localizedInboxCaptureDuration(playback.duration > 0 ? playback.duration : capture.durationSeconds))
                     .font(.caption.monospacedDigit())
@@ -1411,6 +1425,16 @@ private struct InboxVoiceIntakeDetail: View {
 
     private var playbackAccessibilityValue: String {
         "\(localizedInboxCaptureDuration(playback.currentTime)) / \(localizedInboxCaptureDuration(playback.duration))"
+    }
+
+    private var playbackHelp: String {
+        if let errorMessage = playback.errorMessage {
+            return errorMessage
+        }
+        if playback.isRetryAvailable {
+            return String(localized: "Retries the selected Inbox recording")
+        }
+        return String(localized: "Plays or pauses the selected Inbox recording")
     }
 
     private func memoEditor(for capture: InboxCaptureRecord) -> some View {
@@ -1525,17 +1549,6 @@ private struct InboxVoiceIntakeDetail: View {
         capture.interpretationSummary?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             ? "sparkles"
             : "questionmark.bubble"
-    }
-
-    private func reviewStatusColor(for capture: InboxCaptureRecord) -> Color {
-        switch capture.transcriptionStatus {
-        case .failed:
-            .red
-        case .pending:
-            .secondary
-        case .succeeded:
-            .blue
-        }
     }
 
     private func detailSection(title: String, value: String, systemImage: String) -> some View {
