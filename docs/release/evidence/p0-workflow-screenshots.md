@@ -3,8 +3,8 @@
 Generated with `script/capture_ui_evidence.sh --p0-workflows`.
 This targeted evidence covers the Personal MVP Inbox and Today closeout paths without rewriting the full release screenshot set.
 
-- Generated at: `2026-08-12T06:36:26Z`
-- Source commit: `97771f52`
+- Generated at: `2026-08-12T07:02:11Z`
+- Source commit: `a11b5e8e`
 - Locales: `en-US`, `ja-JP`
 - Screen Recording preflight: `script/capture_ui_evidence.sh --doctor`
 
