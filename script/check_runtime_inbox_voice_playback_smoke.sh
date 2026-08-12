@@ -40,6 +40,11 @@ database_path="$runtime_home/Suisui-runtime-inbox-voice-playback.sqlite"
 app_log="$tmp_dir/app.log"
 app_pid=""
 app_launch_pid=""
+app_identity=""
+second_voice_task_id=""
+missing_voice_task_id=""
+missing_audio_path=""
+missing_audio_transcript="Runtime transcript remains available when audio is missing."
 ax_press_helper="$tmp_dir/ui-evidence-ax-press-element"
 ax_value_helper="$tmp_dir/inbox-voice-ax-value"
 
@@ -47,12 +52,24 @@ ax_value_helper="$tmp_dir/inbox-voice-ax-value"
 source "$AX_HELPERS"
 
 terminate_app() {
-  if [[ -n "${app_pid:-}" ]]; then
-    kill "$app_pid" >/dev/null 2>&1 || true
-    wait "$app_pid" >/dev/null 2>&1 || true
-    app_pid=""
+  # Cleanup must never target a separately running Suisui. If launch failed
+  # between PID discovery and identity capture, reacquire both from our launch
+  # tree before asking the shared helper to terminate the exact process.
+  if [[ -z "${app_pid:-}" && -n "${app_launch_pid:-}" ]]; then
+    app_pid="$(ax_find_owned_app_pid "$app_launch_pid" "$APP_BINARY" 2>/dev/null || true)"
   fi
+  if [[ -n "${app_pid:-}" && -z "${app_identity:-}" ]]; then
+    app_identity="$(ax_owned_process_identity "$app_pid" "$APP_BINARY" 2>/dev/null || true)"
+  fi
+  if [[ -n "${app_pid:-}" && -n "${app_identity:-}" ]]; then
+    ax_terminate_owned_process "$app_pid" "$APP_BINARY" "$app_identity"
+    if [[ -n "${app_launch_pid:-}" ]]; then
+      wait "$app_launch_pid" >/dev/null 2>&1 || true
+    fi
+  fi
+  app_pid=""
   app_launch_pid=""
+  app_identity=""
 }
 
 cleanup() {
@@ -191,6 +208,99 @@ verify_managed_fixture() {
   fi
 }
 
+prepare_selection_and_missing_audio_fixtures() {
+  local managed_root="$runtime_home/Library/Application Support/Suisui/InboxAudio"
+  local database_parent_real
+  local managed_root_real
+  local second_audio_path
+  local second_audio_parent_real
+  local existing_missing_capture_count
+  local inserted_missing_capture_count
+
+  database_parent_real="$(cd "$(dirname "$database_path")" && pwd -P)"
+  managed_root_real="$(cd "$managed_root" && pwd -P)"
+  if [[ "$database_parent_real" != "$(cd "$runtime_home" && pwd -P)" ]]; then
+    echo "BLOCKER: Inbox playback fixture database escaped the isolated runtime HOME" >&2
+    return 2
+  fi
+
+  second_voice_task_id="$($SQLITE3 -batch -noheader "$database_path" "
+    SELECT captures.task_id
+    FROM inbox_capture_records AS captures
+    INNER JOIN tasks ON tasks.id = captures.task_id
+    WHERE captures.task_id <> $inbox_voice_task_id
+      AND tasks.title = 'Update API specification document'
+      AND tasks.source_command = 'ui-evidence'
+    ORDER BY captures.id
+    LIMIT 1;
+  ")"
+  if [[ ! "$second_voice_task_id" =~ ^[0-9]+$ ]]; then
+    echo "BLOCKER: the second seeded Inbox voice task is unavailable" >&2
+    return 2
+  fi
+  second_audio_path="$($SQLITE3 -batch -noheader "$database_path" \
+    "SELECT audio_file_path FROM inbox_capture_records WHERE task_id=$second_voice_task_id ORDER BY id LIMIT 1;")"
+  if [[ -z "$second_audio_path" || ! -f "$second_audio_path" || -L "$second_audio_path" ]]; then
+    echo "BLOCKER: the second seeded Inbox voice task is not playable" >&2
+    return 2
+  fi
+  second_audio_parent_real="$(cd "$(dirname "$second_audio_path")" && pwd -P)"
+  if [[ "$second_audio_parent_real" != "$managed_root_real" || "${second_audio_path##*.}" != "wav" ]]; then
+    echo "BLOCKER: the second seeded Inbox voice task escaped the managed WAV directory" >&2
+    return 2
+  fi
+
+  missing_voice_task_id="$($SQLITE3 -batch -noheader "$database_path" "
+    SELECT id
+    FROM tasks
+    WHERE title = 'Share design proposal with Suzuki'
+      AND source_command = 'ui-evidence'
+    ORDER BY id
+    LIMIT 1;
+  ")"
+  if [[ ! "$missing_voice_task_id" =~ ^[0-9]+$ ]]; then
+    echo "BLOCKER: the seeded task for missing-audio evidence is unavailable" >&2
+    return 2
+  fi
+  missing_audio_path="$managed_root_real/missing-managed-audio.wav"
+  if [[ -e "$missing_audio_path" || -L "$missing_audio_path" ]]; then
+    echo "BLOCKER: the managed missing-audio fixture unexpectedly exists" >&2
+    return 2
+  fi
+  existing_missing_capture_count="$($SQLITE3 -batch -noheader "$database_path" \
+    "SELECT COUNT(*) FROM inbox_capture_records WHERE task_id=$missing_voice_task_id;")"
+  if [[ "$existing_missing_capture_count" != "0" ]]; then
+    echo "BLOCKER: the seeded missing-audio task already has a capture" >&2
+    return 2
+  fi
+
+  # This direct insert is intentionally limited to the freshly seeded database.
+  # Fixed content plus a nonexistent path inside its managed root isolates the
+  # unreadable-audio behavior without touching any user database or audio file.
+  "$SQLITE3" -batch "$database_path" "
+    INSERT INTO inbox_capture_records (
+      task_id, source_kind, audio_file_path, duration_seconds,
+      transcript, interpretation_summary, memo,
+      classification_status, transcription_status, created_at
+    ) VALUES (
+      $missing_voice_task_id, 'voice_memo', '$missing_audio_path', 9,
+      '$missing_audio_transcript', 'Runtime missing audio fallback.', NULL,
+      'unclassified', 'succeeded', '2026-07-10T12:00:00Z'
+    );
+  "
+  inserted_missing_capture_count="$($SQLITE3 -batch -noheader "$database_path" "
+    SELECT COUNT(*)
+    FROM inbox_capture_records
+    WHERE task_id=$missing_voice_task_id
+      AND audio_file_path='$missing_audio_path'
+      AND transcript='$missing_audio_transcript';
+  ")"
+  if [[ "$inserted_missing_capture_count" != "1" || -e "$missing_audio_path" || -L "$missing_audio_path" ]]; then
+    echo "BLOCKER: the isolated managed missing-audio capture is invalid" >&2
+    return 2
+  fi
+}
+
 prepare_ax_press_helper() {
   if [[ -x "$ax_press_helper" ]]; then
     return 0
@@ -243,6 +353,12 @@ func string(_ value: CFTypeRef?) -> String? {
     return nil
 }
 
+func bool(_ value: CFTypeRef?) -> Bool? {
+    if let value = value as? Bool { return value }
+    if let value = value as? NSNumber { return value.boolValue }
+    return nil
+}
+
 func visibleSize(_ element: AXUIElement) -> CGSize? {
     guard let value = attribute(element, kAXSizeAttribute as CFString),
           CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
@@ -264,15 +380,14 @@ guard let windowsValue = attribute(app, kAXWindowsAttribute as CFString) else { 
 var queue = elements(windowsValue)
 var cursor = 0
 var visited = 0
-var matches: [(element: AXUIElement, value: String)] = []
+var matches: [AXUIElement] = []
 while cursor < queue.count && visited < 6_000 {
     let element = queue[cursor]
     cursor += 1
     visited += 1
     if string(attribute(element, "AXIdentifier" as CFString)) == identifier,
-       visibleSize(element) != nil,
-       let value = string(attribute(element, kAXValueAttribute as CFString)) {
-        matches.append((element, value))
+       visibleSize(element) != nil {
+        matches.append(element)
     }
     for childAttribute in childAttributes {
         queue.append(contentsOf: elements(attribute(element, childAttribute as CFString)))
@@ -282,11 +397,19 @@ guard !matches.isEmpty else { exit(1) }
 
 switch operation {
 case "values":
-    print(matches.map(\.value).sorted().joined(separator: ";"))
+    let values = matches.compactMap { string(attribute($0, kAXValueAttribute as CFString)) }
+    guard !values.isEmpty else { exit(1) }
+    print(values.sorted().joined(separator: ";"))
+case "disabled":
+    let enabledValues = matches.compactMap { bool(attribute($0, kAXEnabledAttribute as CFString)) }
+    guard enabledValues.count == matches.count,
+          enabledValues.allSatisfy({ !$0 }) else { exit(1) }
+    print("disabled")
 case "increment-max":
-    let numericMatches = matches.compactMap { match -> (element: AXUIElement, value: Double)? in
-        guard let value = Double(match.value) else { return nil }
-        return (match.element, value)
+    let numericMatches = matches.compactMap { element -> (element: AXUIElement, value: Double)? in
+        guard let rawValue = string(attribute(element, kAXValueAttribute as CFString)),
+              let value = Double(rawValue) else { return nil }
+        return (element, value)
     }
     guard let target = numericMatches.max(by: { $0.value < $1.value }),
           AXUIElementPerformAction(target.element, kAXIncrementAction as CFString) == .success else {
@@ -305,6 +428,10 @@ SWIFT
 wait_for_app_process() {
   app_pid="$(ax_wait_for_owned_app_pid "$app_launch_pid" "$APP_BINARY" "$TIMEOUT_SECONDS")" || {
     echo "BLOCKER: the isolated Suisui process did not launch" >&2
+    return 1
+  }
+  app_identity="$(ax_wait_for_owned_process_identity "$app_pid" "$APP_BINARY" 3)" || {
+    echo "BLOCKER: the isolated Suisui process identity could not be captured" >&2
     return 1
   }
   ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$TIMEOUT_SECONDS" "$APP_BINARY" >/dev/null
@@ -369,6 +496,7 @@ APPLESCRIPT
 }
 
 launch_app_for_inbox() {
+  local selected_task_id="${1:-$inbox_voice_task_id}"
   terminate_app
   /usr/bin/env -i PATH="$PATH" TMPDIR="$tmp_dir" \
     HOME="$runtime_home" CFFIXED_USER_HOME="$runtime_home" \
@@ -376,7 +504,7 @@ launch_app_for_inbox() {
     SUISUI_LANGUAGE_PREFERENCE=english \
     SUISUI_DATABASE_PATH="$database_path" \
     SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="inbox" \
-    SUISUI_PROJECT_BOARD_SELECTED_TASK_ID="$inbox_voice_task_id" \
+    SUISUI_PROJECT_BOARD_SELECTED_TASK_ID="$selected_task_id" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES \
       -AppleLanguages '(en)' -AppleLocale en_US >"$app_log" 2>&1 &
   app_launch_pid=$!
@@ -466,6 +594,21 @@ seek_forward_by_identifier() {
   return 1
 }
 
+wait_for_control_disabled() {
+  local identifier="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if "$ax_value_helper" "$app_pid" "$identifier" disabled >>"$app_log" 2>&1; then
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: visible Inbox voice control was not disabled" >&2
+      return 1
+    fi
+    sleep 0.2
+  done
+}
+
 wait_for_control_value_ready() {
   local identifier="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
@@ -516,6 +659,7 @@ fi
 
 prepare_fixture
 verify_managed_fixture
+prepare_selection_and_missing_audio_fixtures
 prepare_ax_press_helper
 prepare_ax_value_helper
 
@@ -549,4 +693,24 @@ if [[ "$initial_playback_value" == "$playing_playback_value" || "$playing_playba
   exit 1
 fi
 
-printf "OK: runtime inbox voice playback smoke verified restart, play, pause, progress, and seek through the visible Inbox UI\n"
+press_button_by_identifier "inbox-voice-playback-toggle"
+wait_for_signal_containing "inbox-voice-playback-toggle" "Pause voice memo"
+press_button_by_identifier "workflow-task-row-$second_voice_task_id"
+wait_for_signal_containing "inbox-voice-playback-toggle" "Play voice memo"
+second_task_playback_value="$(wait_for_control_value_ready "inbox-voice-playback-toggle")"
+sleep 1
+if [[ "$(wait_for_control_value_ready "inbox-voice-playback-toggle")" != "$second_task_playback_value" ]]; then
+  echo "BLOCKER: selecting the second voice task did not stop previous playback" >&2
+  exit 1
+fi
+
+terminate_app
+sleep 1
+launch_app_for_inbox "$missing_voice_task_id"
+wait_for_signal_containing "inbox-voice-playback-error" "Audio playback is unavailable for this capture."
+wait_for_signal_containing "inbox-voice-transcript-preview" "Audio playback is unavailable for this capture."
+wait_for_control_disabled "inbox-voice-playback-toggle"
+wait_for_control_disabled "inbox-voice-seek"
+wait_for_signal_containing "inbox-voice-transcript" "$missing_audio_transcript"
+
+printf "OK: runtime inbox voice playback smoke verified restart, play, pause, progress, seek, selection stop, and missing-audio fallback through the visible Inbox UI\n"

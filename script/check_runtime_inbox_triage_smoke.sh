@@ -41,17 +41,25 @@ runtime_home="$tmp_dir/home"
 mkdir -p "$runtime_home"
 app_pid=""
 app_launch_pid=""
+app_identity=""
+app_launch_identity=""
 
 # shellcheck source=/dev/null
 source "$AX_HELPERS"
 
 terminate_app() {
-  if [[ -n "${app_pid:-}" ]]; then
-    kill "$app_pid" >/dev/null 2>&1 || true
-    wait "$app_pid" >/dev/null 2>&1 || true
-    app_pid=""
+  local owned_pid="${app_pid:-}"
+  local launch_pid="${app_launch_pid:-}"
+  if [[ -n "$owned_pid" ]]; then
+    ax_terminate_owned_process "$owned_pid" "$APP_BINARY" "${app_identity:-}"
   fi
+  if [[ -n "$launch_pid" && "$launch_pid" != "$owned_pid" ]]; then
+    ax_terminate_owned_process "$launch_pid" "$APP_BINARY" "${app_launch_identity:-}"
+  fi
+  app_pid=""
   app_launch_pid=""
+  app_identity=""
+  app_launch_identity=""
 }
 
 cleanup() {
@@ -70,6 +78,7 @@ wait_for_app_process() {
     return 1
   }
   ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$TIMEOUT_SECONDS" "$APP_BINARY"
+  app_identity="$(ax_owned_process_identity "$app_pid" "$APP_BINARY")" || return 1
 }
 
 wait_for_no_app_process() {
@@ -81,12 +90,12 @@ wait_for_no_app_process() {
 activate_app() {
   # Keep activation in System Events so the isolated DB/keychain environment
   # remains attached to the process started by this script.
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
+  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
-  set appName to item 1 of argv
+  set targetPID to (item 1 of argv) as integer
   tell application "System Events"
-    if not (exists process appName) then return "missing"
-    tell process appName
+    set targetProcess to first process whose unix id is targetPID
+    tell targetProcess
       set frontmost to true
       if (count of windows) > 0 then
         try
@@ -121,12 +130,12 @@ wait_for_visible_windows() {
 
   while true; do
     set +e
-    window_count="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' 2>/dev/null
+    window_count="$(/usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' 2>/dev/null
 on run argv
-  set appName to item 1 of argv
+  set targetPID to (item 1 of argv) as integer
   tell application "System Events"
-    if not (exists process appName) then return "0"
-    tell process appName
+    set targetProcess to first process whose unix id is targetPID
+    tell targetProcess
       return (count of windows) as text
     end tell
   end tell
@@ -155,14 +164,14 @@ set_inbox_window_size() {
   # The classification panel is below the task list; fixing the window size
   # keeps this runtime path testing product behavior instead of prior user
   # window state or a clipped footer.
-  /usr/bin/osascript - "$APP_NAME" "$width" "$height" <<'APPLESCRIPT' >/dev/null
+  /usr/bin/osascript - "$app_pid" "$width" "$height" <<'APPLESCRIPT' >/dev/null
 on run argv
-  set appName to item 1 of argv
+  set targetPID to (item 1 of argv) as integer
   set targetWidth to (item 2 of argv) as integer
   set targetHeight to (item 3 of argv) as integer
   tell application "System Events"
-    if not (exists process appName) then error "process missing"
-    tell process appName
+    set targetProcess to first process whose unix id is targetPID
+    tell targetProcess
       if not (exists window 1) then error "window missing"
       set frontmost to true
       try
@@ -183,6 +192,7 @@ launch_app_for_inbox() {
     SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="inbox" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   app_launch_pid=$!
+  app_launch_identity="$(ax_owned_process_identity "$app_launch_pid" "$APP_BINARY")" || return 1
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -293,15 +303,15 @@ pressButtonContaining() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT'
+    if /usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT'
 on run argv
-  set appName to item 1 of argv
+  set targetPID to (item 1 of argv) as integer
   set fragment to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set targetProcess to first process whose unix id is targetPID
+    tell targetProcess
       set windowCount to count of windows
-      if windowCount < 1 then error appName & " has no visible windows"
+      if windowCount < 1 then error "target process has no visible windows"
       try
         set frontmost to true
       end try
@@ -388,15 +398,15 @@ waitForTextFieldContaining() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT' >/dev/null 2>&1
+    if /usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
-  set appName to item 1 of argv
+  set targetPID to (item 1 of argv) as integer
   set fragment to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set targetProcess to first process whose unix id is targetPID
+    tell targetProcess
       set windowCount to count of windows
-      if windowCount < 1 then error appName & " has no visible windows"
+      if windowCount < 1 then error "target process has no visible windows"
       try
         set frontmost to true
       end try
