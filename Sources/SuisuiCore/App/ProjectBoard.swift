@@ -8433,6 +8433,18 @@ public final class ProjectBoardViewModel: ObservableObject {
         triageRecord: InboxTriageRecord?,
         captures: [InboxCaptureRecord]
     ) throws -> ProjectBoardTask {
+        if let atomicStore = store as? any ProjectBoardDeleteUndoRestoring,
+           triageRecord != nil || !captures.isEmpty {
+            return try atomicStore.restoreDeletedTask(
+                from: snapshot,
+                triageRecord: triageRecord,
+                captures: captures
+            )
+        }
+
+        // Test doubles and non-SQLite integrations keep the additive fallback;
+        // production SQLite uses the capability above because compensation
+        // cannot provide an atomic retry guarantee after a storage failure.
         let restored: ProjectBoardTask
         if let triageRecord {
             restored = try store.undoInboxTriage(InboxTriageMutation(

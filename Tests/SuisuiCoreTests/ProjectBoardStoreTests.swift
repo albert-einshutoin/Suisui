@@ -302,6 +302,14 @@ final class ProjectBoardStoreTests: XCTestCase {
             BEGIN SELECT RAISE(ABORT, 'forced partial capture restore failure'); END;
             """
         )
+        try stores.connection.execute(
+            """
+            CREATE TRIGGER fail_compensating_deleted_inbox_task_delete
+            BEFORE DELETE ON tasks
+            WHEN OLD.title = 'Retry complete Inbox restore'
+            BEGIN SELECT RAISE(ABORT, 'forced compensating task delete failure'); END;
+            """
+        )
 
         viewModel.undoLastBoardOperation()
 
@@ -318,10 +326,16 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertNotNil(viewModel.errorMessage)
 
         try stores.connection.execute("DROP TRIGGER fail_second_deleted_inbox_capture_restore;")
+        try stores.connection.execute("DROP TRIGGER fail_compensating_deleted_inbox_task_delete;")
         viewModel.undoLastBoardOperation()
 
         let restoredTaskID = try XCTUnwrap(viewModel.selectedTaskID)
         XCTAssertNotEqual(restoredTaskID, task.id)
+        XCTAssertEqual(
+            try stores.board.loadSnapshot().projects.flatMap(\.tasks)
+                .filter { $0.title == "Retry complete Inbox restore" }.count,
+            1
+        )
         let restoredRecord = try XCTUnwrap(
             stores.board.loadInboxTriageRecords(taskIDs: [restoredTaskID])[restoredTaskID]
         )

@@ -42,6 +42,18 @@ public enum BoardOperationUndoEntry: Equatable, Sendable {
     case revertStatusBatch(snapshots: [ProjectBoardTask], regenerated: [ProjectBoardTask])
 }
 
+/// Persistence capability for delete Undo implementations that can restore the
+/// task and every dependent Inbox row in one transaction. This stays separate
+/// from `ProjectBoardStore`: only stores sharing the task, triage, and capture
+/// database can truthfully provide the all-or-nothing guarantee.
+protocol ProjectBoardDeleteUndoRestoring {
+    func restoreDeletedTask(
+        from snapshot: ProjectBoardTask,
+        triageRecord: InboxTriageRecord?,
+        captures: [InboxCaptureRecord]
+    ) throws -> ProjectBoardTask
+}
+
 /// Pure in-memory LIFO stack of board undo entries.
 ///
 /// The stack is deliberately session-only (no persistence) and capped at

@@ -413,6 +413,44 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         try taskStore.delete(id: id)
     }
 
+    /// Delete Undo crosses three foreign-key-linked tables. Restoring them in
+    /// one SQLite transaction avoids relying on best-effort compensating
+    /// deletes, which can fail for the same storage error as a capture insert.
+    func restoreDeletedTask(
+        from snapshot: ProjectBoardTask,
+        triageRecord: InboxTriageRecord?,
+        captures: [InboxCaptureRecord]
+    ) throws -> ProjectBoardTask {
+        try connection.transaction {
+            let restoredTask = try restoreTask(from: snapshot)
+            if let triageRecord {
+                let restoredRecord = try InboxTriageRecord(
+                    taskID: restoredTask.id,
+                    disposition: triageRecord.disposition,
+                    reviewAt: triageRecord.reviewAt,
+                    updatedAt: triageRecord.updatedAt
+                )
+                try upsertInboxTriageRecord(restoredRecord)
+            }
+
+            let captureStore = SQLiteInboxCaptureStore(connection: connection)
+            for capture in captures {
+                _ = try captureStore.createVoiceCapture(InboxVoiceCaptureDraft(
+                    taskID: restoredTask.id,
+                    audioFilePath: capture.audioFilePath,
+                    durationSeconds: capture.durationSeconds,
+                    transcript: capture.transcript,
+                    interpretationSummary: capture.interpretationSummary,
+                    memo: capture.memo,
+                    classificationStatus: capture.classificationStatus,
+                    transcriptionStatus: capture.transcriptionStatus,
+                    createdAt: capture.createdAt
+                ))
+            }
+            return restoredTask
+        }
+    }
+
     @discardableResult
     public func restoreTask(from snapshot: ProjectBoardTask) throws -> ProjectBoardTask {
         let normalized = try normalizedDraft(ProjectBoardTaskDraft(
@@ -898,6 +936,8 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         }
     }
 }
+
+extension SQLiteProjectBoardStore: ProjectBoardDeleteUndoRestoring {}
 
 private extension LocalStoreDecodingError {
     var isProjectBoardSkippableRecord: Bool {
