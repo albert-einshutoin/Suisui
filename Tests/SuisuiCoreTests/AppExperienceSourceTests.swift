@@ -3646,6 +3646,48 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(source.contains("WorkflowTaskSurface("))
     }
 
+    func testInboxDetailUsesReferenceMatchedVerticalMetrics() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift")
+        let actionStyleStart = try XCTUnwrap(
+            source.range(of: "private struct InboxTriageActionButtonStyle")
+        )
+        let proposedActionsStart = try XCTUnwrap(source.range(of: "private struct InboxProposedActions"))
+        let proposedActionsEnd = try XCTUnwrap(
+            source.range(
+                of: "private struct InboxRelatedMaterialsSheet",
+                range: proposedActionsStart.upperBound..<source.endIndex
+            )
+        )
+        let detailsStart = try XCTUnwrap(source.range(of: "private struct InboxReferenceDetails"))
+        let detailsEnd = try XCTUnwrap(
+            source.range(of: "private func normalizedInboxDetail", range: detailsStart.upperBound..<source.endIndex)
+        )
+        let voiceStart = try XCTUnwrap(source.range(of: "private struct InboxVoiceIntakeDetail"))
+        let copyTranscriptStart = try XCTUnwrap(
+            source.range(of: "private func copyTranscript", range: voiceStart.upperBound..<source.endIndex)
+        )
+
+        let actionStyle = String(source[actionStyleStart.lowerBound..<proposedActionsStart.lowerBound])
+        let proposedActions = String(source[proposedActionsStart.lowerBound..<proposedActionsEnd.lowerBound])
+        let details = String(source[detailsStart.lowerBound..<detailsEnd.lowerBound])
+        let transcript = String(source[voiceStart.lowerBound..<copyTranscriptStart.lowerBound])
+
+        XCTAssertTrue(actionStyle.contains(".frame(height: 36)"))
+        XCTAssertTrue(transcript.contains(".lineSpacing(4)"))
+        XCTAssertTrue(
+            transcript.contains(".frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)")
+        )
+        XCTAssertTrue(proposedActions.contains(".frame(height: 36)"))
+        XCTAssertFalse(proposedActions.contains(".padding(.vertical, 13)"))
+        XCTAssertTrue(details.contains(".frame(minHeight: 38)"))
+        XCTAssertFalse(details.contains(".padding(.vertical, 14)"))
+        XCTAssertFalse(
+            source.contains(
+                ".accessibilityIdentifier(\"inbox-proposed-actions\")\n            .padding(.bottom, 8)"
+            )
+        )
+    }
+
     func testInboxReferenceUIUsesPersistedTriageLifecycle() throws {
         let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift")
 

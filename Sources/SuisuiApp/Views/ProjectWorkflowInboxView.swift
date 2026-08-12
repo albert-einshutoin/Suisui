@@ -773,26 +773,20 @@ private struct InboxActionPanel: View {
                 } label: {
                     Label("Convert to Task", systemImage: "checkmark.circle")
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .frame(minHeight: 36)
+                .buttonStyle(InboxTriageActionButtonStyle(isProminent: true))
                 .accessibilityIdentifier("inbox-detail-make-task")
 
                 Button("Review Later Inbox") {
                     viewModel.deferSelectedTaskForLater()
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .frame(minHeight: 36)
+                .buttonStyle(InboxTriageActionButtonStyle(isProminent: false))
                 .keyboardShortcut("4", modifiers: [.command, .control])
                 .accessibilityIdentifier("inbox-action-review-later")
 
                 Button("Delete", role: .destructive) {
                     isDeleteConfirmationPresented = true
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .frame(minHeight: 36)
+                .buttonStyle(InboxTriageActionButtonStyle(isProminent: false))
             }
             .disabled(task == nil)
             .accessibilityElement(children: .contain)
@@ -848,7 +842,6 @@ private struct InboxActionPanel: View {
             .disabled(task == nil)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("inbox-proposed-actions")
-            .padding(.bottom, 8)
 
             Text("Details Information")
                 .font(.headline)
@@ -883,6 +876,26 @@ private struct InboxActionPanel: View {
         }
     }
 
+}
+
+private struct InboxTriageActionButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    let isProminent: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.body.weight(.semibold))
+            .foregroundStyle(isProminent ? Color.white : Color.primary)
+            .padding(.horizontal, 12)
+            // Native macOS bordered controls paint a 28px capsule inside a
+            // 36px frame; owning the background keeps the visible target faithful.
+            .frame(height: 36)
+            .background(
+                isProminent ? Color.accentColor : Color.secondary.opacity(0.12),
+                in: Capsule()
+            )
+            .opacity(isEnabled ? (configuration.isPressed ? 0.72 : 1) : 0.45)
+    }
 }
 
 private struct InboxProposedActions: View {
@@ -996,7 +1009,8 @@ private struct InboxProposedActions: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .padding(.vertical, 13)
+        // Three 36px rows plus two dividers reproduce the 110px reference card.
+        .frame(height: 36)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
         .accessibilityIdentifier("inbox-proposed-action-\(systemImage)")
@@ -1217,7 +1231,8 @@ private struct InboxReferenceDetails: View {
                 .lineLimit(2)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 14)
+        // Three rows plus two dividers resolve to the 116px reference card.
+        .frame(minHeight: 38)
     }
 }
 
@@ -1275,9 +1290,11 @@ private struct InboxVoiceIntakeDetail: View {
 
                 Text(transcriptReviewText(for: capture))
                     .font(.callout)
+                    .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 20)
+                    .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
                     .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
                     .accessibilityLabel("Transcript")
                     .accessibilityValue(transcriptReviewText(for: capture))
