@@ -220,6 +220,7 @@ final class CIGateWorkflowTests: XCTestCase {
         // The sanitizer must sit between the lane function and `tee` so
         // secrets and runner-local paths never appear in the public log.
         let script = try readRepositoryFile("scripts/ci.sh")
+        let redactionHelper = try readRepositoryFile("script/ci_redact_stream.sh")
 
         XCTAssertTrue(
             script.contains("| sanitize_gate_log - | tee \"$raw_log\""),
@@ -240,23 +241,45 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(script.contains("pipeline_statuses=(\"${PIPESTATUS[@]}\")"))
         XCTAssertTrue(script.contains("pipeline_statuses[1]"))
         XCTAssertTrue(script.contains("pipeline_statuses[2]"))
-        XCTAssertTrue(script.contains("s#/private/var/folders/[^[:space:]]+#<temp-path>#g"))
-        XCTAssertTrue(script.contains("s#(/var)?/tmp/[^[:space:]]+#<temp-path>#g"))
-        XCTAssertTrue(script.contains("github_pat_"))
-        XCTAssertTrue(script.contains("Authorization"))
-        XCTAssertTrue(
-            script.contains(
-                #"("[[:alnum:]_.-]*(token|secret|password|api[_-]?key)"[[:space:]]*:[[:space:]]*)"[^"]*""#
-            ),
-            "Lane sanitizer must redact double-quoted JSON secret fields before publication"
+        XCTAssertTrue(script.contains("source \"$CI_REDACT_HELPER\""))
+        XCTAssertTrue(script.contains("ci_redact_stream"))
+        XCTAssertTrue(redactionHelper.contains("Authorization"))
+        XCTAssertTrue(redactionHelper.contains("github_pat_"))
+        XCTAssertTrue(redactionHelper.contains("glpat-"))
+        XCTAssertTrue(redactionHelper.contains("AIza"))
+
+        let sensitiveFixture = """
+        public-marker=keep-me
+        path="/Users/alice/My Private App/config.json" volume='/Volumes/Secret Disk/work'
+        Authorization: Bearer bearer-provider-value Authorization: Basic basic-provider-value
+        PASSWORD="alpha beta" 'api_key': 'quoted secret value'
+        sk_live_providerfixture1234 glpat-providerfixture1234 AIzaProviderFixture1234567890
+        https://alice:password-value@example.test/path
+        escaped=/Users/alice/My\\ Project/private.txt
+        {"token":"abc\\\"leaked-tail"}
+        -----BEGIN PRIVATE KEY-----
+        private-key-body-value
+        -----END PRIVATE KEY-----
+        """
+        let helperPath = repositoryRoot.appendingPathComponent("script/ci_redact_stream.sh").path
+        let sanitized = try runBash(
+            "source \"$REDACTION_HELPER\"; printf '%s' \"$SENSITIVE_FIXTURE\" | ci_redact_stream",
+            environment: [
+                "REDACTION_HELPER": helperPath,
+                "SENSITIVE_FIXTURE": sensitiveFixture
+            ]
         )
-        XCTAssertTrue(
-            script.contains(
-                #"('[[:alnum:]_.-]*(token|secret|password|api[_-]?key)'[[:space:]]*:[[:space:]]*)'[^']*'"#
-            ),
-            "Lane sanitizer must redact single-quoted dictionary secret fields before publication"
-        )
-        XCTAssertTrue(script.contains("#Ig"))
+        XCTAssertEqual(sanitized.exitCode, 0, sanitized.output)
+        for privateValue in [
+            "alice", "My Private App", "Secret Disk", "bearer-provider-value",
+            "basic-provider-value", "alpha beta", "quoted secret value",
+            "sk_live_providerfixture1234", "glpat-providerfixture1234",
+            "AIzaProviderFixture1234567890", "password-value", "Project/private.txt",
+            "leaked-tail", "private-key-body-value"
+        ] {
+            XCTAssertFalse(sanitized.output.contains(privateValue), sanitized.output)
+        }
+        XCTAssertTrue(sanitized.output.contains("public-marker=keep-me"), sanitized.output)
     }
 
     func testCompleteSwiftPMRunnerWritesFailedEvidenceWhenDiscoveryFails() throws {

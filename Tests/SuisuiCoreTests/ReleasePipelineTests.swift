@@ -284,11 +284,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("test_pipeline_statuses=(\"${PIPESTATUS[@]}\")"))
         XCTAssertTrue(script.contains("test_pipeline_statuses[1]"))
         XCTAssertTrue(script.contains("test_pipeline_statuses[2]"))
-        XCTAssertTrue(script.contains("s#/private/var/folders/[^[:space:]]+#<temp-path>#g"))
-        XCTAssertTrue(script.contains("s#(/var)?/tmp/[^[:space:]]+#<temp-path>#g"))
+        XCTAssertTrue(script.contains("source \"$CI_REDACT_HELPER\""))
+        XCTAssertTrue(script.contains("ci_redact_stream"))
         XCTAssertTrue(script.contains("mktemp \"${TMPDIR:-/tmp}/suisui-swiftpm-discovery.raw.XXXXXX\""))
         XCTAssertFalse(script.contains("mktemp \"$ARTIFACT_DIR/discovery.raw.XXXXXX\""))
-        XCTAssertTrue(script.contains("#Ig"))
     }
 
     func testCompleteSwiftPMRunnerFixtureSelfTestsExerciseCountFailures() throws {
@@ -7894,6 +7893,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("DESTINATION_SAMPLE_COUNT=3"))
         XCTAssertTrue(script.contains("median_elapsed_ms"))
         XCTAssertTrue(script.contains("measure_cold_launch_sample"))
+        let coldSampleStart = try XCTUnwrap(script.range(of: "measure_cold_launch_sample() {"))
+        let coldSampleEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\nmeasure_destination()", range: coldSampleStart.upperBound..<script.endIndex)
+        )
+        let coldSampleSource = String(script[coldSampleStart.lowerBound..<coldSampleEnd.lowerBound])
+        let diagnosticObserver = try XCTUnwrap(coldSampleSource.range(of: "start_app_stderr_capture"))
+        let productClock = try XCTUnwrap(coldSampleSource.range(of: "launch_start_ms=\"$(now_ms)\""))
+        let appLaunch = try XCTUnwrap(coldSampleSource.range(of: "open_app"))
+        XCTAssertLessThan(diagnosticObserver.lowerBound, productClock.lowerBound)
+        XCTAssertLessThan(productClock.lowerBound, appLaunch.lowerBound)
         XCTAssertTrue(script.contains("cold-launch-command-ready-sample-"))
         XCTAssertTrue(script.contains("record_elapsed_sample \"cold-launch-command-ready\" \"$median_command_ready_ms\" \"$MAX_COLD_LAUNCH_MS\""))
         XCTAssertTrue(script.contains("SUISUI_LAUNCH_TIMELINE_PATH"))
@@ -8250,11 +8259,19 @@ final class ReleasePipelineTests: XCTestCase {
         let awsAccessKeyFixture = "AKIA" + "ABCDEFGHIJKLMNOP"
         let sensitiveDiagnostic = """
         fatal path=/Users/alice/private/app volume=/Volumes/Secret/work temp=/private/var/folders/aa/bb/cc
+        temp-only=/private/var/folders/aa/bb/cc
+        contact=alice@example.com
+        identifier=123E4567-E89B-12D3-A456-426614174000
         Authorization: Bearer bearer-provider-value
         Anthropic sk-ant-providerfixture Slack xoxb-providerfixture1234
         GitHub ghp_providerfixture1234 github_pat_providerfixture1234
         "token": "quoted-secret" api_key=plain-secret alice@example.com
         UUID=123E4567-E89B-12D3-A456-426614174000 \(awsAccessKeyFixture)
+        escaped=/Users/alice/My\\ Project/private.txt
+        {"token":"abc\\\"leaked-tail"}
+        -----BEGIN PRIVATE KEY-----
+        private-key-body-value
+        -----END PRIVATE KEY-----
         """
         let sanitized = try runTool(
             ["/bin/bash", "-c", "source \"$REDACTION_HELPER\"; printf '%s' \"$DIAGNOSTIC\" | ci_redact_stream"],
@@ -8265,7 +8282,8 @@ final class ReleasePipelineTests: XCTestCase {
             "alice", "Secret/work", "bearer-provider-value", "sk-ant-providerfixture",
             "xoxb-providerfixture1234", "ghp_providerfixture1234", "github_pat_providerfixture1234",
             "quoted-secret", "plain-secret", "alice@example.com",
-            "123E4567-E89B-12D3-A456-426614174000", awsAccessKeyFixture
+            "123E4567-E89B-12D3-A456-426614174000", awsAccessKeyFixture,
+            "Project/private.txt", "leaked-tail", "private-key-body-value"
         ] {
             XCTAssertFalse(sanitized.output.contains(secret), sanitized.output)
         }
@@ -8279,8 +8297,39 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("tail -c 32768"))
         XCTAssertTrue(script.contains("mkfifo \"$APP_STDERR_FIFO\""))
         XCTAssertTrue(script.contains("my $limit = 32768"))
-        XCTAssertTrue(script.contains("while (read(STDIN, my $chunk, 4096))"))
+        XCTAssertTrue(script.contains("while (sysread(STDIN, my $chunk, 4096))"))
         XCTAssertTrue(script.contains("length($tail) > $limit"))
+        XCTAssertTrue(script.contains("capture_current_app_failure_diagnostics"))
+
+        let markerStart = try XCTUnwrap(script.range(of: "wait_for_marker() {"))
+        let markerEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\nassert_sample_within_budget()", range: markerStart.upperBound..<script.endIndex)
+        )
+        let markerSource = String(script[markerStart.lowerBound..<markerEnd.lowerBound]) + "\n}"
+        let measuredFailureReceipt = receiptRoot.appendingPathComponent("measured-failure-captured")
+        let measuredFailure = try runTool(
+            [
+                "/bin/bash", "-c", """
+                set -u
+                OUTPUT_DIR="$RECEIPT_ROOT"
+                APP_NAME=Suisui
+                APP_PID=123
+                TIMEOUT_SECONDS=1
+                ROOT_DIR=/fixture
+                ax_wait_for_ax_identifier() { return 1; }
+                ax_emit_failure_category() { :; }
+                capture_current_app_failure_diagnostics() { printf captured >"$CAPTURE_RECEIPT"; }
+                \(markerSource)
+                if wait_for_marker today-workflow; then exit 9; fi
+                test "$(cat "$CAPTURE_RECEIPT")" = captured
+                """
+            ],
+            environment: [
+                "CAPTURE_RECEIPT": measuredFailureReceipt.path,
+                "RECEIPT_ROOT": receiptRoot.path
+            ]
+        )
+        XCTAssertEqual(measuredFailure.exitCode, 0, measuredFailure.output)
     }
 
     func testReleaseLaunchPerformanceAcceptsOnlyAnExplicitVerifiedPrebuiltApp() throws {
@@ -8339,6 +8388,44 @@ final class ReleasePipelineTests: XCTestCase {
             environment: ["FIXTURE_ROOT": fixtureRoot.path]
         )
         XCTAssertEqual(boundedCapture.exitCode, 0, boundedCapture.output)
+
+        let interruptedCapture = try runTool(
+            [
+                "/bin/bash", "-c", """
+                set -euo pipefail
+                APP_RAW_STDERR_FILE="$FIXTURE_ROOT/interrupted.raw"
+                APP_STDERR_FIFO="$FIXTURE_ROOT/interrupted.pipe"
+                APP_STDERR_CAPTURE_PID=""
+                \(finishSource)
+                \(startSource)
+                start_app_stderr_capture
+                exec 9>"$APP_STDERR_FIFO"
+                printf 'BUFFERED-BEFORE-EOF' >&9
+                finish_app_stderr_capture
+                exec 9>&-
+                test "$(cat "$APP_RAW_STDERR_FILE")" = BUFFERED-BEFORE-EOF
+                """
+            ],
+            environment: ["FIXTURE_ROOT": fixtureRoot.path]
+        )
+        XCTAssertEqual(interruptedCapture.exitCode, 0, interruptedCapture.output)
+
+        let sanitizedArtifact = fixtureRoot.appendingPathComponent("sanitized.log")
+        let expandedInput = Array(repeating: "a@b.co ", count: 10_000).joined()
+        let boundedSanitized = try runTool(
+            [
+                "/bin/bash", "-c",
+                "source \"$REDACTION_HELPER\"; printf '%s' \"$EXPANDED_INPUT\" | ci_redact_stream | tail -c 32768 >\"$SANITIZED_FILE\""
+            ],
+            environment: [
+                "EXPANDED_INPUT": expandedInput,
+                "REDACTION_HELPER": packageRoot().appendingPathComponent("script/ci_redact_stream.sh").path,
+                "SANITIZED_FILE": sanitizedArtifact.path
+            ]
+        )
+        XCTAssertEqual(boundedSanitized.exitCode, 0, boundedSanitized.output)
+        let sanitizedSize = try FileManager.default.attributesOfItem(atPath: sanitizedArtifact.path)[.size] as? NSNumber
+        XCTAssertLessThanOrEqual(try XCTUnwrap(sanitizedSize).intValue, 32_768)
 
         let timeout = try runTool(
             [

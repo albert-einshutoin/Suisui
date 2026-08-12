@@ -141,6 +141,12 @@ sanitize_app_diagnostic_stream() {
   ci_redact_stream
 }
 
+capture_current_app_failure_diagnostics() {
+  local failed_pid="${APP_PID:-${APP_LAUNCH_PID:-}}"
+  finish_app_stderr_capture
+  capture_app_failure_diagnostics "$failed_pid"
+}
+
 start_app_stderr_capture() {
   finish_app_stderr_capture
   rm -f "$APP_RAW_STDERR_FILE" "$APP_STDERR_FIFO"
@@ -150,14 +156,24 @@ start_app_stderr_capture() {
   /usr/bin/perl -e '
     use strict;
     use warnings;
+    my $output_path = shift @ARGV;
     my $limit = 32768;
     my $tail = "";
-    while (read(STDIN, my $chunk, 4096)) {
+    my $persist_tail = sub {
+      open(my $output, ">", $output_path) or die "cannot persist diagnostic tail";
+      binmode($output);
+      print {$output} $tail;
+      close($output) or die "cannot close diagnostic tail";
+    };
+    while (sysread(STDIN, my $chunk, 4096)) {
       $tail .= $chunk;
       substr($tail, 0, length($tail) - $limit, "") if length($tail) > $limit;
+      # Persist every bounded snapshot instead of waiting for FIFO EOF. App
+      # descendants can inherit stderr and keep the FIFO open after a crash;
+      # the last complete snapshot must remain available even then.
+      $persist_tail->();
     }
-    print $tail;
-  ' <"$APP_STDERR_FIFO" >"$APP_RAW_STDERR_FILE" &
+  ' "$APP_RAW_STDERR_FILE" <"$APP_STDERR_FIFO" &
   APP_STDERR_CAPTURE_PID=$!
 }
 
@@ -193,7 +209,9 @@ capture_app_failure_diagnostics() {
   if [[ -f "$APP_RAW_STDERR_FILE" ]]; then
     tail -c 32768 "$APP_RAW_STDERR_FILE" 2>/dev/null \
       | sanitize_app_diagnostic_stream \
+      | tail -c 32768 \
       >"$APP_STDERR_DIAGNOSTIC_FILE" || printf '%s\n' "diagnostic-unavailable" >"$APP_STDERR_DIAGNOSTIC_FILE"
+    [[ -s "$APP_STDERR_DIAGNOSTIC_FILE" ]] || printf '%s\n' "diagnostic-unavailable" >"$APP_STDERR_DIAGNOSTIC_FILE"
   else
     printf '%s\n' "diagnostic-unavailable" >"$APP_STDERR_DIAGNOSTIC_FILE"
   fi
@@ -204,6 +222,7 @@ capture_app_failure_diagnostics() {
       | tail -n 120 \
       | tail -c 32768 \
       | sanitize_app_diagnostic_stream \
+      | tail -c 32768 \
       >"$APP_UNIFIED_DIAGNOSTIC_FILE"
     set -e
     [[ -s "$APP_UNIFIED_DIAGNOSTIC_FILE" ]] || printf '%s\n' "diagnostic-unavailable" >"$APP_UNIFIED_DIAGNOSTIC_FILE"
@@ -404,7 +423,10 @@ open_app() {
   if [[ "$TRACK_LAUNCH_MILESTONES" == "1" ]]; then
     timeline_path="$TIMELINE_FILE"
   fi
-  start_app_stderr_capture
+  if [[ ! "${APP_STDERR_CAPTURE_PID:-}" =~ ^[0-9]+$ ]] ||
+    ! kill -0 "$APP_STDERR_CAPTURE_PID" >/dev/null 2>&1; then
+    start_app_stderr_capture
+  fi
   /usr/bin/env -i PATH="$PATH" TMPDIR="$OUTPUT_DIR" HOME="$PERFORMANCE_HOME" CFFIXED_USER_HOME="$PERFORMANCE_HOME" \
     SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 SUISUI_DATABASE_PATH="$PERFORMANCE_DATABASE_PATH" \
     SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="today" \
@@ -412,15 +434,18 @@ open_app() {
     "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>"$APP_STDERR_FIFO" &
   APP_LAUNCH_PID=$!
   APP_LAUNCH_IDENTITY="$(ax_wait_for_owned_process_identity "$APP_LAUNCH_PID" "$APP_BINARY" 3)" || {
+    capture_current_app_failure_diagnostics
     ax_emit_failure_category "launch" "performance-launch-identity-unavailable"
     return 1
   }
   APP_PID="$(ax_wait_for_owned_app_pid "$APP_LAUNCH_PID" "$APP_BINARY" "$TIMEOUT_SECONDS")" || {
+    capture_current_app_failure_diagnostics
     ax_emit_failure_category "launch" "performance-owned-pid-unavailable"
     echo "BLOCKER: performance app did not launch from pid $APP_LAUNCH_PID" >&2
     return 1
   }
   APP_IDENTITY="$(ax_wait_for_owned_process_identity "$APP_PID" "$APP_BINARY" 3)" || {
+    capture_current_app_failure_diagnostics
     ax_emit_failure_category "launch" "performance-owned-identity-unavailable"
     return 1
   }
@@ -438,6 +463,7 @@ wait_for_launch_milestone() {
       return 0
     fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
+      capture_current_app_failure_diagnostics
       ax_emit_failure_category "product-marker" "performance-launch-milestone-unavailable"
       echo "BLOCKER: app did not emit launch milestone: $label" >&2
       return 1
@@ -452,6 +478,7 @@ wait_for_visible_window() {
   # owned window at sub-second cadence. The shared AppleScript helper polls at
   # one-second intervals and would otherwise dominate a one-second launch SLO.
   if ! ax_wait_for_ax_identifier "$APP_NAME" "__AX_ANY_WINDOW__" "$TIMEOUT_SECONDS" "$ROOT_DIR" "$probe_file" "" "$APP_PID"; then
+    capture_current_app_failure_diagnostics
     ax_emit_failure_category "window" "performance-window-unavailable"
     echo "BLOCKER: $APP_NAME did not publish a visible window for launched pid $APP_PID within ${TIMEOUT_SECONDS}s" >&2
     return 1
@@ -676,6 +703,7 @@ click_destination_until_available() {
   local press_status
   while true; do
     if [[ "$(monotonic_ms)" -ge "$deadline_ms" ]]; then
+      capture_current_app_failure_diagnostics
       ax_emit_failure_category "product-marker" "performance-destination-unavailable"
       echo "BLOCKER: performance smoke could not select $destination_label in owned app pid $APP_PID" >&2
       return 1
@@ -684,6 +712,7 @@ click_destination_until_available() {
     # Re-pin every press to the launched binary identity so AX never targets an
     # unrelated process that inherited the same numeric PID.
     if ! ax_process_matches_identity "$APP_PID" "$APP_BINARY" "$APP_IDENTITY"; then
+      capture_current_app_failure_diagnostics
       ax_emit_failure_category "launch" "performance-owned-identity-changed"
       return 1
     fi
@@ -693,6 +722,7 @@ click_destination_until_available() {
       press_status=$?
     fi
     if [[ "$press_status" -eq 124 || "$(monotonic_ms)" -ge "$deadline_ms" ]]; then
+      capture_current_app_failure_diagnostics
       ax_emit_failure_category "product-marker" "performance-destination-unavailable"
       echo "BLOCKER: performance smoke could not select $destination_label in owned app pid $APP_PID" >&2
       return 1
@@ -709,6 +739,7 @@ wait_for_marker() {
   if ax_wait_for_ax_identifier "$APP_NAME" "$identifier" "$TIMEOUT_SECONDS" "$ROOT_DIR" "$probe_file" "" "$APP_PID"; then
     return 0
   fi
+  capture_current_app_failure_diagnostics
   echo "BLOCKER: performance smoke could not inspect the AX marker: $identifier" >&2
   ax_emit_failure_category "product-marker" "performance-marker-unavailable"
   sed -n '1,20p' "$probe_file.err" >&2 || true
@@ -765,9 +796,13 @@ measure_cold_launch_sample() {
   local launch_start_ms visible_window_ms command_ready_ms today_ready_ms
   local visible_elapsed_ms command_ready_elapsed_ms today_ready_elapsed_ms
 
-  launch_start_ms="$(now_ms)"
+  # Diagnostic observer setup is harness work. Make the FIFO consumer ready
+  # before the product launch clock starts so the 1000ms SLO measures only the
+  # app-owned cold launch path.
+  start_app_stderr_capture
   rm -f "$TIMELINE_FILE"
   TRACK_LAUNCH_MILESTONES=1
+  launch_start_ms="$(now_ms)"
   open_app
   visible_window_ms="$(wait_for_launch_milestone "window-visible")"
   command_ready_ms="$(wait_for_launch_milestone "command-ready")"
