@@ -4135,7 +4135,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             // changes reuse the immutable value without doing board work.
             self.dailyPlanningReviewPreviewBuildCount += 1
             projectBoardRuntimeDiagnosticLogger.notice(
-                "suisui.dailyPlanningPreview.buildCount=\(self.dailyPlanningReviewPreviewBuildCount, privacy: .public)"
+                "suisui.dailyPlanningPreview.buildCount=\(self.dailyPlanningReviewPreviewBuildCount, privacy: .public) temporalKey=\(cacheKey.runtimeDiagnosticTemporalKey, privacy: .public)"
             )
             return DailyPlanningReviewBuilder.review(
                 transcript: "Today daily planning review",

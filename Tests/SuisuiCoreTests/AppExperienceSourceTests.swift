@@ -2562,8 +2562,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(bridgeSource.contains("scheduleToolbarLayoutRefreshIfDisplayModeChanged()"))
     }
 
-    func testRuntimeDiagnosticsExposeOnlyStablePublicIntegerCounters() throws {
+    func testRuntimeDiagnosticsExposeOnlyStablePublicDiagnosticValues() throws {
         let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let dailyPlanningSource = try readPackageFile("Sources/SuisuiCore/App/DailyPlanningReview.swift")
         let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
         let bridgeStart = try XCTUnwrap(boardSource.range(of: "private final class ProjectBoardToolbarLayoutBridgeView"))
         let appKitEnd = try XCTUnwrap(boardSource.range(of: "#else", range: bridgeStart.upperBound..<boardSource.endIndex))
@@ -2571,6 +2572,11 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(coreSource.contains("Logger(subsystem: \"dev.suisui.app\""))
         XCTAssertTrue(coreSource.contains("suisui.dailyPlanningPreview.buildCount="))
+        XCTAssertTrue(coreSource.contains("temporalKey=\\(cacheKey.runtimeDiagnosticTemporalKey, privacy: .public)"))
+        XCTAssertTrue(dailyPlanningSource.contains("hasher.combine(planningDayKey)"))
+        XCTAssertTrue(dailyPlanningSource.contains("hasher.combine(phase.rawValue)"))
+        XCTAssertTrue(dailyPlanningSource.contains("hasher.combine(timeBlock)"))
+        XCTAssertFalse(dailyPlanningSource.contains("hasher.combine(sourceRevision)"))
         XCTAssertTrue(coreSource.contains("privacy: .public"))
         XCTAssertTrue(coreSource.contains("projectBoardRuntimeDiagnosticLogger.notice"))
         XCTAssertTrue(coreSource.contains("dailyPlanningReviewPreviewBuildCount += 1"))

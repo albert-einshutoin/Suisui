@@ -60,42 +60,54 @@ final class DailyPlanningReviewPreviewCacheTests: XCTestCase {
         var cache = DailyPlanningReviewPreviewCache()
         var buildCount = 0
 
+        let firstRevisionKey = DailyPlanningReviewPreviewCacheKey(
+            planningDayKey: tokyoKey,
+            sourceRevision: 1,
+            referenceDate: referenceDate,
+            calendar: tokyo
+        )
+        let secondRevisionKey = DailyPlanningReviewPreviewCacheKey(
+            planningDayKey: tokyoKey,
+            sourceRevision: 2,
+            referenceDate: referenceDate,
+            calendar: tokyo
+        )
+        let newYorkCacheKey = DailyPlanningReviewPreviewCacheKey(
+            planningDayKey: newYorkKey,
+            sourceRevision: 2,
+            referenceDate: referenceDate,
+            calendar: newYork
+        )
         _ = cache.review(
-            for: DailyPlanningReviewPreviewCacheKey(
-                planningDayKey: tokyoKey,
-                sourceRevision: 1,
-                referenceDate: referenceDate,
-                calendar: tokyo
-            )
+            for: firstRevisionKey
         ) {
             buildCount += 1
             return makeReview(sourceTranscript: "tokyo")
         }
         _ = cache.review(
-            for: DailyPlanningReviewPreviewCacheKey(
-                planningDayKey: tokyoKey,
-                sourceRevision: 2,
-                referenceDate: referenceDate,
-                calendar: tokyo
-            )
+            for: secondRevisionKey
         ) {
             buildCount += 1
             return makeReview(sourceTranscript: "revision")
         }
         _ = cache.review(
-            for: DailyPlanningReviewPreviewCacheKey(
-                planningDayKey: newYorkKey,
-                sourceRevision: 2,
-                referenceDate: referenceDate,
-                calendar: newYork
-            )
+            for: newYorkCacheKey
         ) {
             buildCount += 1
             return makeReview(sourceTranscript: "timezone")
         }
 
         XCTAssertEqual(buildCount, 3)
+        XCTAssertNotEqual(firstRevisionKey, secondRevisionKey)
+        XCTAssertEqual(
+            firstRevisionKey.runtimeDiagnosticTemporalKey,
+            secondRevisionKey.runtimeDiagnosticTemporalKey
+        )
         XCTAssertNotEqual(tokyoKey, newYorkKey)
+        XCTAssertNotEqual(
+            secondRevisionKey.runtimeDiagnosticTemporalKey,
+            newYorkCacheKey.runtimeDiagnosticTemporalKey
+        )
     }
 
     func testPhaseAndHalfHourBoundarySeparateSameDayPreviewKeys() throws {
@@ -121,6 +133,10 @@ final class DailyPlanningReviewPreviewCacheTests: XCTestCase {
         XCTAssertNotEqual(beforeKey, afterKey)
         XCTAssertEqual(beforeKey.phase, .morning)
         XCTAssertEqual(afterKey.phase, .midday)
+        XCTAssertNotEqual(
+            beforeKey.runtimeDiagnosticTemporalKey,
+            afterKey.runtimeDiagnosticTemporalKey
+        )
 
         let beforeHalfHour = try isoDate("2026-07-10T12:30:00Z")
         let afterHalfHour = try isoDate("2026-07-10T12:30:01Z")
@@ -138,6 +154,10 @@ final class DailyPlanningReviewPreviewCacheTests: XCTestCase {
         )
 
         XCTAssertNotEqual(beforeHalfHourKey, afterHalfHourKey)
+        XCTAssertNotEqual(
+            beforeHalfHourKey.runtimeDiagnosticTemporalKey,
+            afterHalfHourKey.runtimeDiagnosticTemporalKey
+        )
     }
 
     func testCacheKeyUsesTimeBlockCeilingAtAnExactHalfHourBoundary() throws {
@@ -169,6 +189,8 @@ final class DailyPlanningReviewPreviewCacheTests: XCTestCase {
 
         XCTAssertEqual(beforeKey, exactKey)
         XCTAssertNotEqual(exactKey, afterKey)
+        XCTAssertEqual(beforeKey.runtimeDiagnosticTemporalKey, exactKey.runtimeDiagnosticTemporalKey)
+        XCTAssertNotEqual(exactKey.runtimeDiagnosticTemporalKey, afterKey.runtimeDiagnosticTemporalKey)
     }
 
     func testDSTFoldRemainsDistinctAndSpringSkipSharesItsNextPreviewKey() throws {
@@ -208,9 +230,17 @@ final class DailyPlanningReviewPreviewCacheTests: XCTestCase {
         )
 
         XCTAssertNotEqual(firstFoldKey, secondFoldKey)
+        XCTAssertNotEqual(
+            firstFoldKey.runtimeDiagnosticTemporalKey,
+            secondFoldKey.runtimeDiagnosticTemporalKey
+        )
         // 01:59 EST ceilings to the first valid 03:00 EDT boundary, which is
         // also the block selected at that exact instant after the skipped hour.
         XCTAssertEqual(beforeSpringKey, afterSpringKey)
+        XCTAssertEqual(
+            beforeSpringKey.runtimeDiagnosticTemporalKey,
+            afterSpringKey.runtimeDiagnosticTemporalKey
+        )
     }
 
     func testRefreshScheduleReturnsTheNextStrictHalfHourBoundaryAcrossDST() throws {
