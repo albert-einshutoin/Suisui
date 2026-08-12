@@ -7886,7 +7886,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("tell application \"$APP_NAME\" to activate"))
         XCTAssertFalse(script.contains("/usr/bin/osascript - \"$APP_NAME\""))
         XCTAssertTrue(script.contains("/usr/bin/env -i"))
-        XCTAssertTrue(script.contains("\"$APP_BINARY\" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &"))
+        XCTAssertTrue(script.contains("\"$APP_BINARY\" -ApplePersistenceIgnoreState YES >/dev/null 2>\"$APP_STDERR_FIFO\" &"))
         XCTAssertTrue(script.contains("cold-launch-visible-window"))
         XCTAssertTrue(script.contains("cold-launch-command-ready"))
         XCTAssertTrue(script.contains("cold-launch-today-ready"))
@@ -8244,26 +8244,43 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(expectedEvidence.contains("termination=harness-term"))
         XCTAssertTrue(expectedEvidence.contains("failure_reason=none"))
 
-        let sanitizerStart = try XCTUnwrap(script.range(of: "sanitize_app_diagnostic_stream() {"))
-        let sanitizerEnd = try XCTUnwrap(
-            script.range(of: "\n}\n\ncapture_app_failure_diagnostics()", range: sanitizerStart.upperBound..<script.endIndex)
-        )
-        let sanitizerSource = String(script[sanitizerStart.lowerBound..<sanitizerEnd.lowerBound]) + "\n}"
+        let redactionHelper = packageRoot().appendingPathComponent("script/ci_redact_stream.sh").path
+        // Keep the source tree free of a push-protection-shaped credential while
+        // still exercising the complete AWS access-key pattern at runtime.
+        let awsAccessKeyFixture = "AKIA" + "ABCDEFGHIJKLMNOP"
         let sensitiveDiagnostic = """
-        fatal path=/Users/alice/private/app token=super-secret alice@example.com
-        temp=/var/folders/aa/bb/cc UUID=123E4567-E89B-12D3-A456-426614174000
+        fatal path=/Users/alice/private/app volume=/Volumes/Secret/work temp=/private/var/folders/aa/bb/cc
+        Authorization: Bearer bearer-provider-value
+        Anthropic sk-ant-providerfixture Slack xoxb-providerfixture1234
+        GitHub ghp_providerfixture1234 github_pat_providerfixture1234
+        "token": "quoted-secret" api_key=plain-secret alice@example.com
+        UUID=123E4567-E89B-12D3-A456-426614174000 \(awsAccessKeyFixture)
         """
         let sanitized = try runTool(
-            ["/bin/bash", "-c", "\(sanitizerSource)\nprintf '%s' \"$DIAGNOSTIC\" | sanitize_app_diagnostic_stream"],
-            environment: ["DIAGNOSTIC": sensitiveDiagnostic]
+            ["/bin/bash", "-c", "source \"$REDACTION_HELPER\"; printf '%s' \"$DIAGNOSTIC\" | ci_redact_stream"],
+            environment: ["DIAGNOSTIC": sensitiveDiagnostic, "REDACTION_HELPER": redactionHelper]
         )
         XCTAssertEqual(sanitized.exitCode, 0, sanitized.output)
-        for secret in ["alice", "super-secret", "alice@example.com", "123E4567-E89B-12D3-A456-426614174000"] {
+        for secret in [
+            "alice", "Secret/work", "bearer-provider-value", "sk-ant-providerfixture",
+            "xoxb-providerfixture1234", "ghp_providerfixture1234", "github_pat_providerfixture1234",
+            "quoted-secret", "plain-secret", "alice@example.com",
+            "123E4567-E89B-12D3-A456-426614174000", awsAccessKeyFixture
+        ] {
             XCTAssertFalse(sanitized.output.contains(secret), sanitized.output)
         }
-        XCTAssertTrue(sanitized.output.contains("token=<redacted>"))
+        XCTAssertTrue(sanitized.output.contains("<path>"))
+        XCTAssertTrue(sanitized.output.contains("<temp-path>"))
         XCTAssertTrue(sanitized.output.contains("<redacted-email>"))
         XCTAssertTrue(sanitized.output.contains("<redacted-uuid>"))
+
+        XCTAssertTrue(script.contains("run_with_app_diagnostic_timeout 5 /usr/bin/log show"))
+        XCTAssertTrue(script.contains("tail -n 120"))
+        XCTAssertTrue(script.contains("tail -c 32768"))
+        XCTAssertTrue(script.contains("mkfifo \"$APP_STDERR_FIFO\""))
+        XCTAssertTrue(script.contains("my $limit = 32768"))
+        XCTAssertTrue(script.contains("while (read(STDIN, my $chunk, 4096))"))
+        XCTAssertTrue(script.contains("length($tail) > $limit"))
     }
 
     func testReleaseLaunchPerformanceAcceptsOnlyAnExplicitVerifiedPrebuiltApp() throws {
@@ -8277,6 +8294,67 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("script/verify_ui_performance_artifact.sh"))
         XCTAssertTrue(script.contains("OK: using verified prebuilt release app for performance measurement"))
         XCTAssertTrue(script.contains("SUISUI_RELEASE_BUILD_PURPOSE=performance"))
+    }
+
+    func testReleaseLaunchPerformanceBoundsCrashDiagnosticCollection() throws {
+        let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
+        let startRange = try XCTUnwrap(script.range(of: "start_app_stderr_capture() {"))
+        let startEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\nfinish_app_stderr_capture()", range: startRange.upperBound..<script.endIndex)
+        )
+        let finishRange = try XCTUnwrap(script.range(of: "finish_app_stderr_capture() {"))
+        let finishEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\nrun_with_app_diagnostic_timeout()", range: finishRange.upperBound..<script.endIndex)
+        )
+        let timeoutRange = try XCTUnwrap(script.range(of: "run_with_app_diagnostic_timeout() {"))
+        let timeoutEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\ncapture_app_failure_diagnostics()", range: timeoutRange.upperBound..<script.endIndex)
+        )
+        let startSource = String(script[startRange.lowerBound..<startEnd.lowerBound]) + "\n}"
+        let finishSource = String(script[finishRange.lowerBound..<finishEnd.lowerBound]) + "\n}"
+        let timeoutSource = String(script[timeoutRange.lowerBound..<timeoutEnd.lowerBound]) + "\n}"
+        let fixtureRoot = packageRoot().appendingPathComponent(
+            ".build/test-performance-diagnostic-bounds-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        let boundedCapture = try runTool(
+            [
+                "/bin/bash", "-c", """
+                set -euo pipefail
+                APP_RAW_STDERR_FILE="$FIXTURE_ROOT/stderr.raw"
+                APP_STDERR_FIFO="$FIXTURE_ROOT/stderr.pipe"
+                APP_STDERR_CAPTURE_PID=""
+                \(finishSource)
+                \(startSource)
+                start_app_stderr_capture
+                /usr/bin/perl -e 'print "A" x 70000; print "EXPECTED-TAIL"' >"$APP_STDERR_FIFO"
+                finish_app_stderr_capture
+                test "$(wc -c <"$APP_RAW_STDERR_FILE" | tr -d ' ')" = 32768
+                test "$(tail -c 13 "$APP_RAW_STDERR_FILE")" = EXPECTED-TAIL
+                """
+            ],
+            environment: ["FIXTURE_ROOT": fixtureRoot.path]
+        )
+        XCTAssertEqual(boundedCapture.exitCode, 0, boundedCapture.output)
+
+        let timeout = try runTool(
+            [
+                "/bin/bash", "-c", """
+                set -euo pipefail
+                \(timeoutSource)
+                started=$SECONDS
+                if run_with_app_diagnostic_timeout 1 /bin/sleep 5; then
+                  exit 9
+                fi
+                elapsed=$((SECONDS - started))
+                test "$elapsed" -lt 4
+                """
+            ]
+        )
+        XCTAssertEqual(timeout.exitCode, 0, timeout.output)
     }
 
     func testReleaseLaunchPerformanceQuiescenceUsesTheSecondMacOSTopSample() throws {

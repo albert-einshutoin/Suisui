@@ -3,14 +3,21 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
+CI_REDACT_HELPER="$ROOT_DIR/script/ci_redact_stream.sh"
 
 if [[ ! -f "$METADATA_FILE" ]]; then
   echo "missing metadata file: $METADATA_FILE" >&2
   exit 2
 fi
+if [[ ! -r "$CI_REDACT_HELPER" ]]; then
+  echo "missing CI redaction helper: $CI_REDACT_HELPER" >&2
+  exit 2
+fi
 
 # shellcheck source=/dev/null
 source "$METADATA_FILE"
+# shellcheck source=ci_redact_stream.sh
+source "$CI_REDACT_HELPER"
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:-}"
@@ -27,6 +34,7 @@ QUIESCENCE_FILE="$OUTPUT_DIR/runner-quiescence.tsv"
 QUIESCENCE_PROCESS_FILE="$OUTPUT_DIR/runner-quiescence-processes.tsv"
 BOOTSTRAP_EXIT_FILE="$OUTPUT_DIR/bootstrap-exit.env"
 APP_RAW_STDERR_FILE="$PERFORMANCE_HOME/app-stderr.raw.log"
+APP_STDERR_FIFO="$PERFORMANCE_HOME/app-stderr.pipe"
 APP_STDERR_DIAGNOSTIC_FILE="$OUTPUT_DIR/app-stderr-sanitized.log"
 APP_UNIFIED_DIAGNOSTIC_FILE="$OUTPUT_DIR/app-unified-log-sanitized.log"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
@@ -130,15 +138,54 @@ AX_WAIT_POLL_INTERVAL_SECONDS=0.05
 export AX_WAIT_POLL_INTERVAL_SECONDS
 
 sanitize_app_diagnostic_stream() {
-  sed -E \
-    -e 's#(/Users/)[^/[:space:]]+#\1<redacted>#g' \
-    -e 's#(/var/folders/)[^[:space:]]+#\1<redacted>#g' \
-    -e 's#[[:alnum:]._%+-]+@[[:alnum:].-]+[.][[:alpha:]]{2,}#<redacted-email>#g' \
-    -e 's#[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}#<redacted-uuid>#g' \
-    -e 's#(token|secret|password|api[_-]?key)[[:space:]]*[=:][[:space:]]*[^[:space:]]+#\1=<redacted>#Ig' \
-    -e 's#ghp_[A-Za-z0-9]{20,}#<redacted-token>#g' \
-    -e 's#github_pat_[A-Za-z0-9_]{20,}#<redacted-token>#g' \
-    -e 's#AKIA[0-9A-Z]{16}#<redacted-key>#g'
+  ci_redact_stream
+}
+
+start_app_stderr_capture() {
+  finish_app_stderr_capture
+  rm -f "$APP_RAW_STDERR_FILE" "$APP_STDERR_FIFO"
+  mkfifo "$APP_STDERR_FIFO"
+  # Keep only a fixed-size tail while the app runs; the raw producer can never
+  # grow an unbounded temporary file or perturb disk capacity during a sample.
+  /usr/bin/perl -e '
+    use strict;
+    use warnings;
+    my $limit = 32768;
+    my $tail = "";
+    while (read(STDIN, my $chunk, 4096)) {
+      $tail .= $chunk;
+      substr($tail, 0, length($tail) - $limit, "") if length($tail) > $limit;
+    }
+    print $tail;
+  ' <"$APP_STDERR_FIFO" >"$APP_RAW_STDERR_FILE" &
+  APP_STDERR_CAPTURE_PID=$!
+}
+
+finish_app_stderr_capture() {
+  local capture_pid="${APP_STDERR_CAPTURE_PID:-}"
+  if [[ "$capture_pid" =~ ^[0-9]+$ ]]; then
+    for _ in {1..20}; do
+      kill -0 "$capture_pid" >/dev/null 2>&1 || break
+      sleep 0.05
+    done
+    if kill -0 "$capture_pid" >/dev/null 2>&1; then
+      kill -TERM "$capture_pid" >/dev/null 2>&1 || true
+    fi
+    wait "$capture_pid" 2>/dev/null || true
+  fi
+  APP_STDERR_CAPTURE_PID=""
+  rm -f "$APP_STDERR_FIFO"
+}
+
+run_with_app_diagnostic_timeout() {
+  local timeout_seconds="$1"
+  shift
+  LC_ALL=C /usr/bin/perl -MTime::HiRes=alarm -e '
+    my $timeout_seconds = shift @ARGV;
+    $SIG{ALRM} = "DEFAULT";
+    alarm($timeout_seconds);
+    exec @ARGV;
+  ' "$timeout_seconds" "$@"
 }
 
 capture_app_failure_diagnostics() {
@@ -151,11 +198,15 @@ capture_app_failure_diagnostics() {
     printf '%s\n' "diagnostic-unavailable" >"$APP_STDERR_DIAGNOSTIC_FILE"
   fi
   if [[ "$failed_pid" =~ ^[0-9]+$ ]]; then
-    /usr/bin/log show --last 2m --style compact \
+    set +e
+    run_with_app_diagnostic_timeout 5 /usr/bin/log show --last 2m --style compact \
       --predicate "processIdentifier == $failed_pid" 2>/dev/null \
       | tail -n 120 \
+      | tail -c 32768 \
       | sanitize_app_diagnostic_stream \
-      >"$APP_UNIFIED_DIAGNOSTIC_FILE" || printf '%s\n' "diagnostic-unavailable" >"$APP_UNIFIED_DIAGNOSTIC_FILE"
+      >"$APP_UNIFIED_DIAGNOSTIC_FILE"
+    set -e
+    [[ -s "$APP_UNIFIED_DIAGNOSTIC_FILE" ]] || printf '%s\n' "diagnostic-unavailable" >"$APP_UNIFIED_DIAGNOSTIC_FILE"
   else
     printf '%s\n' "diagnostic-unavailable" >"$APP_UNIFIED_DIAGNOSTIC_FILE"
   fi
@@ -165,6 +216,7 @@ APP_PID=""
 APP_LAUNCH_PID=""
 APP_IDENTITY=""
 APP_LAUNCH_IDENTITY=""
+APP_STDERR_CAPTURE_PID=""
 TRACK_LAUNCH_MILESTONES=0
 
 now_ms() {
@@ -293,10 +345,12 @@ terminate_app() {
   APP_LAUNCH_PID=""
   APP_IDENTITY=""
   APP_LAUNCH_IDENTITY=""
+  finish_app_stderr_capture
 }
 
 cleanup() {
   terminate_app || true
+  finish_app_stderr_capture || true
   rm -f "$AX_PRESS_ELEMENT_HELPER_EXECUTABLE" "$AX_MARKER_HELPER_EXECUTABLE"
 }
 
@@ -350,11 +404,12 @@ open_app() {
   if [[ "$TRACK_LAUNCH_MILESTONES" == "1" ]]; then
     timeline_path="$TIMELINE_FILE"
   fi
+  start_app_stderr_capture
   /usr/bin/env -i PATH="$PATH" TMPDIR="$OUTPUT_DIR" HOME="$PERFORMANCE_HOME" CFFIXED_USER_HOME="$PERFORMANCE_HOME" \
     SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 SUISUI_DATABASE_PATH="$PERFORMANCE_DATABASE_PATH" \
     SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="today" \
     SUISUI_LAUNCH_TIMELINE_PATH="$timeline_path" \
-    "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>>"$APP_RAW_STDERR_FILE" &
+    "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>"$APP_STDERR_FIFO" &
   APP_LAUNCH_PID=$!
   APP_LAUNCH_IDENTITY="$(ax_wait_for_owned_process_identity "$APP_LAUNCH_PID" "$APP_BINARY" 3)" || {
     ax_emit_failure_category "launch" "performance-launch-identity-unavailable"
@@ -442,6 +497,7 @@ record_unexpected_bootstrap_exit() {
   fi
   printf 'status=failed\nwait_status=%s\ntermination=unexpected-exit\nfailure_reason=performance-bootstrap-exited\n' \
     "$wait_status" >"$BOOTSTRAP_EXIT_FILE"
+  finish_app_stderr_capture
   capture_app_failure_diagnostics "$failed_pid"
 }
 
@@ -501,6 +557,7 @@ terminate_bootstrap_app() {
   else
     wait_status=$?
   fi
+  finish_app_stderr_capture
   APP_PID=""
   APP_LAUNCH_PID=""
   APP_IDENTITY=""
