@@ -1333,19 +1333,30 @@ private func writeInboxVoiceFixture(duration: Double, to url: URL) throws {
     data.append(contentsOf: Data("data".utf8))
     appendUInt32(UInt32(dataSize))
 
+    var envelopeSeed: UInt64 = 0x5A17_C9E3
+    var smoothedPeak = 0.55
+    let speechEnvelope = (0...64).map { _ in
+        // A fixed LCG makes visual evidence reproducible. Smoothing adjacent
+        // targets avoids clicks while retaining irregular speech-like peaks
+        // after the real loader reduces the recording to 64 buckets.
+        envelopeSeed &*= 6_364_136_223_846_793_005
+        envelopeSeed &+= 1_442_695_040_888_963_407
+        let unitPeak = Double(envelopeSeed >> 11) / Double(1 << 53)
+        let targetPeak = 0.18 + unitPeak * 0.82
+        smoothedPeak += (targetPeak - smoothedPeak) * 0.52
+        return smoothedPeak
+    }
+
     for frame in 0..<frameCount {
         let time = Double(frame) / Double(sampleRate)
         let progress = Double(frame) / Double(max(frameCount - 1, 1))
-        // The waveform loader takes 64 peak buckets. A fast time-based
-        // envelope peaks inside every bucket, so use recording-wide phrasing
-        // that keeps the deterministic fixture visually voice-like.
-        let envelope = min(max(
-            0.55
-                + 0.24 * sin(progress * 2 * Double.pi * 3)
-                + 0.14 * sin(progress * 2 * Double.pi * 7 + 0.8)
-                + 0.07 * sin(progress * 2 * Double.pi * 13 + 1.7),
-            0.16
-        ), 1)
+        let bucketPosition = progress * 64
+        let lowerBucket = min(63, Int(bucketPosition))
+        let upperBucket = lowerBucket + 1
+        let blend = bucketPosition - Double(lowerBucket)
+        let easedBlend = blend * blend * (3 - 2 * blend)
+        let envelope = speechEnvelope[lowerBucket]
+            + (speechEnvelope[upperBucket] - speechEnvelope[lowerBucket]) * easedBlend
         let sample = Int16((sin(time * 2 * Double.pi * 220) * 8_000 * envelope).rounded())
         appendInt16(sample)
     }

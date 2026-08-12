@@ -3459,7 +3459,7 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         let selectionChangeEnd = try XCTUnwrap(
             source.range(
-                of: "private var mainSurface",
+                of: "private func mainSurface",
                 range: selectionChangeStart.upperBound..<source.endIndex
             )
         )
@@ -3518,7 +3518,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("InboxReferenceHeader("))
         XCTAssertTrue(workflowSource.contains("ForEach(InboxReferenceFilter.allCases)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-triage-filter\")"))
-        XCTAssertTrue(workflowSource.contains("private var mainSurface: some View"))
+        XCTAssertTrue(
+            workflowSource.contains(
+                "private func mainSurface(referenceContentTopPadding: CGFloat) -> some View"
+            )
+        )
         XCTAssertTrue(workflowSource.contains("InboxTriageRail("))
         XCTAssertTrue(inboxWorkflowSource.contains(".accessibilityIdentifier(\"inbox-compact-workflow-scroll\")"))
         XCTAssertTrue(inboxWorkflowSource.contains(".scrollIndicators(.visible)"))
@@ -3674,6 +3678,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let transcript = String(source[voiceStart.lowerBound..<copyTranscriptStart.lowerBound])
 
         XCTAssertTrue(actionStyle.contains(".frame(height: 36)"))
+        XCTAssertTrue(actionStyle.contains("RoundedRectangle(cornerRadius: 10)"))
+        XCTAssertFalse(actionStyle.contains("Capsule()"))
         XCTAssertTrue(
             actionStyle.contains("isProminent ? Color.accentColor : Color.clear")
         )
@@ -3697,13 +3703,15 @@ final class AppExperienceSourceTests: XCTestCase {
             source.contains(".frame(maxWidth: .infinity, minHeight: 32, maxHeight: 32)")
         )
         XCTAssertTrue(source.contains(".padding(.top, 8)"))
-        XCTAssertTrue(
-            seederSource.contains("let progress = Double(frame) / Double(max(frameCount - 1, 1))")
-        )
-        XCTAssertTrue(seederSource.contains("sin(progress * 2 * Double.pi * 3)"))
-        XCTAssertTrue(seederSource.contains("sin(progress * 2 * Double.pi * 7 + 0.8)"))
-        XCTAssertTrue(seederSource.contains("sin(progress * 2 * Double.pi * 13 + 1.7)"))
-        XCTAssertFalse(seederSource.contains("sin(time * 2 * Double.pi * 0.75)"))
+        XCTAssertTrue(seederSource.contains("var envelopeSeed: UInt64 = 0x5A17_C9E3"))
+        XCTAssertTrue(seederSource.contains("let speechEnvelope = (0...64).map"))
+        XCTAssertTrue(seederSource.contains("envelopeSeed &*= 6_364_136_223_846_793_005"))
+        XCTAssertTrue(seederSource.contains("smoothedPeak += (targetPeak - smoothedPeak) * 0.52"))
+        XCTAssertTrue(seederSource.contains("let easedBlend = blend * blend * (3 - 2 * blend)"))
+        XCTAssertFalse(seederSource.contains("sin(progress *"))
+        XCTAssertTrue(source.contains("mainSurface(referenceContentTopPadding: 10)"))
+        XCTAssertTrue(source.contains("mainSurface(referenceContentTopPadding: 0)"))
+        XCTAssertTrue(source.contains(".padding(.bottom, referenceContentTopPadding)"))
     }
 
     func testInboxReferenceUIUsesPersistedTriageLifecycle() throws {

@@ -102,7 +102,9 @@ struct InboxWorkflowView: View {
         TimelineView(.periodic(from: .now, by: 60)) { timeline in
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .top, spacing: 0) {
-                    mainSurface
+                    // The wide reference keeps its title row fixed while the
+                    // tabs and list begin 10px lower; compact keeps natural flow.
+                    mainSurface(referenceContentTopPadding: 10)
                     Divider()
                         .padding(.vertical, 18)
                     InboxTriageRail(
@@ -125,7 +127,7 @@ struct InboxWorkflowView: View {
 
                 ScrollView(.vertical) {
                     VStack(alignment: .leading, spacing: 0) {
-                        mainSurface
+                        mainSurface(referenceContentTopPadding: 0)
                         InboxTriageRail(
                             task: viewModel.selectedTask,
                             viewModel: viewModel,
@@ -178,13 +180,14 @@ struct InboxWorkflowView: View {
         viewModel.refreshInboxReviewAvailability(at: date)
     }
 
-    private var mainSurface: some View {
+    private func mainSurface(referenceContentTopPadding: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             InboxReferenceHeader(
                 sortOrder: $sortOrder,
                 viewModel: viewModel,
                 referenceFilter: $referenceFilter,
-                showUnprocessedOnly: $showUnprocessedOnly
+                showUnprocessedOnly: $showUnprocessedOnly,
+                referenceContentTopPadding: referenceContentTopPadding
             )
             InboxReferenceTaskList(
                 tasks: tasks,
@@ -251,6 +254,7 @@ private struct InboxReferenceHeader: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
     @Binding var referenceFilter: InboxReferenceFilter
     @Binding var showUnprocessedOnly: Bool
+    let referenceContentTopPadding: CGFloat
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -299,6 +303,7 @@ private struct InboxReferenceHeader: View {
             }
 
             Divider()
+                .padding(.bottom, referenceContentTopPadding)
 
             HStack(alignment: .center, spacing: 8) {
                 HStack(spacing: 8) {
@@ -892,10 +897,10 @@ private struct InboxTriageActionButtonStyle: ButtonStyle {
             .frame(height: 36)
             .background(
                 isProminent ? Color.accentColor : Color.clear,
-                in: Capsule()
+                in: RoundedRectangle(cornerRadius: 10)
             )
             .overlay {
-                Capsule()
+                RoundedRectangle(cornerRadius: 10)
                     .stroke(
                         isProminent ? Color.clear : Color.secondary.opacity(0.20),
                         lineWidth: 1
