@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CI_REDACT_HELPER="$ROOT_DIR/script/ci_redact_stream.sh"
 ARTIFACT_DIR="${SUISUI_SWIFTPM_ARTIFACT_DIR:-$ROOT_DIR/.tmp/ci-artifacts/swiftpm}"
 BASELINE_FILE="${SUISUI_SWIFTPM_TEST_BASELINE_FILE:-$ROOT_DIR/config/quality/swiftpm-test-baseline.txt}"
 MAX_SKIPPED_FILE="${SUISUI_SWIFTPM_MAX_SKIPPED_FILE:-$ROOT_DIR/config/quality/swiftpm-max-skipped-tests.txt}"
@@ -13,20 +14,15 @@ XUNIT_OUTPUT_FILE="$ARTIFACT_DIR/test-results.xml"
 LEGACY_SWIFT_TESTING_XUNIT_FILE="$ARTIFACT_DIR/test-results-swift-testing.xml"
 RAW_DISCOVERY_LOG=""
 
+if [[ ! -r "$CI_REDACT_HELPER" ]]; then
+  echo "missing CI redaction helper: $CI_REDACT_HELPER" >&2
+  exit 2
+fi
+# shellcheck source=ci_redact_stream.sh
+source "$CI_REDACT_HELPER"
+
 sanitize_swift_output() {
-  sed -E \
-    -e 's#/(Users|Volumes)/[^[:space:]]+#<path>#g' \
-    -e 's#/private/var/folders/[^[:space:]]+#<temp-path>#g' \
-    -e 's#(/var)?/tmp/[^[:space:]]+#<temp-path>#g' \
-    -e 's#(Authorization[[:space:]]*:[[:space:]]*Bearer)[[:space:]]+[^[:space:]]+#\1 <redacted>#Ig' \
-    -e 's#(^|[^[:alnum:]_])sk-[A-Za-z0-9_-]{8,}#\1<redacted>#g' \
-    -e 's#github_pat_[A-Za-z0-9_]{8,}#<redacted>#g' \
-    -e 's#gh[pousr]_[A-Za-z0-9_]{8,}#<redacted>#g' \
-    -e 's#xox[baprs]-[A-Za-z0-9-]{8,}#<redacted>#g' \
-    -e 's#AKIA[0-9A-Z]{16}#<redacted>#g' \
-    -e 's#("[[:alnum:]_.-]*(token|secret|password|api[_-]?key)"[[:space:]]*:[[:space:]]*)"[^"]*"#\1"<redacted>"#Ig' \
-    -e "s#('[[:alnum:]_.-]*(token|secret|password|api[_-]?key)'[[:space:]]*:[[:space:]]*)'[^']*'#\\1'<redacted>'#Ig" \
-    -e 's#([[:alnum:]_.-]*(token|secret|password|api[_-]?key))[[:space:]]*[=:][[:space:]]*[^[:space:]]+#\1=<redacted>#Ig'
+  ci_redact_stream
 }
 
 read_positive_count() {

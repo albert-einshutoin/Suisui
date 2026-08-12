@@ -575,14 +575,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(inboxSource.contains("let requestsQuickAddFocus: Bool"))
         XCTAssertTrue(inboxSource.contains("let onQuickAddFocusConsumed: () -> Void"))
         XCTAssertTrue(inboxSource.contains("@FocusState private var isQuickAddFocused: Bool"))
-        XCTAssertTrue(inboxSource.contains(".focused($isQuickAddFocused)"))
+        XCTAssertTrue(inboxSource.contains("isFocused: $isQuickAddFocused"))
+        XCTAssertTrue(inboxSource.contains(".focused($isFocused)"))
 
         let helperStart = try XCTUnwrap(
             inboxSource.range(of: "private func consumeQuickAddFocusRequestIfNeeded()")
         )
         let helperEnd = try XCTUnwrap(
             inboxSource.range(
-                of: "\n}\n\nprivate struct InboxHeaderControls",
+                of: "\n}\n\nprivate enum InboxSortOrder",
                 range: helperStart.upperBound..<inboxSource.endIndex
             )
         )
@@ -595,7 +596,7 @@ final class AppExperienceSourceTests: XCTestCase {
             helper.components(separatedBy: "onQuickAddFocusConsumed()").count - 1,
             1
         )
-        XCTAssertFalse(helper.contains("private struct InboxHeaderControls"))
+        XCTAssertFalse(helper.contains("private enum InboxSortOrder"))
 
         let onAppearStart = try XCTUnwrap(inboxSource.range(of: ".onAppear {"))
         let onAppearEnd = try XCTUnwrap(
@@ -2561,8 +2562,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(bridgeSource.contains("scheduleToolbarLayoutRefreshIfDisplayModeChanged()"))
     }
 
-    func testRuntimeDiagnosticsExposeOnlyStablePublicIntegerCounters() throws {
+    func testRuntimeDiagnosticsExposeOnlyStablePublicDiagnosticValues() throws {
         let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let dailyPlanningSource = try readPackageFile("Sources/SuisuiCore/App/DailyPlanningReview.swift")
         let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
         let bridgeStart = try XCTUnwrap(boardSource.range(of: "private final class ProjectBoardToolbarLayoutBridgeView"))
         let appKitEnd = try XCTUnwrap(boardSource.range(of: "#else", range: bridgeStart.upperBound..<boardSource.endIndex))
@@ -2570,6 +2572,11 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(coreSource.contains("Logger(subsystem: \"dev.suisui.app\""))
         XCTAssertTrue(coreSource.contains("suisui.dailyPlanningPreview.buildCount="))
+        XCTAssertTrue(coreSource.contains("temporalKey=\\(cacheKey.runtimeDiagnosticTemporalKey, privacy: .public)"))
+        XCTAssertTrue(dailyPlanningSource.contains("hasher.combine(planningDayKey)"))
+        XCTAssertTrue(dailyPlanningSource.contains("hasher.combine(phase.rawValue)"))
+        XCTAssertTrue(dailyPlanningSource.contains("hasher.combine(timeBlock)"))
+        XCTAssertFalse(dailyPlanningSource.contains("hasher.combine(sourceRevision)"))
         XCTAssertTrue(coreSource.contains("privacy: .public"))
         XCTAssertTrue(coreSource.contains("projectBoardRuntimeDiagnosticLogger.notice"))
         XCTAssertTrue(coreSource.contains("dailyPlanningReviewPreviewBuildCount += 1"))
@@ -3161,17 +3168,17 @@ final class AppExperienceSourceTests: XCTestCase {
 
         let inboxActions = try sourceBlock(
             in: workflowSource,
-            from: "private var actionButtons: some View",
-            to: "private struct InboxVoiceIntakeDetail"
+            from: "private struct InboxProposedActions",
+            to: "private struct InboxRelatedMaterialsSheet"
         )
-        XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-make-task\")"))
-        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"1\", modifiers: [.command, .control])"))
-        XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-make-project\")"))
-        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"2\", modifiers: [.command, .control])"))
-        XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-schedule-today\")"))
-        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"3\", modifiers: [.command, .control])"))
-        XCTAssertTrue(inboxActions.contains(".accessibilityIdentifier(\"inbox-action-review-later\")"))
-        XCTAssertTrue(inboxActions.contains(".keyboardShortcut(\"4\", modifiers: [.command, .control])"))
+        XCTAssertTrue(inboxActions.contains("accessibilityIdentifier: \"inbox-action-make-task\""))
+        XCTAssertTrue(inboxActions.contains("keyboardShortcut: \"1\""))
+        XCTAssertTrue(inboxActions.contains("accessibilityIdentifier: \"inbox-action-make-project\""))
+        XCTAssertTrue(inboxActions.contains("keyboardShortcut: \"2\""))
+        XCTAssertTrue(inboxActions.contains("accessibilityIdentifier: \"inbox-action-search-related\""))
+        XCTAssertTrue(inboxActions.contains(".accessibilityElement(children: .contain)"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-seek\")"))
+        XCTAssertTrue(workflowSource.contains("playback.seek(to: $0)"))
         XCTAssertTrue(phase.contains("- [x] Keyboard shortcutがmenu commandまたはfocused actionに接続されていることをsource testで固定する。"))
     }
 
@@ -3377,8 +3384,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains(".keyboardShortcut(\"3\", modifiers: [.command])"))
         XCTAssertTrue(boardSource.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
         XCTAssertFalse(boardSource.contains(".keyboardShortcut(\"5\", modifiers: [.command])"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"1\", modifiers: [.command, .control])"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"2\", modifiers: [.command, .control])"))
+        XCTAssertTrue(workflowSource.contains("keyboardShortcut: \"1\""))
+        XCTAssertTrue(workflowSource.contains("keyboardShortcut: \"2\""))
         XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"3\", modifiers: [.command, .control])"))
         XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"4\", modifiers: [.command, .control])"))
         XCTAssertFalse(workflowSource.contains(".keyboardShortcut(\"5\", modifiers: [.command])"))
@@ -3398,10 +3405,21 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-classification-feedback\")"))
 
         let feedbackStart = try XCTUnwrap(workflowSource.range(of: "if let feedback = viewModel.inboxClassificationFeedback"))
-        let feedbackEnd = try XCTUnwrap(workflowSource[feedbackStart.lowerBound...].range(of: "LazyVGrid(columns: actionGridColumns"))
+        let feedbackEnd = try XCTUnwrap(workflowSource[feedbackStart.lowerBound...].range(of: "InboxProposedActions("))
         let feedbackBlock = String(workflowSource[feedbackStart.lowerBound..<feedbackEnd.lowerBound])
         XCTAssertTrue(feedbackBlock.contains(".accessibilityElement(children: .contain)"))
         XCTAssertFalse(feedbackBlock.contains(".accessibilityElement(children: .combine)"))
+    }
+
+    func testInboxRowsKeepDispositionAccessibleAndUseStableDisplayOrdering() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift")
+
+        XCTAssertTrue(source.contains("private func sortByTitle("))
+        XCTAssertTrue(source.contains("localizedStandardCompare"))
+        XCTAssertTrue(source.contains("lhs.id < rhs.id"))
+        XCTAssertTrue(source.contains("task?.createdAt ?? task?.updatedAt"))
+        XCTAssertTrue(source.contains("triageAccessibilityValue"))
+        XCTAssertTrue(source.contains("summary.accessibilityValue"))
     }
 
     func testInboxActionPanelShowsSelectedContextWithoutDuplicatingVoiceMetadata() throws {
@@ -3411,9 +3429,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         let context = try XCTUnwrap(source.range(of: "InboxSelectedItemContext("))
         let voice = try XCTUnwrap(source.range(of: "InboxVoiceIntakeDetail("))
-        let actions = try XCTUnwrap(
-            source.range(of: "LazyVGrid(columns: actionGridColumns")
-        )
+        let actions = try XCTUnwrap(source.range(of: "InboxProposedActions("))
         XCTAssertLessThan(context.lowerBound, voice.lowerBound)
         XCTAssertLessThan(voice.lowerBound, actions.lowerBound)
         let contextCall = String(source[context.lowerBound..<voice.lowerBound])
@@ -3437,7 +3453,7 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         let actionPanelEnd = try XCTUnwrap(
             source.range(
-                of: "private var actionGridColumns",
+                of: "private struct InboxProposedActions",
                 range: actionPanelStart.upperBound..<source.endIndex
             )
         )
@@ -3449,7 +3465,7 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         let selectionChangeEnd = try XCTUnwrap(
             source.range(
-                of: "private var mainSurface",
+                of: "private func mainSurface",
                 range: selectionChangeStart.upperBound..<source.endIndex
             )
         )
@@ -3461,7 +3477,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("Select an Inbox item to classify."))
         XCTAssertTrue(contextDefinition.contains("lineLimit(2)"))
         XCTAssertTrue(contextDefinition.contains("lineLimit(3)"))
-        XCTAssertTrue(contextDefinition.contains(".accessibilityElement(children: .combine)"))
+        XCTAssertTrue(contextDefinition.contains(".accessibilityElement(children: .contain)"))
+        XCTAssertTrue(contextDefinition.contains(".accessibilityIdentifier(\"inbox-selected-item-more\")"))
         XCTAssertTrue(contextCall.contains(manualSummaryCondition))
         XCTAssertTrue(
             actionPanel.contains(".accessibilityLabel(\"Inbox classification actions\")")
@@ -3501,17 +3518,22 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(modelSource.contains("public enum InboxTriageFilter"))
         XCTAssertTrue(coreSource.contains("public var filteredInboxTasks"))
         XCTAssertTrue(coreSource.contains("public func setInboxTriageFilter"))
-        XCTAssertTrue(workflowSource.contains("viewModel.filteredInboxTasks"))
+        XCTAssertTrue(workflowSource.contains("viewModel.inboxReferenceTasks("))
         XCTAssertTrue(workflowSource.contains("viewModel.inboxTriageSummary(for: task)"))
-        XCTAssertTrue(workflowSource.contains("InboxTriagePill(summary: triageSummary)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-row-triage-summary-\\(task.id)\")"))
-        XCTAssertTrue(workflowSource.contains("InboxHeaderControls("))
-        XCTAssertTrue(workflowSource.contains("Picker(\"Inbox Filter\""))
+        XCTAssertTrue(workflowSource.contains("InboxReferenceHeader("))
+        XCTAssertTrue(workflowSource.contains("ForEach(InboxReferenceFilter.allCases)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-triage-filter\")"))
-        XCTAssertTrue(workflowSource.contains("private var mainSurface: some View"))
+        XCTAssertTrue(
+            workflowSource.contains(
+                "private func mainSurface(referenceContentTopPadding: CGFloat) -> some View"
+            )
+        )
         XCTAssertTrue(workflowSource.contains("InboxTriageRail("))
         XCTAssertTrue(inboxWorkflowSource.contains(".accessibilityIdentifier(\"inbox-compact-workflow-scroll\")"))
         XCTAssertTrue(inboxWorkflowSource.contains(".scrollIndicators(.visible)"))
+        XCTAssertTrue(inboxWorkflowSource.contains(".id(\"inbox-wide-workflow\")"))
+        XCTAssertTrue(inboxWorkflowSource.contains(".id(\"inbox-compact-workflow\")"))
         let compactScrollStart = try XCTUnwrap(inboxWorkflowSource.range(of: "ScrollView(.vertical) {"))
         let compactScrollEnd = try XCTUnwrap(
             inboxWorkflowSource[compactScrollStart.lowerBound...]
@@ -3520,9 +3542,19 @@ final class AppExperienceSourceTests: XCTestCase {
         let compactScrollScope = String(inboxWorkflowSource[compactScrollStart.lowerBound..<compactScrollEnd.upperBound])
         XCTAssertTrue(compactScrollScope.contains("mainSurface"))
         XCTAssertTrue(compactScrollScope.contains("InboxTriageRail("))
+        XCTAssertTrue(inboxWorkflowSource.contains("voiceDetailAccessibilityIdentifier: \"inbox-voice-intake-detail\""))
+        XCTAssertFalse(inboxWorkflowSource.contains("inbox-voice-intake-detail-compact"))
+        XCTAssertTrue(inboxWorkflowSource.contains("task.sourceCommand == \"ui-evidence\""))
+        XCTAssertTrue(inboxWorkflowSource.contains("InboxAudioPlaybackController.live()"))
+        XCTAssertTrue(inboxWorkflowSource.contains("fileURL: URL(fileURLWithPath: capture.audioFilePath)"))
+        XCTAssertFalse(inboxWorkflowSource.contains("private var waveformBars"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-workflow\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-triage-rail\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityLabel(\"Inbox triage station\")"))
+        XCTAssertTrue(workflowSource.contains("fillsAvailableHeight ? \"inbox-triage-rail\" : \"inbox-action-panel\""))
+        XCTAssertTrue(
+            workflowSource.contains(
+                ".accessibilityLabel(fillsAvailableHeight ? \"Inbox triage station\" : \"Inbox classification actions\")"
+            )
+        )
         XCTAssertTrue(workflowSource.contains("without opening the task inspector"))
         XCTAssertTrue(workflowSource.contains("onSelectTask: selectInboxTask"))
         XCTAssertTrue(workflowSource.contains("@State private var voiceMemoDraft"))
@@ -3549,17 +3581,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(inboxWorkflowSource.contains("Voice capture metadata available for \\(task.title)"))
         XCTAssertTrue(inboxWorkflowSource.contains("InboxSelectedItemContext("))
         XCTAssertTrue(workflowSource.contains("taskTitle: task?.title ?? \"Selected Inbox item\""))
-        XCTAssertTrue(workflowSource.contains("LazyVGrid(columns: actionGridColumns"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-grid\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-intake-detail\")"))
+        XCTAssertTrue(workflowSource.contains("InboxProposedActions("))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-proposed-actions\")"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(accessibilityIdentifier)"))
         let voiceDetailStart = try XCTUnwrap(workflowSource.range(of: "private struct InboxVoiceIntakeDetail"))
         let voiceDetailSource = String(workflowSource[voiceDetailStart.lowerBound...])
         XCTAssertEqual(
-            voiceDetailSource.components(separatedBy: ".accessibilityIdentifier(\"inbox-voice-intake-detail\")").count - 1,
+            voiceDetailSource.components(separatedBy: ".accessibilityIdentifier(accessibilityIdentifier)").count - 1,
             1
         )
         let voiceDetailTarget = try XCTUnwrap(voiceDetailSource.range(
-            of: ".accessibilityIdentifier(\"inbox-voice-intake-detail\")"
+            of: ".accessibilityIdentifier(accessibilityIdentifier)"
         ))
         let containedChildren = try XCTUnwrap(voiceDetailSource.range(of: ".accessibilityElement(children: .contain)"))
         XCTAssertLessThan(containedChildren.lowerBound, voiceDetailTarget.lowerBound)
@@ -3571,10 +3603,20 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-memo-editor\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-memo-save\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-source-metadata\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-review-status\")"))
+        XCTAssertFalse(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-review-status\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityElement(children: .contain)"))
-        XCTAssertTrue(workflowSource.contains("Transcript only"))
-        XCTAssertTrue(workflowSource.contains("Transcript-only voice capture, duration %@, waveform preview"))
+        XCTAssertTrue(workflowSource.contains("Voice memo playback"))
+        XCTAssertTrue(workflowSource.contains("Playable voice memo, duration %@"))
+        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-voice-playback-toggle\")"))
+        XCTAssertTrue(workflowSource.contains("playbackAccessibilityValue"))
+        XCTAssertTrue(workflowSource.contains(".disabled(!playback.isPlayable)"))
+        XCTAssertTrue(workflowSource.contains(".disabled(!playback.isSeekable)"))
+        XCTAssertTrue(workflowSource.contains("playback.isRetryAvailable"))
+        XCTAssertTrue(workflowSource.contains(".opacity(0.01)"))
+        XCTAssertTrue(workflowSource.contains(".frame(maxWidth: .infinity, minHeight: 32, maxHeight: 32)"))
+        XCTAssertTrue(workflowSource.contains("playback.errorMessage ?? playbackAccessibilityValue"))
+        XCTAssertTrue(workflowSource.contains("inbox-voice-playback-error"))
+        XCTAssertFalse(workflowSource.contains("Transcript-only voice capture, duration %@, waveform preview"))
         XCTAssertFalse(workflowSource.contains("Playback unavailable in this MVP"))
         XCTAssertFalse(workflowSource.contains("Button {} label:"))
         XCTAssertTrue(workflowSource.contains(".accessibilityLabel(title)"))
@@ -3591,8 +3633,109 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("No AI interpretation yet."))
         XCTAssertTrue(coreSource.contains("private var inboxCaptureRecordsByTaskID: [Int64: [InboxCaptureRecord]]"))
         XCTAssertTrue(coreSource.contains("$0.transcriptionStatus == .succeeded"))
-        XCTAssertTrue(appSource.contains("inboxCaptureStore: SQLiteInboxCaptureStore(connection: connection)"))
+        XCTAssertTrue(appSource.contains("let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)"))
+        XCTAssertTrue(appSource.contains("inboxCaptureStore: inboxCaptureStore"))
         XCTAssertTrue(appSource.contains("Window(\"Voice Command\", id: \"voice-capture\")"))
+    }
+
+    func testInboxWorkflowMatchesReferenceListAndDetailComposition() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift")
+
+        XCTAssertTrue(source.contains("private struct InboxReferenceHeader"))
+        XCTAssertTrue(source.contains("private struct InboxReferenceTaskList"))
+        XCTAssertTrue(source.contains("private struct InboxReferenceTaskRow"))
+        XCTAssertTrue(source.contains("private struct InboxTriageRail"))
+        XCTAssertTrue(source.contains("Menu(\"Sort\", systemImage: \"arrow.up.arrow.down\")"))
+        XCTAssertTrue(source.contains("Menu(\"Filter\", systemImage: \"line.3.horizontal.decrease\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"inbox-reference-header\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"inbox-reference-task-list\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"inbox-reference-detail\")"))
+        XCTAssertTrue(source.contains("Text(\"Proposed Actions\")"))
+        XCTAssertTrue(source.contains("Text(\"Details Information\")"))
+        XCTAssertTrue(source.contains("confirmationDialog("))
+        XCTAssertFalse(source.contains("WorkflowTaskSurface("))
+    }
+
+    func testInboxDetailUsesReferenceMatchedVerticalMetrics() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift")
+        let seederSource = try readPackageFile("Sources/SuisuiVisualFixtureSeeder/main.swift")
+        let english = try readPackageFile("Sources/SuisuiApp/Resources/en.lproj/Localizable.strings")
+        let japanese = try readPackageFile("Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings")
+        let actionStyleStart = try XCTUnwrap(
+            source.range(of: "private struct InboxTriageActionButtonStyle")
+        )
+        let proposedActionsStart = try XCTUnwrap(source.range(of: "private struct InboxProposedActions"))
+        let proposedActionsEnd = try XCTUnwrap(
+            source.range(
+                of: "private struct InboxRelatedMaterialsSheet",
+                range: proposedActionsStart.upperBound..<source.endIndex
+            )
+        )
+        let detailsStart = try XCTUnwrap(source.range(of: "private struct InboxReferenceDetails"))
+        let detailsEnd = try XCTUnwrap(
+            source.range(of: "private func normalizedInboxDetail", range: detailsStart.upperBound..<source.endIndex)
+        )
+        let voiceStart = try XCTUnwrap(source.range(of: "private struct InboxVoiceIntakeDetail"))
+        let copyTranscriptStart = try XCTUnwrap(
+            source.range(of: "private func copyTranscript", range: voiceStart.upperBound..<source.endIndex)
+        )
+
+        let actionStyle = String(source[actionStyleStart.lowerBound..<proposedActionsStart.lowerBound])
+        let proposedActions = String(source[proposedActionsStart.lowerBound..<proposedActionsEnd.lowerBound])
+        let details = String(source[detailsStart.lowerBound..<detailsEnd.lowerBound])
+        let transcript = String(source[voiceStart.lowerBound..<copyTranscriptStart.lowerBound])
+
+        XCTAssertTrue(actionStyle.contains(".frame(height: 36)"))
+        XCTAssertTrue(actionStyle.contains("RoundedRectangle(cornerRadius: 10)"))
+        XCTAssertFalse(actionStyle.contains("Capsule()"))
+        XCTAssertTrue(
+            actionStyle.contains("isProminent ? Color.accentColor : Color.clear")
+        )
+        XCTAssertTrue(
+            actionStyle.contains("isProminent ? Color.clear : Color.secondary.opacity(0.20)")
+        )
+        XCTAssertTrue(transcript.contains(".lineSpacing(4)"))
+        XCTAssertTrue(
+            transcript.contains(".frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)")
+        )
+        XCTAssertTrue(proposedActions.contains(".frame(height: 36)"))
+        XCTAssertFalse(proposedActions.contains(".padding(.vertical, 13)"))
+        XCTAssertTrue(details.contains(".frame(minHeight: 38)"))
+        XCTAssertFalse(details.contains(".padding(.vertical, 14)"))
+        XCTAssertFalse(
+            source.contains(
+                ".accessibilityIdentifier(\"inbox-proposed-actions\")\n            .padding(.bottom, 8)"
+            )
+        )
+        XCTAssertTrue(
+            source.contains(".frame(maxWidth: .infinity, minHeight: 32, maxHeight: 32)")
+        )
+        XCTAssertTrue(source.contains(".padding(.top, 8)"))
+        XCTAssertTrue(seederSource.contains("var envelopeSeed: UInt64 = 0x5A17_C9E3"))
+        XCTAssertTrue(seederSource.contains("let speechEnvelope = (0...64).map"))
+        XCTAssertTrue(seederSource.contains("envelopeSeed &*= 6_364_136_223_846_793_005"))
+        XCTAssertTrue(seederSource.contains("let targetPeak = 0.65 + unitPeak * 0.35"))
+        XCTAssertTrue(seederSource.contains("smoothedPeak += (targetPeak - smoothedPeak) * 0.35"))
+        XCTAssertTrue(seederSource.contains("let easedBlend = blend * blend * (3 - 2 * blend)"))
+        XCTAssertFalse(seederSource.contains("sin(progress *"))
+        XCTAssertTrue(source.contains("mainSurface(referenceContentTopPadding: 10)"))
+        XCTAssertTrue(source.contains("mainSurface(referenceContentTopPadding: 0)"))
+        XCTAssertTrue(source.contains(".padding(.bottom, referenceContentTopPadding)"))
+        XCTAssertTrue(source.contains("return \"waveform\""))
+        XCTAssertTrue(source.contains("return \"sparkle\""))
+        XCTAssertFalse(source.contains("return \"arrow.uturn.left\""))
+        XCTAssertTrue(japanese.contains("\"Inbox reference presentation metadata\" = \"山田さんからの音声メモ · 今日 10:15\";"))
+        XCTAssertTrue(japanese.contains("\"Today %@ · Taro Yamada (you)\" = \"今日 %@ · 山田太郎（あなた）\";"))
+        XCTAssertTrue(english.contains("\"Today %@ · Taro Yamada (you)\" = \"Today %@ · Taro Yamada (you)\";"))
+    }
+
+    func testInboxReferenceUIUsesPersistedTriageLifecycle() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift")
+
+        XCTAssertTrue(source.contains("viewModel.createInboxTask(title: title)"))
+        XCTAssertTrue(source.contains("task.createdAt"))
+        XCTAssertTrue(source.contains("viewModel.inboxTriageRecord(for:"))
+        XCTAssertTrue(source.contains("viewModel.refreshInboxReviewAvailability(at:"))
     }
 
     func testInboxSelectionKeepsTriageInWorkflowInsteadOfInspector() throws {
@@ -3609,7 +3752,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("onSelectTask: selectInboxTask"))
         XCTAssertTrue(workflowSource.contains("memoDraft: $voiceMemoDraft"))
         XCTAssertTrue(workflowSource.contains("memoCaptureID: $voiceMemoCaptureID"))
-        XCTAssertTrue(workflowSource.contains(".frame(minWidth: 300, idealWidth: 320, maxWidth: 360"))
+        XCTAssertTrue(workflowSource.contains(".frame(minWidth: 340, idealWidth: 400, maxWidth: 420"))
+        XCTAssertTrue(workflowSource.contains(".padding(.trailing, 30)"))
+        XCTAssertTrue(workflowSource.contains(".frame(maxWidth: .infinity, minHeight: 84"))
 
         let overrideStart = try XCTUnwrap(boardSource.range(of: "private func applySelectedTaskOverrideIfNeeded()"))
         let overrideEnd = try XCTUnwrap(boardSource[overrideStart.lowerBound...].range(of: "private func selectTodayTask"))
@@ -3635,13 +3780,29 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"workflow-task-row-\\(task.id)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityLabel(\"Open task \\(task.title)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityValue(workflowAccessibilityValue)"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-panel\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-make-task\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-make-project\")"))
+        XCTAssertTrue(
+            workflowSource.contains(
+                "accessibilityIdentifier: fillsAvailableHeight ? \"inbox-action-panel\" : \"inbox-action-panel-content\""
+            )
+        )
+        XCTAssertTrue(workflowSource.contains("accessibilityIdentifier: \"inbox-action-make-task\""))
+        XCTAssertTrue(workflowSource.contains("accessibilityIdentifier: \"inbox-action-make-project\""))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-schedule-today\")"))
+        XCTAssertTrue(
+            workflowSource.contains(
+                ".accessibilityElement(children: .contain)\n        .accessibilityIdentifier(\"inbox-selected-context\")"
+            )
+        )
+        // The voice seek control deliberately uses a nearly transparent native
+        // slider over the visible waveform so AX and keyboard actions remain real.
+        let permittedTransparentSliderCount = workflowSource.components(
+            separatedBy: ".opacity(0.01)"
+        ).count - 1
+        XCTAssertEqual(permittedTransparentSliderCount, 1)
+        XCTAssertFalse(workflowSource.contains(".frame(width: 1, height: 1)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-action-review-later\")"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"1\", modifiers: [.command, .control])"))
-        XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"2\", modifiers: [.command, .control])"))
+        XCTAssertTrue(workflowSource.contains("keyboardShortcut: \"1\""))
+        XCTAssertTrue(workflowSource.contains("keyboardShortcut: \"2\""))
         XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"3\", modifiers: [.command, .control])"))
         XCTAssertTrue(workflowSource.contains(".keyboardShortcut(\"4\", modifiers: [.command, .control])"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"inbox-classification-undo\")"))
@@ -5055,6 +5216,28 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertLessThan(sizingOptions.lowerBound, contentController.lowerBound)
     }
 
+    func testSettingsEvidenceWindowOwnsItsAuditedViewport() throws {
+        let appSource = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
+        let functionStart = try XCTUnwrap(
+            appSource.range(of: "private func openSettingsWindowForEvidenceIfRequested()")
+        )
+        let functionEnd = try XCTUnwrap(
+            appSource.range(
+                of: "private func openVoiceCommandWindowForEvidenceIfRequested()",
+                range: functionStart.upperBound..<appSource.endIndex
+            )
+        )
+        let evidenceSource = String(appSource[functionStart.lowerBound..<functionEnd.lowerBound])
+        let sizingOptions = try XCTUnwrap(
+            evidenceSource.range(of: "hostingController.sizingOptions = []")
+        )
+        let contentController = try XCTUnwrap(
+            evidenceSource.range(of: "window.contentViewController = hostingController")
+        )
+
+        XCTAssertLessThan(sizingOptions.lowerBound, contentController.lowerBound)
+    }
+
     func testReviewRuntimeDoesNotFallBackToEmptyToolRegistry() throws {
         let appSource = try readAppShellSource()
 
@@ -5813,6 +5996,131 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceFactory.contains("let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)"))
         XCTAssertTrue(voiceFactory.contains("inboxCaptureService = InboxVoiceCaptureService("))
         XCTAssertTrue(voiceFactory.contains("inboxCaptureSaver: inboxCaptureService"))
+    }
+
+    func testProjectBoardRuntimeReconcilesManagedInboxAudioWithoutHidingTranscriptOnFailure() throws {
+        let projectRuntimeSource = try readPackageFile(
+            "Sources/SuisuiApp/Composition/ProjectBoardRuntimeFactory.swift"
+        )
+        let voiceRuntimeSource = try readPackageFile(
+            "Sources/SuisuiApp/Composition/VoiceRuntimeFactory.swift"
+        )
+        let viewModelRuntimeStart = try XCTUnwrap(
+            projectRuntimeSource.range(
+                of: "static func makeProjectBoardViewModel(runtime: ProjectBoardRuntimeBundle)"
+            )
+        )
+        let availableStart = try XCTUnwrap(
+            projectRuntimeSource.range(
+                of: "case let .available(",
+                range: viewModelRuntimeStart.upperBound..<projectRuntimeSource.endIndex
+            )
+        )
+        let unavailableStart = try XCTUnwrap(
+            projectRuntimeSource.range(
+                of: "case let .unavailable(error):",
+                range: availableStart.upperBound..<projectRuntimeSource.endIndex
+            )
+        )
+        let availableRuntime = String(
+            projectRuntimeSource[
+                availableStart.lowerBound..<unavailableStart.lowerBound
+            ]
+        )
+        let prepareStart = try XCTUnwrap(
+            projectRuntimeSource.range(of: "static func prepareProjectBoardRuntimeBundle()")
+        )
+        let bundleStart = try XCTUnwrap(
+            projectRuntimeSource.range(
+                of: "static func makeProjectBoardRuntimeBundle()",
+                range: prepareStart.upperBound..<projectRuntimeSource.endIndex
+            )
+        )
+        let prepareRuntime = String(
+            projectRuntimeSource[prepareStart.lowerBound..<bundleStart.lowerBound]
+        )
+        let synchronousViewModelStart = try XCTUnwrap(
+            projectRuntimeSource.range(
+                of: "static func makeProjectBoardViewModel()",
+                range: bundleStart.upperBound..<projectRuntimeSource.endIndex
+            )
+        )
+        let synchronousBundleRuntime = String(
+            projectRuntimeSource[bundleStart.lowerBound..<synchronousViewModelStart.lowerBound]
+        )
+        let onceStart = try XCTUnwrap(
+            projectRuntimeSource.range(of: "static func reconcileManagedInboxAudioOnce(")
+        )
+        let reconciliationStart = try XCTUnwrap(
+            projectRuntimeSource.range(
+                of: "static func reconcileManagedInboxAudio(",
+                range: onceStart.upperBound..<projectRuntimeSource.endIndex
+            )
+        )
+        let onceRuntime = String(
+            projectRuntimeSource[onceStart.lowerBound..<reconciliationStart.lowerBound]
+        )
+
+        XCTAssertTrue(
+            projectRuntimeSource.contains(
+                "static func reconcileManagedInboxAudio("
+            )
+        )
+        XCTAssertFalse(
+            voiceRuntimeSource.contains(
+                "private static func reconcileManagedInboxAudio("
+            )
+        )
+        XCTAssertFalse(voiceRuntimeSource.contains("reconcileManagedInboxAudio("))
+        XCTAssertFalse(voiceRuntimeSource.contains("reconcileManagedInboxAudioOnce("))
+        XCTAssertTrue(
+            voiceRuntimeSource.contains(
+                "let inboxAudioFileStore = try? ManagedInboxAudioFileStore()"
+            )
+        )
+        XCTAssertTrue(
+            projectRuntimeSource.contains(
+                "private enum InboxAudioReconciliationGate"
+            )
+        )
+        XCTAssertTrue(
+            projectRuntimeSource.contains(
+                "nonisolated(unsafe) static var hasAttempted = false"
+            )
+        )
+        XCTAssertTrue(
+            prepareRuntime.contains(
+                "reconcileManagedInboxAudioOnce(connection: connection)"
+            )
+        )
+        XCTAssertTrue(prepareRuntime.contains("Task.detached(priority: .userInitiated)"))
+        XCTAssertFalse(synchronousBundleRuntime.contains("reconcileManagedInboxAudioOnce("))
+        XCTAssertTrue(onceRuntime.contains("InboxAudioReconciliationGate.lock.lock()"))
+        XCTAssertTrue(onceRuntime.contains("defer { InboxAudioReconciliationGate.lock.unlock() }"))
+        XCTAssertTrue(onceRuntime.contains("guard InboxAudioReconciliationGate.hasAttempted == false"))
+        XCTAssertTrue(onceRuntime.contains("InboxAudioReconciliationGate.hasAttempted = true"))
+        XCTAssertFalse(
+            availableRuntime.contains(
+                "reconcileManagedInboxAudioOnce(connection: connection)"
+            )
+        )
+        XCTAssertTrue(
+            availableRuntime.contains(
+                "let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)"
+            )
+        )
+        XCTAssertTrue(
+            availableRuntime.contains(
+                "inboxCaptureStore: inboxCaptureStore"
+            )
+        )
+        XCTAssertTrue(
+            projectRuntimeSource.contains(
+                "Inbox audio reconciliation failed category=audio_reconciliation_failed"
+            )
+        )
+        XCTAssertFalse(availableRuntime.contains("return .unavailable(error)"))
+        XCTAssertFalse(availableRuntime.contains("error.localizedDescription"))
     }
 
     func testVoiceAssistantQueuePanelRendersWithoutPlanningResponse() throws {
@@ -7054,7 +7362,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(script.contains("SUISUI_LAUNCH_RECOVERY_MODE"))
         XCTAssertTrue(script.contains("write_done_analytics_evidence_file"))
         XCTAssertTrue(script.contains("docs/release/evidence/done-analytics-screenshots.md"))
-        XCTAssertTrue(script.contains("inbox-action-panel=>Voice capture metadata available for Scheduled manual capture"))
+        XCTAssertTrue(script.contains("INBOX_VOICE_TITLE=\"Create tomorrow's presentation materials\""))
+        XCTAssertTrue(script.contains("INBOX_VOICE_TITLE=\"明日のプレゼン資料を作成する\""))
+        XCTAssertTrue(script.contains("HOME=\"$EVIDENCE_HOME\" CFFIXED_USER_HOME=\"$EVIDENCE_HOME\""))
+        XCTAssertTrue(script.contains("inbox-voice-intake-detail=>Voice intake detail for $INBOX_VOICE_TITLE"))
         XCTAssertTrue(script.contains("capture_project_board_destination light inbox \"$INBOX_VOICE_LIGHT_SCREENSHOT\" \"Inbox voice detail\" \"$INBOX_VOICE_ROUTE_MARKERS\" \"$INBOX_VOICE_TASK_OVERRIDE\" \"inbox-voice-intake-detail\" \"inbox-voice-intake-detail\" \"$INBOX_VOICE_TARGET_MARKERS\""))
         XCTAssertTrue(script.contains("capture_voice_command_appearance light \"$VOICE_COMMAND_LIGHT_SCREENSHOT\""))
         let captureDestinationStart = try XCTUnwrap(script.range(of: "capture_project_board_destination()"))
@@ -7167,7 +7478,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(seederSource.contains("Confirm project board to task card to inspector path before public alpha."))
         XCTAssertTrue(seederSource.contains("'Inbox', 'active'"))
         XCTAssertTrue(seederSource.contains("title: \"Inbox\""))
-        XCTAssertTrue(workflowSource.contains("ensureSelectedInboxTaskIsVisible"))
+        XCTAssertTrue(workflowSource.contains("synchronizeSelection(with: tasks.map(\\.id))"))
+        XCTAssertTrue(workflowSource.contains(
+            ".onChange(of: tasks.map(\\.id)) { _, visibleTaskIDs in"
+        ))
+        XCTAssertTrue(workflowSource.contains("synchronizeSelection(with: visibleTaskIDs)"))
 
         XCTAssertTrue(script.contains("capture_project_board_destination"))
         XCTAssertTrue(script.contains("SUISUI_OPEN_SETTINGS_ON_LAUNCH=1"))
@@ -7180,7 +7495,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("openSettingsWindowForEvidenceIfRequested"))
         XCTAssertTrue(appSource.contains("SettingsView("))
         XCTAssertTrue(script.contains("seed_capture_database"))
-        XCTAssertTrue(seederSource.contains("Scheduled manual capture"))
+        XCTAssertTrue(seederSource.contains("明日のプレゼン資料を作成する"))
         XCTAssertTrue(seederSource.contains("Done analytics sample"))
         XCTAssertTrue(evidence.contains("Inbox voice detail"))
         XCTAssertTrue(evidence.contains("Projects overview"))
@@ -7211,7 +7526,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(script.contains("seed_capture_database \"$DATABASE_PATH\""))
         XCTAssertTrue(seederSource.contains("missing Phase 12 UI evidence seed"))
-        XCTAssertTrue(seederSource.contains("\"Scheduled manual capture\""))
+        XCTAssertTrue(seederSource.contains("\"明日のプレゼン資料を作成する\""))
         XCTAssertTrue(seederSource.contains("\"Done analytics sample\""))
         XCTAssertTrue(seederSource.contains("\"Completed Evidence Project\""))
         XCTAssertTrue(seederSource.contains("\"Inbox\""))

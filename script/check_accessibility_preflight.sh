@@ -132,6 +132,8 @@ REQUIRED_FUNCTIONAL_SURFACE_ANCHORS=(
   "project-board::inbox-action-grid"
   "project-board::inbox-voice-intake-detail"
   "project-board::inbox-voice-transcript-preview"
+  "project-board::inbox-voice-playback-toggle"
+  "project-board::inbox-voice-seek"
   "project-board::inbox-voice-waveform"
   "project-board::inbox-voice-transcript"
   "project-board::inbox-voice-interpretation"

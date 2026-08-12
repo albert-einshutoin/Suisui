@@ -59,11 +59,16 @@ extension AppRuntimeFactory {
             )
             let projectBoardStore = SQLiteProjectBoardStore(connection: connection)
             let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)
+            let inboxAudioFileStore = try? ManagedInboxAudioFileStore()
+            // A managed-directory failure must not remove transcript capture;
+            // the service can retain its recorder URL while surfacing playback
+            // as unavailable until a later process can reconcile storage.
             inboxCaptureService = InboxVoiceCaptureService(
                 audioRecorder: audioRecorder,
                 sttProvider: sttProvider,
                 projectBoardStore: projectBoardStore,
-                inboxCaptureStore: inboxCaptureStore
+                inboxCaptureStore: inboxCaptureStore,
+                inboxAudioPersister: inboxAudioFileStore
             )
             developmentProjectProvider = {
                 approvedDevelopmentProject(from: projectStore)

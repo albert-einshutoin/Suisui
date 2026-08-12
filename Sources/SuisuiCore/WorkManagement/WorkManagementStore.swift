@@ -29,6 +29,15 @@ public protocol ProjectBoardStore {
     func deleteTask(id: Int64) throws
     func restoreTask(from snapshot: ProjectBoardTask) throws -> ProjectBoardTask
     func applyTaskUndoSnapshot(_ snapshot: ProjectBoardTask) throws -> ProjectBoardTask
+    func loadInboxTriageRecords(taskIDs: Set<Int64>) throws -> [Int64: InboxTriageRecord]
+    func createInboxTask(title: String) throws -> ProjectBoardTask
+    func performInboxTriage(
+        taskID: Int64,
+        action: InboxTriageAction,
+        referenceDate: Date,
+        calendar: Calendar
+    ) throws -> InboxTriageMutation
+    func undoInboxTriage(_ mutation: InboxTriageMutation) throws -> ProjectBoardTask
     func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact
     func deleteProjectArtifact(id: Int64) throws
     func createProjectMilestone(projectID: Int64, title: String, dueAt: String?) throws -> ProjectBoardMilestone
@@ -79,18 +88,4 @@ public extension ProjectBoardStore {
         ))
     }
 
-    @discardableResult
-    func createInboxTask(title: String) throws -> ProjectBoardTask {
-        let snapshot = try loadSnapshot()
-        let inboxProject = snapshot.projects.first { $0.title == "Inbox" } ?? snapshot.projects.first
-        guard let inboxProject else {
-            throw ProjectBoardStoreError.emptyProjectTitle
-        }
-
-        return try createTask(ProjectBoardTaskDraft(
-            projectID: inboxProject.id,
-            title: title,
-            status: .backlog
-        ))
-    }
 }

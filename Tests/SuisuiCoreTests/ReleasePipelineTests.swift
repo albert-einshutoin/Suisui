@@ -201,6 +201,253 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(result.output.contains("Building for debugging"), result.output)
     }
 
+    func testPerformanceReleaseArtifactIsAdHocSignedAndVerifiedAcrossRunnerBoundary() throws {
+        let builder = try readPackageFile("script/build_and_run.sh")
+        let verifier = try readPackageFile("script/verify_ui_performance_artifact.sh")
+
+        XCTAssertTrue(builder.contains(
+            "[[ \"$BUILD_CONFIGURATION\" == \"debug\" || \"$RELEASE_BUILD_PURPOSE\" == \"performance\" ]]"
+        ))
+        XCTAssertTrue(builder.contains("codesign --force --deep --sign - \"$APP_BUNDLE\""))
+        XCTAssertTrue(builder.contains("codesign --verify --deep --strict \"$APP_BUNDLE\""))
+        XCTAssertTrue(verifier.contains("/usr/bin/codesign --verify --deep --strict \"$EXTRACTED_APP\""))
+        XCTAssertTrue(verifier.contains("failure \"app-signature-invalid\""))
+    }
+
+    func testPerformanceReleaseArtifactPreservesRequiredSwiftPMResourceBundles() throws {
+        let builder = try readPackageFile("script/build_and_run.sh")
+        let verifier = try readPackageFile("script/verify_ui_performance_artifact.sh")
+
+        for bundleName in [
+            "Suisui_Suisui.bundle",
+            "Suisui_SuisuiCore.bundle",
+            "SwiftTerm_SwiftTerm.bundle"
+        ] {
+            XCTAssertTrue(builder.contains(bundleName), "builder must package \(bundleName)")
+            XCTAssertTrue(verifier.contains(bundleName), "fresh-runner verifier must require \(bundleName)")
+        }
+        XCTAssertTrue(builder.contains("RESOURCE_BUNDLE_DESTINATION=\"$APP_RESOURCES/$resource_bundle_name\""))
+        XCTAssertFalse(builder.contains("--build-system swiftbuild"))
+        XCTAssertTrue(builder.contains("--arch arm64"))
+        XCTAssertTrue(builder.contains("--scratch-path \"$SWIFTPM_APP_SCRATCH_PATH\""))
+        XCTAssertTrue(builder.contains("normalize_swiftpm_resource_accessors.sh"))
+        XCTAssertTrue(builder.contains("relink_normalized_swiftpm_product.sh"))
+        XCTAssertTrue(builder.contains("verify_linked_macos_sdk.sh"))
+        let relinker = try readPackageFile("script/relink_normalized_swiftpm_product.sh")
+        XCTAssertTrue(relinker.contains("xcrun --sdk macosx --show-sdk-path"))
+        XCTAssertTrue(relinker.contains("SDKROOT=\"$ACTIVE_SDK_PATH\" \"$SWIFT_BUILD_TOOL\""))
+        XCTAssertTrue(relinker.contains("--no-db \"$TARGET_NAME\""))
+        XCTAssertTrue(builder.contains("Shaders.metal"))
+        XCTAssertFalse(builder.contains("/usr/bin/ditto \"$RESOURCE_BUNDLE\" \"$APP_RESOURCES\""))
+        XCTAssertTrue(verifier.contains("failure \"app-resource-bundle-invalid\""))
+    }
+
+    func testSwiftPMResourceAccessorNormalizerMakesNativeBuildsPortableAndIsIdempotent() throws {
+        let buildDirectory = packageRoot()
+            .appendingPathComponent(".build/test-resource-accessor-normalizer-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: buildDirectory) }
+
+        let targets = [
+            ("Suisui", "Suisui_Suisui.bundle"),
+            ("SuisuiCore", "Suisui_SuisuiCore.bundle"),
+            ("SwiftTerm", "SwiftTerm_SwiftTerm.bundle")
+        ]
+        for (target, bundleName) in targets {
+            let accessor = buildDirectory
+                .appendingPathComponent("\(target).build/DerivedSources/resource_bundle_accessor.swift")
+            try FileManager.default.createDirectory(
+                at: accessor.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let source = """
+            import Foundation
+
+            extension Foundation.Bundle {
+                static nonisolated let module: Bundle = {
+                    let mainPath = Bundle.main.bundleURL.appendingPathComponent("\(bundleName)").path
+                    let buildPath = "/private/tmp/checkout/.build/arm64-apple-macosx/debug/\(bundleName)"
+
+                    let preferredBundle = Bundle(path: mainPath)
+                    guard let bundle = preferredBundle ?? Bundle(path: buildPath) else {
+                        Swift.fatalError("could not load resource bundle: from \\(mainPath) or \\(buildPath)")
+                    }
+                    return bundle
+                }()
+            }
+            """
+            try source.write(to: accessor, atomically: true, encoding: .utf8)
+        }
+
+        for _ in 0..<2 {
+            let result = try runScript(
+                "script/normalize_swiftpm_resource_accessors.sh",
+                arguments: [buildDirectory.path]
+            )
+            XCTAssertEqual(result.exitCode, 0, result.output)
+        }
+
+        for (target, bundleName) in targets {
+            let accessor = buildDirectory
+                .appendingPathComponent("\(target).build/DerivedSources/resource_bundle_accessor.swift")
+            let source = try String(contentsOf: accessor, encoding: .utf8)
+            XCTAssertTrue(source.contains(
+                "let mainPath = (Bundle.main.resourceURL ?? Bundle.main.bundleURL).appendingPathComponent(\"\(bundleName)\").path"
+            ))
+            XCTAssertTrue(source.contains("let buildPath = mainPath"))
+            XCTAssertFalse(source.contains("/private/tmp/checkout"))
+        }
+    }
+
+    func testSwiftPMResourceAccessorNormalizerFailsClosedWhenGeneratedTemplateDrifts() throws {
+        let buildDirectory = packageRoot()
+            .appendingPathComponent(".build/test-resource-accessor-drift-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: buildDirectory) }
+
+        for target in ["Suisui", "SuisuiCore", "SwiftTerm"] {
+            let accessor = buildDirectory
+                .appendingPathComponent("\(target).build/DerivedSources/resource_bundle_accessor.swift")
+            try FileManager.default.createDirectory(
+                at: accessor.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try "unexpected generated accessor\n".write(to: accessor, atomically: true, encoding: .utf8)
+        }
+
+        let result = try runScript(
+            "script/normalize_swiftpm_resource_accessors.sh",
+            arguments: [buildDirectory.path]
+        )
+        XCTAssertNotEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("generated resource accessor template is unsupported"), result.output)
+    }
+
+    func testStandaloneSwiftPMRelinkManifestKeepsOnlyExecutableBuildTools() throws {
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-swiftpm-relink-manifest-\(UUID().uuidString)", isDirectory: true)
+        let sourcePlan = fixtureDirectory.appendingPathComponent("native.yaml")
+        let destinationPlan = fixtureDirectory.appendingPathComponent("standalone.yaml")
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        try """
+        client:
+          name: basic
+          file-system: device-agnostic
+        tools: {}
+        targets:
+          main: ["<binary>"]
+        default: main
+        nodes: {}
+        commands:
+          "copy":
+            tool: copy-tool
+            inputs: ["input"]
+            outputs: ["output"]
+          "write":
+            tool: write-auxiliary-file
+            inputs: ["<contents>"]
+            outputs: ["generated"]
+          "plan":
+            tool: package-structure-tool
+            inputs: ["Package.swift"]
+            outputs: ["<PackageStructure>"]
+          "compile":
+            tool: shell
+            inputs: ["source.swift"]
+            outputs: ["object.o"]
+            args: ["/usr/bin/true"]
+        """.write(to: sourcePlan, atomically: true, encoding: .utf8)
+
+        let result = try runScript(
+            "script/prepare_swiftpm_relink_manifest.sh",
+            arguments: [sourcePlan.path, destinationPlan.path]
+        )
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        let normalized = try String(contentsOf: destinationPlan, encoding: .utf8)
+        XCTAssertTrue(normalized.contains("name: swift-build"))
+        XCTAssertEqual(normalized.components(separatedBy: "tool: phony").count - 1, 3)
+        XCTAssertTrue(normalized.contains("tool: shell"))
+        XCTAssertFalse(normalized.contains("tool: copy-tool"))
+        XCTAssertFalse(normalized.contains("tool: write-auxiliary-file"))
+        XCTAssertFalse(normalized.contains("tool: package-structure-tool"))
+    }
+
+    func testStandaloneSwiftPMRelinkManifestFailsClosedOnUnknownBuildTool() throws {
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-swiftpm-relink-unknown-\(UUID().uuidString)", isDirectory: true)
+        let sourcePlan = fixtureDirectory.appendingPathComponent("native.yaml")
+        let destinationPlan = fixtureDirectory.appendingPathComponent("standalone.yaml")
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+
+        try """
+        client:
+          name: basic
+        tools: {}
+        targets: {}
+        default: main
+        nodes: {}
+        commands:
+          "future":
+            tool: future-planning-tool
+            inputs: []
+            outputs: []
+        """.write(to: sourcePlan, atomically: true, encoding: .utf8)
+
+        let result = try runScript(
+            "script/prepare_swiftpm_relink_manifest.sh",
+            arguments: [sourcePlan.path, destinationPlan.path]
+        )
+        XCTAssertNotEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.output.contains("contains unsupported tool: future-planning-tool"), result.output)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destinationPlan.path))
+    }
+
+    func testLinkedMacOSSDKVerifierAcceptsActiveSDKAndRejectsLegacySDKMetadata() throws {
+        let fixtureDirectory = packageRoot()
+            .appendingPathComponent(".build/test-linked-macos-sdk-\(UUID().uuidString)", isDirectory: true)
+        let source = fixtureDirectory.appendingPathComponent("main.swift")
+        let activeBinary = fixtureDirectory.appendingPathComponent("active-sdk")
+        let legacyBinary = fixtureDirectory.appendingPathComponent("legacy-sdk")
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureDirectory) }
+        try "print(\"linked sdk fixture\")\n".write(to: source, atomically: true, encoding: .utf8)
+
+        let sdkPath = try runTool(["xcrun", "--sdk", "macosx", "--show-sdk-path"])
+        XCTAssertEqual(sdkPath.exitCode, 0, sdkPath.output)
+        let compile = try runTool([
+            "xcrun", "swiftc",
+            "-target", "arm64-apple-macosx14.0",
+            "-sdk", sdkPath.output.trimmingCharacters(in: .whitespacesAndNewlines),
+            "-o", activeBinary.path,
+            source.path
+        ])
+        XCTAssertEqual(compile.exitCode, 0, compile.output)
+
+        let activeResult = try runScript(
+            "script/verify_linked_macos_sdk.sh",
+            arguments: [activeBinary.path]
+        )
+        XCTAssertEqual(activeResult.exitCode, 0, activeResult.output)
+        XCTAssertTrue(activeResult.output.contains("linked against the active macOS SDK"), activeResult.output)
+
+        let rewrite = try runTool([
+            "xcrun", "vtool",
+            "-set-build-version", "macos", "14.0", "14.0",
+            "-replace",
+            "-output", legacyBinary.path,
+            activeBinary.path
+        ])
+        XCTAssertEqual(rewrite.exitCode, 0, rewrite.output)
+        let legacyResult = try runScript(
+            "script/verify_linked_macos_sdk.sh",
+            arguments: [legacyBinary.path]
+        )
+        XCTAssertNotEqual(legacyResult.exitCode, 0, legacyResult.output)
+        XCTAssertTrue(legacyResult.output.contains("linked macOS SDK mismatch"), legacyResult.output)
+        XCTAssertTrue(legacyResult.output.contains("got '14.0'"), legacyResult.output)
+    }
+
     func testAccessibilitySourceAnchorCountContractAllowsCoverageGrowth() throws {
         let output = "OK: accessibility source anchors are present (92 anchors)\n"
 
@@ -271,11 +518,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("test_pipeline_statuses=(\"${PIPESTATUS[@]}\")"))
         XCTAssertTrue(script.contains("test_pipeline_statuses[1]"))
         XCTAssertTrue(script.contains("test_pipeline_statuses[2]"))
-        XCTAssertTrue(script.contains("s#/private/var/folders/[^[:space:]]+#<temp-path>#g"))
-        XCTAssertTrue(script.contains("s#(/var)?/tmp/[^[:space:]]+#<temp-path>#g"))
+        XCTAssertTrue(script.contains("source \"$CI_REDACT_HELPER\""))
+        XCTAssertTrue(script.contains("ci_redact_stream"))
         XCTAssertTrue(script.contains("mktemp \"${TMPDIR:-/tmp}/suisui-swiftpm-discovery.raw.XXXXXX\""))
         XCTAssertFalse(script.contains("mktemp \"$ARTIFACT_DIR/discovery.raw.XXXXXX\""))
-        XCTAssertTrue(script.contains("#Ig"))
     }
 
     func testCompleteSwiftPMRunnerFixtureSelfTestsExerciseCountFailures() throws {
@@ -6260,6 +6506,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("app_launch_pid=$!"))
         XCTAssertTrue(script.contains("ax_terminate_owned_process \"$owned_pid\" \"$APP_BINARY\" \"${app_identity:-}\""))
         XCTAssertTrue(script.contains("wait_for_visible_windows()"))
+        XCTAssertTrue(script.contains("set matchingProcesses to application processes whose unix id is appPID"))
+        XCTAssertTrue(script.contains("ax_terminate_owned_process"))
+        XCTAssertTrue(script.contains("ax_wait_for_owned_process_identity"))
+        XCTAssertFalse(script.contains("tell process appName"))
         XCTAssertTrue(script.contains("INFO: %s did not expose a window on launch attempt %s; retrying owned launch."))
         XCTAssertGreaterThanOrEqual(script.components(separatedBy: "wait_for_visible_windows").count - 1, 4)
         XCTAssertFalse(script.contains("ax_wait_for_visible_window"))
@@ -7030,6 +7280,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(textInputHelper.contains("postToPid(pid)"))
         XCTAssertFalse(textInputHelper.contains("NSWorkspace.shared.runningApplications.first"))
         XCTAssertTrue(script.contains("pressButtonContaining \"workflow-task-row-$task_id\""))
+        XCTAssertTrue(
+            script.contains(
+                "pressButtonContaining \"inbox-quick-add-button\" >&2\n  waitForTextFieldContaining \"inbox-quick-add-title\""
+            )
+        )
         XCTAssertTrue(script.contains("pressButtonContaining \"inbox-action-make-task\""))
         XCTAssertTrue(script.contains("pressButtonUntilSQLiteValue \"schedule inbox item\" \"inbox-action-schedule-today\""))
         XCTAssertTrue(script.contains("pressButtonUntilSQLiteValue \"review later inbox item\" \"inbox-action-review-later\""))
@@ -7040,12 +7295,76 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("inbox-quick-add-title"))
         XCTAssertTrue(script.contains("inbox-quick-add-button"))
         XCTAssertTrue(script.contains("SELECT id FROM projects WHERE title='Inbox'"))
-        XCTAssertTrue(script.contains("status='planned' AND due_at IS NOT NULL"))
-        XCTAssertTrue(script.contains("status='backlog' AND due_at IS NULL"))
+        XCTAssertTrue(script.contains("t.status='planned' AND t.due_at IS NOT NULL"))
+        XCTAssertTrue(script.contains("t.status='backlog' AND t.due_at IS NULL"))
         XCTAssertTrue(script.contains("SELECT count(*) FROM projects WHERE title='AX Runtime Inbox Project Conversion';"))
         XCTAssertTrue(script.contains("OK: runtime inbox triage smoke covered quick add, make-task, schedule, review-later, project conversion, and undo through the visible app"))
         XCTAssertFalse(script.contains(":memory:"))
         XCTAssertFalse(script.contains("not implemented yet"))
+    }
+
+    func testRuntimeInboxTriageSmokeVerifiesDispositionAndReviewDate() throws {
+        let script = try readPackageFile("script/check_runtime_inbox_triage_smoke.sh")
+
+        XCTAssertTrue(script.contains("inbox_triage_records"))
+        XCTAssertTrue(script.contains("disposition='task'"))
+        XCTAssertTrue(script.contains("disposition='review_later'"))
+        XCTAssertTrue(script.contains("review_at IS NOT NULL"))
+        XCTAssertTrue(script.contains("due_at IS NULL"))
+    }
+
+    func testRuntimeInboxVoicePlaybackSmokeUsesManagedAudioAndPIDScopedVisibleControls() throws {
+        let script = try readPackageFile("script/check_runtime_inbox_voice_playback_smoke.sh")
+
+        XCTAssertTrue(script.contains("SuisuiVisualFixtureSeeder"))
+        XCTAssertTrue(script.contains("HOME=\"$runtime_home\" CFFIXED_USER_HOME=\"$runtime_home\""))
+        XCTAssertTrue(script.contains("Application Support/Suisui/InboxAudio"))
+        XCTAssertTrue(script.contains("SUISUI_DATABASE_PATH=\"$database_path\""))
+        XCTAssertTrue(script.contains("SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=\"inbox\""))
+        XCTAssertTrue(script.contains("local selected_task_id=\"${1:-$inbox_voice_task_id}\""))
+        XCTAssertTrue(script.contains("SUISUI_PROJECT_BOARD_SELECTED_TASK_ID=\"$selected_task_id\""))
+        XCTAssertTrue(script.contains("first process whose unix id is targetPID"))
+        XCTAssertTrue(script.contains("repeat with currentWindow in windows"))
+        XCTAssertTrue(script.contains("ui_evidence_ax_press_element.swift"))
+        XCTAssertTrue(script.contains("/usr/bin/swiftc \"$AX_PRESS_HELPER_SOURCE\""))
+        XCTAssertTrue(script.contains("\"$ax_press_helper\" \"$app_pid\" \"$identifier\""))
+        XCTAssertTrue(script.contains("inbox-voice-playback-toggle"))
+        XCTAssertTrue(script.contains("inbox-voice-seek"))
+        XCTAssertTrue(script.contains("Pause voice memo"))
+        XCTAssertTrue(script.contains("Play voice memo"))
+        XCTAssertTrue(script.contains("AXIncrement"))
+        XCTAssertTrue(script.contains("AXUIElementCreateApplication"))
+        XCTAssertTrue(script.contains("increment-max"))
+        XCTAssertTrue(script.contains("SUISUI_UI_EVIDENCE_AX_REQUIRE_EXACT_IDENTIFIER=1"))
+        XCTAssertTrue(script.contains("SUISUI_UI_EVIDENCE_AX_REQUIRE_IDENTIFIER_SUBTREE=1"))
+        XCTAssertTrue(script.contains("app_identity=\"\""))
+        XCTAssertTrue(script.contains("app_identity=\"$(ax_wait_for_owned_process_identity \"$app_pid\" \"$APP_BINARY\" 3)\""))
+        XCTAssertTrue(script.contains("ax_terminate_owned_process \"$app_pid\" \"$APP_BINARY\" \"$app_identity\""))
+        XCTAssertFalse(script.contains("kill \"$app_pid\""))
+        XCTAssertTrue(script.contains("initial_playback_value"))
+        XCTAssertTrue(script.contains("playing_playback_value"))
+        XCTAssertTrue(script.contains("seeked_playback_value"))
+        XCTAssertTrue(script.contains("second_voice_task_id"))
+        XCTAssertTrue(script.contains("workflow-task-row-$second_voice_task_id"))
+        XCTAssertTrue(script.contains("database_parent_real"))
+        XCTAssertTrue(script.contains("title = 'Share design proposal with Suzuki'"))
+        XCTAssertTrue(script.contains("tasks.source_command = 'ui-evidence'"))
+        XCTAssertTrue(script.contains("existing_missing_capture_count"))
+        XCTAssertTrue(script.contains("missing-managed-audio.wav"))
+        XCTAssertTrue(script.contains("Runtime transcript remains available when audio is missing."))
+        XCTAssertTrue(script.contains("inbox-voice-playback-error"))
+        XCTAssertTrue(script.contains("Audio playback is unavailable for this capture."))
+        XCTAssertTrue(script.contains("wait_for_control_disabled \"inbox-voice-playback-toggle\""))
+        XCTAssertTrue(script.contains("wait_for_control_disabled \"inbox-voice-seek\""))
+        XCTAssertTrue(script.contains("wait_for_signal_containing \"inbox-voice-transcript\" \"$missing_audio_transcript\""))
+        XCTAssertTrue(script.contains("terminate_app\nsleep 1\nlaunch_app_for_inbox"))
+        XCTAssertTrue(script.contains(">\"$app_log\" 2>&1 &"))
+        XCTAssertTrue(script.contains("rm -rf \"$tmp_dir\""))
+        XCTAssertTrue(script.contains("OK: runtime inbox voice playback smoke verified restart, play, pause, progress, seek, selection stop, and missing-audio fallback through the visible Inbox UI"))
+        XCTAssertFalse(script.contains("killall"))
+        XCTAssertFalse(script.contains("pkill"))
+        XCTAssertFalse(script.contains("open -a"))
+        XCTAssertFalse(script.contains(":memory:"))
     }
 
     func testRuntimeTodayCompleteSmokeScriptVerifiesVisibleRowCompletionPersistsToSQLite() throws {
@@ -7147,6 +7466,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("CPU_CONVERGENCE_TIMEOUT_SECONDS - (case_deadline - SECONDS)"))
         XCTAssertTrue(script.contains("MAX_TOOLBAR_LAYOUT_DEPTH=\"${SUISUI_RUNTIME_TODAY_MAX_TOOLBAR_LAYOUT_DEPTH:-1}\""))
         XCTAssertTrue(script.contains("SUISUI_RUNTIME_TODAY_MAX_TOOLBAR_LAYOUT_DEPTH must be a non-negative integer"))
+        XCTAssertTrue(script.contains("runtime_preview_temporal_key()"))
+        XCTAssertTrue(script.contains("runtime_preview_build_policy()"))
+        XCTAssertTrue(script.contains("runtime_preview_temporal_key 1"))
+        XCTAssertTrue(script.contains("runtime_preview_temporal_key \"$preview_build_count\""))
+        XCTAssertTrue(script.contains("product-temporal-cache-context-changed"))
+        XCTAssertTrue(script.contains("printf '2 product-temporal-cache-context-changed'"))
         XCTAssertTrue(script.contains("case_deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))"))
         XCTAssertTrue(script.contains("RUNTIME_WINDOW_ATTEMPTS=2"))
         XCTAssertTrue(script.contains("launch_route_and_wait_for_markers \"$route_artifact_dir/window-attempt-1.err\""))
@@ -7187,9 +7512,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(waitForDatabaseTableSource.contains("2>/dev/null"))
         XCTAssertTrue(script.contains("toolbar-recursion-diagnostic"))
         XCTAssertTrue(script.contains("capture_runtime_route_diagnostics"))
-        XCTAssertTrue(script.contains("route_start_day_key"))
-        XCTAssertTrue(script.contains("allowed_preview_build_count=2"))
-        XCTAssertTrue(script.contains("route crossed the local day boundary"))
+        XCTAssertTrue(script.contains("runtime_preview_temporal_key"))
+        XCTAssertTrue(script.contains("runtime_preview_build_policy"))
+        XCTAssertTrue(script.contains("first_preview_build_key"))
+        XCTAssertTrue(script.contains("current_preview_build_key"))
+        XCTAssertTrue(script.contains("printf '2 product-temporal-cache-context-changed'"))
+        XCTAssertTrue(script.contains("A same-block rebuild remains a hard failure."))
         XCTAssertTrue(script.contains("processID == $app_pid"))
         XCTAssertTrue(script.contains("preview-build-count"))
         XCTAssertTrue(script.contains("toolbar-layout-max-depth"))
@@ -7218,6 +7546,54 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("\"$app_pid\""))
         XCTAssertFalse(script.contains(":memory:"))
         XCTAssertFalse(script.contains("set -x"))
+    }
+
+    func testRuntimeRouteDoesNotRequireToolbarMarkerWhenInboxIntentionallyHidesToolbar() throws {
+        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let script = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
+
+        XCTAssertTrue(boardSource.contains("selectedDestination == .inbox ? .hidden : .automatic"))
+        XCTAssertTrue(script.contains("if [[ \"$route_id\" != \"inbox\" ]]; then"))
+        XCTAssertTrue(script.contains("wait_for_marker_until \"project-board-command-palette\" \"\" \"$case_deadline\""))
+        XCTAssertTrue(script.contains("wait_for_marker_until \"$route_sidebar_marker\" \"\" \"$case_deadline\""))
+        XCTAssertTrue(script.contains("wait_for_marker_until \"$route_content_marker\" \"$route_text\" \"$case_deadline\""))
+    }
+
+    func testRuntimeTodayPreviewDiagnosticAllowsOnlyOneChangedProductTemporalContext() throws {
+        let script = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
+        let functionStart = try XCTUnwrap(script.range(of: "runtime_preview_build_policy() {"))
+        let functionEnd = try XCTUnwrap(
+            script.range(of: "\n\ncapture_runtime_route_diagnostics() {", range: functionStart.upperBound..<script.endIndex)
+        )
+        let functionSource = String(script[functionStart.lowerBound..<functionEnd.lowerBound])
+        let harness = """
+        set -euo pipefail
+        \(functionSource)
+        runtime_preview_build_policy "$1" "$2" "$3"
+        """
+
+        let singleBuild = try runTool(["/bin/bash", "-c", harness, "harness", "1", "1330", "1330"])
+        let sameKeyRebuild = try runTool(["/bin/bash", "-c", harness, "harness", "2", "1330", "1330"])
+        let changedKeyRebuild = try runTool(["/bin/bash", "-c", harness, "harness", "2", "1330", "1400"])
+        let thirdBuild = try runTool(["/bin/bash", "-c", harness, "harness", "3", "1330", "1400"])
+        XCTAssertEqual(singleBuild.exitCode, 0, singleBuild.output)
+        XCTAssertEqual(sameKeyRebuild.exitCode, 0, sameKeyRebuild.output)
+        XCTAssertEqual(changedKeyRebuild.exitCode, 0, changedKeyRebuild.output)
+        XCTAssertEqual(thirdBuild.exitCode, 0, thirdBuild.output)
+        XCTAssertEqual(singleBuild.output, "1 single-time-block")
+        XCTAssertEqual(sameKeyRebuild.output, "1 single-time-block")
+        XCTAssertEqual(changedKeyRebuild.output, "2 product-temporal-cache-context-changed")
+        XCTAssertEqual(thirdBuild.output, "1 single-time-block")
+
+        for arguments in [
+            ["invalid", "1330", "1400"],
+            ["2", "invalid", "1400"],
+            ["2", "1330", "invalid"]
+        ] {
+            let invalid = try runTool(["/bin/bash", "-c", harness, "harness"] + arguments)
+            XCTAssertNotEqual(invalid.exitCode, 0, invalid.output)
+            XCTAssertTrue(invalid.output.isEmpty, invalid.output)
+        }
     }
 
     func testRuntimeTodayWindowSizeMatchesVisualManifestAndRecordsSafeMismatchDiagnostics() throws {
@@ -7743,7 +8119,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("tell application \"$APP_NAME\" to activate"))
         XCTAssertFalse(script.contains("/usr/bin/osascript - \"$APP_NAME\""))
         XCTAssertTrue(script.contains("/usr/bin/env -i"))
-        XCTAssertTrue(script.contains("\"$APP_BINARY\" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &"))
+        XCTAssertTrue(script.contains("\"$APP_BINARY\" -ApplePersistenceIgnoreState YES >/dev/null 2>\"$APP_STDERR_FIFO\" &"))
         XCTAssertTrue(script.contains("cold-launch-visible-window"))
         XCTAssertTrue(script.contains("cold-launch-command-ready"))
         XCTAssertTrue(script.contains("cold-launch-today-ready"))
@@ -7751,6 +8127,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("DESTINATION_SAMPLE_COUNT=3"))
         XCTAssertTrue(script.contains("median_elapsed_ms"))
         XCTAssertTrue(script.contains("measure_cold_launch_sample"))
+        let coldSampleStart = try XCTUnwrap(script.range(of: "measure_cold_launch_sample() {"))
+        let coldSampleEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\nmeasure_destination()", range: coldSampleStart.upperBound..<script.endIndex)
+        )
+        let coldSampleSource = String(script[coldSampleStart.lowerBound..<coldSampleEnd.lowerBound])
+        let diagnosticObserver = try XCTUnwrap(coldSampleSource.range(of: "start_app_stderr_capture"))
+        let productClock = try XCTUnwrap(coldSampleSource.range(of: "launch_start_ms=\"$(now_ms)\""))
+        let appLaunch = try XCTUnwrap(coldSampleSource.range(of: "open_app"))
+        XCTAssertLessThan(diagnosticObserver.lowerBound, productClock.lowerBound)
+        XCTAssertLessThan(productClock.lowerBound, appLaunch.lowerBound)
         XCTAssertTrue(script.contains("cold-launch-command-ready-sample-"))
         XCTAssertTrue(script.contains("record_elapsed_sample \"cold-launch-command-ready\" \"$median_command_ready_ms\" \"$MAX_COLD_LAUNCH_MS\""))
         XCTAssertTrue(script.contains("SUISUI_LAUNCH_TIMELINE_PATH"))
@@ -7889,7 +8275,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("/usr/bin/swiftc \"$AX_MARKER_HELPER\" -o \"$AX_MARKER_HELPER_EXECUTABLE\""))
         XCTAssertTrue(script.contains("\"$AX_PRESS_ELEMENT_HELPER_EXECUTABLE\" \"$APP_PID\" \"$destination_identifier\""))
         XCTAssertFalse(script.contains("/usr/bin/swift \"$AX_PRESS_ELEMENT_HELPER\""))
-        XCTAssertTrue(script.contains("prepare_ax_helpers\nif [[ \"$SUISUI_PERFORMANCE_PROFILE\" == \"release\" ]]"))
+        XCTAssertTrue(script.contains("prepare_ax_helpers\nif [[ \"$SUISUI_PERFORMANCE_USE_PREBUILT_APP\" == \"1\" ]]"))
         XCTAssertFalse(script.contains("ax_click_sidebar_destination"))
         XCTAssertTrue(script.contains("ax_wait_for_ax_identifier"))
         XCTAssertTrue(script.contains("samples.tsv"))
@@ -7897,6 +8283,641 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Performance profile: `%s`"))
         XCTAssertTrue(script.contains("BLOCKER: release performance profile requires release build configuration"))
         XCTAssertFalse(script.contains("set -x"))
+    }
+
+    func testReleaseLaunchPerformanceWaitsForBoundedRunnerQuiescenceBeforeMeasuring() throws {
+        let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
+
+        XCTAssertTrue(script.contains("RUNNER_QUIESCENCE_MINIMUM_SETTLE_SECONDS=10"))
+        XCTAssertTrue(script.contains("RUNNER_QUIESCENCE_MAX_WAIT_SECONDS=60"))
+        XCTAssertTrue(script.contains("RUNNER_QUIESCENCE_MIN_CPU_IDLE_PERCENT=80"))
+        XCTAssertTrue(script.contains("RUNNER_QUIESCENCE_REQUIRED_IDLE_SAMPLES=3"))
+        XCTAssertTrue(script.contains("QUIESCENCE_FILE=\"$OUTPUT_DIR/runner-quiescence.tsv\""))
+        XCTAssertTrue(script.contains("consecutive_idle_samples"))
+        XCTAssertTrue(script.contains("failure_category=runner-quiescence"))
+        XCTAssertTrue(script.contains("BLOCKER: runner did not become quiescent"))
+        XCTAssertTrue(script.contains("## Runner quiescence"))
+        let quiescenceProbeStart = try XCTUnwrap(
+            script.range(of: "parse_macos_cpu_idle_percent()")
+        )
+        let quiescenceProbeEnd = try XCTUnwrap(
+            script.range(
+                of: "terminate_app()",
+                range: quiescenceProbeStart.upperBound..<script.endIndex
+            )
+        )
+        let quiescenceBlock = String(
+            script[quiescenceProbeStart.lowerBound..<quiescenceProbeEnd.lowerBound]
+        )
+        XCTAssertTrue(quiescenceBlock.contains("LC_ALL=C /usr/bin/perl"))
+        XCTAssertTrue(quiescenceBlock.contains("CLOCK_MONOTONIC"))
+        XCTAssertTrue(quiescenceBlock.contains("alarm($remaining_seconds)"))
+        XCTAssertTrue(quiescenceBlock.contains("/usr/bin/top -l 2 -s 1 -n 0"))
+        XCTAssertFalse(quiescenceBlock.contains("/usr/bin/top -l 1 -n 0"))
+        XCTAssertTrue(quiescenceBlock.contains("parse_macos_cpu_idle_percent"))
+        XCTAssertTrue(quiescenceBlock.contains("END {"))
+        XCTAssertTrue(quiescenceBlock.contains("sample_count == 2"))
+        XCTAssertTrue(quiescenceBlock.contains("print second_idle_percent"))
+        XCTAssertTrue(quiescenceBlock.contains("for (field_index = 1;"))
+        XCTAssertFalse(quiescenceBlock.contains("for (index = 1;"))
+        XCTAssertTrue(quiescenceBlock.contains(
+            "read_macos_cpu_idle_percent \"$deadline_ms\""
+        ))
+        XCTAssertFalse(quiescenceBlock.contains(
+            "sleep \"$RUNNER_QUIESCENCE_MAX_WAIT_SECONDS\""
+        ))
+
+        let fixture = try XCTUnwrap(script.range(of: "prepare_production_fixture\n"))
+        let quiescence = try XCTUnwrap(
+            script.range(
+                of: "wait_for_runner_quiescence\n",
+                range: fixture.upperBound..<script.endIndex
+            )
+        )
+        let launchSamples = try XCTUnwrap(
+            script.range(
+                of: "for sample_index in $(seq 1 \"$COLD_LAUNCH_SAMPLE_COUNT\")",
+                range: quiescence.upperBound..<script.endIndex
+            )
+        )
+        XCTAssertLessThan(fixture.lowerBound, quiescence.lowerBound)
+        XCTAssertLessThan(quiescence.lowerBound, launchSamples.lowerBound)
+
+        XCTAssertTrue(script.contains("DEFAULT_COLD_LAUNCH_BUDGET_MS=1000"))
+        XCTAssertTrue(script.contains("COLD_LAUNCH_SAMPLE_COUNT=3"))
+        XCTAssertTrue(script.contains("median_elapsed_ms"))
+        XCTAssertTrue(script.contains("wait_for_marker \"project-board-command-palette\""))
+    }
+
+    func testReleaseLaunchPerformanceFailsClosedWhenBootstrapExitsBeforeQuiescence() throws {
+        let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
+
+        XCTAssertTrue(script.contains("BOOTSTRAP_EXIT_FILE=\"$OUTPUT_DIR/bootstrap-exit.env\""))
+        XCTAssertTrue(script.contains("record_unexpected_bootstrap_exit()"))
+        XCTAssertTrue(script.contains("require_bootstrap_process_alive()"))
+        XCTAssertTrue(script.contains("terminate_bootstrap_app()"))
+        XCTAssertTrue(script.contains("failure_reason=performance-bootstrap-exited"))
+        XCTAssertTrue(script.contains("terminate_app || true"))
+        XCTAssertTrue(script.contains("QUIESCENCE_PROCESS_FILE=\"$OUTPUT_DIR/runner-quiescence-processes.tsv\""))
+        XCTAssertTrue(script.contains("APP_RAW_STDERR_FILE=\"$PERFORMANCE_HOME/app-stderr.raw.log\""))
+        XCTAssertTrue(script.contains("APP_STDERR_DIAGNOSTIC_FILE=\"$OUTPUT_DIR/app-stderr-sanitized.log\""))
+        XCTAssertTrue(script.contains("APP_UNIFIED_DIAGNOSTIC_FILE=\"$OUTPUT_DIR/app-unified-log-sanitized.log\""))
+        XCTAssertTrue(script.contains("ps -Ao pid=,%cpu=,ucomm="))
+        XCTAssertFalse(script.contains("ps -Ao pid=,%cpu=,command="))
+
+        let schemaFunction = try XCTUnwrap(script.range(of: "wait_for_database_schema()"))
+        let schemaFunctionEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\nseed_production_fixture()", range: schemaFunction.upperBound..<script.endIndex)
+        )
+        let schemaSource = String(script[schemaFunction.lowerBound..<schemaFunctionEnd.lowerBound])
+        XCTAssertLessThan(
+            try XCTUnwrap(schemaSource.range(of: "ax_process_matches_identity")).lowerBound,
+            try XCTUnwrap(schemaSource.range(of: "sqlite3 -batch -noheader")).lowerBound
+        )
+
+        let preparationFunction = try XCTUnwrap(script.range(of: "prepare_production_fixture()"))
+        let preparationEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\ntry_click_destination()", range: preparationFunction.upperBound..<script.endIndex)
+        )
+        let preparationSource = String(script[preparationFunction.lowerBound..<preparationEnd.lowerBound])
+        let statements = [
+            "open_app",
+            "wait_for_database_schema",
+            "require_bootstrap_process_alive",
+            "terminate_bootstrap_app",
+            "seed_production_fixture"
+        ]
+        let indices = try statements.map { statement in
+            try XCTUnwrap(preparationSource.range(of: statement)).lowerBound
+        }
+        XCTAssertTrue(zip(indices, indices.dropFirst()).allSatisfy(<))
+
+        let recorderStart = try XCTUnwrap(script.range(of: "record_unexpected_bootstrap_exit() {"))
+        let recorderEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\nrequire_bootstrap_process_alive()", range: recorderStart.upperBound..<script.endIndex)
+        )
+        let recorderSource = String(script[recorderStart.lowerBound..<recorderEnd.lowerBound]) + "\n}"
+        let receiptRoot = packageRoot().appendingPathComponent(
+            ".build/test-performance-bootstrap-exit-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: receiptRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: receiptRoot) }
+        let receipt = receiptRoot.appendingPathComponent("bootstrap-exit.env")
+        let harness = """
+        set -u
+        BOOTSTRAP_EXIT_FILE="$RECEIPT_PATH"
+        capture_app_failure_diagnostics() { :; }
+        \(recorderSource)
+        /bin/sh -c 'kill -TRAP $$' &
+        APP_PID=$!
+        sleep 0.1
+        record_unexpected_bootstrap_exit
+        cat "$BOOTSTRAP_EXIT_FILE"
+        """
+        let recorded = try runTool(
+            ["/bin/bash", "-c", harness],
+            environment: ["RECEIPT_PATH": receipt.path]
+        )
+        XCTAssertEqual(recorded.exitCode, 0, recorded.output)
+        XCTAssertTrue(recorded.output.contains("wait_status=133"))
+        XCTAssertTrue(recorded.output.contains("termination=unexpected-exit"))
+        XCTAssertTrue(recorded.output.contains("failure_reason=performance-bootstrap-exited"))
+
+        let terminatorStart = try XCTUnwrap(script.range(of: "terminate_bootstrap_app() {"))
+        let terminatorEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\nseed_production_fixture()", range: terminatorStart.upperBound..<script.endIndex)
+        )
+        let terminatorSource = String(script[terminatorStart.lowerBound..<terminatorEnd.lowerBound]) + "\n}"
+        let raceReceipt = receiptRoot.appendingPathComponent("bootstrap-race.env")
+        let raceHarness = """
+        set -u
+        BOOTSTRAP_EXIT_FILE="$RECEIPT_PATH"
+        APP_BINARY=/fixture/Suisui
+        APP_IDENTITY=expected
+        APP_LAUNCH_IDENTITY=expected
+        ax_emit_failure_category() { :; }
+        ax_process_matches_identity() { return 1; }
+        capture_app_failure_diagnostics() { :; }
+        \(recorderSource)
+        \(terminatorSource)
+        /bin/sh -c 'kill -TRAP $$' &
+        APP_PID=$!
+        APP_LAUNCH_PID=$APP_PID
+        sleep 0.1
+        terminate_bootstrap_app
+        """
+        let raced = try runTool(
+            ["/bin/bash", "-c", raceHarness],
+            environment: ["RECEIPT_PATH": raceReceipt.path]
+        )
+        XCTAssertNotEqual(raced.exitCode, 0, raced.output)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: raceReceipt.path), raced.output)
+        let raceEvidence = try String(contentsOf: raceReceipt, encoding: .utf8)
+        XCTAssertTrue(raceEvidence.contains("status=failed"))
+        XCTAssertTrue(raceEvidence.contains("wait_status=133"))
+        XCTAssertTrue(raceEvidence.contains("termination=unexpected-exit"))
+        XCTAssertFalse(raceEvidence.contains("status=passed"))
+
+        let expectedReceipt = receiptRoot.appendingPathComponent("bootstrap-expected.env")
+        let expectedHarness = """
+        set -u
+        BOOTSTRAP_EXIT_FILE="$RECEIPT_PATH"
+        APP_BINARY=/fixture/Suisui
+        APP_IDENTITY=expected
+        APP_LAUNCH_IDENTITY=expected
+        ax_emit_failure_category() { :; }
+        ax_process_matches_identity() { kill -0 "$1" 2>/dev/null; }
+        capture_app_failure_diagnostics() { :; }
+        \(recorderSource)
+        \(terminatorSource)
+        /bin/sleep 30 &
+        APP_PID=$!
+        APP_LAUNCH_PID=$APP_PID
+        terminate_bootstrap_app
+        """
+        let expected = try runTool(
+            ["/bin/bash", "-c", expectedHarness],
+            environment: ["RECEIPT_PATH": expectedReceipt.path]
+        )
+        XCTAssertEqual(expected.exitCode, 0, expected.output)
+        let expectedEvidence = try String(contentsOf: expectedReceipt, encoding: .utf8)
+        XCTAssertTrue(expectedEvidence.contains("status=passed"))
+        XCTAssertTrue(expectedEvidence.contains("wait_status=143"))
+        XCTAssertTrue(expectedEvidence.contains("termination=harness-term"))
+        XCTAssertTrue(expectedEvidence.contains("failure_reason=none"))
+
+        let redactionHelper = packageRoot().appendingPathComponent("script/ci_redact_stream.sh").path
+        // Keep the source tree free of a push-protection-shaped credential while
+        // still exercising the complete AWS access-key pattern at runtime.
+        let awsAccessKeyFixture = "AKIA" + "ABCDEFGHIJKLMNOP"
+        let sensitiveDiagnostic = """
+        fatal path=/Users/alice/private/app volume=/Volumes/Secret/work temp=/private/var/folders/aa/bb/cc
+        temp-only=/private/var/folders/aa/bb/cc
+        contact=alice@example.com
+        identifier=123E4567-E89B-12D3-A456-426614174000
+        Authorization: Bearer bearer-provider-value
+        Anthropic sk-ant-providerfixture Slack xoxb-providerfixture1234
+        GitHub ghp_providerfixture1234 github_pat_providerfixture1234
+        "token": "quoted-secret" api_key=plain-secret alice@example.com
+        UUID=123E4567-E89B-12D3-A456-426614174000 \(awsAccessKeyFixture)
+        escaped=/Users/alice/My\\ Project/private.txt
+        {"token":"abc\\\"leaked-tail"}
+        -----BEGIN PRIVATE KEY-----
+        private-key-body-value
+        -----END PRIVATE KEY-----
+        """
+        let sanitized = try runTool(
+            ["/bin/bash", "-c", "source \"$REDACTION_HELPER\"; printf '%s' \"$DIAGNOSTIC\" | ci_redact_stream"],
+            environment: ["DIAGNOSTIC": sensitiveDiagnostic, "REDACTION_HELPER": redactionHelper]
+        )
+        XCTAssertEqual(sanitized.exitCode, 0, sanitized.output)
+        for secret in [
+            "alice", "Secret/work", "bearer-provider-value", "sk-ant-providerfixture",
+            "xoxb-providerfixture1234", "ghp_providerfixture1234", "github_pat_providerfixture1234",
+            "quoted-secret", "plain-secret", "alice@example.com",
+            "123E4567-E89B-12D3-A456-426614174000", awsAccessKeyFixture,
+            "Project/private.txt", "leaked-tail", "private-key-body-value"
+        ] {
+            XCTAssertFalse(sanitized.output.contains(secret), sanitized.output)
+        }
+        XCTAssertTrue(sanitized.output.contains("<path>"))
+        XCTAssertTrue(sanitized.output.contains("<temp-path>"))
+        XCTAssertTrue(sanitized.output.contains("<redacted-email>"))
+        XCTAssertTrue(sanitized.output.contains("<redacted-uuid>"))
+
+        XCTAssertTrue(script.contains("run_with_app_diagnostic_timeout 5 /usr/bin/log show"))
+        XCTAssertTrue(script.contains("tail -n 120"))
+        XCTAssertTrue(script.contains("tail -c 32768"))
+        XCTAssertTrue(script.contains("mkfifo \"$APP_STDERR_FIFO\""))
+        XCTAssertTrue(script.contains("my $limit = 32768"))
+        XCTAssertTrue(script.contains("while (sysread(STDIN, my $chunk, 4096))"))
+        XCTAssertTrue(script.contains("length($tail) > $limit"))
+        XCTAssertTrue(script.contains("capture_current_app_failure_diagnostics"))
+
+        let markerStart = try XCTUnwrap(script.range(of: "wait_for_marker() {"))
+        let markerEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\nassert_sample_within_budget()", range: markerStart.upperBound..<script.endIndex)
+        )
+        let markerSource = String(script[markerStart.lowerBound..<markerEnd.lowerBound]) + "\n}"
+        let measuredFailureReceipt = receiptRoot.appendingPathComponent("measured-failure-captured")
+        let measuredFailure = try runTool(
+            [
+                "/bin/bash", "-c", """
+                set -u
+                OUTPUT_DIR="$RECEIPT_ROOT"
+                APP_NAME=Suisui
+                APP_PID=123
+                TIMEOUT_SECONDS=1
+                ROOT_DIR=/fixture
+                ax_wait_for_ax_identifier() { return 1; }
+                ax_emit_failure_category() { :; }
+                capture_current_app_failure_diagnostics() { printf captured >"$CAPTURE_RECEIPT"; }
+                \(markerSource)
+                if wait_for_marker today-workflow; then exit 9; fi
+                test "$(cat "$CAPTURE_RECEIPT")" = captured
+                """
+            ],
+            environment: [
+                "CAPTURE_RECEIPT": measuredFailureReceipt.path,
+                "RECEIPT_ROOT": receiptRoot.path
+            ]
+        )
+        XCTAssertEqual(measuredFailure.exitCode, 0, measuredFailure.output)
+
+        let openStart = try XCTUnwrap(script.range(of: "open_app() {"))
+        let openEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\nwait_for_launch_milestone()", range: openStart.upperBound..<script.endIndex)
+        )
+        let openSource = String(script[openStart.lowerBound..<openEnd.lowerBound]) + "\n}"
+        XCTAssertTrue(openSource.contains("performance-owned-process-unavailable"))
+        let ownedProcessFailureReceipt = receiptRoot.appendingPathComponent("owned-process-failure-captured")
+        let ownedProcessFailure = try runTool(
+            [
+                "/bin/bash", "-c", """
+                set -u
+                APP_BINARY="$RECEIPT_ROOT/fixture-app"
+                APP_STDERR_FIFO="$RECEIPT_ROOT/fixture-stderr"
+                printf '#!/bin/sh\nsleep 30\n' >"$APP_BINARY"
+                chmod +x "$APP_BINARY"
+                : >"$APP_STDERR_FIFO"
+                APP_STDERR_CAPTURE_PID=$$
+                TRACK_LAUNCH_MILESTONES=0
+                TIMELINE_FILE="$RECEIPT_ROOT/timeline"
+                OUTPUT_DIR="$RECEIPT_ROOT"
+                PERFORMANCE_HOME="$RECEIPT_ROOT/home"
+                PERFORMANCE_DATABASE_PATH="$RECEIPT_ROOT/database.sqlite3"
+                TIMEOUT_SECONDS=1
+                APP_NAME=Suisui
+                start_app_stderr_capture() { return 0; }
+                ax_wait_for_owned_process_identity() { printf 'fixture-identity'; }
+                ax_wait_for_owned_app_pid() { printf '%s' "$1"; }
+                ax_wait_for_pid_owned_process() { return 1; }
+                capture_current_app_failure_diagnostics() { printf captured >"$CAPTURE_RECEIPT"; }
+                ax_emit_failure_category() { :; }
+                \(openSource)
+                if open_app; then exit 9; fi
+                kill -TERM "$APP_LAUNCH_PID" 2>/dev/null || true
+                wait "$APP_LAUNCH_PID" 2>/dev/null || true
+                test "$(cat "$CAPTURE_RECEIPT")" = captured
+                """
+            ],
+            environment: [
+                "CAPTURE_RECEIPT": ownedProcessFailureReceipt.path,
+                "RECEIPT_ROOT": receiptRoot.path
+            ]
+        )
+        XCTAssertEqual(ownedProcessFailure.exitCode, 0, ownedProcessFailure.output)
+    }
+
+    func testReleaseLaunchPerformanceAcceptsOnlyAnExplicitVerifiedPrebuiltApp() throws {
+        let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
+
+        XCTAssertTrue(script.contains("SUISUI_PERFORMANCE_USE_PREBUILT_APP=\"${SUISUI_PERFORMANCE_USE_PREBUILT_APP:-0}\""))
+        XCTAssertTrue(script.contains("SUISUI_PERFORMANCE_USE_PREBUILT_APP must be 0 or 1"))
+        XCTAssertTrue(script.contains("release performance profile is required for a prebuilt app"))
+        XCTAssertTrue(script.contains("SUISUI_PERFORMANCE_ARTIFACT_DIR is required for a prebuilt app"))
+        XCTAssertTrue(script.contains("if [[ \"$SUISUI_PERFORMANCE_USE_PREBUILT_APP\" == \"1\" ]]; then"))
+        XCTAssertTrue(script.contains("script/verify_ui_performance_artifact.sh"))
+        XCTAssertTrue(script.contains("OK: using verified prebuilt release app for performance measurement"))
+        XCTAssertTrue(script.contains("SUISUI_RELEASE_BUILD_PURPOSE=performance"))
+    }
+
+    func testReleaseLaunchPerformanceBoundsCrashDiagnosticCollection() throws {
+        let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
+        let startRange = try XCTUnwrap(script.range(of: "start_app_stderr_capture() {"))
+        let startEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\nfinish_app_stderr_capture()", range: startRange.upperBound..<script.endIndex)
+        )
+        let finishRange = try XCTUnwrap(script.range(of: "finish_app_stderr_capture() {"))
+        let finishEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\nrun_with_app_diagnostic_timeout()", range: finishRange.upperBound..<script.endIndex)
+        )
+        let timeoutRange = try XCTUnwrap(script.range(of: "run_with_app_diagnostic_timeout() {"))
+        let timeoutEnd = try XCTUnwrap(
+            script.range(of: "\n}\n\ncapture_app_failure_diagnostics()", range: timeoutRange.upperBound..<script.endIndex)
+        )
+        let startSource = String(script[startRange.lowerBound..<startEnd.lowerBound]) + "\n}"
+        let finishSource = String(script[finishRange.lowerBound..<finishEnd.lowerBound]) + "\n}"
+        let timeoutSource = String(script[timeoutRange.lowerBound..<timeoutEnd.lowerBound]) + "\n}"
+        let fixtureRoot = packageRoot().appendingPathComponent(
+            ".build/test-performance-diagnostic-bounds-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        let boundedCapture = try runTool(
+            [
+                "/bin/bash", "-c", """
+                set -euo pipefail
+                APP_RAW_STDERR_FILE="$FIXTURE_ROOT/stderr.raw"
+                APP_STDERR_FIFO="$FIXTURE_ROOT/stderr.pipe"
+                APP_STDERR_CAPTURE_PID=""
+                \(finishSource)
+                \(startSource)
+                start_app_stderr_capture
+                /usr/bin/perl -e 'print "A" x 70000; print "EXPECTED-TAIL"' >"$APP_STDERR_FIFO"
+                finish_app_stderr_capture
+                test "$(wc -c <"$APP_RAW_STDERR_FILE" | tr -d ' ')" = 32768
+                test "$(tail -c 13 "$APP_RAW_STDERR_FILE")" = EXPECTED-TAIL
+                """
+            ],
+            environment: ["FIXTURE_ROOT": fixtureRoot.path]
+        )
+        XCTAssertEqual(boundedCapture.exitCode, 0, boundedCapture.output)
+
+        let interruptedCapture = try runTool(
+            [
+                "/bin/bash", "-c", """
+                set -euo pipefail
+                APP_RAW_STDERR_FILE="$FIXTURE_ROOT/interrupted.raw"
+                APP_STDERR_FIFO="$FIXTURE_ROOT/interrupted.pipe"
+                APP_STDERR_CAPTURE_PID=""
+                \(finishSource)
+                \(startSource)
+                start_app_stderr_capture
+                exec 9>"$APP_STDERR_FIFO"
+                printf 'BUFFERED-BEFORE-EOF' >&9
+                finish_app_stderr_capture
+                exec 9>&-
+                test "$(cat "$APP_RAW_STDERR_FILE")" = BUFFERED-BEFORE-EOF
+                """
+            ],
+            environment: ["FIXTURE_ROOT": fixtureRoot.path]
+        )
+        XCTAssertEqual(interruptedCapture.exitCode, 0, interruptedCapture.output)
+
+        let sanitizedArtifact = fixtureRoot.appendingPathComponent("sanitized.log")
+        let expandedInput = Array(repeating: "a@b.co ", count: 10_000).joined()
+        let boundedSanitized = try runTool(
+            [
+                "/bin/bash", "-c",
+                "source \"$REDACTION_HELPER\"; printf '%s' \"$EXPANDED_INPUT\" | ci_redact_stream | tail -c 32768 >\"$SANITIZED_FILE\""
+            ],
+            environment: [
+                "EXPANDED_INPUT": expandedInput,
+                "REDACTION_HELPER": packageRoot().appendingPathComponent("script/ci_redact_stream.sh").path,
+                "SANITIZED_FILE": sanitizedArtifact.path
+            ]
+        )
+        XCTAssertEqual(boundedSanitized.exitCode, 0, boundedSanitized.output)
+        let sanitizedSize = try FileManager.default.attributesOfItem(atPath: sanitizedArtifact.path)[.size] as? NSNumber
+        XCTAssertLessThanOrEqual(try XCTUnwrap(sanitizedSize).intValue, 32_768)
+
+        let timeout = try runTool(
+            [
+                "/bin/bash", "-c", """
+                set -euo pipefail
+                \(timeoutSource)
+                started=$SECONDS
+                if run_with_app_diagnostic_timeout 1 /bin/sleep 5; then
+                  exit 9
+                fi
+                elapsed=$((SECONDS - started))
+                test "$elapsed" -lt 4
+                """
+            ]
+        )
+        XCTAssertEqual(timeout.exitCode, 0, timeout.output)
+    }
+
+    func testReleaseLaunchPerformanceQuiescenceUsesTheSecondMacOSTopSample() throws {
+        let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
+        let functionStart = try XCTUnwrap(script.range(of: "parse_macos_cpu_idle_percent() {"))
+        let functionEnd = try XCTUnwrap(
+            script.range(of: "\n\nread_macos_cpu_idle_percent() {", range: functionStart.upperBound..<script.endIndex)
+        )
+        let functionSource = String(script[functionStart.lowerBound..<functionEnd.lowerBound])
+        let harness = """
+        set -euo pipefail
+        \(functionSource)
+        printf '%s\n' "$TOP_FIXTURE" | parse_macos_cpu_idle_percent
+        """
+        let topOutput = """
+        Processes: 501 total, 3 running, 498 sleeping
+        CPU usage: 22.22% user, 11.12% sys, 66.66% idle
+        Processes: 501 total, 2 running, 499 sleeping
+        CPU usage: 4.10% user, 2.15% sys, 93.75% idle
+        """
+
+        let parsed = try runTool(
+            ["/bin/bash", "-c", harness],
+            environment: ["TOP_FIXTURE": topOutput]
+        )
+        XCTAssertEqual(parsed.exitCode, 0, parsed.output)
+        XCTAssertEqual(parsed.output.trimmingCharacters(in: .whitespacesAndNewlines), "93.75")
+
+        for invalidOutput in [
+            "CPU usage: 5.00% user, 15.00% sys, 80.00% idle",
+            """
+            CPU usage: 5.00% user, 15.00% sys, 80.00% idle
+            CPU usage: unavailable
+            """
+        ] {
+            let rejected = try runTool(
+                ["/bin/bash", "-c", harness],
+                environment: ["TOP_FIXTURE": invalidOutput]
+            )
+            XCTAssertNotEqual(
+                rejected.exitCode,
+                0,
+                "The interval probe must fail closed unless top emits exactly two valid CPU samples."
+            )
+        }
+    }
+
+    func testUIPerformanceArtifactVerifierAcceptsOnlyImmutableSafeReleaseArchive() throws {
+        let expectedCommit = String(repeating: "a", count: 40)
+        let valid = try makePerformanceArtifactFixture(expectedCommit: expectedCommit)
+        defer { try? FileManager.default.removeItem(at: valid.root) }
+
+        let accepted = try runTool([
+            "/bin/bash",
+            packageRoot().appendingPathComponent("script/verify_ui_performance_artifact.sh").path,
+            valid.artifactDirectory.path,
+            valid.destinationDirectory.path,
+            "Suisui",
+            expectedCommit,
+            valid.receiptDirectory.path
+        ])
+        XCTAssertEqual(accepted.exitCode, 0, accepted.output)
+        let verifiedBinary = valid.destinationDirectory
+            .appendingPathComponent("Suisui.app/Contents/MacOS/Suisui")
+        XCTAssertTrue(FileManager.default.isExecutableFile(atPath: verifiedBinary.path))
+        XCTAssertFalse(try verifiedBinary.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink ?? true)
+        let receipt = try String(
+            contentsOf: valid.receiptDirectory.appendingPathComponent("artifact-verification.env"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(receipt.contains("verification=passed"))
+        XCTAssertTrue(receipt.contains("source_commit=\(expectedCommit)"))
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: valid.destinationDirectory
+                .appendingPathComponent(
+                    "Suisui.app/Contents/Resources/Suisui_SuisuiCore.bundle/Info.plist"
+                ).path
+        ))
+
+        let missingResourceBundle = try makePerformanceArtifactFixture(
+            expectedCommit: expectedCommit,
+            omittedRuntimeResourceBundle: "Suisui_SuisuiCore.bundle"
+        )
+        defer { try? FileManager.default.removeItem(at: missingResourceBundle.root) }
+        let missingResourceRejection = try runPerformanceArtifactVerifier(missingResourceBundle, expectedCommit)
+        XCTAssertNotEqual(missingResourceRejection.exitCode, 0)
+        XCTAssertTrue(missingResourceRejection.output.contains("failure_reason=app-resource-bundle-invalid"))
+
+        let missingResourcePayload = try makePerformanceArtifactFixture(
+            expectedCommit: expectedCommit,
+            omittedRuntimeResourceRelativePath:
+                "Suisui_SuisuiCore.bundle/action-plan.schema.json"
+        )
+        defer { try? FileManager.default.removeItem(at: missingResourcePayload.root) }
+        let missingPayloadRejection = try runPerformanceArtifactVerifier(missingResourcePayload, expectedCommit)
+        XCTAssertNotEqual(missingPayloadRejection.exitCode, 0)
+        XCTAssertTrue(missingPayloadRejection.output.contains("failure_reason=app-resource-bundle-invalid"))
+
+        let unsigned = try makePerformanceArtifactFixture(
+            expectedCommit: expectedCommit,
+            signsAppBundle: false
+        )
+        defer { try? FileManager.default.removeItem(at: unsigned.root) }
+        let unsignedRejection = try runPerformanceArtifactVerifier(unsigned, expectedCommit)
+        XCTAssertNotEqual(unsignedRejection.exitCode, 0)
+        XCTAssertTrue(unsignedRejection.output.contains("failure_reason=app-signature-invalid"))
+
+        let duplicateManifest = try makePerformanceArtifactFixture(expectedCommit: expectedCommit)
+        defer { try? FileManager.default.removeItem(at: duplicateManifest.root) }
+        let duplicateURL = duplicateManifest.artifactDirectory.appendingPathComponent("manifest.env")
+        let duplicateHandle = try FileHandle(forWritingTo: duplicateURL)
+        try duplicateHandle.seekToEnd()
+        try duplicateHandle.write(contentsOf: Data("source_commit=\(expectedCommit)\n".utf8))
+        try duplicateHandle.close()
+        XCTAssertNotEqual(try runPerformanceArtifactVerifier(duplicateManifest, expectedCommit).exitCode, 0)
+
+        let mismatchedChecksum = try makePerformanceArtifactFixture(expectedCommit: expectedCommit)
+        defer { try? FileManager.default.removeItem(at: mismatchedChecksum.root) }
+        let mismatchManifest = mismatchedChecksum.artifactDirectory.appendingPathComponent("manifest.env")
+        var mismatchText = try String(contentsOf: mismatchManifest, encoding: .utf8)
+        mismatchText = mismatchText.replacingOccurrences(
+            of: "archive_sha256=",
+            with: "archive_sha256=0"
+        )
+        try mismatchText.write(to: mismatchManifest, atomically: true, encoding: .utf8)
+        XCTAssertNotEqual(try runPerformanceArtifactVerifier(mismatchedChecksum, expectedCommit).exitCode, 0)
+
+        let wrongCommit = try makePerformanceArtifactFixture(expectedCommit: expectedCommit)
+        defer { try? FileManager.default.removeItem(at: wrongCommit.root) }
+        XCTAssertNotEqual(
+            try runPerformanceArtifactVerifier(wrongCommit, String(repeating: "b", count: 40)).exitCode,
+            0
+        )
+
+        let debugConfiguration = try makePerformanceArtifactFixture(expectedCommit: expectedCommit)
+        defer { try? FileManager.default.removeItem(at: debugConfiguration.root) }
+        let debugManifest = debugConfiguration.artifactDirectory.appendingPathComponent("manifest.env")
+        var debugText = try String(contentsOf: debugManifest, encoding: .utf8)
+        debugText = debugText.replacingOccurrences(
+            of: "build_configuration=release",
+            with: "build_configuration=debug"
+        )
+        try debugText.write(to: debugManifest, atomically: true, encoding: .utf8)
+        XCTAssertNotEqual(try runPerformanceArtifactVerifier(debugConfiguration, expectedCommit).exitCode, 0)
+
+        let outsideTarget = valid.root.appendingPathComponent("outside-tool")
+        try "outside".write(to: outsideTarget, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: outsideTarget.path)
+        let escapingSymlink = try makePerformanceArtifactFixture(
+            expectedCommit: expectedCommit,
+            binarySymlinkTarget: outsideTarget.path
+        )
+        defer { try? FileManager.default.removeItem(at: escapingSymlink.root) }
+        XCTAssertNotEqual(try runPerformanceArtifactVerifier(escapingSymlink, expectedCommit).exitCode, 0)
+
+        let generalEscapingSymlink = try makePerformanceArtifactFixture(
+            expectedCommit: expectedCommit,
+            additionalSymlinkTarget: outsideTarget.path
+        )
+        defer { try? FileManager.default.removeItem(at: generalEscapingSymlink.root) }
+        let symlinkRejection = try runPerformanceArtifactVerifier(generalEscapingSymlink, expectedCommit)
+        XCTAssertNotEqual(symlinkRejection.exitCode, 0)
+        XCTAssertTrue(symlinkRejection.output.contains("failure_reason=app-symlink-escape"))
+
+        let traversal = try makePerformanceArtifactFixture(
+            expectedCommit: expectedCommit,
+            archiveEntrySubstitution: "|Suisui[.]app|../escape.app|"
+        )
+        defer { try? FileManager.default.removeItem(at: traversal.root) }
+        XCTAssertNotEqual(try runPerformanceArtifactVerifier(traversal, expectedCommit).exitCode, 0)
+
+        let specialFile = try makePerformanceArtifactFixture(
+            expectedCommit: expectedCommit,
+            includesSpecialFile: true
+        )
+        defer { try? FileManager.default.removeItem(at: specialFile.root) }
+        XCTAssertNotEqual(try runPerformanceArtifactVerifier(specialFile, expectedCommit).exitCode, 0)
+
+        let scanFailure = try makePerformanceArtifactFixture(expectedCommit: expectedCommit)
+        defer { try? FileManager.default.removeItem(at: scanFailure.root) }
+        let commandDirectory = scanFailure.root.appendingPathComponent("commands", isDirectory: true)
+        try FileManager.default.createDirectory(at: commandDirectory, withIntermediateDirectories: true)
+        let failingFind = commandDirectory.appendingPathComponent("find")
+        try "#!/bin/sh\nexit 64\n".write(to: failingFind, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: failingFind.path)
+        let scanRejection = try runPerformanceArtifactVerifier(
+            scanFailure,
+            expectedCommit,
+            environment: ["PATH": "\(commandDirectory.path):/usr/bin:/bin"]
+        )
+        XCTAssertNotEqual(scanRejection.exitCode, 0)
+        XCTAssertTrue(scanRejection.output.contains("failure_reason=app-tree-scan-failed"))
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: scanFailure.destinationDirectory.appendingPathComponent("Suisui.app").path
+        ))
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: scanFailure.receiptDirectory.appendingPathComponent("artifact-verification.env").path
+        ))
     }
 
     func testReleaseLaunchPerformanceDestinationRetryIsBoundedAndIdentityPinned() throws {
@@ -9668,18 +10689,13 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(captureScript.contains("capture_project_board_destination system inbox"))
         XCTAssertTrue(captureScript.contains("INBOX_VOICE_ROUTE_MARKERS=\"inbox-workflow=>$INBOX_ROUTE_LABEL\""))
-        XCTAssertTrue(captureScript.contains("inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture"))
+        XCTAssertTrue(captureScript.contains("inbox-voice-intake-detail=>Voice intake detail for $INBOX_VOICE_TITLE"))
         let inboxVoiceTargetMarkers = try XCTUnwrap(
             captureScript.split(separator: "\n").first {
                 $0.hasPrefix("  INBOX_VOICE_TARGET_MARKERS=")
             }
         )
-        XCTAssertFalse(
-            inboxVoiceTargetMarkers.contains("inbox-action-panel=>Voice capture metadata available for Scheduled manual capture"),
-            "The action panel no longer exposes this text; requiring it blocks every live Inbox Voice capture."
-        )
-        XCTAssertTrue(captureScript.contains("inbox-action-panel=>Schedule launch review and capture visual evidence."))
-        XCTAssertTrue(captureScript.contains("inbox-action-panel=>Create a task for launch review evidence."))
+        XCTAssertTrue(inboxVoiceTargetMarkers.contains("inbox-voice-intake-detail=>Voice intake detail for $inbox_voice_title"))
         XCTAssertTrue(captureScript.contains("INBOX_CLASSIFICATION_ACTIONS_LABEL=\"Inbox classification actions\""))
         XCTAssertTrue(captureScript.contains("INBOX_CLASSIFICATION_ACTIONS_LABEL=\"インボックス分類操作\""))
         XCTAssertTrue(captureScript.contains("inbox-action-panel=>$INBOX_CLASSIFICATION_ACTIONS_LABEL"))
@@ -9707,7 +10723,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("\"schedule-workload-attention-banner\""))
         XCTAssertTrue(captureScript.contains("capture_settings_sync light \"$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT\""))
         XCTAssertTrue(captureScript.contains("capture_settings_sync dark \"$SETTINGS_INTEGRATIONS_DARK_SCREENSHOT\""))
-        XCTAssertTrue(seeder.contains("\"Review captured note\","))
+        XCTAssertTrue(seeder.contains("\"鈴木さんにデザイン案を共有する\","))
         XCTAssertTrue(seeder.contains("'./fixtures/mcp-workspace'"))
         XCTAssertFalse(seeder.contains("'$ROOT_DIR'"))
         XCTAssertTrue(captureScript.contains("capture_settings_overview system"))
@@ -17216,6 +18232,164 @@ final class ReleasePipelineTests: XCTestCase {
         // reports. Draining while the child is running prevents the child bash
         // process from blocking on a full stdout/stderr pipe.
         return (process.terminationStatus, String(data: outputBuffer.data, encoding: .utf8) ?? "")
+    }
+
+    private struct PerformanceArtifactFixture {
+        let root: URL
+        let artifactDirectory: URL
+        let destinationDirectory: URL
+        let receiptDirectory: URL
+    }
+
+    private func makePerformanceArtifactFixture(
+        expectedCommit: String,
+        binarySymlinkTarget: String? = nil,
+        additionalSymlinkTarget: String? = nil,
+        archiveEntrySubstitution: String? = nil,
+        includesSpecialFile: Bool = false,
+        signsAppBundle: Bool = true,
+        omittedRuntimeResourceBundle: String? = nil,
+        omittedRuntimeResourceRelativePath: String? = nil
+    ) throws -> PerformanceArtifactFixture {
+        let root = packageRoot()
+            .appendingPathComponent(".build/test-ui-performance-artifact-\(UUID().uuidString)", isDirectory: true)
+        let sourceDirectory = root.appendingPathComponent("source", isDirectory: true)
+        let appDirectory = sourceDirectory.appendingPathComponent("Suisui.app", isDirectory: true)
+        let executableDirectory = appDirectory.appendingPathComponent("Contents/MacOS", isDirectory: true)
+        let binary = executableDirectory.appendingPathComponent("Suisui")
+        let artifactDirectory = root.appendingPathComponent("artifact", isDirectory: true)
+        let destinationDirectory = root.appendingPathComponent("destination", isDirectory: true)
+        let receiptDirectory = root.appendingPathComponent("receipt", isDirectory: true)
+        try FileManager.default.createDirectory(at: executableDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: artifactDirectory, withIntermediateDirectories: true)
+        if let binarySymlinkTarget {
+            try FileManager.default.createSymbolicLink(atPath: binary.path, withDestinationPath: binarySymlinkTarget)
+        } else {
+            try "#!/bin/sh\nexit 0\n".write(to: binary, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary.path)
+        }
+        let infoPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+          <key>CFBundleExecutable</key>
+          <string>Suisui</string>
+          <key>CFBundleIdentifier</key>
+          <string>com.suisui.performance-artifact-fixture</string>
+          <key>CFBundlePackageType</key>
+          <string>APPL</string>
+        </dict>
+        </plist>
+        """
+        try infoPlist.write(
+            to: appDirectory.appendingPathComponent("Contents/Info.plist"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let resourceDirectory = appDirectory
+            .appendingPathComponent("Contents/Resources", isDirectory: true)
+        try FileManager.default.createDirectory(at: resourceDirectory, withIntermediateDirectories: true)
+        for resourceBundleName in [
+            "Suisui_Suisui.bundle",
+            "Suisui_SuisuiCore.bundle",
+            "SwiftTerm_SwiftTerm.bundle"
+        ] where resourceBundleName != omittedRuntimeResourceBundle {
+            let resourceBundle = resourceDirectory.appendingPathComponent(resourceBundleName, isDirectory: true)
+            try FileManager.default.createDirectory(at: resourceBundle, withIntermediateDirectories: true)
+            let markerNames: [String]
+            switch resourceBundleName {
+            case "Suisui_Suisui.bundle":
+                markerNames = [
+                    "Info.plist",
+                    "en.lproj/Localizable.strings",
+                    "ja.lproj/Localizable.strings"
+                ]
+            case "Suisui_SuisuiCore.bundle":
+                markerNames = [
+                    "Info.plist",
+                    "action-plan.schema.json",
+                    "en.lproj/Localizable.strings",
+                    "ja.lproj/Localizable.strings"
+                ]
+            default:
+                markerNames = ["Shaders.metal"]
+            }
+            for markerName in markerNames
+            where "\(resourceBundleName)/\(markerName)" != omittedRuntimeResourceRelativePath {
+                let markerURL = resourceBundle.appendingPathComponent(markerName)
+                try FileManager.default.createDirectory(
+                    at: markerURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try "fixture\n".write(to: markerURL, atomically: true, encoding: .utf8)
+            }
+        }
+        if signsAppBundle, binarySymlinkTarget == nil {
+            let signed = try runTool([
+                "/usr/bin/codesign", "--force", "--deep", "--sign", "-", appDirectory.path
+            ])
+            XCTAssertEqual(signed.exitCode, 0, signed.output)
+        }
+        if includesSpecialFile {
+            let fifo = appDirectory.appendingPathComponent("Contents/runtime.pipe")
+            let mkfifo = try runTool(["/usr/bin/mkfifo", fifo.path])
+            XCTAssertEqual(mkfifo.exitCode, 0, mkfifo.output)
+        }
+        if let additionalSymlinkTarget {
+            let symlinkDirectory = appDirectory.appendingPathComponent("Contents/Resources", isDirectory: true)
+            try FileManager.default.createDirectory(at: symlinkDirectory, withIntermediateDirectories: true)
+            try FileManager.default.createSymbolicLink(
+                atPath: symlinkDirectory.appendingPathComponent("external-resource").path,
+                withDestinationPath: additionalSymlinkTarget
+            )
+        }
+
+        let archive = artifactDirectory.appendingPathComponent("Suisui.app.tar.gz")
+        var tarArguments = ["/usr/bin/tar", "-czf", archive.path]
+        if let archiveEntrySubstitution {
+            tarArguments += ["-s", archiveEntrySubstitution]
+        }
+        tarArguments += ["-C", sourceDirectory.path, "Suisui.app"]
+        let tar = try runTool(tarArguments, environment: ["COPYFILE_DISABLE": "1"])
+        XCTAssertEqual(tar.exitCode, 0, tar.output)
+
+        let archiveData = try Data(contentsOf: archive)
+        let archiveSHA256 = SHA256.hash(data: archiveData).map { String(format: "%02x", $0) }.joined()
+        let manifest = """
+        format_version=1
+        source_commit=\(expectedCommit)
+        build_configuration=release
+        archive_sha256=\(archiveSHA256)
+
+        """
+        try manifest.write(
+            to: artifactDirectory.appendingPathComponent("manifest.env"),
+            atomically: true,
+            encoding: .utf8
+        )
+        return PerformanceArtifactFixture(
+            root: root,
+            artifactDirectory: artifactDirectory,
+            destinationDirectory: destinationDirectory,
+            receiptDirectory: receiptDirectory
+        )
+    }
+
+    private func runPerformanceArtifactVerifier(
+        _ fixture: PerformanceArtifactFixture,
+        _ expectedCommit: String,
+        environment: [String: String] = [:]
+    ) throws -> (exitCode: Int32, output: String) {
+        try runTool([
+            "/bin/bash",
+            packageRoot().appendingPathComponent("script/verify_ui_performance_artifact.sh").path,
+            fixture.artifactDirectory.path,
+            fixture.destinationDirectory.path,
+            "Suisui",
+            expectedCommit,
+            fixture.receiptDirectory.path
+        ], environment: environment)
     }
 
     private func orderedShellStatementIndices(

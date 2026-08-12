@@ -322,14 +322,14 @@ jobs:
           echo "status=passed"
           echo "locales=en-US,ja-JP"
 
-  ui-performance:
-    name: UI Performance (production route)
+  ui-performance-build:
+    name: UI Performance Build (release artifact)
     needs:
       - test_strategy
       - full_validation
     if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - name: Checkout tested revision
         uses: actions/checkout@v4
@@ -345,6 +345,54 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-swift-6-
 
+      - name: Build immutable release performance app
+        run: |
+          set -euo pipefail
+          source packaging/app_metadata.env
+          artifact_dir=.tmp/ui-performance-app
+          archive="$artifact_dir/$APP_NAME.app.tar.gz"
+          manifest="$artifact_dir/manifest.env"
+          rm -rf "$artifact_dir"
+          mkdir -p "$artifact_dir"
+          SUISUI_RELEASE_BUILD_PURPOSE=performance \
+            SUISUI_BUILD_CONFIGURATION=release ./script/build_and_run.sh --build-only
+          COPYFILE_DISABLE=1 /usr/bin/tar -czf "$archive" -C dist "$APP_NAME.app"
+          archive_sha256="$(shasum -a 256 "$archive" | awk '{print $1}')"
+          source_commit="$(git rev-parse HEAD)"
+          printf 'format_version=1\nsource_commit=%s\nbuild_configuration=release\narchive_sha256=%s\n' \
+            "$source_commit" "$archive_sha256" >"$manifest"
+
+      - name: Upload immutable release performance app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/ui-performance-app
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 1
+
+  ui-performance:
+    name: UI Performance (production route)
+    needs:
+      - test_strategy
+      - full_validation
+      # Do not mix release cold-launch evidence with concurrent macOS UI work.
+      - ui-runtime
+      - ui-visual
+      - ui-performance-build
+    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Checkout tested revision
+        uses: actions/checkout@v4
+
+      - name: Download immutable release performance app
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/ui-performance-app
+
       - name: Measure production runtime
         env:
           SUISUI_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
@@ -352,6 +400,8 @@ jobs:
           SUISUI_PERFORMANCE_BUILD_CONFIGURATION: release
           SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS: 1000
           SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS: 3000
+          SUISUI_PERFORMANCE_USE_PREBUILT_APP: 1
+          SUISUI_PERFORMANCE_ARTIFACT_DIR: ${{ github.workspace }}/.tmp/ui-performance-app
         run: ./scripts/ci.sh ui-performance
 
       - name: Upload sanitized performance diagnostics

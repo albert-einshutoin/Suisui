@@ -1130,6 +1130,7 @@ final class UIGateScriptsTests: XCTestCase {
         CI_ARTIFACT_ROOT="$1/artifacts"
         CI_TMPDIR="$1/tmp"
         mkdir -p "$CI_ARTIFACT_ROOT" "$CI_TMPDIR"
+        source "$CI_REDACT_HELPER"
         cd "$1"
         \(functionSource)
         runtime_fixture() {
@@ -1159,7 +1160,9 @@ final class UIGateScriptsTests: XCTestCase {
                 "SUISUI_TEST_CAPACITY_OUTPUT": outputURL.path,
                 "SUISUI_TEST_CAPACITY_STATUS": String(capacityStatus),
                 "SUISUI_TEST_RUNTIME_STATUS": String(runtimeStatus),
-                "SUISUI_TEST_POST_LAYOUT_STATUS": String(postLayoutStatus)
+                "SUISUI_TEST_POST_LAYOUT_STATUS": String(postLayoutStatus),
+                "CI_REDACT_HELPER": packageRoot()
+                    .appendingPathComponent("script/ci_redact_stream.sh").path
             ]
         )
     }

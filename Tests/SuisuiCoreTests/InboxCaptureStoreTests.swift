@@ -30,6 +30,56 @@ final class InboxCaptureStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testInboxVoiceCaptureServicePersistsAudioBeforeWritingCaptureRecord() throws {
+        let stores = try makeStores()
+        let managedURL = URL(filePath: "/Users/example/Library/Application Support/Suisui/InboxAudio/managed.m4a")
+        let persister = RecordingInboxAudioPersister(managedURL: managedURL)
+        let service = InboxVoiceCaptureService(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "Persist this recording", duration: 2)),
+            projectBoardStore: stores.board,
+            inboxCaptureStore: stores.captures,
+            inboxAudioPersister: persister
+        )
+
+        let result = try service.saveTranscribedCapture(
+            audio: RecordedAudio(fileURL: URL(filePath: "/tmp/suisui-recording.m4a"), format: .m4a, duration: 2),
+            transcript: STTTranscript(text: "Persist this recording", duration: 2),
+            at: Date(timeIntervalSince1970: 100)
+        )
+
+        XCTAssertEqual(result.capture.audioFilePath, managedURL.path)
+        XCTAssertEqual(persister.importedSource, URL(filePath: "/tmp/suisui-recording.m4a"))
+        XCTAssertEqual(persister.removedURLs, [])
+    }
+
+    @MainActor
+    func testInboxVoiceCaptureServiceCompensatesManagedAudioAndTaskWhenCaptureInsertFails() throws {
+        let stores = try makeStores()
+        let persister = RecordingInboxAudioPersister(
+            managedURL: URL(filePath: "/Users/example/Library/Application Support/Suisui/InboxAudio/failed.m4a")
+        )
+        let service = InboxVoiceCaptureService(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "Will fail", duration: 1)),
+            projectBoardStore: stores.board,
+            inboxCaptureStore: FailingInboxCaptureStore(),
+            inboxAudioPersister: persister
+        )
+
+        XCTAssertThrowsError(
+            try service.saveTranscribedCapture(
+                audio: RecordedAudio(fileURL: URL(filePath: "/tmp/suisui-recording-failed.m4a"), format: .m4a, duration: 1),
+                transcript: STTTranscript(text: "Will fail", duration: 1),
+                at: Date(timeIntervalSince1970: 100)
+            )
+        )
+
+        XCTAssertEqual(persister.removedURLs, [persister.managedURL])
+        XCTAssertTrue(try stores.board.loadSnapshot().projects.flatMap(\.tasks).isEmpty)
+    }
+
+    @MainActor
     func testInboxVoiceCaptureServiceRedactsInterpretationInputsAndAppearsAsAISuggested() async throws {
         let stores = try makeStores()
         let router = RecordingVoiceCommandRouter(result: VoiceCommandRoutingResult(
@@ -339,7 +389,9 @@ final class InboxCaptureStoreTests: XCTestCase {
         XCTAssertEqual(restoredTask.title, "Voice capture")
         XCTAssertEqual(restoredTask.projectID, inboxID)
         XCTAssertEqual(try stores.captures.list(taskID: restoredTask.id).first?.transcript, "Make launch checklist")
-        XCTAssertTrue(try stores.captures.list(taskID: voiceTask.id).isEmpty)
+        // Atomic project conversion keeps the task identity, so the voice
+        // capture remains linked without a delete/recreate relink dance.
+        XCTAssertEqual(try stores.captures.list(taskID: voiceTask.id).count, 1)
     }
 
     @MainActor
@@ -454,10 +506,10 @@ final class InboxCaptureStoreTests: XCTestCase {
             viewModel.inboxTriageSummary(for: manual),
             InboxTriageSummary(
                 sourceLabel: "Manual",
-                interpretationLabel: "Unprocessed",
+                interpretationLabel: "Manual",
                 systemImage: "square.and.pencil",
                 tintName: "secondary",
-                accessibilityValue: "Source: Manual, Interpretation: Unprocessed"
+                accessibilityValue: "Source: Manual, Interpretation: Manual"
             )
         )
         XCTAssertEqual(
@@ -542,6 +594,48 @@ final class InboxCaptureStoreTests: XCTestCase {
             SQLiteInboxCaptureStore(connection: connection)
         )
     }
+}
+
+@MainActor
+private final class RecordingInboxAudioPersister: InboxAudioPersisting {
+    let managedURL: URL
+    private(set) var importedSource: URL?
+    private(set) var removedURLs: [URL] = []
+
+    init(managedURL: URL) {
+        self.managedURL = managedURL
+    }
+
+    func importRecording(from sourceURL: URL) throws -> URL {
+        importedSource = sourceURL
+        return managedURL
+    }
+
+    func removeImportedRecording(at url: URL) {
+        removedURLs.append(url)
+    }
+}
+
+private final class FailingInboxCaptureStore: InboxCaptureStore {
+    func createVoiceCapture(_ draft: InboxVoiceCaptureDraft) throws -> InboxCaptureRecord {
+        throw InboxCaptureStoreError.linkedTaskMissing
+    }
+
+    func get(id: Int64) throws -> InboxCaptureRecord {
+        throw InboxCaptureStoreError.notFound(id)
+    }
+
+    func list(taskID: Int64) throws -> [InboxCaptureRecord] { [] }
+
+    func list(taskIDs: Set<Int64>) throws -> [Int64: [InboxCaptureRecord]] { [:] }
+
+    func updateMemo(id: Int64, memo: String?) throws -> InboxCaptureRecord {
+        throw InboxCaptureStoreError.notFound(id)
+    }
+
+    func relinkCaptures(fromTaskID: Int64, toTaskID: Int64) throws -> Int { 0 }
+
+    func delete(id: Int64) throws {}
 }
 
 private final class RecordingVoiceCommandRouter: VoiceCommandRouting, @unchecked Sendable {

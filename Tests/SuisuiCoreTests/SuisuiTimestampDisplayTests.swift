@@ -20,6 +20,11 @@ final class SuisuiTimestampDisplayTests: XCTestCase {
         )
         XCTAssertTrue(instant.includesTime)
 
+        let sqliteTimestamp = try XCTUnwrap(
+            SuisuiTimestampDisplay.parse("2026-07-10 09:00:00", calendar: calendar)
+        )
+        XCTAssertTrue(sqliteTimestamp.includesTime)
+
         let day = try XCTUnwrap(
             SuisuiTimestampDisplay.parse("2026-07-10", calendar: calendar)
         )

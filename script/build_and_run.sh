@@ -21,10 +21,13 @@ fi
 export TMPDIR="$BUILD_AND_RUN_TMPDIR/"
 export SWIFTPM_MODULECACHE_OVERRIDE="${SWIFTPM_MODULECACHE_OVERRIDE:-$ROOT_DIR/.build/module-cache}"
 SWIFTPM_CACHE_PATH="${SUISUI_SWIFTPM_CACHE_PATH:-$ROOT_DIR/.build/swiftpm-cache}"
-mkdir -p "$TMPDIR" "$SWIFTPM_MODULECACHE_OVERRIDE" "$SWIFTPM_CACHE_PATH"
+SWIFTPM_APP_SCRATCH_PATH="${SUISUI_SWIFTPM_APP_SCRATCH_PATH:-$ROOT_DIR/.build/app-package}"
+mkdir -p "$TMPDIR" "$SWIFTPM_MODULECACHE_OVERRIDE" "$SWIFTPM_CACHE_PATH" "$SWIFTPM_APP_SCRATCH_PATH"
 SWIFT_BUILD_ARGS=(
+  --arch arm64
   --cache-path "$SWIFTPM_CACHE_PATH"
   --manifest-cache local
+  --scratch-path "$SWIFTPM_APP_SCRATCH_PATH"
 )
 
 if [[ ! -f "$METADATA_FILE" ]]; then
@@ -120,9 +123,25 @@ APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 APP_LOCALIZATION_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Resources"
 APP_ICON_SOURCE="$ROOT_DIR/packaging/Suisui.icns"
+RESOURCE_ACCESSOR_NORMALIZER="$ROOT_DIR/script/normalize_swiftpm_resource_accessors.sh"
+RESOURCE_PRODUCT_RELINKER="$ROOT_DIR/script/relink_normalized_swiftpm_product.sh"
+LINKED_SDK_VERIFIER="$ROOT_DIR/script/verify_linked_macos_sdk.sh"
+REQUIRED_RESOURCE_BUNDLE_NAMES=(
+  "Suisui_Suisui.bundle"
+  "Suisui_SuisuiCore.bundle"
+  "SwiftTerm_SwiftTerm.bundle"
+)
 
 if [[ ! -r "$AX_HELPERS" ]]; then
   echo "missing accessibility helpers: $AX_HELPERS" >&2
+  exit 2
+fi
+if [[ ! -x "$RESOURCE_ACCESSOR_NORMALIZER" ]]; then
+  echo "missing SwiftPM resource accessor normalizer: $RESOURCE_ACCESSOR_NORMALIZER" >&2
+  exit 2
+fi
+if [[ ! -x "$RESOURCE_PRODUCT_RELINKER" || ! -x "$LINKED_SDK_VERIFIER" ]]; then
+  echo "missing native SwiftPM product verification helpers" >&2
   exit 2
 fi
 
@@ -355,23 +374,44 @@ if [[ "$RELEASE_BUILD_PURPOSE" == "distribution" ]]; then
   SUISUI_SPARKLE_CONFIG_QUIET=1 "$ROOT_DIR/script/validate_sparkle_release_config.sh"
 fi
 
-case "$BUILD_CONFIGURATION" in
-  debug)
-    swift build "${SWIFT_BUILD_ARGS[@]}" --product "$SWIFT_PRODUCT_NAME"
-    BUILD_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" --show-bin-path)"
-    ;;
-  release)
-    swift build "${SWIFT_BUILD_ARGS[@]}" -c release --product "$SWIFT_PRODUCT_NAME"
-    BUILD_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" -c release --show-bin-path)"
-    ;;
-  *)
-    echo "SUISUI_BUILD_CONFIGURATION must be debug or release" >&2
-    exit 2
-    ;;
-esac
+build_suisui_product() {
+  case "$BUILD_CONFIGURATION" in
+    debug)
+      swift build "${SWIFT_BUILD_ARGS[@]}" --product "$SWIFT_PRODUCT_NAME"
+      ;;
+    release)
+      swift build "${SWIFT_BUILD_ARGS[@]}" -c release --product "$SWIFT_PRODUCT_NAME"
+      ;;
+    *)
+      echo "SUISUI_BUILD_CONFIGURATION must be debug or release" >&2
+      exit 2
+      ;;
+  esac
+}
+
+swiftpm_product_directory() {
+  case "$BUILD_CONFIGURATION" in
+    debug)
+      swift build "${SWIFT_BUILD_ARGS[@]}" --show-bin-path
+      ;;
+    release)
+      swift build "${SWIFT_BUILD_ARGS[@]}" -c release --show-bin-path
+      ;;
+  esac
+}
+
+build_suisui_product
+BUILD_DIR="$(swiftpm_product_directory)"
+# Native SwiftPM preserves the macOS 26-linked SwiftUI window behavior used by
+# the product and visual contract, but its generated fallback embeds the local
+# checkout. Normalize that generated source, then relink before packaging.
+"$RESOURCE_PRODUCT_RELINKER" \
+  "$SWIFTPM_APP_SCRATCH_PATH" \
+  "$BUILD_DIR" \
+  "$BUILD_CONFIGURATION" \
+  "$SWIFT_PRODUCT_NAME"
 
 BUILD_BINARY="$BUILD_DIR/$SWIFT_PRODUCT_NAME"
-RESOURCE_BUNDLE="$BUILD_DIR/Suisui_SuisuiCore.bundle"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS"
@@ -381,11 +421,46 @@ chmod +x "$APP_BINARY"
 if ! otool -l "$APP_BINARY" | grep -F "@executable_path/../Frameworks" >/dev/null; then
   install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BINARY"
 fi
+"$LINKED_SDK_VERIFIER" "$APP_BINARY"
 
-if [[ -d "$RESOURCE_BUNDLE" ]]; then
+for resource_bundle_name in "${REQUIRED_RESOURCE_BUNDLE_NAMES[@]}"; do
+  RESOURCE_BUNDLE_SOURCE="$BUILD_DIR/$resource_bundle_name"
+  RESOURCE_BUNDLE_DESTINATION="$APP_RESOURCES/$resource_bundle_name"
+  if [[ ! -d "$RESOURCE_BUNDLE_SOURCE" || -L "$RESOURCE_BUNDLE_SOURCE" ]]; then
+    echo "BLOCKER: required SwiftPM resource bundle is unavailable: $resource_bundle_name" >&2
+    exit 1
+  fi
+  RESOURCE_BUNDLE_MARKERS=()
+  case "$resource_bundle_name" in
+    Suisui_Suisui.bundle)
+      RESOURCE_BUNDLE_MARKERS=(
+        "Info.plist"
+        "en.lproj/Localizable.strings"
+        "ja.lproj/Localizable.strings"
+      )
+      ;;
+    Suisui_SuisuiCore.bundle)
+      RESOURCE_BUNDLE_MARKERS=(
+        "Info.plist"
+        "action-plan.schema.json"
+        "en.lproj/Localizable.strings"
+        "ja.lproj/Localizable.strings"
+      )
+      ;;
+    SwiftTerm_SwiftTerm.bundle)
+      RESOURCE_BUNDLE_MARKERS=("Shaders.metal")
+      ;;
+  esac
+  for resource_bundle_marker in "${RESOURCE_BUNDLE_MARKERS[@]}"; do
+    if [[ ! -f "$RESOURCE_BUNDLE_SOURCE/$resource_bundle_marker" ||
+          -L "$RESOURCE_BUNDLE_SOURCE/$resource_bundle_marker" ]]; then
+      echo "BLOCKER: required SwiftPM resource bundle is incomplete: $resource_bundle_name" >&2
+      exit 1
+    fi
+  done
   mkdir -p "$APP_RESOURCES"
-  /usr/bin/ditto "$RESOURCE_BUNDLE" "$APP_RESOURCES"
-fi
+  /usr/bin/ditto "$RESOURCE_BUNDLE_SOURCE" "$RESOURCE_BUNDLE_DESTINATION"
+done
 
 copy_app_localizations
 
@@ -465,8 +540,14 @@ if [[ -n "$SPARKLE_FEED_URL" && -n "$SPARKLE_PUBLIC_ED_KEY" ]]; then
   /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string $SPARKLE_PUBLIC_ED_KEY" "$INFO_PLIST"
 fi
 
-if [[ "$BUILD_CONFIGURATION" == "debug" ]]; then
+if [[ "$BUILD_CONFIGURATION" == "debug" || "$RELEASE_BUILD_PURPOSE" == "performance" ]]; then
+  # The performance app crosses a runner boundary before launch. Ad-hoc signing
+  # seals the completed bundle so macOS does not reject the linker-signed binary
+  # after resources and frameworks have been assembled around it.
   codesign --force --deep --sign - "$APP_BUNDLE" >/dev/null
+  if [[ "$RELEASE_BUILD_PURPOSE" == "performance" ]]; then
+    codesign --verify --deep --strict "$APP_BUNDLE"
+  fi
 fi
 
 activate_app() {

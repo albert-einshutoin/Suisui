@@ -1237,7 +1237,7 @@ create_isolated_evidence_home() {
     return 0
   fi
   create_output="$(
-    "$VISUAL_FIXTURE_SEEDER_BIN" \
+    SUISUI_LANGUAGE_PREFERENCE="$EVIDENCE_LOCALE" "$VISUAL_FIXTURE_SEEDER_BIN" \
       --create-evidence-home \
       --path "$EVIDENCE_HOME" \
       --evidence-home-marker-token "$EVIDENCE_HOME_MARKER_TOKEN"
@@ -1283,7 +1283,8 @@ seed_capture_database() {
   local database_path="$1"
   local seed_output
   seed_output="$(
-    "$VISUAL_FIXTURE_SEEDER_BIN" \
+    HOME="$EVIDENCE_HOME" CFFIXED_USER_HOME="$EVIDENCE_HOME" \
+      SUISUI_LANGUAGE_PREFERENCE="$EVIDENCE_LOCALE" "$VISUAL_FIXTURE_SEEDER_BIN" \
       --database "$database_path" \
       --evidence-home "$EVIDENCE_HOME" \
       --evidence-home-marker-token "$EVIDENCE_HOME_MARKER_TOKEN" \
@@ -1416,7 +1417,12 @@ persist_project_board_selection() {
   PROJECT_BOARD_SELECTED_TASK_OVERRIDE="$review_task_id"
   PROJECT_BOARD_TARGET_MARKERS="project-board-detail=>Launch Readiness|task-card-open-details-$capture_task_id=>Capture launch screenshots|task-card-open-details-$capture_task_id=>$planned_label, $high_label, $capture_due_label|task-card-open-details-$review_task_id=>Review VoiceOver focus path|task-card-open-details-$review_task_id=>$in_progress_label, $high_label, $review_due_label|task-card-open-details-$unscheduled_task_id=>$planned_label, $medium_label, $no_due_date_label"
   INBOX_VOICE_TASK_OVERRIDE="$inbox_voice_task_id"
-  INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>$inbox_label|inbox-voice-intake-detail=>Voice intake detail for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-panel=>$inbox_classification_actions_label"
+  local inbox_voice_title
+  case "$EVIDENCE_LOCALE" in
+    english) inbox_voice_title="Create tomorrow's presentation materials" ;;
+    japanese) inbox_voice_title="明日のプレゼン資料を作成する" ;;
+  esac
+  INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>$inbox_label|inbox-voice-intake-detail=>Voice intake detail for $inbox_voice_title|inbox-action-panel=>$inbox_classification_actions_label"
   write_app_preference suisui.projectBoard.selectedDestination "$PROJECT_BOARD_SELECTION_OVERRIDE"
 }
 
@@ -2266,6 +2272,7 @@ case "$EVIDENCE_LOCALE" in
     DONE_ROUTE_LABEL="Done"
     VOICE_COMMAND_LABEL="Voice Command"
     INBOX_CLASSIFICATION_ACTIONS_LABEL="Inbox classification actions"
+    INBOX_VOICE_TITLE="Create tomorrow's presentation materials"
     ;;
   japanese)
     INBOX_ROUTE_LABEL="インボックス"
@@ -2276,6 +2283,7 @@ case "$EVIDENCE_LOCALE" in
     DONE_ROUTE_LABEL="完了"
     VOICE_COMMAND_LABEL="音声コマンド"
     INBOX_CLASSIFICATION_ACTIONS_LABEL="インボックス分類操作"
+    INBOX_VOICE_TITLE="明日のプレゼン資料を作成する"
     ;;
 esac
 
@@ -2287,7 +2295,10 @@ TODAY_TARGET_MARKERS="today-workflow=>$TODAY_ROUTE_LABEL|today-briefing-panel=>$
 P0_INBOX_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-action-panel=>$INBOX_ROUTE_LABEL"
 P0_TODAY_TARGET_MARKERS="today-workflow=>$TODAY_ROUTE_LABEL|today-briefing-panel=>$TODAY_ROUTE_LABEL|today-assistant-rail=>$TODAY_ROUTE_LABEL"
 INBOX_VOICE_ROUTE_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL"
-P0_INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-action-panel=>Voice capture metadata available for Scheduled manual capture|inbox-action-panel=>Schedule launch review and capture visual evidence.|inbox-action-panel=>Create a task for launch review evidence.|inbox-action-panel=>$INBOX_CLASSIFICATION_ACTIONS_LABEL"
+# The detail panel now exposes stable accessibility anchors for the voice
+# surface. Keep the visual harness independent of localized action copy so a
+# Japanese run validates the same selected detail as the English run.
+P0_INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-voice-intake-detail=>Voice intake detail for $INBOX_VOICE_TITLE|inbox-action-panel=>$INBOX_CLASSIFICATION_ACTIONS_LABEL"
 PROJECTS_TARGET_MARKERS="sidebar-destination-projects=>$PROJECTS_ROUTE_LABEL|projects-portfolio-overview=>$PROJECTS_ROUTE_LABEL"
 SCHEDULE_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-mode-overview=>|schedule-mini-calendar=>"
 SCHEDULE_COCKPIT_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-mode-overview=>|schedule-mini-calendar=>"

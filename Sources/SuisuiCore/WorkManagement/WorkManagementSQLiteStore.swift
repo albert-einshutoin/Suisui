@@ -172,6 +172,178 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         return try makeBoardTask(record).requiredTask()
     }
 
+    public func loadInboxTriageRecords(taskIDs: Set<Int64>) throws -> [Int64: InboxTriageRecord] {
+        guard !taskIDs.isEmpty else {
+            return [:]
+        }
+
+        let sortedTaskIDs = taskIDs.sorted()
+        let placeholders = Array(repeating: "?", count: sortedTaskIDs.count).joined(separator: ", ")
+        let rows = try connection.queryRows(
+            """
+            SELECT task_id, disposition, review_at, updated_at
+            FROM inbox_triage_records
+            WHERE task_id IN (\(placeholders));
+            """,
+            parameters: sortedTaskIDs.map(SQLiteValue.integer)
+        )
+        return try Dictionary(uniqueKeysWithValues: rows.map { row in
+            let record = try inboxTriageRecord(from: row)
+            return (record.taskID, record)
+        })
+    }
+
+    @discardableResult
+    public func createInboxTask(title: String) throws -> ProjectBoardTask {
+        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedTitle.isEmpty else {
+            throw ProjectBoardStoreError.emptyTitle
+        }
+
+        return try connection.transaction {
+            let inbox = try ensureActiveInboxProject()
+            // Quick capture writes through TaskStore directly, so preserve the
+            // same completed-project reactivation invariant as createTask.
+            try prepareProjectForTaskMutation(projectID: inbox.id, taskStatus: .backlog)
+            let record = try taskStore.create(
+                title: normalizedTitle,
+                projectID: inbox.id,
+                priority: ProjectTaskPriority.medium.rawValue,
+                sourceCommand: "app.project-board.inbox",
+                status: ProjectTaskStatus.backlog.rawValue
+            )
+            let task = try makeBoardTask(record).requiredTask()
+            try upsertInboxTriageRecord(
+                taskID: task.id,
+                disposition: .unprocessed,
+                reviewAt: nil,
+                updatedAt: triageTimestamp()
+            )
+            return task
+        }
+    }
+
+    @discardableResult
+    public func performInboxTriage(
+        taskID: Int64,
+        action: InboxTriageAction,
+        referenceDate: Date,
+        calendar: Calendar
+    ) throws -> InboxTriageMutation {
+        try connection.transaction {
+            let taskRecord = try taskStore.get(id: taskID)
+            let fallbackInboxID = try ensureActiveInboxProject().id
+            let originalTask = try makeBoardTask(
+                taskRecord,
+                fallbackProjectID: fallbackInboxID
+            ).requiredTask()
+            let originalRecord = try inboxTriageRecord(for: taskRecord)
+            let updatedTask: ProjectBoardTask
+            let createdProjectID: Int64?
+            let disposition: InboxTriageDisposition
+            let reviewAt: String?
+
+            switch action {
+            case .makeTask:
+                updatedTask = originalTask
+                createdProjectID = nil
+                disposition = .task
+                reviewAt = nil
+            case .scheduleToday:
+                let dueAt = ISO8601DateFormatter().string(from: referenceDate)
+                updatedTask = try updateTask(
+                    id: taskID,
+                    originalTask.inboxDraft(status: .planned, dueAt: .some(dueAt))
+                )
+                createdProjectID = nil
+                disposition = .scheduled
+                reviewAt = nil
+            case .reviewLater:
+                updatedTask = originalTask
+                createdProjectID = nil
+                disposition = .reviewLater
+                reviewAt = ISO8601DateFormatter().string(
+                    from: try InboxReviewClock.nextReviewDate(
+                        after: referenceDate,
+                        calendar: calendar
+                    )
+                )
+            case .makeProject:
+                let project = try createProject(title: originalTask.title)
+                updatedTask = try updateTask(
+                    id: taskID,
+                    originalTask.inboxDraft(
+                        projectID: project.id,
+                        status: .planned
+                    )
+                )
+                createdProjectID = project.id
+                disposition = .project
+                reviewAt = nil
+            case .complete:
+                updatedTask = try updateTask(
+                    id: taskID,
+                    originalTask.inboxDraft(status: .done)
+                )
+                createdProjectID = nil
+                disposition = .task
+                reviewAt = nil
+            case .reopen:
+                updatedTask = try updateTask(
+                    id: taskID,
+                    originalTask.inboxDraft(status: .planned)
+                )
+                createdProjectID = nil
+                disposition = .task
+                reviewAt = nil
+            }
+
+            try upsertInboxTriageRecord(
+                taskID: taskID,
+                disposition: disposition,
+                reviewAt: reviewAt,
+                updatedAt: triageTimestamp()
+            )
+            return InboxTriageMutation(
+                originalTask: originalTask,
+                originalRecord: originalRecord,
+                updatedTask: updatedTask,
+                createdProjectID: createdProjectID
+            )
+        }
+    }
+
+    @discardableResult
+    public func undoInboxTriage(_ mutation: InboxTriageMutation) throws -> ProjectBoardTask {
+        try connection.transaction {
+            // Classification Undo updates an existing task; delete Undo reaches
+            // the same boundary after cascade removal and must recreate it.
+            // Keeping both branches here makes task + triage restoration one
+            // SQLite transaction while allowing the recreated task a new ID.
+            let restoredTask = if try taskStore.exists(id: mutation.originalTask.id) {
+                try applyTaskUndoSnapshot(mutation.originalTask)
+            } else {
+                try restoreTask(from: mutation.originalTask)
+            }
+            let restoredRecord = try InboxTriageRecord(
+                taskID: restoredTask.id,
+                disposition: mutation.originalRecord.disposition,
+                reviewAt: mutation.originalRecord.reviewAt,
+                updatedAt: mutation.originalRecord.updatedAt
+            )
+            try upsertInboxTriageRecord(restoredRecord)
+            if let createdProjectID = mutation.createdProjectID {
+                // Re-linking the Task first leaves the generated Project empty,
+                // so deletion cannot orphan the restored Inbox Task.
+                try connection.execute(
+                    "DELETE FROM projects WHERE id = ? AND NOT EXISTS (SELECT 1 FROM tasks WHERE project_id = ?);",
+                    parameters: [.integer(createdProjectID), .integer(createdProjectID)]
+                )
+            }
+            return restoredTask
+        }
+    }
+
     @discardableResult
     public func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
         let normalized = try normalizedDraft(draft)
@@ -241,6 +413,44 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         try taskStore.delete(id: id)
     }
 
+    /// Delete Undo crosses three foreign-key-linked tables. Restoring them in
+    /// one SQLite transaction avoids relying on best-effort compensating
+    /// deletes, which can fail for the same storage error as a capture insert.
+    func restoreDeletedTask(
+        from snapshot: ProjectBoardTask,
+        triageRecord: InboxTriageRecord?,
+        captures: [InboxCaptureRecord]
+    ) throws -> ProjectBoardTask {
+        try connection.transaction {
+            let restoredTask = try restoreTask(from: snapshot)
+            if let triageRecord {
+                let restoredRecord = try InboxTriageRecord(
+                    taskID: restoredTask.id,
+                    disposition: triageRecord.disposition,
+                    reviewAt: triageRecord.reviewAt,
+                    updatedAt: triageRecord.updatedAt
+                )
+                try upsertInboxTriageRecord(restoredRecord)
+            }
+
+            let captureStore = SQLiteInboxCaptureStore(connection: connection)
+            for capture in captures {
+                _ = try captureStore.createVoiceCapture(InboxVoiceCaptureDraft(
+                    taskID: restoredTask.id,
+                    audioFilePath: capture.audioFilePath,
+                    durationSeconds: capture.durationSeconds,
+                    transcript: capture.transcript,
+                    interpretationSummary: capture.interpretationSummary,
+                    memo: capture.memo,
+                    classificationStatus: capture.classificationStatus,
+                    transcriptionStatus: capture.transcriptionStatus,
+                    createdAt: capture.createdAt
+                ))
+            }
+            return restoredTask
+        }
+    }
+
     @discardableResult
     public func restoreTask(from snapshot: ProjectBoardTask) throws -> ProjectBoardTask {
         let normalized = try normalizedDraft(ProjectBoardTaskDraft(
@@ -297,7 +507,15 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             projectID: .set(normalized.projectID),
             recurrence: normalized.recurrence.map { .set($0) } ?? .clear
         )
-        return try makeBoardTask(record).requiredTask()
+        // updateFields intentionally records completion history on a done
+        // transition. Undo must restore the snapshot's exact history value,
+        // including clearing a timestamp when the original task was open.
+        try connection.execute(
+            "UPDATE tasks SET completed_at = ? WHERE id = ?;",
+            parameters: [SQLiteValue(snapshot.completedAt), .integer(snapshot.id)]
+        )
+        let restored = try taskStore.get(id: record.id)
+        return try makeBoardTask(restored).requiredTask()
     }
 
     @discardableResult
@@ -425,11 +643,91 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     }
 
     private func ensureActiveInboxProject() throws -> ProjectRecord {
-        if let inbox = try projectStore.listForProjectBoard().first(where: { $0.title == "Inbox" }) {
+        if let inbox = try projectStore.listForProjectBoard().first(where: {
+            $0.title.caseInsensitiveCompare("Inbox") == .orderedSame
+        }) {
             return inbox
         }
 
         return try projectStore.create(title: "Inbox", tags: ["local"], sourceCommand: "app.project-board")
+    }
+
+    private func inboxTriageRecord(for task: TaskRecord) throws -> InboxTriageRecord {
+        if let persisted = try loadInboxTriageRecords(taskIDs: [task.id])[task.id] {
+            return persisted
+        }
+
+        let disposition: InboxTriageDisposition = switch ProjectTaskStatus.normalized(task.status) {
+        case .done:
+            .task
+        default:
+            task.dueAt == nil ? .unprocessed : .scheduled
+        }
+        return try InboxTriageRecord(
+            taskID: task.id,
+            disposition: disposition,
+            reviewAt: nil,
+            updatedAt: task.updatedAt ?? task.createdAt ?? triageTimestamp()
+        )
+    }
+
+    private func inboxTriageRecord(from row: SQLiteMaterializedRow) throws -> InboxTriageRecord {
+        let rawDisposition = try row.string("disposition")
+        guard let disposition = InboxTriageDisposition(rawValue: rawDisposition) else {
+            throw LocalStoreDecodingError.invalidEnum(
+                column: "inbox_triage_records.disposition",
+                value: rawDisposition
+            )
+        }
+        return try InboxTriageRecord(
+            taskID: row.int64("task_id"),
+            disposition: disposition,
+            reviewAt: try row.optionalString("review_at"),
+            updatedAt: try row.string("updated_at")
+        )
+    }
+
+    private func upsertInboxTriageRecord(
+        taskID: Int64,
+        disposition: InboxTriageDisposition,
+        reviewAt: String?,
+        updatedAt: String
+    ) throws {
+        _ = try InboxTriageRecord(
+            taskID: taskID,
+            disposition: disposition,
+            reviewAt: reviewAt,
+            updatedAt: updatedAt
+        )
+        try connection.execute(
+            """
+            INSERT INTO inbox_triage_records (task_id, disposition, review_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(task_id) DO UPDATE SET
+                disposition = excluded.disposition,
+                review_at = excluded.review_at,
+                updated_at = excluded.updated_at;
+            """,
+            parameters: [
+                .integer(taskID),
+                .text(disposition.rawValue),
+                SQLiteValue(reviewAt),
+                .text(updatedAt)
+            ]
+        )
+    }
+
+    private func upsertInboxTriageRecord(_ record: InboxTriageRecord) throws {
+        try upsertInboxTriageRecord(
+            taskID: record.taskID,
+            disposition: record.disposition,
+            reviewAt: record.reviewAt,
+            updatedAt: record.updatedAt
+        )
+    }
+
+    private func triageTimestamp() -> String {
+        ISO8601DateFormatter().string(from: Date())
     }
 
     private func normalizedDraft(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTaskDraft {
@@ -574,8 +872,13 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             priority: try ProjectTaskPriority.normalized(record.priority, column: "tasks.priority"),
             dueAt: record.dueAt,
             completedAt: record.completedAt,
+            createdAt: record.createdAt,
             updatedAt: record.updatedAt,
-            recurrence: record.recurrence
+            recurrence: record.recurrence,
+            // Only expose the deterministic evidence marker to the
+            // presentation layer. Other source commands are persistence
+            // details and would make board snapshots noisier and less stable.
+            sourceCommand: record.sourceCommand == "ui-evidence" ? record.sourceCommand : nil
         )
     }
 
@@ -633,6 +936,8 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
         }
     }
 }
+
+extension SQLiteProjectBoardStore: ProjectBoardDeleteUndoRestoring {}
 
 private extension LocalStoreDecodingError {
     var isProjectBoardSkippableRecord: Bool {

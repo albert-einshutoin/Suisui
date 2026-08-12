@@ -15,8 +15,9 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(workflow.contains("name: SwiftPM macOS"))
         XCTAssertTrue(workflow.contains("name: UI Runtime (production route)"))
         XCTAssertTrue(workflow.contains("name: UI Visual (live baseline)"))
+        XCTAssertTrue(workflow.contains("name: UI Performance Build (release artifact)"))
         XCTAssertTrue(workflow.contains("name: UI Performance (production route)"))
-        XCTAssertGreaterThanOrEqual(workflow.components(separatedBy: "runs-on: macos-26").count - 1, 4)
+        XCTAssertGreaterThanOrEqual(workflow.components(separatedBy: "runs-on: macos-26").count - 1, 5)
 
         XCTAssertTrue(workflow.contains("run: ./ci/run-full.sh"))
         XCTAssertTrue(fullRunner.contains("./scripts/ci.sh swiftpm"))
@@ -52,6 +53,7 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(workflow.contains("SUISUI_PERFORMANCE_BUILD_CONFIGURATION: release"))
         XCTAssertTrue(workflow.contains("SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS: 1000"))
         XCTAssertTrue(workflow.contains("SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS: 3000"))
+        XCTAssertTrue(workflow.contains("SUISUI_PERFORMANCE_USE_PREBUILT_APP: 1"))
         XCTAssertFalse(workflow.contains("SUISUI_LAUNCH_RECOVERY_MODE"))
     }
 
@@ -66,6 +68,53 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(workflow.contains(".tmp/ci-artifacts/ui-visual"))
         XCTAssertTrue(workflow.contains("ui-visual-${{ matrix.locale }}-${{ github.run_id }}-${{ github.run_attempt }}"))
         XCTAssertTrue(workflow.contains(".tmp/ci-artifacts/ui-performance"))
+    }
+
+    func testPerformanceGateWaitsForOtherMacOSUIGatesBeforeMeasuring() throws {
+        let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        let performanceStart = try XCTUnwrap(workflow.range(of: "\n  ui-performance:"))
+        let performanceJob = String(workflow[performanceStart.lowerBound...])
+        let needsStart = try XCTUnwrap(performanceJob.range(of: "    needs:\n"))
+        let conditionStart = try XCTUnwrap(
+            performanceJob.range(
+                of: "    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}",
+                range: needsStart.upperBound..<performanceJob.endIndex
+            )
+        )
+        let dependencies = String(
+            performanceJob[needsStart.upperBound..<conditionStart.lowerBound]
+        )
+
+        XCTAssertTrue(dependencies.contains("      - test_strategy\n"))
+        XCTAssertTrue(dependencies.contains("      - full_validation\n"))
+        XCTAssertTrue(dependencies.contains("      - ui-runtime\n"))
+        XCTAssertTrue(dependencies.contains("      - ui-visual\n"))
+        XCTAssertTrue(dependencies.contains("      - ui-performance-build\n"))
+    }
+
+    func testPerformanceMeasurementUsesVerifiedReleaseArtifactOnAFreshRunner() throws {
+        let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        let buildStart = try XCTUnwrap(workflow.range(of: "\n  ui-performance-build:"))
+        let measureStart = try XCTUnwrap(
+            workflow.range(of: "\n  ui-performance:", range: buildStart.upperBound..<workflow.endIndex)
+        )
+        let buildJob = String(workflow[buildStart.lowerBound..<measureStart.lowerBound])
+        let measureJob = String(workflow[measureStart.lowerBound...])
+
+        XCTAssertTrue(buildJob.contains("SUISUI_RELEASE_BUILD_PURPOSE=performance"))
+        XCTAssertTrue(buildJob.contains("SUISUI_BUILD_CONFIGURATION=release ./script/build_and_run.sh --build-only"))
+        XCTAssertTrue(buildJob.contains("COPYFILE_DISABLE=1 /usr/bin/tar -czf"))
+        XCTAssertTrue(buildJob.contains("archive_sha256="))
+        XCTAssertTrue(buildJob.contains("source_commit="))
+        XCTAssertTrue(buildJob.contains("build_configuration=release"))
+        XCTAssertTrue(buildJob.contains("uses: actions/upload-artifact@v4"))
+        XCTAssertTrue(buildJob.contains("name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}"))
+
+        XCTAssertTrue(measureJob.contains("uses: actions/download-artifact@v4"))
+        XCTAssertTrue(measureJob.contains("name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}"))
+        XCTAssertTrue(measureJob.contains("SUISUI_PERFORMANCE_ARTIFACT_DIR:"))
+        XCTAssertTrue(measureJob.contains("SUISUI_PERFORMANCE_USE_PREBUILT_APP: 1"))
+        XCTAssertFalse(measureJob.contains("Restore Swift build cache"))
     }
 
     func testVisualRequiredCheckAggregatorFailsClosedForUnknownSelectorResults() throws {
@@ -171,6 +220,7 @@ final class CIGateWorkflowTests: XCTestCase {
         // The sanitizer must sit between the lane function and `tee` so
         // secrets and runner-local paths never appear in the public log.
         let script = try readRepositoryFile("scripts/ci.sh")
+        let redactionHelper = try readRepositoryFile("script/ci_redact_stream.sh")
 
         XCTAssertTrue(
             script.contains("| sanitize_gate_log - | tee \"$raw_log\""),
@@ -191,23 +241,50 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(script.contains("pipeline_statuses=(\"${PIPESTATUS[@]}\")"))
         XCTAssertTrue(script.contains("pipeline_statuses[1]"))
         XCTAssertTrue(script.contains("pipeline_statuses[2]"))
-        XCTAssertTrue(script.contains("s#/private/var/folders/[^[:space:]]+#<temp-path>#g"))
-        XCTAssertTrue(script.contains("s#(/var)?/tmp/[^[:space:]]+#<temp-path>#g"))
-        XCTAssertTrue(script.contains("github_pat_"))
-        XCTAssertTrue(script.contains("Authorization"))
-        XCTAssertTrue(
-            script.contains(
-                #"("[[:alnum:]_.-]*(token|secret|password|api[_-]?key)"[[:space:]]*:[[:space:]]*)"[^"]*""#
-            ),
-            "Lane sanitizer must redact double-quoted JSON secret fields before publication"
+        XCTAssertTrue(script.contains("source \"$CI_REDACT_HELPER\""))
+        XCTAssertTrue(script.contains("ci_redact_stream"))
+        XCTAssertTrue(redactionHelper.contains("Authorization"))
+        XCTAssertTrue(redactionHelper.contains("github_pat_"))
+        XCTAssertTrue(redactionHelper.contains("glpat-"))
+        XCTAssertTrue(redactionHelper.contains("AIza"))
+
+        let sensitiveFixture = """
+        public-marker=keep-me
+        path="/Users/alice/My Private App/config.json" volume='/Volumes/Secret Disk/work'
+        TMPDIR=/tmp/private-job-name/cache temp=/private/tmp/provider/cache
+        Authorization: Bearer bearer-provider-value Authorization: Basic basic-provider-value
+        PASSWORD="alpha beta" 'api_key': 'quoted secret value'
+        sk_live_providerfixture1234 glpat-providerfixture1234 AIzaProviderFixture1234567890
+        https://alice:password-value@example.test/path
+        escaped=/Users/alice/My\\ Project/private.txt
+        {"token":"abc\\\"leaked-tail"}
+        -----BEGIN PRIVATE KEY-----
+        private-key-body-value
+        -----END PRIVATE KEY-----
+        -----BEGIN ENCRYPTED PRIVATE KEY-----
+        encrypted-private-key-body-value
+        -----END ENCRYPTED PRIVATE KEY-----
+        """
+        let helperPath = repositoryRoot.appendingPathComponent("script/ci_redact_stream.sh").path
+        let sanitized = try runBash(
+            "source \"$REDACTION_HELPER\"; printf '%s' \"$SENSITIVE_FIXTURE\" | ci_redact_stream",
+            environment: [
+                "REDACTION_HELPER": helperPath,
+                "SENSITIVE_FIXTURE": sensitiveFixture
+            ]
         )
-        XCTAssertTrue(
-            script.contains(
-                #"('[[:alnum:]_.-]*(token|secret|password|api[_-]?key)'[[:space:]]*:[[:space:]]*)'[^']*'"#
-            ),
-            "Lane sanitizer must redact single-quoted dictionary secret fields before publication"
-        )
-        XCTAssertTrue(script.contains("#Ig"))
+        XCTAssertEqual(sanitized.exitCode, 0, sanitized.output)
+        for privateValue in [
+            "alice", "My Private App", "Secret Disk", "bearer-provider-value",
+            "basic-provider-value", "alpha beta", "quoted secret value",
+            "sk_live_providerfixture1234", "glpat-providerfixture1234",
+            "AIzaProviderFixture1234567890", "password-value", "Project/private.txt",
+            "leaked-tail", "private-key-body-value", "private-job-name",
+            "provider/cache", "encrypted-private-key-body-value"
+        ] {
+            XCTAssertFalse(sanitized.output.contains(privateValue), sanitized.output)
+        }
+        XCTAssertTrue(sanitized.output.contains("public-marker=keep-me"), sanitized.output)
     }
 
     func testCompleteSwiftPMRunnerWritesFailedEvidenceWhenDiscoveryFails() throws {
@@ -271,7 +348,7 @@ final class CIGateWorkflowTests: XCTestCase {
         )
         let jobEnd = try XCTUnwrap(
             workflow.range(
-                of: "\n\n  ui-performance:",
+                of: "\n\n  ui-performance-build:",
                 range: runMarker.upperBound..<workflow.endIndex
             )
         )

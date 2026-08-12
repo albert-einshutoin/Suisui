@@ -2,6 +2,519 @@ import XCTest
 @testable import SuisuiCore
 
 final class ProjectBoardStoreTests: XCTestCase {
+    func testInboxReviewLaterRequiresReviewAt() {
+        XCTAssertThrowsError(try InboxTriageRecord(
+            taskID: 42,
+            disposition: .reviewLater,
+            reviewAt: nil,
+            updatedAt: "2026-08-11T00:00:00Z"
+        )) { error in
+            XCTAssertEqual(error as? InboxTriageError, .missingReviewDate)
+        }
+    }
+
+    func testInboxNonReviewDispositionRejectsReviewAt() {
+        XCTAssertThrowsError(try InboxTriageRecord(
+            taskID: 42,
+            disposition: .task,
+            reviewAt: "2026-08-12T09:00:00Z",
+            updatedAt: "2026-08-11T00:00:00Z"
+        )) { error in
+            XCTAssertEqual(error as? InboxTriageError, .unexpectedReviewDate)
+        }
+    }
+
+    func testInboxReviewLaterDateIsNextLocalNineAcrossDST() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let reference = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-03-08T08:30:00Z"))
+
+        let result = try InboxReviewClock.nextReviewDate(after: reference, calendar: calendar)
+
+        XCTAssertEqual(ISO8601DateFormatter().string(from: result), "2026-03-09T16:00:00Z")
+    }
+
+    func testInboxTriageMigrationBackfillsOnlyInboxTasks() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeTriage = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0035_create_inbox_triage_records"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: migrationsBeforeTriage)
+        try connection.execute(
+            """
+            INSERT INTO projects (title, status) VALUES ('Inbox', 'active');
+            INSERT INTO projects (title, status) VALUES ('Other', 'active');
+            """
+        )
+        let inboxRow = try XCTUnwrap(
+            connection.queryRows("SELECT id FROM projects WHERE title = 'Inbox' LIMIT 1;").first
+        )
+        let inboxID = try inboxRow.int64("id")
+        let otherProjectRow = try XCTUnwrap(
+            connection.queryRows("SELECT id FROM projects WHERE title != 'Inbox' LIMIT 1;").first
+        )
+        let otherProjectID = try otherProjectRow.int64("id")
+
+        try connection.execute(
+            """
+            INSERT INTO tasks (project_id, title, status, due_at, created_at, updated_at)
+            VALUES (?, 'Completed inbox', 'completed', NULL, '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z');
+            """,
+            parameters: [.integer(inboxID)]
+        )
+        try connection.execute(
+            """
+            INSERT INTO tasks (project_id, title, status, due_at, created_at, updated_at)
+            VALUES (?, 'Scheduled inbox', 'planned', '2026-08-12T10:00:00Z', '2026-08-01T00:01:00Z', '2026-08-01T00:01:00Z');
+            """,
+            parameters: [.integer(inboxID)]
+        )
+        try connection.execute(
+            """
+            INSERT INTO tasks (project_id, title, status, due_at, created_at, updated_at)
+            VALUES (?, 'Unprocessed inbox', 'planned', NULL, '2026-08-01T00:02:00Z', '2026-08-01T00:02:00Z');
+            """,
+            parameters: [.integer(inboxID)]
+        )
+        try connection.execute(
+            """
+            INSERT INTO tasks (project_id, title, status, due_at, created_at, updated_at)
+            VALUES (?, 'Other project task', 'planned', NULL, '2026-08-01T00:03:00Z', '2026-08-01T00:03:00Z');
+            """,
+            parameters: [.integer(otherProjectID)]
+        )
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT disposition FROM inbox_triage_records ORDER BY task_id;"
+            ),
+            ["task", "scheduled", "unprocessed"]
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT COUNT(*) FROM inbox_triage_records WHERE review_at IS NOT NULL;"
+            ),
+            ["0"]
+        )
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        XCTAssertEqual(
+            try connection.queryStrings("SELECT COUNT(*) FROM inbox_triage_records;"),
+            ["3"]
+        )
+    }
+
+    func testInboxTriageMigrationTreatsInboxProjectNameCaseInsensitively() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeTriage = Array(
+            CoreMigrations.current.prefix {
+                $0.id != "0035_create_inbox_triage_records"
+            }
+        )
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: migrationsBeforeTriage)
+        try connection.execute(
+            """
+            INSERT INTO projects (title, status) VALUES ('inbox', 'active');
+            INSERT INTO tasks (project_id, title, status, created_at, updated_at)
+            SELECT id, 'Lowercase Inbox task', 'planned', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'
+            FROM projects
+            WHERE title = 'inbox';
+            """
+        )
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+
+        XCTAssertEqual(
+            try connection.queryStrings("SELECT disposition FROM inbox_triage_records;"),
+            ["unprocessed"]
+        )
+    }
+
+    func testSQLiteCreateInboxTaskReusesCaseInsensitiveInboxProject() throws {
+        let stores = try makeStoreBundle()
+        let lowercaseInbox = try stores.projects.create(title: "inbox")
+
+        let task = try stores.board.createInboxTask(title: "Reuse lowercase Inbox")
+
+        let projects = try stores.projects.listForProjectBoard()
+        XCTAssertEqual(projects.filter { $0.title.caseInsensitiveCompare("Inbox") == .orderedSame }.count, 1)
+        XCTAssertEqual(task.projectID, lowercaseInbox.id)
+    }
+
+    func testSQLiteCreateInboxTaskReactivatesCompletedInboxProject() throws {
+        let stores = try makeStoreBundle()
+        let inbox = try XCTUnwrap(stores.board.loadSnapshot().projects.first)
+        _ = try stores.board.completeProject(id: inbox.id)
+
+        let task = try stores.board.createInboxTask(title: "Capture after Inbox completion")
+
+        let projects = try stores.board.loadSnapshot().projects
+        let restoredInbox = try XCTUnwrap(projects.first { $0.id == inbox.id })
+        XCTAssertEqual(task.projectID, inbox.id)
+        XCTAssertFalse(restoredInbox.isCompleted)
+        XCTAssertEqual(restoredInbox.column(.backlog)?.tasks.map(\.id), [task.id])
+        XCTAssertEqual(
+            projects.filter { $0.title.caseInsensitiveCompare("Inbox") == .orderedSame }.count,
+            1
+        )
+    }
+
+    @MainActor
+    func testDeleteUndoRestoresDeferredInboxTriageForNewTaskIDWithAndWithoutCapture() throws {
+        for hasCapture in [false, true] {
+            let stores = try makeStoreBundle()
+            let captures = SQLiteInboxCaptureStore(connection: stores.connection)
+            let task = try stores.board.createInboxTask(title: "Restore deferred Inbox item")
+            _ = try stores.board.performInboxTriage(
+                taskID: task.id,
+                action: .reviewLater,
+                referenceDate: try isoDate("2026-08-11T01:00:00Z"),
+                calendar: utcCalendar()
+            )
+            let originalRecord = try XCTUnwrap(
+                stores.board.loadInboxTriageRecords(taskIDs: [task.id])[task.id]
+            )
+            if hasCapture {
+                _ = try captures.createVoiceCapture(InboxVoiceCaptureDraft(
+                    taskID: task.id,
+                    audioFilePath: "/tmp/deferred-inbox.m4a",
+                    durationSeconds: 12,
+                    transcript: "Review this tomorrow",
+                    interpretationSummary: nil,
+                    memo: nil,
+                    transcriptionStatus: .succeeded
+                ))
+            }
+            let viewModel = ProjectBoardViewModel(
+                store: stores.board,
+                inboxCaptureStore: hasCapture ? captures : nil
+            )
+            viewModel.load()
+            viewModel.selectedProjectID = task.projectID
+            viewModel.selectedTaskID = task.id
+
+            viewModel.deleteSelectedTask()
+            viewModel.undoLastBoardOperation()
+
+            let restoredTaskID = try XCTUnwrap(viewModel.selectedTaskID)
+            XCTAssertNotEqual(restoredTaskID, task.id, "hasCapture=\(hasCapture)")
+            let restoredRecord = try XCTUnwrap(
+                stores.board.loadInboxTriageRecords(taskIDs: [restoredTaskID])[restoredTaskID]
+            )
+            XCTAssertEqual(restoredRecord.disposition, .reviewLater, "hasCapture=\(hasCapture)")
+            XCTAssertEqual(restoredRecord.reviewAt, originalRecord.reviewAt, "hasCapture=\(hasCapture)")
+            XCTAssertEqual(restoredRecord.updatedAt, originalRecord.updatedAt, "hasCapture=\(hasCapture)")
+            XCTAssertEqual(try captures.list(taskID: restoredTaskID).count, hasCapture ? 1 : 0)
+            XCTAssertNil(viewModel.errorMessage)
+        }
+    }
+
+    @MainActor
+    func testDeleteUndoRollsBackRestoredInboxTaskWhenTriageRestoreFailsWithAndWithoutCapture() throws {
+        for hasCapture in [false, true] {
+            let stores = try makeStoreBundle()
+            let captures = SQLiteInboxCaptureStore(connection: stores.connection)
+            let task = try stores.board.createInboxTask(title: "Atomic deferred Inbox restore")
+            _ = try stores.board.performInboxTriage(
+                taskID: task.id,
+                action: .reviewLater,
+                referenceDate: try isoDate("2026-08-11T01:00:00Z"),
+                calendar: utcCalendar()
+            )
+            if hasCapture {
+                _ = try captures.createVoiceCapture(InboxVoiceCaptureDraft(
+                    taskID: task.id,
+                    audioFilePath: "/tmp/atomic-deferred-inbox.m4a",
+                    durationSeconds: 8,
+                    transcript: "Retry this later",
+                    interpretationSummary: nil,
+                    memo: nil,
+                    transcriptionStatus: .succeeded
+                ))
+            }
+            let viewModel = ProjectBoardViewModel(
+                store: stores.board,
+                inboxCaptureStore: hasCapture ? captures : nil
+            )
+            viewModel.load()
+            viewModel.selectedProjectID = task.projectID
+            viewModel.selectedTaskID = task.id
+            viewModel.deleteSelectedTask()
+            try stores.connection.execute(
+                """
+                CREATE TRIGGER fail_deleted_inbox_triage_restore
+                BEFORE INSERT ON inbox_triage_records
+                BEGIN SELECT RAISE(ABORT, 'forced deleted Inbox triage restore failure'); END;
+                """
+            )
+
+            viewModel.undoLastBoardOperation()
+
+            XCTAssertFalse(
+                try stores.board.loadSnapshot().projects.flatMap(\.tasks)
+                    .contains { $0.title == "Atomic deferred Inbox restore" },
+                "hasCapture=\(hasCapture)"
+            )
+            XCTAssertTrue(viewModel.canUndoBoardOperation, "hasCapture=\(hasCapture)")
+            XCTAssertNotNil(viewModel.errorMessage, "hasCapture=\(hasCapture)")
+        }
+    }
+
+    @MainActor
+    func testDeleteUndoRollsBackTriageAndPartialCaptureRestoreThenRemainsRetryable() throws {
+        let stores = try makeStoreBundle()
+        let captures = SQLiteInboxCaptureStore(connection: stores.connection)
+        let task = try stores.board.createInboxTask(title: "Retry complete Inbox restore")
+        _ = try stores.board.performInboxTriage(
+            taskID: task.id,
+            action: .reviewLater,
+            referenceDate: try isoDate("2026-08-11T01:00:00Z"),
+            calendar: utcCalendar()
+        )
+        let originalRecord = try XCTUnwrap(
+            stores.board.loadInboxTriageRecords(taskIDs: [task.id])[task.id]
+        )
+        for index in 1...2 {
+            _ = try captures.createVoiceCapture(InboxVoiceCaptureDraft(
+                taskID: task.id,
+                audioFilePath: "/tmp/retry-inbox-\(index).m4a",
+                durationSeconds: Double(index),
+                transcript: "Capture \(index)",
+                interpretationSummary: nil,
+                memo: nil,
+                transcriptionStatus: .succeeded
+            ))
+        }
+        let viewModel = ProjectBoardViewModel(store: stores.board, inboxCaptureStore: captures)
+        viewModel.load()
+        viewModel.selectedProjectID = task.projectID
+        viewModel.selectedTaskID = task.id
+        viewModel.deleteSelectedTask()
+        try stores.connection.execute(
+            """
+            CREATE TRIGGER fail_second_deleted_inbox_capture_restore
+            BEFORE INSERT ON inbox_capture_records
+            WHEN (SELECT COUNT(*) FROM inbox_capture_records) = 1
+            BEGIN SELECT RAISE(ABORT, 'forced partial capture restore failure'); END;
+            """
+        )
+        try stores.connection.execute(
+            """
+            CREATE TRIGGER fail_compensating_deleted_inbox_task_delete
+            BEFORE DELETE ON tasks
+            WHEN OLD.title = 'Retry complete Inbox restore'
+            BEGIN SELECT RAISE(ABORT, 'forced compensating task delete failure'); END;
+            """
+        )
+
+        viewModel.undoLastBoardOperation()
+
+        XCTAssertFalse(
+            try stores.board.loadSnapshot().projects.flatMap(\.tasks)
+                .contains { $0.title == "Retry complete Inbox restore" }
+        )
+        XCTAssertEqual(
+            try stores.connection.queryStrings("SELECT COUNT(*) FROM inbox_triage_records;"),
+            ["0"]
+        )
+        XCTAssertTrue(try captures.listAll().isEmpty)
+        XCTAssertTrue(viewModel.canUndoBoardOperation)
+        XCTAssertNotNil(viewModel.errorMessage)
+
+        try stores.connection.execute("DROP TRIGGER fail_second_deleted_inbox_capture_restore;")
+        try stores.connection.execute("DROP TRIGGER fail_compensating_deleted_inbox_task_delete;")
+        viewModel.undoLastBoardOperation()
+
+        let restoredTaskID = try XCTUnwrap(viewModel.selectedTaskID)
+        XCTAssertNotEqual(restoredTaskID, task.id)
+        XCTAssertEqual(
+            try stores.board.loadSnapshot().projects.flatMap(\.tasks)
+                .filter { $0.title == "Retry complete Inbox restore" }.count,
+            1
+        )
+        let restoredRecord = try XCTUnwrap(
+            stores.board.loadInboxTriageRecords(taskIDs: [restoredTaskID])[restoredTaskID]
+        )
+        XCTAssertEqual(restoredRecord.disposition, .reviewLater)
+        XCTAssertEqual(restoredRecord.reviewAt, originalRecord.reviewAt)
+        XCTAssertEqual(try captures.list(taskID: restoredTaskID).count, 2)
+        XCTAssertFalse(viewModel.canUndoBoardOperation)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    func testProjectBoardTaskExposesPersistedCreatedAt() throws {
+        let stores = try makeStoreBundle()
+        let inboxID = try XCTUnwrap(stores.board.loadSnapshot().projects.first?.id)
+        let record = try stores.tasks.create(
+            title: "Capture timestamp",
+            projectID: inboxID,
+            status: "planned"
+        )
+
+        let task = try XCTUnwrap(
+            stores.board.loadSnapshot().projects.first?.tasks.first { $0.id == record.id }
+        )
+
+        XCTAssertEqual(task.createdAt, record.createdAt)
+        XCTAssertNotNil(task.createdAt)
+    }
+
+    func testSQLiteInboxMakeTaskAndUndoAreAtomicAcrossRestart() throws {
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("suisui-inbox-\(UUID().uuidString).sqlite")
+            .path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let store = try SQLiteProjectBoardStore(path: path)
+        let task = try store.createInboxTask(title: "Classify me")
+        let mutation = try store.performInboxTriage(
+            taskID: task.id,
+            action: .makeTask,
+            referenceDate: try isoDate("2026-08-11T01:00:00Z"),
+            calendar: utcCalendar()
+        )
+
+        XCTAssertEqual(
+            try store.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition,
+            .task
+        )
+        _ = try store.undoInboxTriage(mutation)
+
+        let reopened = try SQLiteProjectBoardStore(path: path)
+        XCTAssertEqual(
+            try reopened.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition,
+            .unprocessed
+        )
+        XCTAssertEqual(try reopened.loadSnapshot().projects.first?.tasks.first?.title, "Classify me")
+    }
+
+    func testSQLiteInboxReviewLaterPreservesDueAtAndStoresNextLocalReview() throws {
+        let stores = try makeStoreBundle()
+        let task = try stores.board.createInboxTask(title: "Review tomorrow")
+        let original = try XCTUnwrap(
+            stores.board.loadSnapshot().projects.first?.tasks.first { $0.id == task.id }
+        )
+
+        _ = try stores.board.performInboxTriage(
+            taskID: task.id,
+            action: .reviewLater,
+            referenceDate: try isoDate("2026-08-11T01:00:00Z"),
+            calendar: utcCalendar()
+        )
+
+        let updated = try XCTUnwrap(
+            stores.board.loadSnapshot().projects.first?.tasks.first { $0.id == task.id }
+        )
+        XCTAssertEqual(updated.dueAt, original.dueAt)
+        XCTAssertEqual(
+            try stores.board.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition,
+            .reviewLater
+        )
+        XCTAssertEqual(
+            try stores.board.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.reviewAt,
+            "2026-08-12T09:00:00Z"
+        )
+    }
+
+    func testSQLiteInboxScheduleTodaySetsDueAtAndDisposition() throws {
+        let stores = try makeStoreBundle()
+        let task = try stores.board.createInboxTask(title: "Schedule today")
+        let referenceDate = try isoDate("2026-08-11T09:00:00Z")
+
+        _ = try stores.board.performInboxTriage(
+            taskID: task.id,
+            action: .scheduleToday,
+            referenceDate: referenceDate,
+            calendar: utcCalendar()
+        )
+
+        let updated = try XCTUnwrap(
+            stores.board.loadSnapshot().projects.first?.tasks.first { $0.id == task.id }
+        )
+        XCTAssertEqual(updated.status, .planned)
+        XCTAssertEqual(updated.dueAt, "2026-08-11T09:00:00Z")
+        XCTAssertEqual(
+            try stores.board.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition,
+            .scheduled
+        )
+    }
+
+    func testSQLiteInboxMakeProjectAndUndoRestoresOriginalProject() throws {
+        let stores = try makeStoreBundle()
+        let task = try stores.board.createInboxTask(title: "Turn into project")
+        let inboxID = task.projectID
+
+        let mutation = try stores.board.performInboxTriage(
+            taskID: task.id,
+            action: .makeProject,
+            referenceDate: try isoDate("2026-08-11T01:00:00Z"),
+            calendar: utcCalendar()
+        )
+        let moved = try XCTUnwrap(
+            stores.board.loadSnapshot(includeArchived: true).projects
+                .flatMap(\.tasks).first { $0.id == task.id }
+        )
+
+        XCTAssertNotEqual(moved.projectID, inboxID)
+        XCTAssertEqual(
+            try stores.board.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition,
+            .project
+        )
+        let createdProjectID = try XCTUnwrap(mutation.createdProjectID)
+
+        _ = try stores.board.undoInboxTriage(mutation)
+
+        let restored = try XCTUnwrap(
+            stores.board.loadSnapshot(includeArchived: true).projects
+                .flatMap(\.tasks).first { $0.id == task.id }
+        )
+        XCTAssertEqual(restored.projectID, inboxID)
+        XCTAssertEqual(
+            try stores.board.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition,
+            .unprocessed
+        )
+        XCTAssertFalse(
+            try stores.board.loadSnapshot(includeArchived: true).projects.contains { $0.id == createdProjectID }
+        )
+    }
+
+    func testSQLiteInboxTriageRollsBackTaskWhenStateWriteFails() throws {
+        let stores = try makeStoreBundle()
+        let task = try stores.board.createInboxTask(title: "Keep original")
+        _ = try stores.board.performInboxTriage(
+            taskID: task.id,
+            action: .makeTask,
+            referenceDate: try isoDate("2026-08-11T01:00:00Z"),
+            calendar: utcCalendar()
+        )
+        try stores.connection.execute(
+            """
+            CREATE TRIGGER fail_inbox_state
+            BEFORE UPDATE ON inbox_triage_records
+            BEGIN SELECT RAISE(ABORT, 'forced inbox state failure'); END;
+            """
+        )
+
+        XCTAssertThrowsError(try stores.board.performInboxTriage(
+            taskID: task.id,
+            action: .scheduleToday,
+            referenceDate: try isoDate("2026-08-11T01:00:00Z"),
+            calendar: utcCalendar()
+        ))
+        let unchanged = try XCTUnwrap(
+            stores.board.loadSnapshot().projects.first?.tasks.first { $0.id == task.id }
+        )
+        XCTAssertNil(unchanged.dueAt)
+        XCTAssertEqual(
+            try stores.board.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition,
+            .task
+        )
+    }
+
     func testSQLiteBoardStoreCreatesDefaultProjectWithoutMockTasks() throws {
         let store = try makeStore()
 
@@ -4322,7 +4835,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         let wednesday = try XCTUnwrap(overview.days.first { $0.dateKey == "2026-06-24" })
         XCTAssertEqual(wednesday.projectContributions.map(\.projectTitle), ["Active Plan"])
         XCTAssertEqual(wednesday.projectContributions.flatMap(\.tasks).map(\.title), ["Active due"])
-        XCTAssertEqual(overview.inboxUntriagedCount, 1)
+        XCTAssertEqual(overview.inboxUntriagedCount, 0)
         XCTAssertTrue(try calendarClient.listEvents().isEmpty)
     }
 
@@ -6314,6 +6827,10 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(reloadedTask.title, "Persist menu bar capture")
         XCTAssertEqual(reloadedTask.status, .backlog)
         XCTAssertEqual(reloadedViewModel.inboxProject?.title, "Inbox")
+        XCTAssertEqual(
+            try store.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition,
+            .unprocessed
+        )
     }
 
     @MainActor
@@ -6363,6 +6880,35 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         viewModel.setInboxTriageFilter(.manual)
         XCTAssertEqual(viewModel.filteredInboxTasks.map(\.id), [scheduled.id, manual.id])
+    }
+
+    @MainActor
+    func testProjectBoardViewModelReferenceInboxTabsMapTasksProposalsAndNotifications() throws {
+        let bundle = try makeStoreBundle()
+        let captures = SQLiteInboxCaptureStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(store: bundle.board, inboxCaptureStore: captures)
+        viewModel.load()
+
+        let task = try XCTUnwrap(viewModel.createInboxTask(title: "Prepare presentation"))
+        let proposal = try XCTUnwrap(viewModel.createInboxTask(title: "Draft launch plan"))
+        _ = try captures.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: proposal.id,
+            audioFilePath: "/tmp/proposal.m4a",
+            durationSeconds: 8,
+            transcript: "Prepare the launch plan",
+            interpretationSummary: "Suggested proposal for the launch plan",
+            memo: nil,
+            transcriptionStatus: .succeeded
+        ))
+        let notification = try XCTUnwrap(viewModel.createInboxTask(title: "Release notification"))
+        viewModel.load()
+
+        XCTAssertEqual(viewModel.inboxReferenceCategory(for: task), .task)
+        XCTAssertEqual(viewModel.inboxReferenceCategory(for: proposal), .proposal)
+        XCTAssertEqual(viewModel.inboxReferenceCategory(for: notification), .notification)
+        XCTAssertEqual(viewModel.inboxReferenceTasks(for: .task).map(\.id), [task.id])
+        XCTAssertEqual(viewModel.inboxReferenceCount(for: .proposal), 1)
+        XCTAssertEqual(viewModel.inboxReferenceTasks(for: .all, unprocessedOnly: true).count, 3)
     }
 
     @MainActor
@@ -8081,8 +8627,243 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedTask?.dueAt, "2026-06-19T09:00:00Z")
 
         viewModel.deferSelectedTaskForLater()
+        XCTAssertEqual(viewModel.selectedTask?.status, .planned)
+        XCTAssertEqual(viewModel.selectedTask?.dueAt, "2026-06-19T09:00:00Z")
+    }
+
+    @MainActor
+    func testInboxStartsWithUnprocessedFilterAndMakeTaskLeavesHistoryVisible() throws {
+        let store = InMemoryProjectBoardStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        let first = try XCTUnwrap(viewModel.createInboxTask(title: "First capture"))
+        let second = try XCTUnwrap(viewModel.createInboxTask(title: "Second capture"))
+        viewModel.selectedTaskID = second.id
+
+        XCTAssertEqual(viewModel.inboxTriageFilter, .unprocessed)
+        XCTAssertEqual(viewModel.filteredInboxTasks.map(\.id), [second.id, first.id])
+
+        viewModel.markSelectedTaskAsTask()
+
+        XCTAssertEqual(viewModel.filteredInboxTasks.map(\.id), [first.id])
+        XCTAssertEqual(viewModel.inboxTasks.map(\.id), [second.id, first.id])
+        XCTAssertEqual(viewModel.selectedTaskID, first.id)
+        XCTAssertEqual(viewModel.inboxClassificationFeedback?.canUndo, true)
+    }
+
+    @MainActor
+    func testInboxSidebarCountUsesUnprocessedDisposition() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let first = try XCTUnwrap(viewModel.createInboxTask(title: "Sidebar first"))
+        let second = try XCTUnwrap(viewModel.createInboxTask(title: "Sidebar second"))
+        viewModel.selectedTaskID = second.id
+
+        viewModel.markSelectedTaskAsTask()
+
+        XCTAssertEqual(viewModel.derivedReadModels.sidebarMetrics.inboxCount, 1)
+        XCTAssertEqual(viewModel.inboxTriageCount(for: .unprocessed), 1)
+        XCTAssertTrue(viewModel.inboxTasks.contains { $0.id == first.id })
+    }
+
+    @MainActor
+    func testInboxTriageOnlyReloadRefreshesDerivedSidebarMetrics() throws {
+        let store = InMemoryProjectBoardStore()
+        let sourceViewModel = ProjectBoardViewModel(store: store)
+        let observingViewModel = ProjectBoardViewModel(store: store)
+        sourceViewModel.load()
+        observingViewModel.load()
+
+        let task = try XCTUnwrap(sourceViewModel.createInboxTask(title: "Shared triage state"))
+        observingViewModel.load()
+        XCTAssertEqual(observingViewModel.derivedReadModels.sidebarMetrics.inboxCount, 1)
+
+        sourceViewModel.selectedTaskID = task.id
+        sourceViewModel.markSelectedTaskAsTask()
+        observingViewModel.load()
+
+        XCTAssertEqual(observingViewModel.derivedReadModels.sidebarMetrics.inboxCount, 0)
+    }
+
+    @MainActor
+    func testInboxTriageReadFailureIsSurfacedAsRecoverableBoardFailure() throws {
+        let task = ProjectBoardTask(
+            id: 1,
+            projectID: 1,
+            title: "Triage read failure",
+            detail: "",
+            status: .backlog,
+            priority: .medium,
+            dueAt: nil
+        )
+        let project = ProjectBoardProject(
+            id: 1,
+            title: "Inbox",
+            status: "active",
+            subtitle: "1 open / 1 total",
+            columns: ProjectTaskStatus.allCases.map { status in
+                ProjectBoardColumn(status: status, tasks: status == .backlog ? [task] : [])
+            }
+        )
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(
+                snapshot: ProjectBoardSnapshot(projects: [project]),
+                inboxTriageReadError: DatabaseError.stepFailed("Inbox triage read failed.")
+            )
+        )
+
+        viewModel.load()
+
+        XCTAssertEqual(viewModel.inboxTriageErrorMessage, "Inbox triage read failed.")
+        XCTAssertEqual(viewModel.errorMessage, "Inbox triage read failed.")
+        XCTAssertEqual(viewModel.failure, .providerFailed("Inbox triage read failed."))
+    }
+
+    @MainActor
+    func testInboxTriageReadFailureAfterMutationRemainsVisible() throws {
+        let store = InMemoryProjectBoardStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createInboxTask(title: "Mutation reload failure"))
+        viewModel.selectedTaskID = task.id
+        store.inboxTriageReadError = DatabaseError.stepFailed("Inbox triage read failed.")
+
+        viewModel.markSelectedTaskAsTask()
+
+        XCTAssertEqual(viewModel.errorMessage, "Inbox triage read failed.")
+        XCTAssertEqual(viewModel.failure, .providerFailed("Inbox triage read failed."))
+        XCTAssertEqual(viewModel.failureActionLabel, "Reload")
+    }
+
+    @MainActor
+    func testInboxTriageReadFailureAfterUndoRemainsVisible() throws {
+        let store = InMemoryProjectBoardStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createInboxTask(title: "Undo reload failure"))
+        viewModel.selectedTaskID = task.id
+        viewModel.markSelectedTaskAsTask()
+
+        store.inboxTriageReadError = DatabaseError.stepFailed("Inbox triage read failed.")
+        viewModel.undoLastInboxClassification()
+
+        XCTAssertEqual(viewModel.errorMessage, "Inbox triage read failed.")
+        XCTAssertEqual(viewModel.failure, .providerFailed("Inbox triage read failed."))
+        XCTAssertEqual(viewModel.failureActionLabel, "Reload")
+    }
+
+    @MainActor
+    func testInboxManualSummaryDoesNotCallAProcessedTaskUnprocessed() throws {
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createInboxTask(title: "Manual triage label"))
+        viewModel.selectedTaskID = task.id
+
+        viewModel.markSelectedTaskAsTask()
+
+        XCTAssertEqual(viewModel.inboxTriageSummary(for: task).interpretationLabel, "Manual")
+        XCTAssertEqual(
+            viewModel.inboxTriageSummary(for: task).accessibilityValue,
+            "Source: Manual, Interpretation: Manual"
+        )
+    }
+
+    @MainActor
+    func testInboxReviewLaterBecomesVisibleAtNextLocalNine() throws {
+        let store = InMemoryProjectBoardStore()
+        let referenceDate = try isoDate("2026-08-11T08:59:00Z")
+        let viewModel = ProjectBoardViewModel(
+            store: store,
+            // Keep every derived Inbox read model on the scenario clock. Using
+            // wall time here would make the pre-boundary assertion expire.
+            readModelNow: { referenceDate },
+            readModelCalendar: { self.utcCalendar() }
+        )
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createInboxTask(title: "Review later"))
+        viewModel.selectedTaskID = task.id
+
+        viewModel.deferSelectedTaskForLater(referenceDate: referenceDate)
+
+        XCTAssertTrue(viewModel.filteredInboxTasks.isEmpty)
+        viewModel.refreshInboxReviewAvailability(at: try isoDate("2026-08-12T08:59:59Z"))
+        XCTAssertTrue(viewModel.filteredInboxTasks.isEmpty)
+
+        viewModel.refreshInboxReviewAvailability(at: try isoDate("2026-08-12T09:00:00Z"))
+        XCTAssertEqual(viewModel.filteredInboxTasks.map(\.id), [task.id])
+    }
+
+    @MainActor
+    func testInboxCompletionUndoRestoresTaskAndDispositionTogether() throws {
+        let store = InMemoryProjectBoardStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createInboxTask(title: "Complete and undo"))
+        viewModel.selectedTaskID = task.id
+
+        viewModel.toggleTaskCompletion(id: task.id)
+
+        XCTAssertEqual(viewModel.selectedTask?.status, .done)
+        XCTAssertEqual(try store.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition, .task)
+        XCTAssertTrue(viewModel.canUndoBoardOperation)
+
+        viewModel.undoLastBoardOperation()
+
+        XCTAssertEqual(viewModel.selectedTaskID, task.id)
         XCTAssertEqual(viewModel.selectedTask?.status, .backlog)
-        XCTAssertNil(viewModel.selectedTask?.dueAt)
+        XCTAssertEqual(try store.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition, .unprocessed)
+        XCTAssertEqual(viewModel.filteredInboxTasks.map(\.id), [task.id])
+    }
+
+    @MainActor
+    func testSQLiteInboxCompletionUndoClearsCompletionTimestampAndRestoresDisposition() throws {
+        let store = try makeStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        let task = try XCTUnwrap(viewModel.createInboxTask(title: "Persist completion undo"))
+        viewModel.selectedTaskID = task.id
+
+        viewModel.toggleTaskCompletion(id: task.id)
+        XCTAssertEqual(viewModel.selectedTask?.status, .done)
+        XCTAssertNotNil(viewModel.selectedTask?.completedAt)
+
+        viewModel.undoLastBoardOperation()
+
+        let restored = try XCTUnwrap(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id })
+        XCTAssertEqual(restored.status, .backlog)
+        XCTAssertNil(restored.completedAt)
+        XCTAssertEqual(try store.loadInboxTriageRecords(taskIDs: [task.id])[task.id]?.disposition, .unprocessed)
+    }
+
+    @MainActor
+    func testSQLiteInboxVoiceCompletionUndoDeletesRegeneratedOccurrence() throws {
+        let store = try makeStore()
+        let viewModel = ProjectBoardViewModel(store: store)
+        viewModel.load()
+        let inboxID = try XCTUnwrap(viewModel.inboxProject?.id)
+        let task = try store.createInboxTask(title: "Recurring Inbox voice task")
+        _ = try store.updateTask(id: task.id, ProjectBoardTaskDraft(
+            projectID: inboxID,
+            title: task.title,
+            status: .backlog,
+            dueAt: "2099-07-10",
+            recurrence: "daily"
+        ))
+        viewModel.load()
+        viewModel.selectedTaskID = task.id
+
+        XCTAssertTrue(viewModel.applyInboxVoiceTriageCommand(
+            InboxVoiceTriageCommand(action: .complete, sourceTranscript: "完了")
+        ))
+        XCTAssertEqual(viewModel.snapshot.projects.flatMap(\.tasks).count, 2)
+
+        XCTAssertTrue(viewModel.applyInboxVoiceTriageCommand(
+            InboxVoiceTriageCommand(action: .undo, sourceTranscript: "undo")
+        ))
+
+        let tasksAfterUndo = viewModel.snapshot.projects.flatMap(\.tasks)
+        XCTAssertEqual(tasksAfterUndo.map(\.id), [task.id])
+        XCTAssertEqual(tasksAfterUndo.first?.status, .backlog)
     }
 
     @MainActor
@@ -9242,6 +10023,27 @@ private struct AlwaysFailingProjectBoardStore: ProjectBoardStore {
         throw error
     }
 
+    func loadInboxTriageRecords(taskIDs: Set<Int64>) throws -> [Int64: InboxTriageRecord] {
+        throw error
+    }
+
+    func createInboxTask(title: String) throws -> ProjectBoardTask {
+        throw error
+    }
+
+    func performInboxTriage(
+        taskID: Int64,
+        action: InboxTriageAction,
+        referenceDate: Date,
+        calendar: Calendar
+    ) throws -> InboxTriageMutation {
+        throw error
+    }
+
+    func undoInboxTriage(_ mutation: InboxTriageMutation) throws -> ProjectBoardTask {
+        throw error
+    }
+
     func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
         throw error
     }
@@ -9400,6 +10202,30 @@ private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore
     }
 
     func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func loadInboxTriageRecords(taskIDs: Set<Int64>) throws -> [Int64: InboxTriageRecord] {
+        // This double exercises task retry semantics, not triage storage.
+        // Keep the metadata read available so board-load failures do not mask
+        // the operation under test.
+        return [:]
+    }
+
+    func createInboxTask(title: String) throws -> ProjectBoardTask {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func performInboxTriage(
+        taskID: Int64,
+        action: InboxTriageAction,
+        referenceDate: Date,
+        calendar: Calendar
+    ) throws -> InboxTriageMutation {
+        throw ProjectBoardStoreTestError.unavailable
+    }
+
+    func undoInboxTriage(_ mutation: InboxTriageMutation) throws -> ProjectBoardTask {
         throw ProjectBoardStoreTestError.unavailable
     }
 

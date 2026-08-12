@@ -113,7 +113,6 @@ route_content_marker=""
 route_text=""
 route_failure_category=""
 route_failure_reason=""
-route_start_day_key=""
 
 terminate_app() {
   # A PID-scoped shutdown avoids terminating a developer's separately running
@@ -184,31 +183,66 @@ runtime_counter_value() {
     | /usr/bin/sed "s/^${counter_name}=//" || true
 }
 
+runtime_preview_temporal_key() {
+  local build_count="$1"
+  # Compare the product's own PII-free time-block keys instead of reproducing
+  # Calendar/DST semantics in Bash. A same-block rebuild remains a hard failure.
+  /usr/bin/log show --style compact --last 2m --predicate "processID == $app_pid" 2>/dev/null \
+    | /usr/bin/grep -Eo "suisui.dailyPlanningPreview.buildCount=${build_count} temporalKey=[0-9]+" \
+    | /usr/bin/tail -n 1 \
+    | /usr/bin/sed -E "s/^suisui\.dailyPlanningPreview\.buildCount=${build_count} temporalKey=//" || true
+}
+
+runtime_preview_build_policy() {
+  local build_count="$1"
+  local first_key="$2"
+  local current_key="$3"
+  if [[ ! "$build_count" =~ ^[0-9]+$ ||
+    ! "$first_key" =~ ^[0-9]+$ ||
+    ! "$current_key" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+  if [[ "$build_count" == "2" && "$current_key" != "$first_key" ]]; then
+    printf '2 product-temporal-cache-context-changed'
+    return 0
+  fi
+  printf '1 single-time-block'
+}
+
 capture_runtime_route_diagnostics() {
   local preview_build_count
   local toolbar_layout_max_depth
-  local current_day_key
+  local first_preview_build_key
+  local current_preview_build_key
+  local preview_build_policy
   local allowed_preview_build_count=1
-  local preview_build_reason="single-day-route"
+  local preview_build_reason="single-time-block"
   preview_build_count="$(runtime_counter_value 'suisui.dailyPlanningPreview.buildCount')"
   toolbar_layout_max_depth="$(runtime_counter_value 'suisui.toolbar.layout.maxDepth')"
-  current_day_key="$(date '+%Y-%m-%d')"
-  if [[ -n "$route_start_day_key" && "$current_day_key" != "$route_start_day_key" ]]; then
-    # Today legitimately rebuilds once when the route crossed the local day boundary.
-    # Keep the normal limit at one; only the observed midnight transition permits two.
-    allowed_preview_build_count=2
-    preview_build_reason="local-day-boundary-crossed"
+  if [[ "$preview_build_count" =~ ^[0-9]+$ && "$preview_build_count" -ge 1 ]]; then
+    first_preview_build_key="$(runtime_preview_temporal_key 1)"
+    current_preview_build_key="$(runtime_preview_temporal_key "$preview_build_count")"
   fi
-
-  if [[ ! "$preview_build_count" =~ ^[0-9]+$ || ! "$toolbar_layout_max_depth" =~ ^[0-9]+$ ]]; then
-    printf 'status=diagnostic-unavailable\npreview-build-count=%s\ntoolbar-layout-max-depth=%s\n' \
-      "${preview_build_count:-missing}" "${toolbar_layout_max_depth:-missing}" \
+  if [[ ! "$preview_build_count" =~ ^[0-9]+$ ||
+    ! "$toolbar_layout_max_depth" =~ ^[0-9]+$ ||
+    ! "$first_preview_build_key" =~ ^[0-9]+$ ||
+    ! "$current_preview_build_key" =~ ^[0-9]+$ ]]; then
+    printf 'status=diagnostic-unavailable\npreview-build-count=%s\nfirst-preview-build-key=%s\ncurrent-preview-build-key=%s\ntoolbar-layout-max-depth=%s\n' \
+      "${preview_build_count:-missing}" "${first_preview_build_key:-missing}" \
+      "${current_preview_build_key:-missing}" "${toolbar_layout_max_depth:-missing}" \
       >"$case_artifact_dir/toolbar-recursion-diagnostic.txt"
     return 1
   fi
 
-  printf 'status=measured\npreview-build-count=%s\nallowed-preview-build-count=%s\npreview-build-reason=%s\ntoolbar-layout-max-depth=%s\n' \
-    "$preview_build_count" "$allowed_preview_build_count" "$preview_build_reason" "$toolbar_layout_max_depth" \
+  if ! preview_build_policy="$(runtime_preview_build_policy \
+    "$preview_build_count" "$first_preview_build_key" "$current_preview_build_key")"; then
+    return 1
+  fi
+  read -r allowed_preview_build_count preview_build_reason <<<"$preview_build_policy"
+
+  printf 'status=measured\npreview-build-count=%s\nallowed-preview-build-count=%s\npreview-build-reason=%s\nfirst-preview-build-key=%s\ncurrent-preview-build-key=%s\ntoolbar-layout-max-depth=%s\n' \
+    "$preview_build_count" "$allowed_preview_build_count" "$preview_build_reason" \
+    "$first_preview_build_key" "$current_preview_build_key" "$toolbar_layout_max_depth" \
     >"$case_artifact_dir/toolbar-recursion-diagnostic.txt"
   printf '%s\n' "$preview_build_count" >"$case_artifact_dir/preview-build-count.txt"
   printf '%s\n' "$toolbar_layout_max_depth" >"$case_artifact_dir/toolbar-layout-max-depth.txt"
@@ -624,9 +658,14 @@ launch_route_and_wait_for_markers() {
   # its AX route subtree is queryable; only a window-classified failure gets
   # one clean relaunch below.
   case_deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
-  if ! wait_for_marker_until "project-board-command-palette" "" "$case_deadline"; then
-    route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
-    return 1
+  if [[ "$route_id" != "inbox" ]]; then
+    # Inbox owns its reference-matched sort/filter header and intentionally
+    # hides the native window toolbar. Other routes still prove the global
+    # command-palette marker before their route-specific AX contract.
+    if ! wait_for_marker_until "project-board-command-palette" "" "$case_deadline"; then
+      route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
+      return 1
+    fi
   fi
   if ! wait_for_marker_until "$route_sidebar_marker" "" "$case_deadline"; then
     route_failure_category="$(ax_classify_marker_failure "$last_marker_probe_file" "$app_pid")"
@@ -652,7 +691,6 @@ run_route() {
   rm -rf "$route_artifact_dir"
   mkdir -p "$route_artifact_dir/ax-probes"
 
-  route_start_day_key="$(date '+%Y-%m-%d')"
   if ! launch_route_and_wait_for_markers "$route_artifact_dir/window-attempt-1.err"; then
     if [[ "$route_failure_category" != "window" ]]; then
       fail_route "$route_failure_category"

@@ -275,6 +275,55 @@ final class BoardOperationUndoTests: XCTestCase {
         XCTAssertEqual(restored.completedAt, completedAt)
     }
 
+    @MainActor
+    func testUndoDeleteRestoresInboxVoiceCaptureMetadataAndAudioPath() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteProjectBoardStore(connection: connection)
+        let captureStore = SQLiteInboxCaptureStore(connection: connection)
+        let inboxProjectID = try XCTUnwrap(store.loadSnapshot().projects.first?.id)
+        let task = try store.createTask(ProjectBoardTaskDraft(
+            projectID: inboxProjectID,
+            title: "Prepare tomorrow's presentation",
+            detail: "Voice memo task",
+            status: .backlog
+        ))
+        let originalPath = "/Users/example/Library/Application Support/Suisui/InboxAudio/capture.m4a"
+        let capture = try captureStore.createVoiceCapture(InboxVoiceCaptureDraft(
+            taskID: task.id,
+            audioFilePath: originalPath,
+            durationSeconds: 84,
+            transcript: "Create the presentation materials.",
+            interpretationSummary: "Prepare presentation materials",
+            memo: "Use the new product screenshots.",
+            classificationStatus: .classified,
+            transcriptionStatus: .succeeded,
+            createdAt: "2026-08-12T10:15:00Z"
+        ))
+        let viewModel = ProjectBoardViewModel(
+            store: store,
+            inboxCaptureStore: captureStore
+        )
+        viewModel.load()
+        viewModel.selectedProjectID = task.projectID
+        viewModel.selectedTaskID = task.id
+
+        viewModel.deleteSelectedTask()
+        XCTAssertThrowsError(try captureStore.get(id: capture.id))
+
+        viewModel.undoLastBoardOperation()
+
+        let restoredTaskID = try XCTUnwrap(viewModel.selectedTaskID)
+        let restored = try XCTUnwrap(captureStore.list(taskID: restoredTaskID).first)
+        XCTAssertEqual(restored.audioFilePath, originalPath)
+        XCTAssertEqual(restored.transcript, capture.transcript)
+        XCTAssertEqual(restored.interpretationSummary, capture.interpretationSummary)
+        XCTAssertEqual(restored.memo, capture.memo)
+        XCTAssertEqual(restored.classificationStatus, capture.classificationStatus)
+        XCTAssertEqual(restored.transcriptionStatus, capture.transcriptionStatus)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
     // MARK: - Undo inspector edit
 
     @MainActor
