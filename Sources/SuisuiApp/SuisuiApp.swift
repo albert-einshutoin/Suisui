@@ -1015,6 +1015,10 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
                 .preferredColorScheme(SuisuiAppearancePreference.environmentOverride?.colorScheme)
                 .environment(\.locale, (AppLanguagePreference.environmentOverride ?? .system).locale)
             )
+            // This deterministic evidence window owns the audited outer
+            // viewport. SwiftUI fitting hints would otherwise race the AX
+            // resizer and restore the view's natural 720x652 frame.
+            hostingController.sizingOptions = []
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 680, height: 572),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],

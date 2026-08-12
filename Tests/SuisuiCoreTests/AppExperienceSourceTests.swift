@@ -5216,6 +5216,28 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertLessThan(sizingOptions.lowerBound, contentController.lowerBound)
     }
 
+    func testSettingsEvidenceWindowOwnsItsAuditedViewport() throws {
+        let appSource = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
+        let functionStart = try XCTUnwrap(
+            appSource.range(of: "private func openSettingsWindowForEvidenceIfRequested()")
+        )
+        let functionEnd = try XCTUnwrap(
+            appSource.range(
+                of: "private func openVoiceCommandWindowForEvidenceIfRequested()",
+                range: functionStart.upperBound..<appSource.endIndex
+            )
+        )
+        let evidenceSource = String(appSource[functionStart.lowerBound..<functionEnd.lowerBound])
+        let sizingOptions = try XCTUnwrap(
+            evidenceSource.range(of: "hostingController.sizingOptions = []")
+        )
+        let contentController = try XCTUnwrap(
+            evidenceSource.range(of: "window.contentViewController = hostingController")
+        )
+
+        XCTAssertLessThan(sizingOptions.lowerBound, contentController.lowerBound)
+    }
+
     func testReviewRuntimeDoesNotFallBackToEmptyToolRegistry() throws {
         let appSource = try readAppShellSource()
 
