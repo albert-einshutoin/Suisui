@@ -117,6 +117,10 @@ struct InboxWorkflowView: View {
                         .padding(.vertical, 18)
                         .padding(.trailing, 18)
                 }
+                // The wide and compact branches contain AppKit-backed controls.
+                // Distinct identities prevent SwiftUI from reusing their native
+                // frames when a live resize moves the triage rail across columns.
+                .id("inbox-wide-workflow")
 
                 ScrollView(.vertical) {
                     VStack(alignment: .leading, spacing: 0) {
@@ -135,6 +139,7 @@ struct InboxWorkflowView: View {
                 }
                 .defaultScrollAnchor(.top)
                 .scrollIndicators(.visible)
+                .id("inbox-compact-workflow")
                 .accessibilityIdentifier("inbox-compact-workflow-scroll")
             }
         .accessibilityElement(children: .contain)

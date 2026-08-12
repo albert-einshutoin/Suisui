@@ -3522,6 +3522,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("InboxTriageRail("))
         XCTAssertTrue(inboxWorkflowSource.contains(".accessibilityIdentifier(\"inbox-compact-workflow-scroll\")"))
         XCTAssertTrue(inboxWorkflowSource.contains(".scrollIndicators(.visible)"))
+        XCTAssertTrue(inboxWorkflowSource.contains(".id(\"inbox-wide-workflow\")"))
+        XCTAssertTrue(inboxWorkflowSource.contains(".id(\"inbox-compact-workflow\")"))
         let compactScrollStart = try XCTUnwrap(inboxWorkflowSource.range(of: "ScrollView(.vertical) {"))
         let compactScrollEnd = try XCTUnwrap(
             inboxWorkflowSource[compactScrollStart.lowerBound...]
