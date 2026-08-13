@@ -88,6 +88,7 @@ class ExecutionContractTests(unittest.TestCase):
 
         self.assertIn("./scripts/ci.sh swiftpm", contents)
         self.assertIn("./script/check_pseudo_voiceover_paths.sh", contents)
+        self.assertNotIn("check_pseudo_voiceover_paths.sh --swift-test", contents)
         self.assertNotIn("./scripts/ci.sh source-contracts", contents)
         self.assertIn("./script/check_security_regressions.sh", contents)
         self.assertIn("int(executed) - int(skipped)", contents)

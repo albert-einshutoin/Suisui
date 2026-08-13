@@ -556,6 +556,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(workflow.contains(".tmp/ci-artifacts/swiftpm"))
         XCTAssertTrue(workflow.contains("if: always()"))
         XCTAssertTrue(fullRunner.contains("./script/check_pseudo_voiceover_paths.sh"))
+        XCTAssertFalse(fullRunner.contains("check_pseudo_voiceover_paths.sh --swift-test"))
         XCTAssertFalse(fullRunner.contains("./scripts/ci.sh source-contracts"))
         XCTAssertFalse(fullRunner.contains("impact/analyze"))
         XCTAssertFalse(fullRunner.contains("ci/config"))
