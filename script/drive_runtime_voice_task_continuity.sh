@@ -261,7 +261,7 @@ run_all() {
   # selected project/task into the persisted conversation session.
   launch_owned_app "project:$PROJECT_ID" "$TASK_TWO_ID" "0" || fail "normal_product_route" "launch" "normal_route_launch_failed"
   wait_for_marker "project-board-detail" || fail "normal_product_route" "ax" "project_board_marker_missing"
-  ax_press "project-board-voice-command" || fail "normal_product_route" "ax" "voice_command_control_missing"
+  ax_press "sidebar-action-voice-command" || fail "normal_product_route" "ax" "voice_command_control_missing"
   wait_for_marker "voice-conversation-workspace" || fail "normal_product_route" "ax" "voice_workspace_marker_missing"
   write_witness "normal_product_route" "project_board_ax=visible" "voice_command_ax=visible"
   session_id="$("$SQLITE3" -readonly -noheader "$DATABASE_PATH" "SELECT id FROM voice_task_conversation_sessions ORDER BY updated_at DESC LIMIT 1;" | tr -d '\r')"
@@ -312,7 +312,7 @@ run_all() {
   terminate_owned_app
   launch_owned_app "project:$PROJECT_ID" "$TASK_TWO_ID" "0" || fail "restart" "launch" "owned_restart_failed"
   wait_for_marker "project-board-detail" || fail "restart" "ax" "project_board_marker_missing"
-  ax_press "project-board-voice-command" || fail "restart" "ax" "voice_command_control_missing"
+  ax_press "sidebar-action-voice-command" || fail "restart" "ax" "voice_command_control_missing"
   wait_for_marker "voice-conversation-workspace" || fail "restart" "window" "voice_workspace_not_restored"
   write_witness "restart" "app_restarted=true"
   local resumed resume_summary resume_summary_sha256

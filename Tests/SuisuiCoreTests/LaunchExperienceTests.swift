@@ -65,7 +65,7 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(launcher.contains("\"-ApplePersistenceIgnoreState\", \"YES\""))
         XCTAssertTrue(script.contains("wait_for_project_board_window"))
         XCTAssertTrue(script.contains("wait_for_project_board_marker"))
-        XCTAssertTrue(script.contains("project-board-command-palette"))
+        XCTAssertTrue(script.contains("project-board-sidebar-toggle"))
         XCTAssertTrue(script.contains("project-board-sidebar"))
         XCTAssertTrue(script.contains("project-board-detail"))
         XCTAssertTrue(script.contains("BLOCKER: Project Board window was not visible within"))
@@ -498,7 +498,7 @@ final class LaunchExperienceTests: XCTestCase {
         // The marker waiter is deliberately generic: the production smoke must
         // exercise both concrete markers through that helper, not duplicate it.
         XCTAssertTrue(source.contains("wait_for_marker_until()"))
-        XCTAssertTrue(source.contains("wait_for_marker_until \"project-board-command-palette\" \"\" \"$case_deadline\""))
+        XCTAssertTrue(source.contains("wait_for_marker_until \"project-board-sidebar-toggle\" \"\" \"$case_deadline\""))
         XCTAssertTrue(source.contains("wait_for_marker_until \"today-workflow\" \"$expected_today_label\" \"$case_deadline\""))
         XCTAssertTrue(source.contains("RUNTIME_TIMEOUT_SECONDS=\"${SUISUI_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS:-30}\""))
         XCTAssertFalse(source.contains("RUNTIME_TIMEOUT_SECONDS=\"${SUISUI_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS:-10}\""))
@@ -561,6 +561,20 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("case schedule"))
         XCTAssertTrue(source.contains("case done"))
         XCTAssertTrue(source.contains("case .project(let projectID):"))
+    }
+
+    func testRuntimeCRUDRecoveryEntryPointsOpenTheirAdvertisedWindows() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardLaunchRecoveryViews.swift")
+        let start = try XCTUnwrap(source.range(of: "private struct ProjectBoardRuntimeCRUDRecoveryView"))
+        let end = try XCTUnwrap(
+            source.range(of: "\nprivate struct ", range: start.upperBound..<source.endIndex)
+        )
+        let recoverySource = String(source[start.lowerBound..<end.lowerBound])
+
+        XCTAssertTrue(recoverySource.contains("@Environment(\\.openSettings)"))
+        XCTAssertTrue(recoverySource.contains("@Environment(\\.openWindow)"))
+        XCTAssertTrue(recoverySource.contains("openSettings()"))
+        XCTAssertTrue(recoverySource.contains("openWindow(id: \"voice-capture\")"))
     }
 
     func testWorkflowRootAccessibilityKeepsNestedLaunchRecoveryIdentifiers() throws {

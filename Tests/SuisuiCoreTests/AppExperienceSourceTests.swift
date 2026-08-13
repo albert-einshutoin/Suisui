@@ -437,18 +437,6 @@ final class AppExperienceSourceTests: XCTestCase {
         let sidebarCall = String(
             boardSource[sidebarCallStart.lowerBound..<sidebarCallEnd.lowerBound]
         )
-        let toolbarCallStart = try XCTUnwrap(
-            boardSource.range(of: "ProjectBoardToolbarContent(")
-        )
-        let toolbarCallEnd = try XCTUnwrap(
-            boardSource.range(
-                of: "onToggleInspector:",
-                range: toolbarCallStart.upperBound..<boardSource.endIndex
-            )
-        )
-        let toolbarCall = String(
-            boardSource[toolbarCallStart.lowerBound..<toolbarCallEnd.lowerBound]
-        )
         let helperStart = try XCTUnwrap(
             boardSource.range(of: "private func openVoiceCommandFromBoardContext()")
         )
@@ -475,16 +463,13 @@ final class AppExperienceSourceTests: XCTestCase {
             helper.range(of: "SuisuiVoiceConversationScopeBridge.store(")
         )
         let openWindow = try XCTUnwrap(
-            helper.range(of: "openWindow(id: \"voice-capture\")")
+            helper.range(of: "VoiceWindowActivationCoordinator.shared.activateExistingWindowOrRequestOpen()")
         )
         XCTAssertLessThan(store.lowerBound, openWindow.lowerBound)
         XCTAssertTrue(
             helper.contains("name: .suisuiVoiceConversationScopeRequested")
         )
         XCTAssertTrue(helper.contains("NotificationCenter.default.post("))
-        XCTAssertTrue(
-            toolbarCall.contains("onOpenVoiceCommand: openVoiceCommandFromBoardContext")
-        )
         XCTAssertTrue(
             sidebarCall.contains("onOpenVoiceCommand: openVoiceCommandFromBoardContext")
         )
@@ -495,7 +480,7 @@ final class AppExperienceSourceTests: XCTestCase {
             boardSource.components(
                 separatedBy: "onOpenVoiceCommand: openVoiceCommandFromBoardContext"
             ).count - 1,
-            2
+            1
         )
         XCTAssertEqual(
             boardSource.components(
@@ -1982,18 +1967,18 @@ final class AppExperienceSourceTests: XCTestCase {
         }
     }
 
-    func testProjectBoardToolbarHostsSettingsLinkWithoutThemeControls() throws {
+    func testProjectBoardSidebarHostsSettingsWithoutDuplicatingToolbarControls() throws {
         let toolbarSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardToolbarContent.swift"
         )
         let sidebarSource = try readPackageFile(
-            "Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift"
+            "Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift"
         )
 
-        XCTAssertTrue(sidebarSource.contains("Show Archived"))
-        XCTAssertTrue(sidebarSource.contains("Add Project"))
+        XCTAssertTrue(sidebarSource.contains("case .openSettings:"))
+        XCTAssertTrue(sidebarSource.contains("onOpenSettings()"))
+        XCTAssertTrue(sidebarSource.contains("\"sidebar-action-settings\""))
         XCTAssertFalse(sidebarSource.contains("SettingsLink"))
-        XCTAssertFalse(sidebarSource.contains("gearshape"))
         XCTAssertFalse(sidebarSource.contains("Theme"))
         XCTAssertFalse(sidebarSource.contains("Appearance"))
         XCTAssertFalse(sidebarSource.contains("SuisuiAppearancePreference"))
@@ -2009,10 +1994,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(sidebarSource.contains("appearancePreference"))
         XCTAssertFalse(sidebarSource.contains(".pickerStyle(.segmented)"))
 
-        XCTAssertTrue(toolbarSource.contains("SettingsLink"))
-        XCTAssertTrue(toolbarSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
-        XCTAssertTrue(toolbarSource.contains(".help(\"Open Settings\")"))
-        XCTAssertTrue(toolbarSource.contains(".accessibilityIdentifier(\"project-board-settings-link\")"))
+        XCTAssertFalse(toolbarSource.contains("SettingsLink"))
+        XCTAssertFalse(toolbarSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
+        XCTAssertFalse(toolbarSource.contains(".help(\"Open Settings\")"))
+        XCTAssertFalse(toolbarSource.contains(".accessibilityIdentifier(\"project-board-settings-link\")"))
         XCTAssertFalse(toolbarSource.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
         XCTAssertFalse(toolbarSource.contains("Theme"))
         XCTAssertFalse(toolbarSource.contains("Appearance"))
@@ -2131,15 +2116,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("ProjectBoardToolbarContent("))
         XCTAssertTrue(toolbarSource.contains("struct ProjectBoardToolbarContent: ToolbarContent"))
         XCTAssertTrue(toolbarSource.contains("ToolbarItem(placement: .primaryAction)"))
-        XCTAssertTrue(toolbarSource.contains("ToolbarItemGroup(placement: .primaryAction)"))
-        XCTAssertTrue(toolbarSource.contains("Label(\"Search\", systemImage: \"magnifyingglass\")"))
-        XCTAssertTrue(toolbarSource.contains("Label(\"Voice Command\", systemImage: \"mic\")"))
+        XCTAssertFalse(toolbarSource.contains("ToolbarItemGroup(placement: .primaryAction)"))
+        XCTAssertFalse(toolbarSource.contains("Label(\"Search\", systemImage: \"magnifyingglass\")"))
+        XCTAssertFalse(toolbarSource.contains("Label(\"Voice Command\", systemImage: \"mic\")"))
         XCTAssertTrue(toolbarSource.contains("Label(\"Utilities\", systemImage: \"ellipsis.circle\")"))
         XCTAssertTrue(toolbarSource.contains("Label(\"Export Tasks\", systemImage: \"square.and.arrow.up\")"))
         XCTAssertTrue(toolbarSource.contains("Label(\"Import Tasks\", systemImage: \"square.and.arrow.down\")"))
         XCTAssertTrue(toolbarSource.contains("Label(\"Google Calendar Sync\", systemImage: \"calendar.badge.plus\")"))
         XCTAssertTrue(toolbarSource.contains("Label(\"Review Task Automation\", systemImage: \"sparkles\")"))
-        XCTAssertTrue(toolbarSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
+        XCTAssertFalse(toolbarSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
         XCTAssertTrue(toolbarSource.contains("Label(\"Terminal\", systemImage: \"terminal\")"))
         XCTAssertTrue(toolbarSource.contains("Label(\"Details\", systemImage: \"sidebar.trailing\")"))
         let utilitiesStart = try XCTUnwrap(toolbarSource.range(of: "Menu {\n                if context.showsIntegrations"))
@@ -2153,8 +2138,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("reconcileProjectBoardToolbarLayout(allowRetryIfToolbarMissing:"))
         XCTAssertTrue(toolbarSource.contains(".accessibilityIdentifier(\"project-board-integrations-menu\")"))
         XCTAssertTrue(toolbarSource.contains(".accessibilityIdentifier(\"project-board-task-auto-execution-review\")"))
-        XCTAssertTrue(toolbarSource.contains(".accessibilityIdentifier(\"project-board-voice-command\")"))
-        XCTAssertTrue(toolbarSource.contains(".accessibilityIdentifier(\"project-board-settings-link\")"))
+        XCTAssertFalse(toolbarSource.contains(".accessibilityIdentifier(\"project-board-command-palette\")"))
+        XCTAssertFalse(toolbarSource.contains(".accessibilityIdentifier(\"project-board-voice-command\")"))
+        XCTAssertFalse(toolbarSource.contains(".accessibilityIdentifier(\"project-board-settings-link\")"))
         XCTAssertTrue(toolbarSource.contains(".accessibilityIdentifier(\"project-board-terminal-toggle\")"))
         XCTAssertTrue(toolbarSource.contains(".accessibilityIdentifier(\"project-board-inspector-toggle\")"))
         XCTAssertTrue(boardSource.contains("private extension NSToolbar"))
@@ -2711,10 +2697,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("header-layout-native-toolbar-seed"))
         XCTAssertTrue(script.contains("SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=\"project:$header_layout_project_id\""))
         XCTAssertTrue(script.contains("SUISUI_HEADER_LAYOUT_DATABASE_PATH"))
+        XCTAssertTrue(script.contains("SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1"))
         XCTAssertTrue(script.contains("project-board-sidebar-toggle"))
-        XCTAssertTrue(script.contains("project-board-command-palette"))
         XCTAssertTrue(script.contains("project-board-integrations-menu"))
-        XCTAssertTrue(script.contains("project-board-voice-command"))
+        XCTAssertTrue(script.contains("sidebar-action-settings"))
         XCTAssertTrue(script.contains("project-board-inspector-toggle"))
         XCTAssertTrue(script.contains("ensure_project_detail_visible"))
         XCTAssertTrue(script.contains("wait_for_project_detail_visible"))
@@ -2722,11 +2708,39 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("assert_action_buttons_are_trailing"))
         XCTAssertTrue(script.contains("assert_utility_menu_items_reachable"))
         XCTAssertTrue(script.contains("exercise_toolbar_utilities"))
+        XCTAssertTrue(script.contains("exercise_sidebar_entrypoints"))
+        XCTAssertTrue(script.contains("press_ax_button \"sidebar-open-search\""))
+        XCTAssertTrue(script.contains("wait_for_ax_identifier_present \"command-palette-input\""))
+        XCTAssertTrue(script.contains("press_ax_button \"sidebar-action-voice-command\""))
+        XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"voice-command-quick-command-tab\" \"present\""))
+        XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"settings-status-overview\" \"present\""))
+        XCTAssertTrue(script.contains("ensure_sidebar_visible"))
+        XCTAssertTrue(script.contains("close_window_containing_identifier"))
+        XCTAssertTrue(script.contains("exercise_runtime_crud_recovery_entrypoints"))
+        XCTAssertTrue(script.contains("SUISUI_HEADER_LAYOUT_ENTRYPOINTS_ONLY"))
+        XCTAssertTrue(script.contains("Project Board relocated entrypoint smoke passed"))
+        XCTAssertTrue(script.contains("SUISUI_RUNTIME_CRUD_RECOVERY_MODE=1"))
+        XCTAssertTrue(script.contains("SUISUI_RUNTIME_CRUD_RECOVERY_MODE=1 \\\n    SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1"))
+        XCTAssertTrue(script.contains("press_ax_button \"project-board-settings-link\""))
+        XCTAssertTrue(script.contains("press_ax_button \"project-board-voice-command\""))
+        XCTAssertTrue(script.contains("PID-owned AX button was not pressable"))
+        XCTAssertTrue(script.contains("exercise_keyboard_entrypoints"))
+        XCTAssertTrue(script.contains("press_keyboard_shortcut 40 \"command\""))
+        XCTAssertTrue(script.contains("wait_for_ax_identifier_present \"command-palette-input\"\n  launch_header_layout_candidate"))
+        XCTAssertTrue(script.contains("press_keyboard_shortcut 9 \"command-shift\""))
+        XCTAssertTrue(script.contains("press_keyboard_shortcut 43 \"command\""))
         XCTAssertTrue(script.contains("project-board-export-tasks"))
         XCTAssertTrue(script.contains("project-board-import-tasks"))
         XCTAssertTrue(script.contains("task-inspector"))
         XCTAssertTrue(script.contains("embedded-terminal-close"))
         XCTAssertTrue(script.contains("assert_screenshot_has_visible_pixels"))
+        XCTAssertTrue(script.contains("close_hydrated_loading_window"))
+        XCTAssertTrue(script.contains("project-board-fallback-loading"))
+        XCTAssertTrue(script.contains("index($1, wanted \"-\") == 1"))
+        XCTAssertTrue(script.contains("wait_for_ax_identifier_absent \"open-panel\""))
+        XCTAssertTrue(script.contains("script/ui_evidence_ax_resize_window.swift"))
+        XCTAssertTrue(script.contains("700 500 120 160"))
+        XCTAssertTrue(script.contains("PID-owned Project Board window frame was not stable enough to resize"))
         XCTAssertTrue(script.contains("restore_project_board_window"))
         XCTAssertTrue(script.contains("every process whose unix id is targetPID"))
         XCTAssertTrue(script.contains("assert_primary_ax_frames_are_nonzero"))
@@ -2747,8 +2761,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("launch_header_layout_candidate \"japanese\""))
         XCTAssertTrue(script.contains("Review Task Automation"))
         XCTAssertTrue(script.contains("タスク自動化を確認"))
-        XCTAssertTrue(script.contains("Settings"))
-        XCTAssertTrue(script.contains("設定"))
+        XCTAssertTrue(script.contains("sidebar-action-settings"))
         XCTAssertTrue(script.contains("capture_window \"sidebar-visible\""))
         XCTAssertTrue(script.contains("capture_window \"minimum-window\""))
         XCTAssertTrue(script.contains("capture_window \"minimum-window-japanese\""))
@@ -7766,7 +7779,7 @@ final class AppExperienceSourceTests: XCTestCase {
         }
 
         let invariants = [
-            "Native toolbar keeps Voice, Search, selection details, and semantic utility overflow reachable",
+            "Native toolbar keeps selection details and semantic utility overflow reachable",
             "Sidebar toggle mutates synchronously",
             "Toolbar display mode preserves primary action position",
             "Light / Dark / System switch does not collapse or overlap",
@@ -7781,7 +7794,7 @@ final class AppExperienceSourceTests: XCTestCase {
         }
 
         XCTAssertTrue(
-            riskMap.contains("project-board-command-palette"),
+            riskMap.contains("project-board-integrations-menu"),
             "Risk map must reference the canonical AX identifier for native toolbar"
         )
         XCTAssertTrue(

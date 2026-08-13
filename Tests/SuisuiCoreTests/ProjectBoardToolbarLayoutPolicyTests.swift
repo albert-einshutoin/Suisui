@@ -3,14 +3,11 @@ import XCTest
 
 final class ProjectBoardToolbarLayoutPolicyTests: XCTestCase {
     func testContextualToolbarGroupsPrimaryAndOverflowActions() {
-        XCTAssertTrue(ProjectBoardToolbarContext.project.hasPrimaryVoiceAction)
         XCTAssertTrue(ProjectBoardToolbarContext.project.showsIntegrations)
         XCTAssertTrue(ProjectBoardToolbarContext.project.showsAutomation)
-        XCTAssertTrue(ProjectBoardToolbarContext.project.showsSettings)
         XCTAssertFalse(ProjectBoardToolbarContext.project.showsDeveloperTerminal)
         XCTAssertFalse(ProjectBoardToolbarContext.project.showsInspectorToggle)
 
-        XCTAssertTrue(ProjectBoardToolbarContext.today.hasPrimaryVoiceAction)
         XCTAssertFalse(ProjectBoardToolbarContext.today.showsDeveloperTerminal)
         XCTAssertTrue(ProjectBoardToolbarContext.developerProject.showsDeveloperTerminal)
     }

@@ -48,7 +48,7 @@ markers, so accessibility traversal overhead cannot weaken or inflate the SLO.
 
 | Metric | Budget | Primary signpost / probe |
 | --- | --- | --- |
-| Cold launch → command-ready board | 1.0 s | Release smoke app-owned `command-ready` milestone plus mandatory `project-board-command-palette` AX proof |
+| Cold launch → command-ready board | 1.0 s | Release smoke app-owned `command-ready` milestone plus mandatory `project-board-sidebar-toggle` AX proof |
 | Board reload at 1k tasks | 100 ms | `FirstBoardLoad` measured against a seeded 1k-task database |
 | Command palette content search | 50 ms | `CommandPaletteContentSearchService` query (no signpost yet; measure with Instruments Time Profiler or a test harness) |
 

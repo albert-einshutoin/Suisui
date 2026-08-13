@@ -128,7 +128,7 @@ on containsIdentifier(uiElement, targetIdentifier, depth)
     try
       if value of attribute "AXIdentifier" of uiElement is targetIdentifier then return true
     end try
-    if depth < 8 then
+    if depth < 12 then
       try
         repeat with childElement in UI elements of uiElement
           if my containsIdentifier(childElement, targetIdentifier, depth + 1) then return true
@@ -148,7 +148,7 @@ on run argv
     tell item 1 of matchingProcesses
       set frontmost to true
       repeat with candidateWindow in windows
-        if my containsIdentifier(candidateWindow, "project-board-command-palette", 0) and my containsIdentifier(candidateWindow, "project-board-sidebar", 0) and my containsIdentifier(candidateWindow, "project-board-detail", 0) then
+        if my containsIdentifier(candidateWindow, "project-board-sidebar-toggle", 0) and my containsIdentifier(candidateWindow, "project-board-detail", 0) then
           try
             perform action "AXRaise" of candidateWindow
           end try
@@ -309,6 +309,23 @@ launch_header_layout_candidate() {
   SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
     SUISUI_APP_SETTINGS_SUITE_NAME="$SETTINGS_SUITE" \
     SUISUI_LANGUAGE_PREFERENCE="$language" \
+    SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1 \
+    SUISUI_DATABASE_PATH="$HEADER_LAYOUT_DATABASE_PATH" \
+    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="project:$header_layout_project_id" \
+    "$APP_BINARY" &
+  app_pid=$!
+  wait_for_app_process
+  activate_app
+  wait_for_visible_windows
+}
+
+launch_runtime_crud_recovery_candidate() {
+  terminate_app
+  SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_APP_SETTINGS_SUITE_NAME="$SETTINGS_SUITE" \
+    SUISUI_LAUNCH_RECOVERY_MODE=1 \
+    SUISUI_RUNTIME_CRUD_RECOVERY_MODE=1 \
+    SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1 \
     SUISUI_DATABASE_PATH="$HEADER_LAYOUT_DATABASE_PATH" \
     SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="project:$header_layout_project_id" \
     "$APP_BINARY" &
@@ -363,41 +380,24 @@ APPLESCRIPT
 }
 
 resize_window_below_minimum() {
-  /usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT' >/dev/null
-on containsIdentifier(uiElement, targetIdentifier, depth)
-  tell application "System Events"
-    try
-      if value of attribute "AXIdentifier" of uiElement is targetIdentifier then return true
-    end try
-    if depth < 8 then
-      try
-        repeat with childElement in UI elements of uiElement
-          if my containsIdentifier(childElement, targetIdentifier, depth + 1) then return true
-        end repeat
-      end try
-    end if
-  end tell
-  return false
-end containsIdentifier
-
-on run argv
-  set appName to item 1 of argv
-  set targetPID to (item 2 of argv) as integer
-  tell application "System Events"
-    set matchingProcesses to every process whose unix id is targetPID
-    if (count of matchingProcesses) is not 1 then error "owned process missing"
-    tell item 1 of matchingProcesses
-      repeat with candidateWindow in windows
-        if my containsIdentifier(candidateWindow, "project-board-detail", 0) then
-          set size of candidateWindow to {700, 500}
-          return true
-        end if
-      end repeat
-      error "owned Project Board window missing"
-    end tell
-  end tell
-end run
-APPLESCRIPT
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if read_window_metadata >/dev/null 2>&1 &&
+      /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_resize_window.swift" \
+        "$app_pid" "$window_x" "$window_y" "$window_width" "$window_height" \
+        700 500 120 160 >/dev/null 2>&1; then
+      return 0
+    fi
+    # SwiftUI can briefly replace the scene-owned NSWindow while its restored
+    # state hydrates. Match the visible CoreGraphics frame back to the PID-owned
+    # AX window instead of depending on transient hierarchy depth or ordering.
+    activate_app
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: PID-owned Project Board window frame was not stable enough to resize within ${TIMEOUT_SECONDS}s" >&2
+      return 1
+    fi
+    sleep 0.2
+  done
 }
 
 assert_window_respects_minimum() {
@@ -412,10 +412,8 @@ assert_window_respects_minimum() {
 assert_utility_menu_items_reachable() {
   local automation_title="$1"
   local localized_automation_title="$2"
-  local settings_title="$3"
-  local localized_settings_title="$4"
   click_first_ax_identifier "project-board-integrations-menu"
-  /usr/bin/osascript - "$APP_NAME" "$app_pid" "$automation_title" "$localized_automation_title" "$settings_title" "$localized_settings_title" <<'APPLESCRIPT' >/dev/null
+  /usr/bin/osascript - "$APP_NAME" "$app_pid" "$automation_title" "$localized_automation_title" <<'APPLESCRIPT' >/dev/null
 on containsEitherNamedMenuItem(uiElement, primaryName, localizedName, depth)
   tell application "System Events"
     try
@@ -440,14 +438,12 @@ on run argv
   set targetPID to (item 2 of argv) as integer
   set automationTitle to item 3 of argv
   set localizedAutomationTitle to item 4 of argv
-  set settingsTitle to item 5 of argv
-  set localizedSettingsTitle to item 6 of argv
   tell application "System Events"
     set matchingProcesses to every process whose unix id is targetPID
     if (count of matchingProcesses) is not 1 then error "owned process missing"
     tell item 1 of matchingProcesses
       repeat with candidateWindow in windows
-        if my containsEitherNamedMenuItem(candidateWindow, automationTitle, localizedAutomationTitle, 0) and my containsEitherNamedMenuItem(candidateWindow, settingsTitle, localizedSettingsTitle, 0) then
+        if my containsEitherNamedMenuItem(candidateWindow, automationTitle, localizedAutomationTitle, 0) then
           key code 53
           return true
         end if
@@ -457,7 +453,7 @@ on run argv
   end tell
 end run
 APPLESCRIPT
-  printf "OK: automation and Settings are reachable from native toolbar overflow\n"
+  printf "OK: automation is reachable from native toolbar overflow\n"
 }
 
 open_utilities_menu() {
@@ -469,6 +465,27 @@ wait_for_file_panel_and_cancel() {
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
     if /usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT' >/dev/null 2>&1
+on pressCancel(uiElement, depth)
+  tell application "System Events"
+    set identifierValue to ""
+    try
+      set identifierValue to value of attribute "AXIdentifier" of uiElement
+    end try
+    if identifierValue is "CancelButton" then
+      perform action "AXPress" of uiElement
+      return true
+    end if
+    if depth < 8 then
+      try
+        repeat with childElement in UI elements of uiElement
+          if my pressCancel(childElement, depth + 1) then return true
+        end repeat
+      end try
+    end if
+  end tell
+  return false
+end pressCancel
+
 on run argv
   set appName to item 1 of argv
   set targetPID to (item 2 of argv) as integer
@@ -477,16 +494,7 @@ on run argv
     if (count of matchingProcesses) is not 1 then error "owned process missing"
     tell item 1 of matchingProcesses
       repeat with candidateWindow in windows
-        if (count of sheets of candidateWindow) > 0 then
-          key code 53
-          return true
-        end if
-        try
-          if subrole of candidateWindow is "AXDialog" then
-            key code 53
-            return true
-          end if
-        end try
+        if my pressCancel(candidateWindow, 0) then return true
       end repeat
     end tell
   end tell
@@ -511,6 +519,9 @@ exercise_file_utility() {
   open_utilities_menu
   click_first_ax_identifier "$identifier"
   wait_for_file_panel_and_cancel "$label"
+  # AX closes the native panel asynchronously; do not let the next toolbar
+  # action target controls behind a still-active modal surface.
+  wait_for_ax_identifier_absent "open-panel"
   restore_project_board_window
 }
 
@@ -570,40 +581,157 @@ exercise_automation_utility() {
   printf "OK: task automation utility opened and closed its review inspector\n"
 }
 
-exercise_settings_utility() {
-  open_utilities_menu
-  click_first_ax_identifier "project-board-settings-link"
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT' >/dev/null 2>&1
-on run argv
-  set appName to item 1 of argv
-  set targetPID to (item 2 of argv) as integer
+close_window_containing_identifier() {
+  local identifier="$1"
+  /usr/bin/osascript - "$app_pid" "$identifier" <<'APPLESCRIPT' >/dev/null
+on containsIdentifier(uiElement, targetIdentifier, depth)
   tell application "System Events"
-    set matchingProcesses to every process whose unix id is targetPID
+    try
+      if value of attribute "AXIdentifier" of uiElement is targetIdentifier then return true
+    end try
+    if depth < 10 then
+      try
+        repeat with childElement in UI elements of uiElement
+          if my containsIdentifier(childElement, targetIdentifier, depth + 1) then return true
+        end repeat
+      end try
+    end if
+  end tell
+  return false
+end containsIdentifier
+
+on run argv
+  set targetPID to item 1 of argv as integer
+  set targetIdentifier to item 2 of argv
+  tell application "System Events"
+    set matchingProcesses to application processes whose unix id is targetPID
     if (count of matchingProcesses) is not 1 then error "owned process missing"
     tell item 1 of matchingProcesses
-      if (count of windows) > 1 then
-        set frontmost to true
-        keystroke "w" using command down
-        return true
-      end if
+      repeat with candidateWindow in windows
+        if my containsIdentifier(candidateWindow, targetIdentifier, 0) then
+          perform action "AXPress" of (first button of candidateWindow whose subrole is "AXCloseButton")
+          return true
+        end if
+      end repeat
     end tell
   end tell
-  error "Settings window not visible yet"
+  error "window containing identifier not found: " & targetIdentifier
 end run
 APPLESCRIPT
-    then
-      restore_project_board_window
-      printf "OK: Settings utility opened and closed the Settings window\n"
+}
+
+press_ax_button() {
+  local identifier="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" \
+      "$app_pid" "$identifier" >/dev/null 2>&1; then
       return 0
     fi
+    activate_app
     if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: Settings utility did not open a second window" >&2
+      echo "BLOCKER: PID-owned AX button was not pressable within ${TIMEOUT_SECONDS}s: $identifier" >&2
       return 1
     fi
     sleep 0.2
   done
+}
+
+exercise_sidebar_entrypoints() {
+  press_ax_button "sidebar-open-search"
+  wait_for_ax_identifier_present "command-palette-input"
+  launch_header_layout_candidate
+  wait_for_project_detail_visible
+  press_ax_button "sidebar-action-voice-command"
+  wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
+  close_window_containing_identifier "voice-command-quick-command-tab"
+  restore_project_board_window
+  printf "OK: sidebar Search and Voice Command opened their destination surfaces\n"
+}
+
+exercise_settings_utility() {
+  ensure_sidebar_visible
+  press_ax_button "sidebar-action-settings"
+  wait_for_process_ax_identifier "settings-status-overview" "present"
+  close_window_containing_identifier "settings-status-overview"
+  restore_project_board_window
+  printf "OK: sidebar Settings opened and closed the verified Settings window\n"
+}
+
+ensure_sidebar_visible() {
+  local probe_file="$OUTPUT_DIR/sidebar-visibility.tsv"
+  if toolbar_items_deduplicated >"$probe_file" 2>/dev/null &&
+    awk -F $'\t' '$1 == "project-board-sidebar" { found = 1 } END { exit(found ? 0 : 1) }' "$probe_file"; then
+    return 0
+  fi
+  click_sidebar_toggle
+  wait_for_ax_identifier_present "project-board-sidebar"
+}
+
+press_keyboard_shortcut() {
+  local key_code="$1"
+  local modifier="$2"
+  /usr/bin/osascript - "$app_pid" "$key_code" "$modifier" <<'APPLESCRIPT' >/dev/null
+on run argv
+  set targetPID to item 1 of argv as integer
+  set targetKeyCode to item 2 of argv as integer
+  set modifierName to item 3 of argv
+  tell application "System Events"
+    set matchingProcesses to application processes whose unix id is targetPID
+    if (count of matchingProcesses) is not 1 then error "owned process missing"
+    tell item 1 of matchingProcesses
+      set frontmost to true
+      if modifierName is "command" then
+        key code targetKeyCode using command down
+      else if modifierName is "command-shift" then
+        key code targetKeyCode using {command down, shift down}
+      else
+        error "unsupported shortcut modifier"
+      end if
+    end tell
+  end tell
+end run
+APPLESCRIPT
+}
+
+exercise_keyboard_entrypoints() {
+  click_sidebar_toggle
+  wait_for_ax_identifier_absent "project-board-sidebar"
+
+  press_keyboard_shortcut 40 "command"
+  wait_for_ax_identifier_present "command-palette-input"
+  launch_header_layout_candidate
+  wait_for_project_detail_visible
+  click_sidebar_toggle
+  wait_for_ax_identifier_absent "project-board-sidebar"
+  press_keyboard_shortcut 9 "command-shift"
+  wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
+
+  launch_header_layout_candidate
+  wait_for_project_detail_visible
+  click_sidebar_toggle
+  wait_for_ax_identifier_absent "project-board-sidebar"
+  press_keyboard_shortcut 43 "command"
+  wait_for_process_ax_identifier "settings-status-overview" "present"
+
+  launch_header_layout_candidate
+  wait_for_project_detail_visible
+  printf "OK: hidden-sidebar keyboard shortcuts opened Search, Voice Command, and Settings\n"
+}
+
+exercise_runtime_crud_recovery_entrypoints() {
+  launch_runtime_crud_recovery_candidate
+  wait_for_process_ax_identifier "project-board-settings-link" "present"
+
+  press_ax_button "project-board-settings-link"
+  wait_for_process_ax_identifier "settings-status-overview" "present"
+  close_window_containing_identifier "settings-status-overview"
+
+  activate_app
+  press_ax_button "project-board-voice-command"
+  wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
+  close_window_containing_identifier "voice-command-quick-command-tab"
+  printf "OK: runtime CRUD recovery Settings and Voice Command reached their destination windows\n"
 }
 
 exercise_terminal_utility() {
@@ -699,6 +827,41 @@ end run
 APPLESCRIPT
 }
 
+close_hydrated_loading_window() {
+  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null
+on containsIdentifier(uiElement, targetIdentifier, depth)
+  tell application "System Events"
+    try
+      if value of attribute "AXIdentifier" of uiElement is targetIdentifier then return true
+    end try
+    if depth < 8 then
+      try
+        repeat with childElement in UI elements of uiElement
+          if my containsIdentifier(childElement, targetIdentifier, depth + 1) then return true
+        end repeat
+      end try
+    end if
+  end tell
+  return false
+end containsIdentifier
+
+on run argv
+  set targetPID to (item 1 of argv) as integer
+  tell application "System Events"
+    set matchingProcesses to every process whose unix id is targetPID
+    if (count of matchingProcesses) is not 1 then error "owned process missing"
+    tell item 1 of matchingProcesses
+      repeat with candidateWindow in windows
+        if my containsIdentifier(candidateWindow, "project-board-fallback-loading", 0) then
+          perform action "AXPress" of (first button of candidateWindow whose subrole is "AXCloseButton")
+        end if
+      end repeat
+    end tell
+  end tell
+end run
+APPLESCRIPT
+}
+
 wait_for_project_detail_visible() {
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   local probe_file="$OUTPUT_DIR/project-detail-probe.tsv"
@@ -706,6 +869,11 @@ wait_for_project_detail_visible() {
     ensure_project_detail_visible
     if toolbar_items_deduplicated >"$probe_file" 2>"$OUTPUT_DIR/project-detail-probe.err" &&
       awk -F $'\t' '$1 == "project-board-detail" { found = 1 } END { exit(found ? 0 : 1) }' "$probe_file"; then
+      # Direct evidence launches can leave the first-paint loading window next
+      # to the hydrated board. Close only that identified temporary surface so
+      # CGWindow screenshot selection cannot capture stale launch chrome.
+      close_hydrated_loading_window
+      wait_for_window_metadata
       return 0
     fi
 
@@ -738,7 +906,7 @@ capture_window() {
 assert_primary_ax_frames_are_nonzero() {
   local frame_file="$OUTPUT_DIR/screenshot-primary-frames.tsv"
   toolbar_items_deduplicated >"$frame_file"
-  for identifier in project-board-command-palette project-board-sidebar project-board-detail; do
+  for identifier in project-board-sidebar-toggle project-board-sidebar project-board-detail; do
     if ! awk -F $'\t' -v wanted="$identifier" '
       $1 == wanted && $4 + 0 > 0 && $5 + 0 > 0 { found = 1 }
       END { exit(found ? 0 : 1) }
@@ -777,7 +945,7 @@ assert_ax_region_has_visible_variance() {
   local frame_x frame_y frame_width frame_height relative_x relative_y
   local pixel_width pixel_height scale_x scale_y pixel_x pixel_y pixel_region_width pixel_region_height
   IFS=$'\t' read -r _ frame_x frame_y frame_width frame_height < <(
-    awk -F $'\t' -v wanted="$identifier" '$1 == wanted { print; exit }' "$frame_file"
+    awk -F $'\t' -v wanted="$identifier" '$1 == wanted || index($1, wanted "-") == 1 { print; exit }' "$frame_file"
   )
   if [[ -z "${frame_x:-}" || -z "${frame_y:-}" || -z "${frame_width:-}" || -z "${frame_height:-}" ]]; then
     echo "BLOCKER: semantic screenshot region is missing from AX evidence: $identifier" >&2
@@ -828,7 +996,6 @@ assert_semantic_regions_have_visible_variance() {
   local screenshot_path="$1"
   # These regions are expected to contain visible controls or seeded task
   # content even when the remainder of the dark board canvas is intentionally empty.
-  assert_ax_region_has_visible_variance "$screenshot_path" "project-board-command-palette"
   assert_ax_region_has_visible_variance "$screenshot_path" "project-header-add-task"
   assert_ax_region_has_visible_variance "$screenshot_path" "task-card-open-details"
 }
@@ -850,10 +1017,6 @@ on appendIdentifiedElement(outputLines, uiElement, syntheticIdentifier)
       end try
       if titleValue is "Utilities" or titleValue is "ユーティリティ" or titleValue is "Integrations" or titleValue is "連携" then
         set identifierValue to "project-board-integrations-menu"
-      else if titleValue is "Voice Command" or titleValue is "音声コマンド" then
-        set identifierValue to "project-board-voice-command"
-      else if titleValue is "Settings" or titleValue is "設定" then
-        set identifierValue to "project-board-settings-link"
       else if titleValue is "Terminal" or titleValue is "ターミナル" then
         set identifierValue to "project-board-terminal-toggle"
       end if
@@ -984,29 +1147,23 @@ wait_for_toolbar_buttons() {
 assert_action_buttons_are_trailing() {
   local label="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  local sidebar_x search_x voice_x inspector_x utilities_x utilities_width window_right
+  local sidebar_x inspector_x utilities_x utilities_width window_right
 
   while true; do
     wait_for_window_metadata
     wait_for_toolbar_buttons "$label"
 
     assert_button_present "project-board-sidebar-toggle"
-    assert_button_present "project-board-command-palette"
-    assert_button_present "project-board-voice-command"
     assert_button_present "project-board-inspector-toggle"
     assert_button_present "project-board-integrations-menu"
 
     sidebar_x="$(button_x "project-board-sidebar-toggle")"
-    search_x="$(button_x "project-board-command-palette")"
-    voice_x="$(button_x "project-board-voice-command")"
     inspector_x="$(button_x "project-board-inspector-toggle")"
     utilities_x="$(button_x "project-board-integrations-menu")"
     utilities_width="$(button_width "project-board-integrations-menu")"
     window_right=$((window_x + window_width))
 
-    if (( sidebar_x < search_x &&
-          search_x < voice_x &&
-          voice_x < inspector_x &&
+    if (( sidebar_x < inspector_x &&
           inspector_x < utilities_x &&
           utilities_x + utilities_width <= window_right )); then
       printf "OK: native toolbar actions fit without overlap for %s\n" "$label"
@@ -1026,8 +1183,7 @@ assert_action_buttons_are_trailing() {
 
 toolbar_position_signature() {
   awk -F $'\t' '
-    $1 == "project-board-command-palette" ||
-    $1 == "project-board-voice-command" ||
+    $1 == "project-board-sidebar-toggle" ||
     $1 == "project-board-inspector-toggle" ||
     $1 == "project-board-integrations-menu" {
       print $1 ":" $2 ":" $3 ":" $4 ":" $5
@@ -1200,6 +1356,26 @@ wait_for_ax_identifier_absent() {
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "BLOCKER: AX identifier stayed visible: $target_identifier" >&2
       cat "$probe_file" >&2 || true
+      return 1
+    fi
+    sleep 0.2
+  done
+}
+
+wait_for_process_ax_identifier() {
+  local target_identifier="$1"
+  local expected_presence="$2"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if SUISUI_UI_EVIDENCE_AX_REQUIRE_EXACT_IDENTIFIER=1 \
+      /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" \
+      "$APP_NAME" "$target_identifier" "" "$app_pid" >/dev/null 2>&1; then
+      [[ "$expected_presence" == "present" ]] && return 0
+    else
+      [[ "$expected_presence" == "absent" ]] && return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: process AX identifier did not become $expected_presence: $target_identifier" >&2
       return 1
     fi
     sleep 0.2
@@ -1414,6 +1590,15 @@ seed_header_layout_selection_project
 launch_header_layout_candidate
 wait_for_project_detail_visible
 
+if [[ "${SUISUI_HEADER_LAYOUT_ENTRYPOINTS_ONLY:-0}" == "1" ]]; then
+  exercise_sidebar_entrypoints
+  exercise_keyboard_entrypoints
+  exercise_settings_utility
+  exercise_runtime_crud_recovery_entrypoints
+  printf "OK: Project Board relocated entrypoint smoke passed\n"
+  exit 0
+fi
+
 assert_single_native_toolbar
 capture_window "sidebar-visible"
 assert_action_buttons_are_trailing "sidebar-visible"
@@ -1423,7 +1608,9 @@ wait_for_visible_windows
 assert_window_respects_minimum
 assert_action_buttons_are_trailing "minimum-window"
 capture_window "minimum-window"
-assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認" "Settings" "設定"
+assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
+exercise_sidebar_entrypoints
+exercise_keyboard_entrypoints
 exercise_toolbar_utilities
 
 launch_header_layout_candidate "japanese"
@@ -1434,7 +1621,10 @@ wait_for_visible_windows
 assert_window_respects_minimum
 assert_action_buttons_are_trailing "minimum-window-japanese"
 capture_window "minimum-window-japanese"
-assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認" "Settings" "設定"
+assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
+exercise_sidebar_entrypoints
 exercise_toolbar_utilities
+
+exercise_runtime_crud_recovery_entrypoints
 
 printf "OK: Project Board header layout smoke passed\n"

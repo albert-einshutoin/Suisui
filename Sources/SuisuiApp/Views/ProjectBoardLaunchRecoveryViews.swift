@@ -592,6 +592,8 @@ private enum ProjectBoardRuntimeCRUDRecoveryEnvironment {
 }
 
 private struct ProjectBoardRuntimeCRUDRecoveryView: View {
+    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     let projectID: Int64?
     @ObservedObject var viewModel: ProjectBoardViewModel
 
@@ -712,6 +714,7 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
             HStack(spacing: 8) {
                 Button {
                     viewModel.selectedTaskID = nil
+                    openSettings()
                 } label: {
                     Label("Settings", systemImage: "gearshape")
                 }
@@ -722,6 +725,7 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
 
                 Button {
                     viewModel.selectedTaskID = nil
+                    openWindow(id: "voice-capture")
                 } label: {
                     Label("Voice Command", systemImage: "mic")
                 }

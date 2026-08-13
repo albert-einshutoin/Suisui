@@ -286,8 +286,6 @@ struct ProjectBoardView: View {
                 canSyncGoogleCalendar: viewModel.canSyncGoogleCalendar,
                 googleCalendarSyncHelp: viewModel.googleCalendarSyncHelp,
                 onToggleSidebar: toggleSidebarVisibility,
-                onOpenSearch: { isCommandPaletteVisible = true },
-                onOpenVoiceCommand: openVoiceCommandFromBoardContext,
                 onToggleInspector: toggleInspectorPresentation,
                 onExportTasks: beginTaskInteropExport,
                 onImportTasks: { isImportingTaskInterop = true },
@@ -709,7 +707,7 @@ struct ProjectBoardView: View {
                 taskName: task?.title
             )
         )
-        openWindow(id: "voice-capture")
+        VoiceWindowActivationCoordinator.shared.activateExistingWindowOrRequestOpen()
         NotificationCenter.default.post(
             name: .suisuiVoiceConversationScopeRequested,
             object: nil
