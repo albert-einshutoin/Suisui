@@ -380,7 +380,9 @@ APPLESCRIPT
 }
 
 resize_window_below_minimum() {
-  /usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT' >/dev/null
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT' >/dev/null 2>&1
 on containsIdentifier(uiElement, targetIdentifier, depth)
   tell application "System Events"
     try
@@ -416,6 +418,19 @@ on run argv
   end tell
 end run
 APPLESCRIPT
+    then
+      return 0
+    fi
+    # SwiftUI can briefly replace the scene-owned NSWindow while its restored
+    # state hydrates. Reacquire the PID-owned marker window instead of binding
+    # this required gate to a transient `window 1` ordering.
+    activate_app
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: PID-owned Project Board window was not stable enough to resize within ${TIMEOUT_SECONDS}s" >&2
+      return 1
+    fi
+    sleep 0.2
+  done
 }
 
 assert_window_respects_minimum() {

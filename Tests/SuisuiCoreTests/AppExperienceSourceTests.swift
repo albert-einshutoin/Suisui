@@ -2734,6 +2734,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("index($1, wanted \"-\") == 1"))
         XCTAssertTrue(script.contains("wait_for_ax_identifier_absent \"open-panel\""))
         XCTAssertTrue(script.contains("set position of candidateWindow to {120, 160}"))
+        XCTAssertTrue(script.contains("PID-owned Project Board window was not stable enough to resize"))
         XCTAssertTrue(script.contains("restore_project_board_window"))
         XCTAssertTrue(script.contains("every process whose unix id is targetPID"))
         XCTAssertTrue(script.contains("assert_primary_ax_frames_are_nonzero"))
