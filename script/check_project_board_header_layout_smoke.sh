@@ -309,6 +309,7 @@ launch_header_layout_candidate() {
   SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
     SUISUI_APP_SETTINGS_SUITE_NAME="$SETTINGS_SUITE" \
     SUISUI_LANGUAGE_PREFERENCE="$language" \
+    SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1 \
     SUISUI_DATABASE_PATH="$HEADER_LAYOUT_DATABASE_PATH" \
     SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="project:$header_layout_project_id" \
     "$APP_BINARY" &
@@ -622,7 +623,7 @@ APPLESCRIPT
 }
 
 exercise_sidebar_entrypoints() {
-  click_first_ax_identifier "sidebar-open-search"
+  /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" "$app_pid" "sidebar-open-search"
   wait_for_ax_identifier_present "command-palette-input"
   /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null
 on run argv
@@ -637,19 +638,17 @@ APPLESCRIPT
   wait_for_ax_identifier_absent "command-palette-input"
 
   restore_project_board_window
-  click_first_ax_identifier "sidebar-action-voice-command"
-  wait_for_ax_identifier_present "voice-command-quick-command-tab"
+  /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" "$app_pid" "sidebar-action-voice-command"
+  wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
   close_window_containing_identifier "voice-command-quick-command-tab"
-  wait_for_ax_identifier_absent "voice-command-quick-command-tab"
   restore_project_board_window
   printf "OK: sidebar Search and Voice Command opened their destination surfaces\n"
 }
 
 exercise_settings_utility() {
-  click_first_ax_identifier "sidebar-action-settings"
-  wait_for_ax_identifier_present "settings-status-overview"
+  /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" "$app_pid" "sidebar-action-settings"
+  wait_for_process_ax_identifier "settings-status-overview" "present"
   close_window_containing_identifier "settings-status-overview"
-  wait_for_ax_identifier_absent "settings-status-overview"
   restore_project_board_window
   printf "OK: sidebar Settings opened and closed the verified Settings window\n"
 }
@@ -1276,6 +1275,26 @@ wait_for_ax_identifier_absent() {
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "BLOCKER: AX identifier stayed visible: $target_identifier" >&2
       cat "$probe_file" >&2 || true
+      return 1
+    fi
+    sleep 0.2
+  done
+}
+
+wait_for_process_ax_identifier() {
+  local target_identifier="$1"
+  local expected_presence="$2"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if SUISUI_UI_EVIDENCE_AX_REQUIRE_EXACT_IDENTIFIER=1 \
+      /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" \
+      "$APP_NAME" "$target_identifier" "" "$app_pid" >/dev/null 2>&1; then
+      [[ "$expected_presence" == "present" ]] && return 0
+    else
+      [[ "$expected_presence" == "absent" ]] && return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: process AX identifier did not become $expected_presence: $target_identifier" >&2
       return 1
     fi
     sleep 0.2
