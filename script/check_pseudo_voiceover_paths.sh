@@ -107,12 +107,13 @@ TODAY_UI_ACCESSIBILITY_IDENTIFIERS=(
   "today-rail-actions-menu"
 )
 
-SIDEBAR_UI_ACCESSIBILITY_IDENTIFIERS=(
-  "sidebar-destination-inbox"
-  "sidebar-destination-today"
-  "sidebar-destination-projects"
-  "sidebar-destination-schedule"
-  "sidebar-destination-completed"
+SIDEBAR_ACCESSIBILITY_MARKERS=(
+  '.accessibilityIdentifier(accessibilityIdentifier(for: item.id))'
+  'case .inbox: "sidebar-destination-inbox"'
+  'case .today: "sidebar-destination-today"'
+  'case .projects: "sidebar-destination-projects"'
+  'case .schedule: "sidebar-destination-schedule"'
+  'case .completed: "sidebar-destination-completed"'
 )
 
 TODAY_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift"
@@ -168,7 +169,7 @@ check_source_markers() {
   shift 2
 
   if [[ ! -f "$source_path" ]]; then
-    echo "BLOCKER: approval flow source is missing: $source_path" >&2
+    echo "BLOCKER: accessibility contract source is missing: $source_path" >&2
     return 1
   fi
 
@@ -176,7 +177,7 @@ check_source_markers() {
   local marker_missing=0
   for marker in "$@"; do
     if ! grep -F -- "$marker" "$source_path" >/dev/null; then
-      echo "BLOCKER: approval flow accessibilityIdentifier missing from $source_label: $marker" >&2
+      echo "BLOCKER: accessibility contract marker missing from $source_label: $marker" >&2
       marker_missing=1
     fi
   done
@@ -225,8 +226,9 @@ fi
 
 MARKER_SELF_TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/suisui-pseudo-voiceover.XXXXXX")"
 MARKER_SELF_TEST_FIXTURE="$MARKER_SELF_TEST_DIR/ProjectWorkflowAssistantQueueView.swift"
+SIDEBAR_MARKER_SELF_TEST_FIXTURE="$MARKER_SELF_TEST_DIR/ProjectBoardSidebarView.swift"
 cleanup_marker_self_test() {
-  rm -f -- "$MARKER_SELF_TEST_FIXTURE"
+  rm -f -- "$MARKER_SELF_TEST_FIXTURE" "$SIDEBAR_MARKER_SELF_TEST_FIXTURE"
   rmdir -- "$MARKER_SELF_TEST_DIR" 2>/dev/null || true
 }
 trap cleanup_marker_self_test EXIT
@@ -246,6 +248,19 @@ if [[ -f "$ASSISTANT_QUEUE_WORKFLOW_SOURCE" ]]; then
   fi
 fi
 
+if [[ -f "$SIDEBAR_SOURCE" ]]; then
+  grep -F -v -- \
+    '.accessibilityIdentifier(accessibilityIdentifier(for: item.id))' \
+    "$SIDEBAR_SOURCE" > "$SIDEBAR_MARKER_SELF_TEST_FIXTURE"
+  if check_source_markers \
+    "$SIDEBAR_MARKER_SELF_TEST_FIXTURE" \
+    "sidebar negative marker self-test fixture" \
+    "${SIDEBAR_ACCESSIBILITY_MARKERS[@]}" 2>/dev/null; then
+    echo "BLOCKER: sidebar accessibility gate accepted a fixture with a missing modifier hookup" >&2
+    missing=$((missing + 1))
+  fi
+fi
+
 if [[ ! -f "$TODAY_WORKFLOW_SOURCE" ]]; then
   echo "BLOCKER: Today workflow source is missing: $TODAY_WORKFLOW_SOURCE" >&2
   missing=$((missing + 1))
@@ -258,16 +273,11 @@ else
   done
 fi
 
-if [[ ! -f "$SIDEBAR_SOURCE" ]]; then
-  echo "BLOCKER: sidebar source is missing: $SIDEBAR_SOURCE" >&2
+if ! check_source_markers \
+  "$SIDEBAR_SOURCE" \
+  "ProjectBoardSidebarView.swift" \
+  "${SIDEBAR_ACCESSIBILITY_MARKERS[@]}"; then
   missing=$((missing + 1))
-else
-  for identifier in "${SIDEBAR_UI_ACCESSIBILITY_IDENTIFIERS[@]}"; do
-    if ! grep -F "\"$identifier\"" "$SIDEBAR_SOURCE" >/dev/null; then
-      echo "BLOCKER: sidebar accessibilityIdentifier missing from ProjectBoardSidebarView.swift: $identifier" >&2
-      missing=$((missing + 1))
-    fi
-  done
 fi
 
 if [[ ! -f "$SIDEBAR_DESTINATION_SOURCE" ]]; then

@@ -94,6 +94,23 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(projectBoardView.contains("latestApprovedExecutionReceipt"))
     }
 
+    func testPseudoVoiceOverSidebarGateFailsClosedWhenLiveModifierIsRemoved() throws {
+        let script = try readPackageFile("script/check_pseudo_voiceover_paths.sh")
+
+        for marker in [
+            ".accessibilityIdentifier(accessibilityIdentifier(for: item.id))",
+            #"case .inbox: "sidebar-destination-inbox""#,
+            #"case .today: "sidebar-destination-today""#,
+            #"case .projects: "sidebar-destination-projects""#,
+            #"case .schedule: "sidebar-destination-schedule""#,
+            #"case .completed: "sidebar-destination-completed""#
+        ] {
+            XCTAssertTrue(script.contains(marker), "sidebar gate must inspect \(marker)")
+        }
+        XCTAssertTrue(script.contains("SIDEBAR_MARKER_SELF_TEST_FIXTURE"))
+        XCTAssertTrue(script.contains("missing modifier hookup"))
+    }
+
     func testProductRoleDocumentationStatesLocalFirstReviewBeforeExecutionStrength() throws {
         let doc = try readPackageFile("docs/product/role-and-strengths.md")
 
