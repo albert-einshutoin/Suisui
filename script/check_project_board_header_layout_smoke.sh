@@ -582,39 +582,75 @@ exercise_automation_utility() {
   printf "OK: task automation utility opened and closed its review inspector\n"
 }
 
-exercise_settings_utility() {
-  click_first_ax_identifier "sidebar-action-settings"
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT' >/dev/null 2>&1
-on run argv
-  set appName to item 1 of argv
-  set targetPID to (item 2 of argv) as integer
+close_window_containing_identifier() {
+  local identifier="$1"
+  /usr/bin/osascript - "$app_pid" "$identifier" <<'APPLESCRIPT' >/dev/null
+on containsIdentifier(uiElement, targetIdentifier, depth)
   tell application "System Events"
-    set matchingProcesses to every process whose unix id is targetPID
+    try
+      if value of attribute "AXIdentifier" of uiElement is targetIdentifier then return true
+    end try
+    if depth < 10 then
+      try
+        repeat with childElement in UI elements of uiElement
+          if my containsIdentifier(childElement, targetIdentifier, depth + 1) then return true
+        end repeat
+      end try
+    end if
+  end tell
+  return false
+end containsIdentifier
+
+on run argv
+  set targetPID to item 1 of argv as integer
+  set targetIdentifier to item 2 of argv
+  tell application "System Events"
+    set matchingProcesses to application processes whose unix id is targetPID
     if (count of matchingProcesses) is not 1 then error "owned process missing"
     tell item 1 of matchingProcesses
-      if (count of windows) > 1 then
-        set frontmost to true
-        keystroke "w" using command down
-        return true
-      end if
+      repeat with candidateWindow in windows
+        if my containsIdentifier(candidateWindow, targetIdentifier, 0) then
+          perform action "AXPress" of (first button of candidateWindow whose subrole is "AXCloseButton")
+          return true
+        end if
+      end repeat
     end tell
   end tell
-  error "Settings window not visible yet"
+  error "window containing identifier not found: " & targetIdentifier
 end run
 APPLESCRIPT
-    then
-      restore_project_board_window
-      printf "OK: sidebar Settings opened and closed the Settings window\n"
-      return 0
-    fi
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: sidebar Settings did not open a second window" >&2
-      return 1
-    fi
-    sleep 0.2
-  done
+}
+
+exercise_sidebar_entrypoints() {
+  click_first_ax_identifier "sidebar-open-search"
+  wait_for_ax_identifier_present "command-palette-input"
+  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null
+on run argv
+  set targetPID to item 1 of argv as integer
+  tell application "System Events"
+    set matchingProcesses to application processes whose unix id is targetPID
+    if (count of matchingProcesses) is not 1 then error "owned process missing"
+    tell item 1 of matchingProcesses to key code 53
+  end tell
+end run
+APPLESCRIPT
+  wait_for_ax_identifier_absent "command-palette-input"
+
+  click_first_ax_identifier "sidebar-action-voice-command"
+  wait_for_ax_identifier_present "voice-command-quick-command-tab"
+  close_window_containing_identifier "voice-command-quick-command-tab"
+  wait_for_ax_identifier_absent "voice-command-quick-command-tab"
+  restore_project_board_window
+  printf "OK: sidebar Search and Voice Command opened their destination surfaces\n"
+}
+
+exercise_settings_utility() {
+  click_first_ax_identifier "sidebar-action-settings"
+  wait_for_ax_identifier_present "settings-status-overview"
+  close_window_containing_identifier "settings-status-overview"
+  wait_for_ax_identifier_absent "settings-status-overview"
+  restore_project_board_window
+  printf "OK: sidebar Settings opened and closed the verified Settings window\n"
 }
 
 exercise_terminal_utility() {
@@ -1463,6 +1499,7 @@ assert_window_respects_minimum
 assert_action_buttons_are_trailing "minimum-window"
 capture_window "minimum-window"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
+exercise_sidebar_entrypoints
 exercise_toolbar_utilities
 
 launch_header_layout_candidate "japanese"
@@ -1474,6 +1511,7 @@ assert_window_respects_minimum
 assert_action_buttons_are_trailing "minimum-window-japanese"
 capture_window "minimum-window-japanese"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
+exercise_sidebar_entrypoints
 exercise_toolbar_utilities
 
 printf "OK: Project Board header layout smoke passed\n"

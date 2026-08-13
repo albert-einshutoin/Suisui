@@ -563,6 +563,20 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("case .project(let projectID):"))
     }
 
+    func testRuntimeCRUDRecoveryEntryPointsOpenTheirAdvertisedWindows() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardLaunchRecoveryViews.swift")
+        let start = try XCTUnwrap(source.range(of: "private struct ProjectBoardRuntimeCRUDRecoveryView"))
+        let end = try XCTUnwrap(
+            source.range(of: "\nprivate struct ", range: start.upperBound..<source.endIndex)
+        )
+        let recoverySource = String(source[start.lowerBound..<end.lowerBound])
+
+        XCTAssertTrue(recoverySource.contains("@Environment(\\.openSettings)"))
+        XCTAssertTrue(recoverySource.contains("@Environment(\\.openWindow)"))
+        XCTAssertTrue(recoverySource.contains("openSettings()"))
+        XCTAssertTrue(recoverySource.contains("openWindow(id: \"voice-capture\")"))
+    }
+
     func testWorkflowRootAccessibilityKeepsNestedLaunchRecoveryIdentifiers() throws {
         let source = try readProjectWorkflowSources()
 
