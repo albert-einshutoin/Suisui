@@ -91,9 +91,6 @@ final class LazyObservableObjectLoader<Value: ObservableObject>: ObservableObjec
 
 struct SettingsView: View {
     let integrationPermissionSnapshot: PermissionSnapshot
-    let watcherDiagnosticsSnapshotFactory: () -> WatcherDiagnosticsSnapshot
-    let externalMCPSettingsViewModelFactory: () -> ExternalMCPSettingsViewModel
-    let syncSettingsViewModelFactory: () -> SyncSettingsViewModel
     let isGoogleCalendarRuntimeEnabled: Bool
     let googleCalendarStatusProvider: () -> GoogleCalendarRuntimeSyncStatus
     let googleCalendarOAuthConnector: (any GoogleCalendarOAuthConnecting)?
@@ -148,9 +145,6 @@ struct SettingsView: View {
         onboardingRerunRequest: @escaping () -> Void = {}
     ) {
         self.integrationPermissionSnapshot = integrationPermissionSnapshot
-        self.watcherDiagnosticsSnapshotFactory = watcherDiagnosticsSnapshotFactory
-        self.externalMCPSettingsViewModelFactory = externalMCPSettingsViewModelFactory
-        self.syncSettingsViewModelFactory = syncSettingsViewModelFactory
         self.isGoogleCalendarRuntimeEnabled = isGoogleCalendarRuntimeEnabled
         self.googleCalendarStatusProvider = googleCalendarStatusProvider
         self.googleCalendarOAuthConnector = googleCalendarOAuthConnector

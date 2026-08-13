@@ -26,7 +26,9 @@ final class ArchitectureBoundaryTests: XCTestCase {
             "optional connector targets",
             "No broad file moves before boundary tests",
             "Phase 1: split Work Management",
-            "Phase 2: split `ProjectWorkflowViews.swift`",
+            "Phase 2: keep Today, Schedule, Catch Up, Done, Inbox, Assistant Queue",
+            "The superseded",
+            "`ProjectWorkflowViews.swift` owner has been removed",
             "Phase 3: extract app shell/runtime composition"
         ] {
             XCTAssertTrue(doc.contains(marker), "domain boundary documentation must include \(marker)")

@@ -199,7 +199,7 @@ Document commands, outcomes, line/test-runtime deltas, and why public APIs, Exte
 
 Review for specification compliance first, then Swift/shell quality, accessibility, security boundaries, and accidental tracked artifacts.
 
-- [ ] **Step 4: Commit review evidence**
+- [x] **Step 4: Commit review evidence**
 
 ```bash
 git add docs/testing/codebase-cleanup.tdd.md

@@ -85,9 +85,10 @@ app composition or adapter files.
 2. Phase 1: split Work Management from `ProjectBoard.swift` into board
    snapshots, command/application services, stores, and scheduler/read-model
    helpers without changing public behavior.
-3. Phase 2: split `ProjectWorkflowViews.swift` into Today, Schedule, Catch Up,
-   Done, Inbox, Assistant Queue, and shared layout files while preserving stable
-   accessibility identifiers and localization.
+3. Phase 2: keep Today, Schedule, Catch Up, Done, Inbox, Assistant Queue, and
+   shared layout in their feature-owned view files while preserving stable
+   accessibility identifiers and localization. The superseded
+   `ProjectWorkflowViews.swift` owner has been removed.
 4. Phase 3: extract app shell/runtime composition from `SuisuiApp.swift` into
    composition factories and settings runtime modules, keeping settings UX and
    Google Calendar readiness behavior unchanged.
