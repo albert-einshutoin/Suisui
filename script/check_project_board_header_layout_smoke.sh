@@ -319,6 +319,21 @@ launch_header_layout_candidate() {
   wait_for_visible_windows
 }
 
+launch_runtime_crud_recovery_candidate() {
+  terminate_app
+  SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_APP_SETTINGS_SUITE_NAME="$SETTINGS_SUITE" \
+    SUISUI_LAUNCH_RECOVERY_MODE=1 \
+    SUISUI_RUNTIME_CRUD_RECOVERY_MODE=1 \
+    SUISUI_DATABASE_PATH="$HEADER_LAYOUT_DATABASE_PATH" \
+    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="project:$header_layout_project_id" \
+    "$APP_BINARY" &
+  app_pid=$!
+  wait_for_app_process
+  activate_app
+  wait_for_visible_windows
+}
+
 assert_single_native_toolbar() {
   local count
   count="$(/usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT'
@@ -651,6 +666,82 @@ exercise_settings_utility() {
   close_window_containing_identifier "settings-status-overview"
   restore_project_board_window
   printf "OK: sidebar Settings opened and closed the verified Settings window\n"
+}
+
+press_keyboard_shortcut() {
+  local key_code="$1"
+  local modifier="$2"
+  /usr/bin/osascript - "$app_pid" "$key_code" "$modifier" <<'APPLESCRIPT' >/dev/null
+on run argv
+  set targetPID to item 1 of argv as integer
+  set targetKeyCode to item 2 of argv as integer
+  set modifierName to item 3 of argv
+  tell application "System Events"
+    set matchingProcesses to application processes whose unix id is targetPID
+    if (count of matchingProcesses) is not 1 then error "owned process missing"
+    tell item 1 of matchingProcesses
+      set frontmost to true
+      if modifierName is "command" then
+        key code targetKeyCode using command down
+      else if modifierName is "command-shift" then
+        key code targetKeyCode using {command down, shift down}
+      else
+        error "unsupported shortcut modifier"
+      end if
+    end tell
+  end tell
+end run
+APPLESCRIPT
+}
+
+exercise_keyboard_entrypoints() {
+  click_sidebar_toggle
+  wait_for_ax_identifier_absent "project-board-sidebar"
+
+  press_keyboard_shortcut 40 "command"
+  wait_for_ax_identifier_present "command-palette-input"
+  /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" \
+    "$app_pid" "command-palette-row-project-$header_layout_alternate_project_id"
+  wait_for_ax_identifier_absent "command-palette-input"
+  click_sidebar_toggle
+  wait_for_ax_identifier_present "project-board-sidebar"
+  restore_project_board_window
+
+  click_sidebar_toggle
+  wait_for_ax_identifier_absent "project-board-sidebar"
+  press_keyboard_shortcut 9 "command-shift"
+  wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
+  close_window_containing_identifier "voice-command-quick-command-tab"
+  click_sidebar_toggle
+  wait_for_ax_identifier_present "project-board-sidebar"
+  restore_project_board_window
+
+  click_sidebar_toggle
+  wait_for_ax_identifier_absent "project-board-sidebar"
+  press_keyboard_shortcut 43 "command"
+  wait_for_process_ax_identifier "settings-status-overview" "present"
+  close_window_containing_identifier "settings-status-overview"
+  click_sidebar_toggle
+  wait_for_ax_identifier_present "project-board-sidebar"
+  restore_project_board_window
+  launch_header_layout_candidate
+  wait_for_project_detail_visible
+  printf "OK: hidden-sidebar keyboard shortcuts opened Search, Voice Command, and Settings\n"
+}
+
+exercise_runtime_crud_recovery_entrypoints() {
+  launch_runtime_crud_recovery_candidate
+  wait_for_process_ax_identifier "project-board-settings-link" "present"
+
+  /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" "$app_pid" "project-board-settings-link"
+  wait_for_process_ax_identifier "settings-status-overview" "present"
+  close_window_containing_identifier "settings-status-overview"
+
+  activate_app
+  /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" "$app_pid" "project-board-voice-command"
+  wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
+  close_window_containing_identifier "voice-command-quick-command-tab"
+  printf "OK: runtime CRUD recovery Settings and Voice Command reached their destination windows\n"
 }
 
 exercise_terminal_utility() {
@@ -1520,6 +1611,7 @@ assert_action_buttons_are_trailing "minimum-window"
 capture_window "minimum-window"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
 exercise_sidebar_entrypoints
+exercise_keyboard_entrypoints
 exercise_toolbar_utilities
 
 launch_header_layout_candidate "japanese"
@@ -1533,5 +1625,7 @@ capture_window "minimum-window-japanese"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
 exercise_sidebar_entrypoints
 exercise_toolbar_utilities
+
+exercise_runtime_crud_recovery_entrypoints
 
 printf "OK: Project Board header layout smoke passed\n"
