@@ -76,8 +76,12 @@ def build_baseline(runs: Iterable[dict[str, Any]], sample: dict[str, Any]) -> di
     failure = sum(conclusion in FAILURE_CONCLUSIONS for conclusion in known_conclusions)
     cancelled = sum(conclusion in CANCELLED_CONCLUSIONS for conclusion in known_conclusions)
     neutral = sum(conclusion in NEUTRAL_CONCLUSIONS for conclusion in known_conclusions)
+    eligible_first_runs = [
+        first for first, final in zip(first_runs, final_runs, strict=True)
+        if final.get("status") == "completed"
+    ]
     first_completed = [
-        run for run in first_runs
+        run for run in eligible_first_runs
         if run is not None
         and run.get("status") == "completed"
         and run.get("conclusion") in RECOGNIZED_CONCLUSIONS
@@ -88,7 +92,7 @@ def build_baseline(runs: Iterable[dict[str, Any]], sample: dict[str, Any]) -> di
         sum(run.get("conclusion") == "success" for run in first_completed), len(first_completed)
     )
     overall_success_rate = _rate(success, len(known_conclusions))
-    missing_first = len(first_completed) != len(first_runs)
+    missing_first = len(first_completed) != len(eligible_first_runs)
     missing_final = len(known_conclusions) != len(completed)
     first_status = "unavailable" if not first_completed else "partial" if missing_first else "available"
     overall_status = "unavailable" if not known_conclusions else "partial" if missing_final else "available"
@@ -157,7 +161,7 @@ def load_live_runs(repository: str, workflow: str, branch: str, limit: int) -> l
     for run in latest_runs:
         if _attempt_number(run) <= 1 or run.get("id") is None:
             continue
-        first = _gh_api(f"/repos/{repository}/actions/runs/{run['id']}/attempts/1")
+        first = _gh_api(f"/repos/{repository_path}/actions/runs/{run['id']}/attempts/1")
         if first is None:
             # The final run remains useful; omitting attempt one makes partial data explicit.
             continue
