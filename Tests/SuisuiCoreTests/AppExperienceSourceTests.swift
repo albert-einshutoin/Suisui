@@ -2717,6 +2717,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("close_window_containing_identifier"))
         XCTAssertTrue(script.contains("exercise_runtime_crud_recovery_entrypoints"))
         XCTAssertTrue(script.contains("SUISUI_RUNTIME_CRUD_RECOVERY_MODE=1"))
+        XCTAssertTrue(script.contains("SUISUI_RUNTIME_CRUD_RECOVERY_MODE=1 \\\n    SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1"))
         XCTAssertTrue(script.contains("ui_evidence_ax_press_button.swift\" \"$app_pid\" \"project-board-settings-link\""))
         XCTAssertTrue(script.contains("ui_evidence_ax_press_button.swift\" \"$app_pid\" \"project-board-voice-command\""))
         XCTAssertTrue(script.contains("exercise_keyboard_entrypoints"))

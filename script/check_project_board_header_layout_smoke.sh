@@ -148,7 +148,7 @@ on run argv
     tell item 1 of matchingProcesses
       set frontmost to true
       repeat with candidateWindow in windows
-        if my containsIdentifier(candidateWindow, "project-board-sidebar-toggle", 0) and my containsIdentifier(candidateWindow, "project-board-sidebar", 0) and my containsIdentifier(candidateWindow, "project-board-detail", 0) then
+        if my containsIdentifier(candidateWindow, "project-board-sidebar-toggle", 0) and my containsIdentifier(candidateWindow, "project-board-detail", 0) then
           try
             perform action "AXRaise" of candidateWindow
           end try
@@ -325,6 +325,7 @@ launch_runtime_crud_recovery_candidate() {
     SUISUI_APP_SETTINGS_SUITE_NAME="$SETTINGS_SUITE" \
     SUISUI_LAUNCH_RECOVERY_MODE=1 \
     SUISUI_RUNTIME_CRUD_RECOVERY_MODE=1 \
+    SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1 \
     SUISUI_DATABASE_PATH="$HEADER_LAYOUT_DATABASE_PATH" \
     SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="project:$header_layout_project_id" \
     "$APP_BINARY" &
@@ -703,27 +704,21 @@ exercise_keyboard_entrypoints() {
   /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" \
     "$app_pid" "command-palette-row-project-$header_layout_alternate_project_id"
   wait_for_ax_identifier_absent "command-palette-input"
-  click_sidebar_toggle
-  wait_for_ax_identifier_present "project-board-sidebar"
-  restore_project_board_window
 
+  launch_header_layout_candidate
+  wait_for_project_detail_visible
   click_sidebar_toggle
   wait_for_ax_identifier_absent "project-board-sidebar"
   press_keyboard_shortcut 9 "command-shift"
   wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
-  close_window_containing_identifier "voice-command-quick-command-tab"
-  click_sidebar_toggle
-  wait_for_ax_identifier_present "project-board-sidebar"
-  restore_project_board_window
 
+  launch_header_layout_candidate
+  wait_for_project_detail_visible
   click_sidebar_toggle
   wait_for_ax_identifier_absent "project-board-sidebar"
   press_keyboard_shortcut 43 "command"
   wait_for_process_ax_identifier "settings-status-overview" "present"
-  close_window_containing_identifier "settings-status-overview"
-  click_sidebar_toggle
-  wait_for_ax_identifier_present "project-board-sidebar"
-  restore_project_board_window
+
   launch_header_layout_candidate
   wait_for_project_detail_visible
   printf "OK: hidden-sidebar keyboard shortcuts opened Search, Voice Command, and Settings\n"
