@@ -16,10 +16,10 @@
 - Create: `AGENTS.md`
 - Create: `ARCHITECTURE.md`
 
-- [ ] Point agents to canonical build, test, security, architecture, ADR, UI, and PR-completion sources.
-- [ ] Record the Sol/Terra/Luna routing and the rule that unavailable models must be reported rather than silently substituted.
-- [ ] Keep architectural detail in existing documents; make the root file an index and boundary map.
-- [ ] Verify every referenced path and command exists.
+- [x] Point agents to canonical build, test, security, architecture, ADR, UI, and PR-completion sources.
+- [x] Record the Sol/Terra/Luna routing and the rule that unavailable models must be reported rather than silently substituted.
+- [x] Keep architectural detail in existing documents; make the root file an index and boundary map.
+- [x] Verify every referenced path and command exists.
 
 ### Task 2: Fix the UI definition of done
 
@@ -27,10 +27,10 @@
 - Create: `docs/quality/ui-done-criteria.md`
 - Modify: `AGENTS.md`
 
-- [ ] Define when runtime, accessibility, localization, visual, layout, performance, and human review evidence is required.
-- [ ] Bind each criterion to an existing Suisui command or evidence artifact.
-- [ ] State fail-closed rules for unknown impact, unavailable selectors, and stale evidence.
-- [ ] Run focused source-contract tests that protect quality documentation.
+- [x] Define when runtime, accessibility, localization, visual, layout, performance, and human review evidence is required.
+- [x] Bind each criterion to an existing Suisui command or evidence artifact.
+- [x] State fail-closed rules for unknown impact, unavailable selectors, and stale evidence.
+- [x] Run focused source-contract tests that protect quality documentation.
 
 ### Task 3: Add a repeatable quality-metric baseline
 
@@ -40,11 +40,11 @@
 - Create: `docs/quality/engineering-metrics.md`
 - Create: `docs/quality/engineering-metrics-baseline.json`
 
-- [ ] Write failing parser tests for empty samples, first-attempt success, reruns, failed runs, and neutral conclusions.
-- [ ] Implement a standard-library collector that reads GitHub Actions JSON from stdin or `gh api`, redacts repository-independent details, and emits a versioned deterministic summary.
-- [ ] Define a bounded sample window and explicitly distinguish missing data from zero.
-- [ ] Capture the current live baseline without mutating GitHub state.
-- [ ] Run the focused Python tests and validate the generated JSON.
+- [x] Write failing parser tests for empty samples, first-attempt success, reruns, failed runs, and neutral conclusions.
+- [x] Implement a standard-library collector that reads GitHub Actions JSON from stdin or `gh api`, redacts repository-independent details, and emits a versioned deterministic summary.
+- [x] Define a bounded sample window and explicitly distinguish missing data from zero.
+- [x] Capture the current live baseline without mutating GitHub state.
+- [x] Run the focused Python tests and validate the generated JSON.
 
 ### Task 4: Split Skill context by use case
 
@@ -56,20 +56,20 @@
 - Create: `/Users/shutoide/.codex/research.config.toml`
 - Create: `/Users/shutoide/.codex/PROFILES.md`
 
-- [ ] Replace obsolete goal/subagent model instructions with the selected Sol/Terra/Luna routing.
-- [ ] Keep Ponytail, GitHub, Superpowers, and security capabilities in development profiles while disabling unrelated language and product skills.
-- [ ] Keep research/documentation capabilities in the research profile and disable implementation-only plugins there.
-- [ ] Document selection commands and the difference between global defaults, profiles, and repository instructions.
-- [ ] Validate every profile with strict Codex config parsing.
+- [x] Replace obsolete goal/subagent model instructions with the selected Sol/Terra/Luna routing.
+- [x] Keep Ponytail, GitHub, Superpowers, and security capabilities in development profiles while disabling unrelated language and product skills.
+- [x] Keep research/documentation capabilities in the research profile and disable implementation-only plugins there.
+- [x] Document selection commands and the difference between global defaults, profiles, and repository instructions.
+- [x] Validate every profile with strict Codex config parsing.
 
 ### Task 5: Verify and review
 
 **Files:**
 - Review all files above.
 
-- [ ] Run `python3 -m unittest ci.tests.test_quality_metrics_baseline`.
-- [ ] Run `./script/check_security_regressions.sh`.
-- [ ] Run the repository's relevant focused tests, then `./scripts/ci.sh` because the entrypoint changes global development policy.
-- [ ] Run strict config validation for all four profiles.
-- [ ] Use a Python reviewer for the collector and a Sol max final review for the complete change.
-- [ ] Resolve important findings, rerun affected gates, and leave the branch in a clean, reviewable state.
+- [x] Run `python3 -m unittest ci.tests.test_quality_metrics_baseline`.
+- [x] Run `./script/check_security_regressions.sh`.
+- [x] Run the repository's relevant focused tests, then `./scripts/ci.sh` because the entrypoint changes global development policy. The full lane exposed the pre-existing stale MCP inspector evidence test; focused changed-scope gates passed.
+- [x] Run strict config validation for all four profiles.
+- [x] Use a Python reviewer for the collector and a Sol max final review for the complete change.
+- [x] Resolve important findings, rerun affected gates, and leave the branch in a clean, reviewable state.
