@@ -102,7 +102,7 @@ final class ArtifactMonitoringTests: XCTestCase {
 
     func testCurrentMigrationScopesArtifactUniquenessAndKeepsCreatedDuplicate() throws {
         let connection = try SQLiteConnection(path: ":memory:")
-        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase4)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase4)
         try connection.execute(
             """
             INSERT INTO artifacts (project_id, task_id, workspace_path, expected_path, created_state, last_modified_at)
@@ -127,7 +127,7 @@ final class ArtifactMonitoringTests: XCTestCase {
             """
         )
 
-        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
 
         let store = SQLiteArtifactStore(connection: connection)
         let artifacts = try store.list()
@@ -460,13 +460,13 @@ final class ArtifactMonitoringTests: XCTestCase {
 
     private func makeConnection() throws -> SQLiteConnection {
         let connection = try SQLiteConnection(path: ":memory:")
-        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase4)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase4)
         return connection
     }
 
     private func makeCurrentConnection() throws -> SQLiteConnection {
         let connection = try SQLiteConnection(path: ":memory:")
-        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         return connection
     }
 
@@ -483,24 +483,6 @@ final class ArtifactMonitoringTests: XCTestCase {
 
 private struct FixedDateProvider: DateProvider {
     let now: Date
-}
-
-private enum TestMigrationRunner {
-    static func migrate(connection: SQLiteConnection, migrations: [DatabaseMigration]) throws {
-        try connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS schema_migrations (
-                id TEXT PRIMARY KEY NOT NULL,
-                applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            """
-        )
-        let alreadyApplied = Set(try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;"))
-        for migration in migrations where !alreadyApplied.contains(migration.id) {
-            try migration.apply(connection)
-            try connection.execute("INSERT INTO schema_migrations (id) VALUES ('\(migration.id)');")
-        }
-    }
 }
 
 private extension Date {

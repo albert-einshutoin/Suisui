@@ -698,13 +698,13 @@ final class SystemToolTests: XCTestCase {
 
     private func migratedConnection() throws -> SQLiteConnection {
         let connection = try SQLiteConnection(path: ":memory:")
-        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase2)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase2)
         return connection
     }
 
     private func currentMigratedConnection() throws -> SQLiteConnection {
         let connection = try SQLiteConnection(path: ":memory:")
-        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         return connection
     }
 
@@ -718,24 +718,6 @@ final class SystemToolTests: XCTestCase {
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
-    }
-}
-
-private enum TestMigrationRunner {
-    static func migrate(connection: SQLiteConnection, migrations: [DatabaseMigration]) throws {
-        try connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS schema_migrations (
-                id TEXT PRIMARY KEY NOT NULL,
-                applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            """
-        )
-        let alreadyApplied = Set(try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;"))
-        for migration in migrations where !alreadyApplied.contains(migration.id) {
-            try migration.apply(connection)
-            try connection.execute("INSERT INTO schema_migrations (id) VALUES ('\(migration.id)');")
-        }
     }
 }
 

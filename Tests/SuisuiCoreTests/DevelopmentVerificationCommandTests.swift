@@ -547,7 +547,7 @@ final class DevelopmentVerificationCommandTests: XCTestCase {
 
     private func makeStores() throws -> (projects: SQLiteProjectStore, tasks: SQLiteTaskStore, artifacts: SQLiteArtifactStore) {
         let connection = try SQLiteConnection(path: ":memory:")
-        try DevelopmentVerificationCommandTestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         return (
             SQLiteProjectStore(connection: connection),
             SQLiteTaskStore(connection: connection),
@@ -668,24 +668,6 @@ private final class VerificationRecordingProjectWorkspaceBookmarkResolver: Proje
     func resolve(bookmarkData: Data) throws -> ProjectWorkspaceBookmarkResolution {
         resolvedBookmarks.append(bookmarkData)
         return resolution
-    }
-}
-
-private enum DevelopmentVerificationCommandTestMigrationRunner {
-    static func migrate(connection: SQLiteConnection, migrations: [DatabaseMigration]) throws {
-        try connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS schema_migrations (
-                id TEXT PRIMARY KEY NOT NULL,
-                applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            """
-        )
-        let alreadyApplied = Set(try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;"))
-        for migration in migrations where !alreadyApplied.contains(migration.id) {
-            try migration.apply(connection)
-            try connection.execute("INSERT INTO schema_migrations (id) VALUES ('\(migration.id)');")
-        }
     }
 }
 
