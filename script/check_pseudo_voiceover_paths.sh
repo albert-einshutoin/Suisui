@@ -67,7 +67,6 @@ REQUIRED_MARKERS=(
   "project-inspector-delete"
   "project-inspector-delete-confirmation-cancel"
   "project-inspector-delete-confirmation-confirm"
-  "sidebar-destination-today"
   "today-workflow"
   "today-briefing-panel"
   "today-focus-recommendation"
@@ -108,8 +107,16 @@ TODAY_UI_ACCESSIBILITY_IDENTIFIERS=(
   "today-rail-actions-menu"
 )
 
+SIDEBAR_UI_ACCESSIBILITY_IDENTIFIERS=(
+  "sidebar-destination-inbox"
+  "sidebar-destination-today"
+  "sidebar-destination-projects"
+  "sidebar-destination-schedule"
+  "sidebar-destination-completed"
+)
+
 TODAY_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift"
-SIDEBAR_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectWorkflowViews.swift"
+SIDEBAR_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift"
 SIDEBAR_DESTINATION_SOURCE="$ROOT_DIR/Sources/SuisuiCore/App/ProjectBoardSelectionPersistence.swift"
 INBOX_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift"
 ASSISTANT_QUEUE_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectWorkflowAssistantQueueView.swift"
@@ -147,7 +154,7 @@ SOURCES=(
   "$SIDEBAR_DESTINATION_SOURCE"
   "$ROOT_DIR/Sources/SuisuiApp/Views/ProjectBoardView.swift"
   "$TODAY_WORKFLOW_SOURCE"
-  "$SIDEBAR_WORKFLOW_SOURCE"
+  "$SIDEBAR_SOURCE"
   "$INBOX_WORKFLOW_SOURCE"
   "$ASSISTANT_QUEUE_WORKFLOW_SOURCE"
   "$REVIEW_HUB_SOURCE"
@@ -251,14 +258,22 @@ else
   done
 fi
 
+if [[ ! -f "$SIDEBAR_SOURCE" ]]; then
+  echo "BLOCKER: sidebar source is missing: $SIDEBAR_SOURCE" >&2
+  missing=$((missing + 1))
+else
+  for identifier in "${SIDEBAR_UI_ACCESSIBILITY_IDENTIFIERS[@]}"; do
+    if ! grep -F "\"$identifier\"" "$SIDEBAR_SOURCE" >/dev/null; then
+      echo "BLOCKER: sidebar accessibilityIdentifier missing from ProjectBoardSidebarView.swift: $identifier" >&2
+      missing=$((missing + 1))
+    fi
+  done
+fi
+
 if [[ ! -f "$SIDEBAR_DESTINATION_SOURCE" ]]; then
   echo "BLOCKER: sidebar destination source is missing: $SIDEBAR_DESTINATION_SOURCE" >&2
   missing=$((missing + 1))
 else
-  if ! grep -F '.accessibilityIdentifier("sidebar-destination-\(destination.accessibilityIdentifierSuffix)")' "$SIDEBAR_WORKFLOW_SOURCE" >/dev/null; then
-    echo "BLOCKER: generated sidebar accessibilityIdentifier template is missing from ProjectWorkflowViews.swift" >&2
-    missing=$((missing + 1))
-  fi
   if ! awk '/case \.today:/ { foundCase = 1; next } foundCase && /"today"/ { foundValue = 1; exit } END { exit !(foundCase && foundValue) }' "$SIDEBAR_DESTINATION_SOURCE"; then
     echo "BLOCKER: Today sidebar accessibilityIdentifier suffix mapping is missing from ProjectBoardSelectionPersistence.swift" >&2
     missing=$((missing + 1))

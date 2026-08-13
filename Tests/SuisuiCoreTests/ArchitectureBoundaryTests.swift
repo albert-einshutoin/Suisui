@@ -222,7 +222,6 @@ final class ArchitectureBoundaryTests: XCTestCase {
     }
 
     func testProjectWorkflowSurfacesAreSplitIntoOwnedViewFiles() throws {
-        let workflowShellSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowViews.swift")
         let expectedSurfaceFiles = [
             ("Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift", "struct TodayWorkflowView"),
             ("Sources/SuisuiApp/Views/ProjectWorkflowCatchUpView.swift", "struct CatchUpWorkflowView"),
@@ -234,7 +233,6 @@ final class ArchitectureBoundaryTests: XCTestCase {
         for (path, marker) in expectedSurfaceFiles {
             let source = try readPackageFile(path)
             XCTAssertTrue(source.contains(marker), "\(path) should own \(marker)")
-            XCTAssertFalse(workflowShellSource.contains(marker), "ProjectWorkflowViews.swift should no longer own \(marker)")
         }
 
         let sharedSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowSharedViews.swift")

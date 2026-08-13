@@ -61,6 +61,7 @@ struct ProjectBoardProjectsHubView<Content: View>: View {
 
                 Section("Smart Lists") {
                     ForEach(smartLists) { smartList in
+                        let isSelected = route == .smartList(smartList.id)
                         Label {
                             smartListTitle(smartList)
                                 .lineLimit(1)
@@ -82,6 +83,7 @@ struct ProjectBoardProjectsHubView<Content: View>: View {
                                 }
                             }
                         }
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
                         .accessibilityIdentifier("project-board-smart-list-row-\(smartList.id)")
                     }
 

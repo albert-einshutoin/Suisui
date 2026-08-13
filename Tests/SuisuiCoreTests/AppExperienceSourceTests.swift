@@ -8498,7 +8498,6 @@ final class AppExperienceSourceTests: XCTestCase {
 
     private func readProjectWorkflowSources() throws -> String {
         try [
-            "Sources/SuisuiApp/Views/ProjectWorkflowViews.swift",
             "Sources/SuisuiApp/Views/ProjectWorkflowSharedViews.swift",
             "Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift",
             "Sources/SuisuiApp/Views/TodayDashboardView.swift",
