@@ -463,7 +463,7 @@ final class AppExperienceSourceTests: XCTestCase {
             helper.range(of: "SuisuiVoiceConversationScopeBridge.store(")
         )
         let openWindow = try XCTUnwrap(
-            helper.range(of: "openWindow(id: \"voice-capture\")")
+            helper.range(of: "VoiceWindowActivationCoordinator.shared.activateExistingWindowOrRequestOpen()")
         )
         XCTAssertLessThan(store.lowerBound, openWindow.lowerBound)
         XCTAssertTrue(

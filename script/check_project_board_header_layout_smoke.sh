@@ -636,6 +636,7 @@ end run
 APPLESCRIPT
   wait_for_ax_identifier_absent "command-palette-input"
 
+  restore_project_board_window
   click_first_ax_identifier "sidebar-action-voice-command"
   wait_for_ax_identifier_present "voice-command-quick-command-tab"
   close_window_containing_identifier "voice-command-quick-command-tab"

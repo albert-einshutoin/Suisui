@@ -707,7 +707,7 @@ struct ProjectBoardView: View {
                 taskName: task?.title
             )
         )
-        openWindow(id: "voice-capture")
+        VoiceWindowActivationCoordinator.shared.activateExistingWindowOrRequestOpen()
         NotificationCenter.default.post(
             name: .suisuiVoiceConversationScopeRequested,
             object: nil
