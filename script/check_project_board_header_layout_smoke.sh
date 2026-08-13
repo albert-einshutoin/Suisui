@@ -128,7 +128,7 @@ on containsIdentifier(uiElement, targetIdentifier, depth)
     try
       if value of attribute "AXIdentifier" of uiElement is targetIdentifier then return true
     end try
-    if depth < 8 then
+    if depth < 12 then
       try
         repeat with childElement in UI elements of uiElement
           if my containsIdentifier(childElement, targetIdentifier, depth + 1) then return true
@@ -388,7 +388,7 @@ on containsIdentifier(uiElement, targetIdentifier, depth)
     try
       if value of attribute "AXIdentifier" of uiElement is targetIdentifier then return true
     end try
-    if depth < 8 then
+    if depth < 12 then
       try
         repeat with childElement in UI elements of uiElement
           if my containsIdentifier(childElement, targetIdentifier, depth + 1) then return true
