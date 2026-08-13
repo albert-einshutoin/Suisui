@@ -8346,7 +8346,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("DEFAULT_COLD_LAUNCH_BUDGET_MS=1000"))
         XCTAssertTrue(script.contains("COLD_LAUNCH_SAMPLE_COUNT=3"))
         XCTAssertTrue(script.contains("median_elapsed_ms"))
-        XCTAssertTrue(script.contains("wait_for_marker \"project-board-command-palette\""))
+        XCTAssertTrue(script.contains("wait_for_marker \"project-board-sidebar-toggle\""))
     }
 
     func testReleaseLaunchPerformanceFailsClosedWhenBootstrapExitsBeforeQuiescence() throws {
