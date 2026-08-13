@@ -7,7 +7,6 @@
     "DevelopmentAutomationRuntimeSmokeTests"
   ],
   "documentationTestTargets": [
-    "Phase5DocumentationTests",
     "PublicBrandSurfaceTests"
   ],
   "integrationRules": [
