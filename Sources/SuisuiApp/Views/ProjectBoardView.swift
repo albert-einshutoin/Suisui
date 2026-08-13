@@ -793,13 +793,6 @@ struct ProjectBoardView: View {
         SmartList.presets + savedSmartLists
     }
 
-    private var selectedSmartList: SmartList? {
-        guard let selectedSmartListID else {
-            return nil
-        }
-        return allSmartLists.first { $0.id == selectedSmartListID }
-    }
-
     private func selectSmartList(_ smartList: SmartList) {
         selectedSmartListID = smartList.id
         viewModel.selectedTaskID = nil
@@ -1022,18 +1015,6 @@ struct ProjectBoardView: View {
 
     private var sidebarProjects: [ProjectBoardProject] {
         viewModel.snapshot.projects.filter { $0.id != viewModel.inboxProject?.id }
-    }
-
-    private var activeSidebarProjects: [ProjectBoardProject] {
-        sidebarProjects.filter { !$0.isCompleted && !$0.isArchived }
-    }
-
-    private var completedSidebarProjects: [ProjectBoardProject] {
-        sidebarProjects.filter { $0.isCompleted && !$0.isArchived }
-    }
-
-    private var archivedSidebarProjects: [ProjectBoardProject] {
-        sidebarProjects.filter(\.isArchived)
     }
 
     private var isDeveloperModeEnabled: Bool {
@@ -2209,78 +2190,6 @@ enum ProjectBoardDisplayMode: String, CaseIterable, Identifiable {
         case .list:
             "list.bullet"
         }
-    }
-}
-
-private struct ProjectSidebarRow: View {
-    let project: ProjectBoardProject
-    let onSelect: () -> Void
-    let onMoveDroppedTasks: ([String]) -> Bool
-    @State private var isDropTargeted = false
-
-    var body: some View {
-        Label {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(project.title)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .help(project.title)
-                Text(project.isArchived ? localizedDisplay("Archived") : localizedTaskCount(project.taskCount))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        } icon: {
-            Image(systemName: systemImage)
-                .foregroundStyle(iconColor)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(project.accessibilitySidebarLabel)
-        .accessibilityHint("Selects this project. Drop task cards here to move them into this project.")
-        .accessibilityIdentifier("project-sidebar-row-\(project.id)")
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onSelect)
-        .accessibilityAction(.default, onSelect)
-        .padding(.vertical, 2)
-        .padding(.horizontal, 4)
-        .background(isDropTargeted ? project.sidebarDropTint.opacity(0.14) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
-        .overlay {
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(isDropTargeted ? project.sidebarDropTint.opacity(0.6) : Color.clear, lineWidth: 1)
-        }
-        .dropDestination(for: String.self) { rawIDs, _ in
-            onMoveDroppedTasks(rawIDs)
-        } isTargeted: { targeted in
-            isDropTargeted = targeted
-        }
-    }
-
-    private var systemImage: String {
-        if project.isArchived {
-            return "archivebox"
-        }
-        return project.isCompleted ? "checkmark.circle" : "folder"
-    }
-
-    private var iconColor: Color {
-        if project.isArchived {
-            return .secondary
-        }
-        return project.isCompleted ? .green : .secondary
-    }
-}
-
-private extension ProjectBoardProject {
-    var accessibilitySidebarLabel: String {
-        let state = localizedDisplay(isArchived ? "Archived" : isCompleted ? "Completed" : "Active")
-        let taskLabel = localizedTaskCount(taskCount)
-        return "\(title), \(state), \(taskLabel)"
-    }
-
-    var sidebarDropTint: Color {
-        if isArchived {
-            return .secondary
-        }
-        return isCompleted ? .green : .blue
     }
 }
 

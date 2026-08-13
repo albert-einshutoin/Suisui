@@ -44,7 +44,6 @@ runtime_expected_head_file="$UI_ROOT/fake-expected-head.txt"
 runtime_pull_request_base_branch="main"
 runtime_fake_pull_request_url="https://github.com/albert-einshutoin/suisui/pull/16001"
 runtime_pull_request_title="Suisui: Implement runtime branch flow"
-runtime_pull_request_body=$'## Summary\n- Prepare Implement runtime branch flow for AX Runtime Development Project.\n'
 REAL_GIT="$(command -v git || true)"
 app_pid=""
 seed_project_id=""

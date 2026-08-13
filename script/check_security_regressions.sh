@@ -13,13 +13,6 @@ TOKEN_PATTERNS=(
   '-----BEGIN (RSA |EC |OPENSSH |)PRIVATE KEY-----'
 )
 
-KEYCHAIN_REFERENCE_ALLOWLIST=(
-  'Keychain'
-  'SecretStore'
-  'SecItem'
-  'keychain reference'
-)
-
 RAW_SECRET_DENYLIST=(
   'api[_-]?key[[:space:]]*[:=][[:space:]]*["'\''][^"'\'']{8,}'
   'OAUTH[^[:space:]]*(token|secret)[[:space:]]*[:=][[:space:]]*["'\''][^"'\'']{8,}'

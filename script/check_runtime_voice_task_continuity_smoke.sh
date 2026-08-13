@@ -19,23 +19,6 @@ FIXTURE_TASK_ONE_TITLE="P18 338 prepare review"
 FIXTURE_TASK_TWO_TITLE="P18 338 submit summary"
 FIXTURE_DUE_DATE="2031-03-08"
 
-REQUIRED_STAGES=(
-  "isolated_home_sqlite"
-  "fixed_fixture_seed"
-  "normal_product_route"
-  "session_start"
-  "task_list"
-  "reference_selection"
-  "clarification"
-  "proposal"
-  "pre_approval_snapshot"
-  "queue_approval_execution"
-  "postcondition_receipt_action_link"
-  "restart"
-  "resume"
-  "redacted_source_bound_artifact"
-)
-
 runtime_dir=""
 runtime_home=""
 database_path=""

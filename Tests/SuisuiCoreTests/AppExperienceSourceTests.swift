@@ -7169,7 +7169,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("wait_for_window_capture_metadata"))
         XCTAssertTrue(script.contains("position_window_for_capture"))
         XCTAssertTrue(script.contains("AX_RESIZE_WINDOW_HELPER_BINARY"))
-        XCTAssertTrue(script.contains("read -r observed_x observed_y observed_width observed_height <<<\"$ax_window_size\""))
+        XCTAssertTrue(script.contains("read -r _ _ observed_width observed_height <<<\"$ax_window_size\""))
         XCTAssertTrue(script.contains("POSITIONED_WINDOW_WIDTH=\"$observed_width\""))
         XCTAssertTrue(script.contains("successful_window_width=\"$POSITIONED_WINDOW_WIDTH\""))
         XCTAssertTrue(script.contains("Avoid LaunchServices activation"))

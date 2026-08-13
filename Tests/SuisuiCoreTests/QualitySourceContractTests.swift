@@ -647,7 +647,6 @@ final class QualitySourceContractTests: XCTestCase {
             "OAUTH",
             "MCP",
             "NOTARY",
-            "KEYCHAIN_REFERENCE_ALLOWLIST",
             "RAW_SECRET_DENYLIST",
             "SUISUI_SECURITY_SCAN_INCLUDE_TMP"
         ] {
