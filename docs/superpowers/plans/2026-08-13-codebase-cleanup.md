@@ -187,15 +187,15 @@ git commit -m "refactor: reduce brittle and repetitive release tests"
 **Files:**
 - Create: `docs/testing/codebase-cleanup.tdd.md`
 
-- [ ] **Step 1: Run complete verification**
+- [x] **Step 1: Run complete verification**
 
 Run `swift build --product Suisui`, `./script/run_complete_swiftpm_tests.sh`, `python3 -m unittest discover -s ci/tests -p 'test_*.py'`, `./script/check_security_regressions.sh`, `actionlint .github/workflows/ci.yml`, and ShellCheck for all modified shell files.
 
-- [ ] **Step 2: Record RED/GREEN evidence and intentional exclusions**
+- [x] **Step 2: Record RED/GREEN evidence and intentional exclusions**
 
 Document commands, outcomes, line/test-runtime deltas, and why public APIs, ExternalConnectors/iOS/Web, compatibility migrations, and unverified recovery flags were not deleted.
 
-- [ ] **Step 3: Review the complete diff**
+- [x] **Step 3: Review the complete diff**
 
 Review for specification compliance first, then Swift/shell quality, accessibility, security boundaries, and accidental tracked artifacts.
 
