@@ -2806,7 +2806,12 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         throws
     {
         let directory = try makeTemporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
+        let outsideRecording = FileManager.default.temporaryDirectory
+            .appendingPathComponent("outside-\(UUID().uuidString).m4a")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+            try? FileManager.default.removeItem(at: outsideRecording)
+        }
         let now = Date(timeIntervalSince1970: 100_000)
         let staleConversation = directory.appendingPathComponent(
             "suisui-conversation-\(UUID().uuidString).m4a"
@@ -2817,13 +2822,29 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         let inboxEligibleRecording = directory.appendingPathComponent(
             "suisui-recording-\(UUID().uuidString).m4a"
         )
+        let recentInboxRecording = directory.appendingPathComponent(
+            "suisui-recording-\(UUID().uuidString).m4a"
+        )
+        let nonUUIDInboxRecording = directory.appendingPathComponent(
+            "suisui-recording-not-a-uuid.m4a"
+        )
+        let symlinkInboxRecording = directory.appendingPathComponent(
+            "suisui-recording-\(UUID().uuidString).m4a"
+        )
         for url in [
             staleConversation,
             recentSegment,
             inboxEligibleRecording,
+            recentInboxRecording,
+            nonUUIDInboxRecording,
+            outsideRecording,
         ] {
             try Data("audio".utf8).write(to: url)
         }
+        try FileManager.default.createSymbolicLink(
+            at: symlinkInboxRecording,
+            withDestinationURL: outsideRecording
+        )
         try FileManager.default.setAttributes(
             [.modificationDate: now.addingTimeInterval(-7_200)],
             ofItemAtPath: staleConversation.path
@@ -2835,6 +2856,18 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         try FileManager.default.setAttributes(
             [.modificationDate: now.addingTimeInterval(-7_200)],
             ofItemAtPath: inboxEligibleRecording.path
+        )
+        try FileManager.default.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-60)],
+            ofItemAtPath: recentInboxRecording.path
+        )
+        try FileManager.default.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-7_200)],
+            ofItemAtPath: nonUUIDInboxRecording.path
+        )
+        try FileManager.default.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-7_200)],
+            ofItemAtPath: outsideRecording.path
         )
 
         let failures =
@@ -2853,10 +2886,22 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertTrue(
             FileManager.default.fileExists(atPath: recentSegment.path)
         )
-        XCTAssertTrue(
+        XCTAssertFalse(
             FileManager.default.fileExists(
                 atPath: inboxEligibleRecording.path
             )
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: recentInboxRecording.path)
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: nonUUIDInboxRecording.path)
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: symlinkInboxRecording.path)
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: outsideRecording.path)
         )
     }
 
@@ -2981,6 +3026,73 @@ final class VoiceCaptureViewModelTests: XCTestCase {
 
         XCTAssertFalse(viewModel.canSaveDraftToInbox)
         XCTAssertEqual(saver.requests.count, 1)
+    }
+
+    func testManagedInboxSaveRetriesTemporarySourceDeletionAfterTransientFailure() async throws {
+        let sourceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "suisui-recording-\(UUID().uuidString).m4a"
+        )
+        try Data("audio".utf8).write(to: sourceURL)
+        defer { try? FileManager.default.removeItem(at: sourceURL) }
+        let managedURL = URL(
+            filePath: "/Users/example/Library/Application Support/Suisui/InboxAudio/managed.m4a"
+        )
+        let task = ProjectBoardTask(
+            id: 42,
+            projectID: 1,
+            title: "Create a task",
+            detail: "",
+            status: .backlog,
+            priority: .medium,
+            dueAt: nil
+        )
+        let capture = InboxCaptureRecord(
+            id: 7,
+            taskID: task.id,
+            sourceKind: .voiceMemo,
+            audioFilePath: managedURL.path,
+            durationSeconds: 2,
+            transcript: "Create a task",
+            interpretationSummary: nil,
+            memo: "",
+            classificationStatus: .unclassified,
+            transcriptionStatus: .succeeded,
+            createdAt: "2026-08-12T00:00:00Z"
+        )
+        let saver = RecordingInboxVoiceCaptureSaver(
+            result: InboxVoiceCaptureResult(task: task, capture: capture)
+        )
+        let remover = FailOnceTemporaryRecordingRemover()
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(
+                transcript: STTTranscript(text: "Create a task")
+            ),
+            llmProvider: FakeLLMProvider(
+                response: PlanningResponse(
+                    providerID: "unused",
+                    rawContent: "{}",
+                    actionPlan: nil,
+                    validationResult: .init(issues: [])
+                )
+            ),
+            inboxCaptureSaver: saver,
+            temporaryRecordingRemover: remover.remove
+        )
+
+        await viewModel.startRecording()
+        await viewModel.stopRecording(outputURL: sourceURL)
+        viewModel.saveDraftToInbox()
+
+        XCTAssertFalse(viewModel.canSaveDraftToInbox)
+        XCTAssertEqual(saver.requests.count, 1)
+        XCTAssertEqual(remover.attemptCount, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sourceURL.path))
+
+        viewModel.releaseTemporaryRecordingResources()
+
+        XCTAssertEqual(remover.attemptCount, 2)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sourceURL.path))
     }
 
     func testSaveDraftToInboxDoesNotUseStaleDraftAfterTranscriptionFailure() async {

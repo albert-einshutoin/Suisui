@@ -1,5 +1,16 @@
 import Foundation
+import OSLog
 import SuisuiCore
+
+private let inboxAudioReconciliationLogger = Logger(
+    subsystem: "dev.suisui.app",
+    category: "inbox-audio"
+)
+
+private enum InboxAudioReconciliationGate {
+    static let lock = NSLock()
+    nonisolated(unsafe) static var hasAttempted = false
+}
 
 enum ProjectBoardRuntimeBundle: @unchecked Sendable {
     case available(
@@ -24,7 +35,11 @@ extension AppRuntimeFactory {
             defer {
                 signposter.endInterval("LaunchToRuntimeBundle", launchState)
             }
-            return makeProjectBoardRuntimeBundle()
+            let runtime = makeProjectBoardRuntimeBundle()
+            if case let .available(connection, _, _, _, _, _) = runtime {
+                reconcileManagedInboxAudioOnce(connection: connection)
+            }
+            return runtime
         }.value
     }
 
@@ -57,9 +72,10 @@ extension AppRuntimeFactory {
     static func makeProjectBoardViewModel(runtime: ProjectBoardRuntimeBundle) -> ProjectBoardViewModel {
         switch runtime {
         case let .available(connection, projectBoardStore, externalTaskLinkStore, assistantQueueStore, executionReceiptStore, googleCalendarSyncStatus):
+            let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)
             return ProjectBoardViewModel(
                 store: projectBoardStore,
-                inboxCaptureStore: SQLiteInboxCaptureStore(connection: connection),
+                inboxCaptureStore: inboxCaptureStore,
                 assistantQueueStore: assistantQueueStore,
                 assistantQueueExecutionCoordinatorFactory: {
                     makeAssistantQueueExecutionCoordinator(
@@ -96,6 +112,61 @@ extension AppRuntimeFactory {
     @MainActor
     static func makeLaunchVisibleProjectBoardViewModel() -> ProjectBoardViewModel {
         makeProjectBoardViewModel(runtime: makeProjectBoardRuntimeBundle())
+    }
+
+    /// Reconciles the managed audio directory before exposing Inbox audio.
+    /// Legacy recorder paths are migrated only when they are app-owned temp
+    /// files; unknown paths remain transcript-only instead of being copied.
+    static func reconcileManagedInboxAudioOnce(connection: SQLiteConnection) {
+        InboxAudioReconciliationGate.lock.lock()
+        defer { InboxAudioReconciliationGate.lock.unlock() }
+        guard InboxAudioReconciliationGate.hasAttempted == false else {
+            return
+        }
+        // A failed maintenance attempt must not be retried for every recreated
+        // window. Board and transcript reads remain available for this process.
+        InboxAudioReconciliationGate.hasAttempted = true
+        do {
+            try reconcileManagedInboxAudio(
+                captureStore: SQLiteInboxCaptureStore(connection: connection),
+                audioStore: ManagedInboxAudioFileStore()
+            )
+        } catch {
+            // Avoid logging an error description that could contain a private
+            // recording path.
+            inboxAudioReconciliationLogger.error(
+                "Inbox audio reconciliation failed category=audio_reconciliation_failed"
+            )
+        }
+    }
+
+    static func reconcileManagedInboxAudio(
+        captureStore: SQLiteInboxCaptureStore,
+        audioStore: ManagedInboxAudioFileStore
+    ) throws {
+        for capture in try captureStore.listAll() {
+            guard let managedURL = try audioStore.migrateLegacyRecordingIfNeeded(
+                from: URL(fileURLWithPath: capture.audioFilePath)
+            ) else {
+                continue
+            }
+            guard managedURL.path != URL(fileURLWithPath: capture.audioFilePath).standardizedFileURL.path else {
+                continue
+            }
+
+            do {
+                _ = try captureStore.updateAudioFilePath(id: capture.id, audioFilePath: managedURL.path)
+                try? FileManager.default.removeItem(atPath: capture.audioFilePath)
+            } catch {
+                // Do not leave a copied file behind when SQLite could not
+                // commit the new path; the original row remains playable if
+                // its temporary source is still present.
+                audioStore.removeImportedRecording(at: managedURL)
+            }
+        }
+
+        let referencedPaths = Set(try captureStore.listAll().map(\.audioFilePath))
+        try audioStore.removeOrphanedRecordings(referencedPaths: referencedPaths)
     }
 
     private static func makeAssistantQueueExecutionCoordinator(
@@ -175,6 +246,27 @@ private struct UnavailableProjectBoardStore: ProjectBoardStore {
     }
 
     func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
+        throw error
+    }
+
+    func loadInboxTriageRecords(taskIDs: Set<Int64>) throws -> [Int64: InboxTriageRecord] {
+        throw error
+    }
+
+    func createInboxTask(title: String) throws -> ProjectBoardTask {
+        throw error
+    }
+
+    func performInboxTriage(
+        taskID: Int64,
+        action: InboxTriageAction,
+        referenceDate: Date,
+        calendar: Calendar
+    ) throws -> InboxTriageMutation {
+        throw error
+    }
+
+    func undoInboxTriage(_ mutation: InboxTriageMutation) throws -> ProjectBoardTask {
         throw error
     }
 

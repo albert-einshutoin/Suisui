@@ -3,14 +3,21 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
+CI_REDACT_HELPER="$ROOT_DIR/script/ci_redact_stream.sh"
 
 if [[ ! -f "$METADATA_FILE" ]]; then
   echo "missing metadata file: $METADATA_FILE" >&2
   exit 2
 fi
+if [[ ! -r "$CI_REDACT_HELPER" ]]; then
+  echo "missing CI redaction helper: $CI_REDACT_HELPER" >&2
+  exit 2
+fi
 
 # shellcheck source=/dev/null
 source "$METADATA_FILE"
+# shellcheck source=ci_redact_stream.sh
+source "$CI_REDACT_HELPER"
 
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:-}"
@@ -23,12 +30,20 @@ PERFORMANCE_DATABASE_PATH="${SUISUI_PERFORMANCE_DATABASE_PATH:-$PERFORMANCE_HOME
 SUMMARY_FILE="$OUTPUT_DIR/summary.md"
 SAMPLES_FILE="$OUTPUT_DIR/samples.tsv"
 TIMELINE_FILE="$OUTPUT_DIR/launch-timeline.tsv"
+QUIESCENCE_FILE="$OUTPUT_DIR/runner-quiescence.tsv"
+QUIESCENCE_PROCESS_FILE="$OUTPUT_DIR/runner-quiescence-processes.tsv"
+BOOTSTRAP_EXIT_FILE="$OUTPUT_DIR/bootstrap-exit.env"
+APP_RAW_STDERR_FILE="$PERFORMANCE_HOME/app-stderr.raw.log"
+APP_STDERR_FIFO="$PERFORMANCE_HOME/app-stderr.pipe"
+APP_STDERR_DIAGNOSTIC_FILE="$OUTPUT_DIR/app-stderr-sanitized.log"
+APP_UNIFIED_DIAGNOSTIC_FILE="$OUTPUT_DIR/app-unified-log-sanitized.log"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_PRESS_ELEMENT_HELPER="${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}"
 AX_MARKER_HELPER="${AX_MARKER_HELPER:-$ROOT_DIR/script/ui_evidence_ax_marker_check.swift}"
 AX_PRESS_ELEMENT_HELPER_EXECUTABLE="$OUTPUT_DIR/ui-evidence-ax-press-element.$$"
 AX_MARKER_HELPER_EXECUTABLE="$OUTPUT_DIR/ui-evidence-ax-marker-checker.$$"
 SUISUI_PERFORMANCE_PROFILE="${SUISUI_PERFORMANCE_PROFILE:-release}"
+SUISUI_PERFORMANCE_USE_PREBUILT_APP="${SUISUI_PERFORMANCE_USE_PREBUILT_APP:-0}"
 
 case "$SUISUI_PERFORMANCE_PROFILE" in
   release)
@@ -67,6 +82,22 @@ MAX_DESTINATION_SWITCH_MS="${SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS:-$DEFA
 # environment prevents callers from weakening release evidence.
 COLD_LAUNCH_SAMPLE_COUNT=3
 DESTINATION_SAMPLE_COUNT=3
+# Release compilation can leave a hosted runner CPU-bound immediately before
+# launch. Keep these policy values source-owned so callers cannot weaken the
+# product budget by skipping the bounded idle proof.
+RUNNER_QUIESCENCE_MINIMUM_SETTLE_SECONDS=10
+RUNNER_QUIESCENCE_MAX_WAIT_SECONDS=60
+RUNNER_QUIESCENCE_MIN_CPU_IDLE_PERCENT=80
+RUNNER_QUIESCENCE_REQUIRED_IDLE_SAMPLES=3
+
+if [[ "$SUISUI_PERFORMANCE_USE_PREBUILT_APP" != "0" && "$SUISUI_PERFORMANCE_USE_PREBUILT_APP" != "1" ]]; then
+  echo "BLOCKER: SUISUI_PERFORMANCE_USE_PREBUILT_APP must be 0 or 1" >&2
+  exit 2
+fi
+if [[ "$SUISUI_PERFORMANCE_USE_PREBUILT_APP" == "1" && "$SUISUI_PERFORMANCE_PROFILE" != "release" ]]; then
+  echo "BLOCKER: release performance profile is required for a prebuilt app" >&2
+  exit 2
+fi
 
 require_positive_integer_budget() {
   local name="$1"
@@ -106,10 +137,105 @@ source "$AX_HELPERS"
 AX_WAIT_POLL_INTERVAL_SECONDS=0.05
 export AX_WAIT_POLL_INTERVAL_SECONDS
 
+sanitize_app_diagnostic_stream() {
+  ci_redact_stream
+}
+
+capture_current_app_failure_diagnostics() {
+  local failed_pid="${APP_PID:-${APP_LAUNCH_PID:-}}"
+  finish_app_stderr_capture
+  capture_app_failure_diagnostics "$failed_pid"
+}
+
+start_app_stderr_capture() {
+  finish_app_stderr_capture
+  rm -f "$APP_RAW_STDERR_FILE" "$APP_STDERR_FIFO"
+  mkfifo "$APP_STDERR_FIFO"
+  # Keep only a fixed-size tail while the app runs; the raw producer can never
+  # grow an unbounded temporary file or perturb disk capacity during a sample.
+  /usr/bin/perl -e '
+    use strict;
+    use warnings;
+    my $output_path = shift @ARGV;
+    my $limit = 32768;
+    my $tail = "";
+    my $persist_tail = sub {
+      open(my $output, ">", $output_path) or die "cannot persist diagnostic tail";
+      binmode($output);
+      print {$output} $tail;
+      close($output) or die "cannot close diagnostic tail";
+    };
+    while (sysread(STDIN, my $chunk, 4096)) {
+      $tail .= $chunk;
+      substr($tail, 0, length($tail) - $limit, "") if length($tail) > $limit;
+      # Persist every bounded snapshot instead of waiting for FIFO EOF. App
+      # descendants can inherit stderr and keep the FIFO open after a crash;
+      # the last complete snapshot must remain available even then.
+      $persist_tail->();
+    }
+  ' "$APP_RAW_STDERR_FILE" <"$APP_STDERR_FIFO" &
+  APP_STDERR_CAPTURE_PID=$!
+}
+
+finish_app_stderr_capture() {
+  local capture_pid="${APP_STDERR_CAPTURE_PID:-}"
+  if [[ "$capture_pid" =~ ^[0-9]+$ ]]; then
+    for _ in {1..20}; do
+      kill -0 "$capture_pid" >/dev/null 2>&1 || break
+      sleep 0.05
+    done
+    if kill -0 "$capture_pid" >/dev/null 2>&1; then
+      kill -TERM "$capture_pid" >/dev/null 2>&1 || true
+    fi
+    wait "$capture_pid" 2>/dev/null || true
+  fi
+  APP_STDERR_CAPTURE_PID=""
+  rm -f "$APP_STDERR_FIFO"
+}
+
+run_with_app_diagnostic_timeout() {
+  local timeout_seconds="$1"
+  shift
+  LC_ALL=C /usr/bin/perl -MTime::HiRes=alarm -e '
+    my $timeout_seconds = shift @ARGV;
+    $SIG{ALRM} = "DEFAULT";
+    alarm($timeout_seconds);
+    exec @ARGV;
+  ' "$timeout_seconds" "$@"
+}
+
+capture_app_failure_diagnostics() {
+  local failed_pid="${1:-}"
+  if [[ -f "$APP_RAW_STDERR_FILE" ]]; then
+    tail -c 32768 "$APP_RAW_STDERR_FILE" 2>/dev/null \
+      | sanitize_app_diagnostic_stream \
+      | tail -c 32768 \
+      >"$APP_STDERR_DIAGNOSTIC_FILE" || printf '%s\n' "diagnostic-unavailable" >"$APP_STDERR_DIAGNOSTIC_FILE"
+    [[ -s "$APP_STDERR_DIAGNOSTIC_FILE" ]] || printf '%s\n' "diagnostic-unavailable" >"$APP_STDERR_DIAGNOSTIC_FILE"
+  else
+    printf '%s\n' "diagnostic-unavailable" >"$APP_STDERR_DIAGNOSTIC_FILE"
+  fi
+  if [[ "$failed_pid" =~ ^[0-9]+$ ]]; then
+    set +e
+    run_with_app_diagnostic_timeout 5 /usr/bin/log show --last 2m --style compact \
+      --predicate "processIdentifier == $failed_pid" 2>/dev/null \
+      | tail -n 120 \
+      | tail -c 32768 \
+      | sanitize_app_diagnostic_stream \
+      | tail -c 32768 \
+      >"$APP_UNIFIED_DIAGNOSTIC_FILE"
+    set -e
+    [[ -s "$APP_UNIFIED_DIAGNOSTIC_FILE" ]] || printf '%s\n' "diagnostic-unavailable" >"$APP_UNIFIED_DIAGNOSTIC_FILE"
+  else
+    printf '%s\n' "diagnostic-unavailable" >"$APP_UNIFIED_DIAGNOSTIC_FILE"
+  fi
+}
+
 APP_PID=""
 APP_LAUNCH_PID=""
 APP_IDENTITY=""
 APP_LAUNCH_IDENTITY=""
+APP_STDERR_CAPTURE_PID=""
 TRACK_LAUNCH_MILESTONES=0
 
 now_ms() {
@@ -119,6 +245,110 @@ now_ms() {
 monotonic_ms() {
   /usr/bin/perl -MTime::HiRes=clock_gettime,CLOCK_MONOTONIC \
     -e 'printf "%d\n", clock_gettime(CLOCK_MONOTONIC) * 1000'
+}
+
+parse_macos_cpu_idle_percent() {
+  local idle_percent
+  idle_percent="$(awk '
+    /^CPU usage:/ {
+      sample_count += 1
+      if (sample_count != 2) {
+        next
+      }
+      for (field_index = 1; field_index <= NF; field_index += 1) {
+        if ($field_index == "idle") {
+          value = $(field_index - 1)
+          gsub(/%/, "", value)
+          second_idle_percent = value
+        }
+      }
+    }
+    END {
+      if (sample_count == 2 && second_idle_percent != "") {
+        print second_idle_percent
+      }
+    }
+  ')"
+  [[ "$idle_percent" =~ ^[0-9]+([.][0-9]+)?$ ]] || return 1
+  printf '%s\n' "$idle_percent"
+}
+
+read_macos_cpu_idle_percent() {
+  local deadline_ms="$1"
+  local snapshot
+  snapshot="$(
+    LC_ALL=C /usr/bin/perl -MTime::HiRes=clock_gettime,alarm,CLOCK_MONOTONIC -e '
+      my $deadline_ms = shift @ARGV;
+      my $remaining_seconds =
+        ($deadline_ms - (clock_gettime(CLOCK_MONOTONIC) * 1000)) / 1000;
+      exit 124 if $remaining_seconds <= 0;
+      $SIG{ALRM} = "DEFAULT";
+      alarm($remaining_seconds);
+      exec @ARGV;
+    ' "$deadline_ms" /usr/bin/top -l 2 -s 1 -n 0 2>/dev/null
+  )" || return 1
+  printf '%s\n' "$snapshot" | parse_macos_cpu_idle_percent
+}
+
+wait_for_runner_quiescence() {
+  local started_ms deadline_ms observed_ms elapsed_ms idle_percent
+  local sample_index=0
+  local consecutive_idle_samples=0
+
+  started_ms="$(monotonic_ms)"
+  deadline_ms=$((started_ms + RUNNER_QUIESCENCE_MAX_WAIT_SECONDS * 1000))
+  sleep "$RUNNER_QUIESCENCE_MINIMUM_SETTLE_SECONDS"
+
+  while [[ "$(monotonic_ms)" -lt "$deadline_ms" ]]; do
+    sample_index=$((sample_index + 1))
+    if idle_percent="$(read_macos_cpu_idle_percent "$deadline_ms")"; then
+      if awk -v observed="$idle_percent" -v minimum="$RUNNER_QUIESCENCE_MIN_CPU_IDLE_PERCENT" \
+        'BEGIN { exit !(observed >= minimum) }'; then
+        consecutive_idle_samples=$((consecutive_idle_samples + 1))
+      else
+        consecutive_idle_samples=0
+      fi
+    else
+      idle_percent="unavailable"
+      consecutive_idle_samples=0
+    fi
+
+    observed_ms="$(monotonic_ms)"
+    printf '%s\t%s\t%s\t%s\n' \
+      "$sample_index" "$observed_ms" "$idle_percent" "$consecutive_idle_samples" \
+      >>"$QUIESCENCE_FILE"
+
+    # A sample that completed after the strict deadline cannot establish an
+    # idle precondition for the launch that follows.
+    if [[ "$observed_ms" -le "$deadline_ms" ]] &&
+      (( consecutive_idle_samples >= RUNNER_QUIESCENCE_REQUIRED_IDLE_SAMPLES )); then
+      elapsed_ms=$((observed_ms - started_ms))
+      printf -- '- Result: `PASS` after `%sms` with `%s` consecutive idle samples.\n' \
+        "$elapsed_ms" "$consecutive_idle_samples" >>"$SUMMARY_FILE"
+      printf 'OK: runner quiescence established in %sms (%s%% CPU idle)\n' \
+        "$elapsed_ms" "$idle_percent"
+      return 0
+    fi
+
+    [[ "$observed_ms" -lt "$deadline_ms" ]] || break
+    sleep 1
+  done
+
+  elapsed_ms=$(($(monotonic_ms) - started_ms))
+  {
+    printf '%s\t%s\t%s\n' "pid" "cpu_percent" "process"
+    # `ucomm` exposes only the executable name, never arguments or workspace
+    # paths, so the failure artifact remains useful without leaking user data.
+    LC_ALL=C ps -Ao pid=,%cpu=,ucomm= 2>/dev/null \
+      | sort -k2,2nr \
+      | awk 'NR <= 12'
+  } >"$QUIESCENCE_PROCESS_FILE" || printf '%s\n' "diagnostic-unavailable" >"$QUIESCENCE_PROCESS_FILE"
+  printf -- '- Result: `FAIL` after `%sms`; runner never produced `%s` consecutive samples at or above `%s%%` CPU idle.\n' \
+    "$elapsed_ms" "$RUNNER_QUIESCENCE_REQUIRED_IDLE_SAMPLES" \
+    "$RUNNER_QUIESCENCE_MIN_CPU_IDLE_PERCENT" >>"$SUMMARY_FILE"
+  printf 'failure_category=runner-quiescence\n' >&2
+  echo "BLOCKER: runner did not become quiescent within ${RUNNER_QUIESCENCE_MAX_WAIT_SECONDS}s" >&2
+  return 1
 }
 
 terminate_app() {
@@ -134,10 +364,12 @@ terminate_app() {
   APP_LAUNCH_PID=""
   APP_IDENTITY=""
   APP_LAUNCH_IDENTITY=""
+  finish_app_stderr_capture
 }
 
 cleanup() {
-  terminate_app
+  terminate_app || true
+  finish_app_stderr_capture || true
   rm -f "$AX_PRESS_ELEMENT_HELPER_EXECUTABLE" "$AX_MARKER_HELPER_EXECUTABLE"
 }
 
@@ -191,26 +423,37 @@ open_app() {
   if [[ "$TRACK_LAUNCH_MILESTONES" == "1" ]]; then
     timeline_path="$TIMELINE_FILE"
   fi
+  if [[ ! "${APP_STDERR_CAPTURE_PID:-}" =~ ^[0-9]+$ ]] ||
+    ! kill -0 "$APP_STDERR_CAPTURE_PID" >/dev/null 2>&1; then
+    start_app_stderr_capture
+  fi
   /usr/bin/env -i PATH="$PATH" TMPDIR="$OUTPUT_DIR" HOME="$PERFORMANCE_HOME" CFFIXED_USER_HOME="$PERFORMANCE_HOME" \
     SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 SUISUI_DATABASE_PATH="$PERFORMANCE_DATABASE_PATH" \
     SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="today" \
     SUISUI_LAUNCH_TIMELINE_PATH="$timeline_path" \
-    "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>&1 &
+    "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>"$APP_STDERR_FIFO" &
   APP_LAUNCH_PID=$!
   APP_LAUNCH_IDENTITY="$(ax_wait_for_owned_process_identity "$APP_LAUNCH_PID" "$APP_BINARY" 3)" || {
+    capture_current_app_failure_diagnostics
     ax_emit_failure_category "launch" "performance-launch-identity-unavailable"
     return 1
   }
   APP_PID="$(ax_wait_for_owned_app_pid "$APP_LAUNCH_PID" "$APP_BINARY" "$TIMEOUT_SECONDS")" || {
+    capture_current_app_failure_diagnostics
     ax_emit_failure_category "launch" "performance-owned-pid-unavailable"
     echo "BLOCKER: performance app did not launch from pid $APP_LAUNCH_PID" >&2
     return 1
   }
   APP_IDENTITY="$(ax_wait_for_owned_process_identity "$APP_PID" "$APP_BINARY" 3)" || {
+    capture_current_app_failure_diagnostics
     ax_emit_failure_category "launch" "performance-owned-identity-unavailable"
     return 1
   }
-  ax_wait_for_pid_owned_process "$APP_NAME" "$APP_PID" "$TIMEOUT_SECONDS" "$APP_BINARY"
+  if ! ax_wait_for_pid_owned_process "$APP_NAME" "$APP_PID" "$TIMEOUT_SECONDS" "$APP_BINARY"; then
+    capture_current_app_failure_diagnostics
+    ax_emit_failure_category "launch" "performance-owned-process-unavailable"
+    return 1
+  fi
 }
 
 wait_for_launch_milestone() {
@@ -224,6 +467,7 @@ wait_for_launch_milestone() {
       return 0
     fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
+      capture_current_app_failure_diagnostics
       ax_emit_failure_category "product-marker" "performance-launch-milestone-unavailable"
       echo "BLOCKER: app did not emit launch milestone: $label" >&2
       return 1
@@ -238,6 +482,7 @@ wait_for_visible_window() {
   # owned window at sub-second cadence. The shared AppleScript helper polls at
   # one-second intervals and would otherwise dominate a one-second launch SLO.
   if ! ax_wait_for_ax_identifier "$APP_NAME" "__AX_ANY_WINDOW__" "$TIMEOUT_SECONDS" "$ROOT_DIR" "$probe_file" "" "$APP_PID"; then
+    capture_current_app_failure_diagnostics
     ax_emit_failure_category "window" "performance-window-unavailable"
     echo "BLOCKER: $APP_NAME did not publish a visible window for launched pid $APP_PID within ${TIMEOUT_SECONDS}s" >&2
     return 1
@@ -248,15 +493,15 @@ wait_for_visible_window() {
 wait_for_database_schema() {
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if [[ -f "$PERFORMANCE_DATABASE_PATH" ]] &&
-      [[ "$(sqlite3 -batch -noheader "$PERFORMANCE_DATABASE_PATH" \
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('projects', 'tasks');" 2>/dev/null || true)" == "2" ]]; then
-      return 0
-    fi
     if ! ax_process_matches_identity "$APP_PID" "$APP_BINARY" "$APP_IDENTITY"; then
       ax_emit_failure_category "launch" "performance-bootstrap-exited"
       echo "BLOCKER: performance bootstrap app exited before its database schema was ready" >&2
       return 1
+    fi
+    if [[ -f "$PERFORMANCE_DATABASE_PATH" ]] &&
+      [[ "$(sqlite3 -batch -noheader "$PERFORMANCE_DATABASE_PATH" \
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('projects', 'tasks');" 2>/dev/null || true)" == "2" ]]; then
+      return 0
     fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       ax_emit_failure_category "launch" "performance-database-schema-unavailable"
@@ -265,6 +510,99 @@ wait_for_database_schema() {
     fi
     sleep 0.2
   done
+}
+
+record_unexpected_bootstrap_exit() {
+  local wait_status="unavailable"
+  local failed_pid="${APP_PID:-}"
+  if [[ "${APP_PID:-}" =~ ^[0-9]+$ ]]; then
+    # Never block on an unexpected process that is still running. A child that
+    # already exited remains waitable, so its raw status can be recorded.
+    if ! kill -0 "$APP_PID" >/dev/null 2>&1; then
+      if wait "$APP_PID" 2>/dev/null; then
+        wait_status=0
+      else
+        wait_status=$?
+      fi
+    fi
+  fi
+  printf 'status=failed\nwait_status=%s\ntermination=unexpected-exit\nfailure_reason=performance-bootstrap-exited\n' \
+    "$wait_status" >"$BOOTSTRAP_EXIT_FILE"
+  finish_app_stderr_capture
+  capture_app_failure_diagnostics "$failed_pid"
+}
+
+require_bootstrap_process_alive() {
+  if ax_process_matches_identity "$APP_PID" "$APP_BINARY" "$APP_IDENTITY"; then
+    return 0
+  fi
+  record_unexpected_bootstrap_exit
+  ax_emit_failure_category "launch" "performance-bootstrap-exited"
+  echo "BLOCKER: performance bootstrap app exited after creating its database schema" >&2
+  return 1
+}
+
+terminate_bootstrap_app() {
+  local bootstrap_pid="${APP_PID:-}"
+  local deadline wait_status expected_wait_status termination
+
+  if [[ ! "$bootstrap_pid" =~ ^[0-9]+$ || "$bootstrap_pid" != "${APP_LAUNCH_PID:-}" ]] ||
+    ! ax_process_matches_identity "$bootstrap_pid" "$APP_BINARY" "$APP_IDENTITY"; then
+    record_unexpected_bootstrap_exit
+    ax_emit_failure_category "launch" "performance-bootstrap-exited"
+    echo "BLOCKER: performance bootstrap app exited before harness termination" >&2
+    return 1
+  fi
+  if ! kill -TERM "$bootstrap_pid" >/dev/null 2>&1; then
+    record_unexpected_bootstrap_exit
+    ax_emit_failure_category "launch" "performance-bootstrap-termination-failed"
+    echo "BLOCKER: performance bootstrap app could not be terminated by the harness" >&2
+    return 1
+  fi
+
+  expected_wait_status=143
+  termination="harness-term"
+  deadline=$((SECONDS + 3))
+  while ax_process_matches_identity "$bootstrap_pid" "$APP_BINARY" "$APP_IDENTITY" &&
+    [[ "$SECONDS" -lt "$deadline" ]]; do
+    sleep 0.1
+  done
+  if ax_process_matches_identity "$bootstrap_pid" "$APP_BINARY" "$APP_IDENTITY"; then
+    if ! kill -KILL "$bootstrap_pid" >/dev/null 2>&1; then
+      record_unexpected_bootstrap_exit
+      ax_emit_failure_category "launch" "performance-bootstrap-termination-failed"
+      echo "BLOCKER: performance bootstrap app ignored harness termination" >&2
+      return 1
+    fi
+    expected_wait_status=137
+    termination="harness-kill"
+  elif kill -0 "$bootstrap_pid" >/dev/null 2>&1; then
+    record_unexpected_bootstrap_exit
+    ax_emit_failure_category "launch" "performance-bootstrap-identity-changed"
+    echo "BLOCKER: performance bootstrap process identity changed during termination" >&2
+    return 1
+  fi
+
+  if wait "$bootstrap_pid" 2>/dev/null; then
+    wait_status=0
+  else
+    wait_status=$?
+  fi
+  finish_app_stderr_capture
+  APP_PID=""
+  APP_LAUNCH_PID=""
+  APP_IDENTITY=""
+  APP_LAUNCH_IDENTITY=""
+  if [[ "$wait_status" != "$expected_wait_status" ]]; then
+    printf 'status=failed\nwait_status=%s\ntermination=unexpected-exit\nfailure_reason=performance-bootstrap-exited\n' \
+      "$wait_status" >"$BOOTSTRAP_EXIT_FILE"
+    capture_app_failure_diagnostics "$bootstrap_pid"
+    ax_emit_failure_category "launch" "performance-bootstrap-exited"
+    echo "BLOCKER: performance bootstrap app exited with unexpected wait status $wait_status" >&2
+    return 1
+  fi
+  printf 'status=passed\nwait_status=%s\ntermination=%s\nfailure_reason=none\n' \
+    "$wait_status" "$termination" >"$BOOTSTRAP_EXIT_FILE"
 }
 
 seed_production_fixture() {
@@ -305,8 +643,14 @@ SQL
 prepare_production_fixture() {
   rm -f "$PERFORMANCE_DATABASE_PATH" "$PERFORMANCE_DATABASE_PATH-wal" "$PERFORMANCE_DATABASE_PATH-shm"
   open_app
-  wait_for_database_schema
-  terminate_app
+  if ! wait_for_database_schema; then
+    if ! ax_process_matches_identity "$APP_PID" "$APP_BINARY" "$APP_IDENTITY"; then
+      record_unexpected_bootstrap_exit
+    fi
+    return 1
+  fi
+  require_bootstrap_process_alive
+  terminate_bootstrap_app
   seed_production_fixture
 }
 
@@ -319,6 +663,7 @@ click_sidebar_destination() {
   local destination_identifier="$1"
   local destination_label="$2"
   if ! "$AX_PRESS_ELEMENT_HELPER_EXECUTABLE" "$APP_PID" "$destination_identifier"; then
+    capture_current_app_failure_diagnostics
     ax_emit_failure_category "product-marker" "performance-destination-unavailable"
     echo "BLOCKER: performance smoke could not select $destination_label in owned app pid $APP_PID" >&2
     return 1
@@ -363,6 +708,7 @@ click_destination_until_available() {
   local press_status
   while true; do
     if [[ "$(monotonic_ms)" -ge "$deadline_ms" ]]; then
+      capture_current_app_failure_diagnostics
       ax_emit_failure_category "product-marker" "performance-destination-unavailable"
       echo "BLOCKER: performance smoke could not select $destination_label in owned app pid $APP_PID" >&2
       return 1
@@ -371,6 +717,7 @@ click_destination_until_available() {
     # Re-pin every press to the launched binary identity so AX never targets an
     # unrelated process that inherited the same numeric PID.
     if ! ax_process_matches_identity "$APP_PID" "$APP_BINARY" "$APP_IDENTITY"; then
+      capture_current_app_failure_diagnostics
       ax_emit_failure_category "launch" "performance-owned-identity-changed"
       return 1
     fi
@@ -380,6 +727,7 @@ click_destination_until_available() {
       press_status=$?
     fi
     if [[ "$press_status" -eq 124 || "$(monotonic_ms)" -ge "$deadline_ms" ]]; then
+      capture_current_app_failure_diagnostics
       ax_emit_failure_category "product-marker" "performance-destination-unavailable"
       echo "BLOCKER: performance smoke could not select $destination_label in owned app pid $APP_PID" >&2
       return 1
@@ -396,6 +744,7 @@ wait_for_marker() {
   if ax_wait_for_ax_identifier "$APP_NAME" "$identifier" "$TIMEOUT_SECONDS" "$ROOT_DIR" "$probe_file" "" "$APP_PID"; then
     return 0
   fi
+  capture_current_app_failure_diagnostics
   echo "BLOCKER: performance smoke could not inspect the AX marker: $identifier" >&2
   ax_emit_failure_category "product-marker" "performance-marker-unavailable"
   sed -n '1,20p' "$probe_file.err" >&2 || true
@@ -452,9 +801,13 @@ measure_cold_launch_sample() {
   local launch_start_ms visible_window_ms command_ready_ms today_ready_ms
   local visible_elapsed_ms command_ready_elapsed_ms today_ready_elapsed_ms
 
-  launch_start_ms="$(now_ms)"
+  # Diagnostic observer setup is harness work. Make the FIFO consumer ready
+  # before the product launch clock starts so the 1000ms SLO measures only the
+  # app-owned cold launch path.
+  start_app_stderr_capture
   rm -f "$TIMELINE_FILE"
   TRACK_LAUNCH_MILESTONES=1
+  launch_start_ms="$(now_ms)"
   open_app
   visible_window_ms="$(wait_for_launch_milestone "window-visible")"
   command_ready_ms="$(wait_for_launch_milestone "command-ready")"
@@ -529,19 +882,48 @@ trap cleanup EXIT
   printf 'Default cold launch budget: `%sms`\n' "$MAX_COLD_LAUNCH_MS"
   printf 'Default destination switch budget: `%sms`\n' "$MAX_DESTINATION_SWITCH_MS"
   printf '\n'
-  printf '%s\n' '## Samples'
+  printf '%s\n' '## Runner quiescence'
+  printf -- '- Policy: minimum `%ss` settle, then `%s` consecutive samples at or above `%s%%` CPU idle; fail closed after `%ss`.\n' \
+    "$RUNNER_QUIESCENCE_MINIMUM_SETTLE_SECONDS" \
+    "$RUNNER_QUIESCENCE_REQUIRED_IDLE_SAMPLES" \
+    "$RUNNER_QUIESCENCE_MIN_CPU_IDLE_PERCENT" \
+    "$RUNNER_QUIESCENCE_MAX_WAIT_SECONDS"
 } >"$SUMMARY_FILE"
 printf '%s\t%s\n' "label" "elapsed_ms" >"$SAMPLES_FILE"
+printf '%s\t%s\t%s\t%s\n' \
+  "sample" "monotonic_ms" "cpu_idle_percent" "consecutive_idle_samples" \
+  >"$QUIESCENCE_FILE"
 
 terminate_app
 prepare_ax_helpers
-if [[ "$SUISUI_PERFORMANCE_PROFILE" == "release" ]]; then
+if [[ "$SUISUI_PERFORMANCE_USE_PREBUILT_APP" == "1" ]]; then
+  performance_artifact_dir="${SUISUI_PERFORMANCE_ARTIFACT_DIR:-}"
+  if [[ -z "$performance_artifact_dir" ]]; then
+    echo "BLOCKER: SUISUI_PERFORMANCE_ARTIFACT_DIR is required for a prebuilt app" >&2
+    exit 2
+  fi
+  # The measurement process owns verification so a local caller cannot label a
+  # stale or debug bundle as trusted merely by setting the prebuilt flag.
+  "$ROOT_DIR/script/verify_ui_performance_artifact.sh" \
+    "$performance_artifact_dir" \
+    "$ROOT_DIR/dist" \
+    "$APP_NAME" \
+    "$(git rev-parse HEAD)" \
+    "$OUTPUT_DIR"
+  if [[ ! -f "$APP_BINARY" || -L "$APP_BINARY" || ! -x "$APP_BINARY" ]]; then
+    echo "BLOCKER: verified prebuilt performance app is unavailable or not executable" >&2
+    exit 2
+  fi
+  echo "OK: using verified prebuilt release app for performance measurement"
+elif [[ "$SUISUI_PERFORMANCE_PROFILE" == "release" ]]; then
   SUISUI_RELEASE_BUILD_PURPOSE=performance \
     SUISUI_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --build-only
 else
   SUISUI_BUILD_CONFIGURATION="$BUILD_CONFIGURATION" ./script/build_and_run.sh --build-only
 fi
 prepare_production_fixture
+wait_for_runner_quiescence
+printf '\n%s\n' '## Samples' >>"$SUMMARY_FILE"
 
 for sample_index in $(seq 1 "$COLD_LAUNCH_SAMPLE_COUNT"); do
   measure_cold_launch_sample "$sample_index"

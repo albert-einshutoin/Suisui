@@ -1198,6 +1198,32 @@ private final class CountingProjectBoardStore: ProjectBoardStore, @unchecked Sen
         try wrapped.createTask(draft)
     }
 
+    func loadInboxTriageRecords(taskIDs: Set<Int64>) throws -> [Int64: InboxTriageRecord] {
+        try wrapped.loadInboxTriageRecords(taskIDs: taskIDs)
+    }
+
+    func createInboxTask(title: String) throws -> ProjectBoardTask {
+        try wrapped.createInboxTask(title: title)
+    }
+
+    func performInboxTriage(
+        taskID: Int64,
+        action: InboxTriageAction,
+        referenceDate: Date,
+        calendar: Calendar
+    ) throws -> InboxTriageMutation {
+        try wrapped.performInboxTriage(
+            taskID: taskID,
+            action: action,
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+    }
+
+    func undoInboxTriage(_ mutation: InboxTriageMutation) throws -> ProjectBoardTask {
+        try wrapped.undoInboxTriage(mutation)
+    }
+
     func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
         try wrapped.updateTask(id: id, draft)
     }

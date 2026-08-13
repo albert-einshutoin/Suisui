@@ -6,20 +6,27 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
     private var nextTaskID: Int64
     private var nextArtifactID: Int64
     private var nextMilestoneID: Int64
+    private var inboxRecordsByTaskID: [Int64: InboxTriageRecord]
+    var inboxTriageReadError: Error?
 
-    init(snapshot: ProjectBoardSnapshot = ProjectBoardSnapshot(projects: [
-        ProjectBoardProject(
-            id: 1,
-            title: "Inbox",
-            status: "active",
-            subtitle: "0 open / 0 total",
-            columns: ProjectTaskStatus.allCases.map { ProjectBoardColumn(status: $0, tasks: []) }
-        )
-    ])) {
+    init(
+        snapshot: ProjectBoardSnapshot = ProjectBoardSnapshot(projects: [
+            ProjectBoardProject(
+                id: 1,
+                title: "Inbox",
+                status: "active",
+                subtitle: "0 open / 0 total",
+                columns: ProjectTaskStatus.allCases.map { ProjectBoardColumn(status: $0, tasks: []) }
+            )
+        ]),
+        inboxTriageReadError: Error? = nil
+    ) {
         self.snapshot = snapshot
         self.nextTaskID = snapshot.projects.flatMap(\.tasks).map(\.id).max().map { $0 + 1 } ?? 1
         self.nextArtifactID = snapshot.projects.flatMap(\.artifacts).map(\.id).max().map { $0 + 1 } ?? 1
         self.nextMilestoneID = snapshot.projects.flatMap(\.milestones).map(\.id).max().map { $0 + 1 } ?? 1
+        self.inboxRecordsByTaskID = [:]
+        self.inboxTriageReadError = inboxTriageReadError
     }
 
     func loadSnapshot() throws -> ProjectBoardSnapshot {
@@ -32,6 +39,147 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         }
 
         return ProjectBoardSnapshot(projects: snapshot.projects.filter { !$0.isArchived })
+    }
+
+    func loadInboxTriageRecords(taskIDs: Set<Int64>) throws -> [Int64: InboxTriageRecord] {
+        if let inboxTriageReadError {
+            throw inboxTriageReadError
+        }
+        return Dictionary(uniqueKeysWithValues: taskIDs.compactMap { taskID in
+            inboxRecordsByTaskID[taskID].map { (taskID, $0) }
+        })
+    }
+
+    @discardableResult
+    func createInboxTask(title: String) throws -> ProjectBoardTask {
+        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedTitle.isEmpty else {
+            throw ProjectBoardStoreError.emptyTitle
+        }
+        let inbox: ProjectBoardProject
+        if let existing = snapshot.projects.first(where: { $0.title == "Inbox" }) {
+            inbox = existing
+        } else {
+            inbox = try createProject(title: "Inbox")
+        }
+        let task = try createTask(ProjectBoardTaskDraft(
+            projectID: inbox.id,
+            title: normalizedTitle,
+            status: .backlog
+        ))
+        inboxRecordsByTaskID[task.id] = try InboxTriageRecord(
+            taskID: task.id,
+            disposition: .unprocessed,
+            reviewAt: nil,
+            updatedAt: Self.nowTriageAt()
+        )
+        return task
+    }
+
+    @discardableResult
+    func performInboxTriage(
+        taskID: Int64,
+        action: InboxTriageAction,
+        referenceDate: Date,
+        calendar: Calendar
+    ) throws -> InboxTriageMutation {
+        let originalSnapshot = snapshot
+        let originalRecords = inboxRecordsByTaskID
+        let originalNextTaskID = nextTaskID
+        let originalNextArtifactID = nextArtifactID
+        let originalNextMilestoneID = nextMilestoneID
+        do {
+            let originalTask = try findTask(id: taskID)
+            let originalRecord = inboxRecordsByTaskID[taskID]
+                ?? Self.derivedInboxRecord(for: originalTask)
+            let updatedTask: ProjectBoardTask
+            let createdProjectID: Int64?
+            let disposition: InboxTriageDisposition
+            let reviewAt: String?
+
+            switch action {
+            case .makeTask:
+                updatedTask = originalTask
+                createdProjectID = nil
+                disposition = .task
+                reviewAt = nil
+            case .scheduleToday:
+                updatedTask = try updateTask(
+                    id: taskID,
+                    originalTask.inboxDraft(
+                        status: .planned,
+                        dueAt: .some(ISO8601DateFormatter().string(from: referenceDate))
+                    )
+                )
+                createdProjectID = nil
+                disposition = .scheduled
+                reviewAt = nil
+            case .reviewLater:
+                updatedTask = originalTask
+                createdProjectID = nil
+                disposition = .reviewLater
+                reviewAt = ISO8601DateFormatter().string(
+                    from: try InboxReviewClock.nextReviewDate(after: referenceDate, calendar: calendar)
+                )
+            case .makeProject:
+                let project = try createProject(title: originalTask.title)
+                updatedTask = try updateTask(
+                    id: taskID,
+                    originalTask.inboxDraft(projectID: project.id, status: .planned)
+                )
+                createdProjectID = project.id
+                disposition = .project
+                reviewAt = nil
+            case .complete:
+                updatedTask = try updateTask(id: taskID, originalTask.inboxDraft(status: .done))
+                createdProjectID = nil
+                disposition = .task
+                reviewAt = nil
+            case .reopen:
+                updatedTask = try updateTask(id: taskID, originalTask.inboxDraft(status: .planned))
+                createdProjectID = nil
+                disposition = .task
+                reviewAt = nil
+            }
+
+            inboxRecordsByTaskID[taskID] = try InboxTriageRecord(
+                taskID: taskID,
+                disposition: disposition,
+                reviewAt: reviewAt,
+                updatedAt: Self.nowTriageAt()
+            )
+            return InboxTriageMutation(
+                originalTask: originalTask,
+                originalRecord: originalRecord,
+                updatedTask: updatedTask,
+                createdProjectID: createdProjectID
+            )
+        } catch {
+            snapshot = originalSnapshot
+            inboxRecordsByTaskID = originalRecords
+            nextTaskID = originalNextTaskID
+            nextArtifactID = originalNextArtifactID
+            nextMilestoneID = originalNextMilestoneID
+            throw error
+        }
+    }
+
+    @discardableResult
+    func undoInboxTriage(_ mutation: InboxTriageMutation) throws -> ProjectBoardTask {
+        let originalSnapshot = snapshot
+        let originalRecords = inboxRecordsByTaskID
+        do {
+            upsert(mutation.originalTask)
+            inboxRecordsByTaskID[mutation.originalTask.id] = mutation.originalRecord
+            if let createdProjectID = mutation.createdProjectID {
+                try deleteProject(id: createdProjectID)
+            }
+            return mutation.originalTask
+        } catch {
+            snapshot = originalSnapshot
+            inboxRecordsByTaskID = originalRecords
+            throw error
+        }
     }
 
     @discardableResult
@@ -398,6 +546,22 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
 
     private static func nowCompletedAt() -> String {
         ISO8601DateFormatter().string(from: Date())
+    }
+
+    private static func nowTriageAt() -> String {
+        ISO8601DateFormatter().string(from: Date())
+    }
+
+    private static func derivedInboxRecord(for task: ProjectBoardTask) -> InboxTriageRecord {
+        let disposition: InboxTriageDisposition = task.status == .done
+            ? .task
+            : task.dueAt == nil ? .unprocessed : .scheduled
+        return try! InboxTriageRecord(
+            taskID: task.id,
+            disposition: disposition,
+            reviewAt: nil,
+            updatedAt: task.updatedAt ?? task.createdAt ?? nowTriageAt()
+        )
     }
 }
 

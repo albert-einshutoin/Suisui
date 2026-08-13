@@ -41,17 +41,25 @@ runtime_home="$tmp_dir/home"
 mkdir -p "$runtime_home"
 app_pid=""
 app_launch_pid=""
+app_identity=""
+app_launch_identity=""
 
 # shellcheck source=/dev/null
 source "$AX_HELPERS"
 
 terminate_app() {
-  if [[ -n "${app_pid:-}" ]]; then
-    kill "$app_pid" >/dev/null 2>&1 || true
-    wait "$app_pid" >/dev/null 2>&1 || true
-    app_pid=""
+  local owned_pid="${app_pid:-}"
+  local launch_pid="${app_launch_pid:-}"
+  if [[ -n "$owned_pid" ]]; then
+    ax_terminate_owned_process "$owned_pid" "$APP_BINARY" "${app_identity:-}"
   fi
+  if [[ -n "$launch_pid" && "$launch_pid" != "$owned_pid" ]]; then
+    ax_terminate_owned_process "$launch_pid" "$APP_BINARY" "${app_launch_identity:-}"
+  fi
+  app_pid=""
   app_launch_pid=""
+  app_identity=""
+  app_launch_identity=""
 }
 
 cleanup() {
@@ -70,6 +78,7 @@ wait_for_app_process() {
     return 1
   }
   ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$TIMEOUT_SECONDS" "$APP_BINARY"
+  app_identity="$(ax_owned_process_identity "$app_pid" "$APP_BINARY")" || return 1
 }
 
 wait_for_no_app_process() {
@@ -81,12 +90,12 @@ wait_for_no_app_process() {
 activate_app() {
   # Keep activation in System Events so the isolated DB/keychain environment
   # remains attached to the process started by this script.
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 &
+  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null 2>&1 &
 on run argv
-  set appName to item 1 of argv
+  set targetPID to (item 1 of argv) as integer
   tell application "System Events"
-    if not (exists process appName) then return "missing"
-    tell process appName
+    set targetProcess to first process whose unix id is targetPID
+    tell targetProcess
       set frontmost to true
       if (count of windows) > 0 then
         try
@@ -121,12 +130,12 @@ wait_for_visible_windows() {
 
   while true; do
     set +e
-    window_count="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' 2>/dev/null
+    window_count="$(/usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' 2>/dev/null
 on run argv
-  set appName to item 1 of argv
+  set targetPID to (item 1 of argv) as integer
   tell application "System Events"
-    if not (exists process appName) then return "0"
-    tell process appName
+    set targetProcess to first process whose unix id is targetPID
+    tell targetProcess
       return (count of windows) as text
     end tell
   end tell
@@ -155,14 +164,14 @@ set_inbox_window_size() {
   # The classification panel is below the task list; fixing the window size
   # keeps this runtime path testing product behavior instead of prior user
   # window state or a clipped footer.
-  /usr/bin/osascript - "$APP_NAME" "$width" "$height" <<'APPLESCRIPT' >/dev/null
+  /usr/bin/osascript - "$app_pid" "$width" "$height" <<'APPLESCRIPT' >/dev/null
 on run argv
-  set appName to item 1 of argv
+  set targetPID to (item 1 of argv) as integer
   set targetWidth to (item 2 of argv) as integer
   set targetHeight to (item 3 of argv) as integer
   tell application "System Events"
-    if not (exists process appName) then error "process missing"
-    tell process appName
+    set targetProcess to first process whose unix id is targetPID
+    tell targetProcess
       if not (exists window 1) then error "window missing"
       set frontmost to true
       try
@@ -183,6 +192,7 @@ launch_app_for_inbox() {
     SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="inbox" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES &
   app_launch_pid=$!
+  app_launch_identity="$(ax_owned_process_identity "$app_launch_pid" "$APP_BINARY")" || return 1
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -258,6 +268,12 @@ pressButtonUntilSQLiteValue() {
   local actual=""
 
   while true; do
+    # Scheduling lives in the real selected-item context menu. Open that
+    # visible menu before each retry so this gate never relies on a hidden
+    # surrogate control or a shortcut whose dispatch can vary by focus.
+    if [[ "$fragment" == "inbox-action-schedule-today" ]]; then
+      pressButtonContaining "inbox-selected-item-more"
+    fi
     pressButtonContaining "$fragment"
 
     local postcondition_deadline=$((SECONDS + 3))
@@ -287,15 +303,15 @@ pressButtonContaining() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT'
+    if /usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT'
 on run argv
-  set appName to item 1 of argv
+  set targetPID to (item 1 of argv) as integer
   set fragment to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set targetProcess to first process whose unix id is targetPID
+    tell targetProcess
       set windowCount to count of windows
-      if windowCount < 1 then error appName & " has no visible windows"
+      if windowCount < 1 then error "target process has no visible windows"
       try
         set frontmost to true
       end try
@@ -310,7 +326,7 @@ on run argv
           try
             set itemRole to role of axItem as text
           end try
-          if itemRole is "AXButton" then
+          if itemRole is "AXButton" or itemRole is "AXMenuItem" or itemRole is "AXMenuButton" or itemRole is "AXPopUpButton" then
             set buttonName to ""
             set buttonTitle to ""
             set buttonDescription to ""
@@ -382,15 +398,15 @@ waitForTextFieldContaining() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$fragment" <<'APPLESCRIPT' >/dev/null 2>&1
+    if /usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
-  set appName to item 1 of argv
+  set targetPID to (item 1 of argv) as integer
   set fragment to item 2 of argv
   tell application "System Events"
-    if not (exists process appName) then error appName & " process is not visible to System Events"
-    tell process appName
+    set targetProcess to first process whose unix id is targetPID
+    tell targetProcess
       set windowCount to count of windows
-      if windowCount < 1 then error appName & " has no visible windows"
+      if windowCount < 1 then error "target process has no visible windows"
       try
         set frontmost to true
       end try
@@ -455,6 +471,7 @@ create_inbox_item() {
   local title="$1"
   local task_id=""
 
+  pressButtonContaining "inbox-quick-add-button" >&2
   waitForTextFieldContaining "inbox-quick-add-title"
   setTextFieldContaining "inbox-quick-add-title" "$title" >&2
   waitForTextFieldContaining "$title"
@@ -491,29 +508,29 @@ verify_single_value "Inbox project exists" "SELECT CASE WHEN count(*) >= 1 THEN 
 
 make_task_id="$(create_inbox_item "AX Runtime Inbox Make Task")"
 pressButtonContaining "inbox-action-make-task"
-verify_single_value "make-task keeps inbox item open" "SELECT CASE WHEN status='backlog' AND due_at IS NULL AND project_id=$inbox_project_id THEN 1 ELSE 0 END FROM tasks WHERE id=$make_task_id;" "1"
+verify_single_value "make-task persists Inbox disposition" "SELECT CASE WHEN t.status='backlog' AND t.due_at IS NULL AND t.project_id=$inbox_project_id AND r.disposition='task' AND r.review_at IS NULL THEN 1 ELSE 0 END FROM tasks t JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.id=$make_task_id;" "1"
 
 schedule_task_id="$(create_inbox_item "AX Runtime Inbox Schedule")"
-pressButtonUntilSQLiteValue "schedule inbox item" "inbox-action-schedule-today" "SELECT CASE WHEN status='planned' AND due_at IS NOT NULL AND project_id=$inbox_project_id THEN 1 ELSE 0 END FROM tasks WHERE id=$schedule_task_id;" "1"
-pressButtonUntilSQLiteValue "undo inbox schedule" "inbox-classification-undo" "SELECT CASE WHEN status='backlog' AND due_at IS NULL AND project_id=$inbox_project_id THEN 1 ELSE 0 END FROM tasks WHERE id=$schedule_task_id;" "1"
+pressButtonUntilSQLiteValue "schedule inbox item" "inbox-action-schedule-today" "SELECT CASE WHEN t.status='planned' AND t.due_at IS NOT NULL AND t.project_id=$inbox_project_id AND r.disposition='scheduled' AND r.review_at IS NULL THEN 1 ELSE 0 END FROM tasks t JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.id=$schedule_task_id;" "1"
+pressButtonUntilSQLiteValue "undo inbox schedule" "inbox-classification-undo" "SELECT CASE WHEN t.status='backlog' AND t.due_at IS NULL AND t.project_id=$inbox_project_id AND r.disposition='unprocessed' AND r.review_at IS NULL THEN 1 ELSE 0 END FROM tasks t JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.id=$schedule_task_id;" "1"
 
 review_task_id="$(create_inbox_item "AX Runtime Inbox Review Later")"
-# Review Later is meaningful only when an item already has scheduling state.
-# Seed that precondition directly so the AX path covers the Review Later button,
-# not a preceding feedback banner from Schedule Today.
+# Review Later must preserve any existing due date while writing its own
+# deferred review timestamp. Seed scheduling state directly so the AX path
+# covers the Review Later button rather than a preceding feedback banner.
 terminate_app
 wait_for_no_app_process
 "$SQLITE3" "$database_path" "UPDATE tasks SET status='planned', due_at='2026-06-23T09:00:00Z', updated_at=CURRENT_TIMESTAMP WHERE id=$review_task_id;"
 launch_app_for_inbox
 pressButtonContaining "workflow-task-row-$review_task_id"
 verify_single_value "prepared review-later inbox item" "SELECT CASE WHEN status='planned' AND due_at IS NOT NULL AND project_id=$inbox_project_id THEN 1 ELSE 0 END FROM tasks WHERE id=$review_task_id;" "1"
-pressButtonUntilSQLiteValue "review later inbox item" "inbox-action-review-later" "SELECT CASE WHEN status='backlog' AND due_at IS NULL AND project_id=$inbox_project_id THEN 1 ELSE 0 END FROM tasks WHERE id=$review_task_id;" "1"
-pressButtonUntilSQLiteValue "undo inbox review later" "inbox-classification-undo" "SELECT CASE WHEN status='planned' AND due_at IS NOT NULL AND project_id=$inbox_project_id THEN 1 ELSE 0 END FROM tasks WHERE id=$review_task_id;" "1"
+pressButtonUntilSQLiteValue "review later inbox item" "inbox-action-review-later" "SELECT CASE WHEN t.status='planned' AND t.due_at='2026-06-23T09:00:00Z' AND r.disposition='review_later' AND r.review_at IS NOT NULL THEN 1 ELSE 0 END FROM tasks t JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.id=$review_task_id;" "1"
+pressButtonUntilSQLiteValue "undo inbox review later" "inbox-classification-undo" "SELECT CASE WHEN t.status='planned' AND t.due_at='2026-06-23T09:00:00Z' AND r.disposition='unprocessed' AND r.review_at IS NULL THEN 1 ELSE 0 END FROM tasks t JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.id=$review_task_id;" "1"
 
 project_task_id="$(create_inbox_item "AX Runtime Inbox Project Conversion")"
 pressButtonUntilSQLiteValue "convert inbox item to project" "inbox-action-make-project" "SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END FROM projects WHERE title='AX Runtime Inbox Project Conversion';" "1"
-verify_single_value "converted inbox item moved into project" "SELECT CASE WHEN t.status='planned' AND p.title='AX Runtime Inbox Project Conversion' THEN 1 ELSE 0 END FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.id=$project_task_id;" "1"
+verify_single_value "converted inbox item moved into project" "SELECT CASE WHEN t.status='planned' AND p.title='AX Runtime Inbox Project Conversion' AND r.disposition='project' THEN 1 ELSE 0 END FROM tasks t JOIN projects p ON p.id = t.project_id JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.id=$project_task_id;" "1"
 pressButtonUntilSQLiteValue "undo inbox project conversion" "inbox-classification-undo" "SELECT count(*) FROM projects WHERE title='AX Runtime Inbox Project Conversion';" "0"
-verify_single_value "restored inbox project conversion item" "SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END FROM tasks t JOIN projects p ON p.id = t.project_id WHERE p.title='Inbox' AND t.title='AX Runtime Inbox Project Conversion' AND t.status='backlog' AND t.due_at IS NULL;" "1"
+verify_single_value "restored inbox project conversion item" "SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END FROM tasks t JOIN projects p ON p.id = t.project_id JOIN inbox_triage_records r ON r.task_id=t.id WHERE p.title='Inbox' AND t.title='AX Runtime Inbox Project Conversion' AND t.status='backlog' AND t.due_at IS NULL AND r.disposition='unprocessed' AND r.review_at IS NULL;" "1"
 
 printf "OK: runtime inbox triage smoke covered quick add, make-task, schedule, review-later, project conversion, and undo through the visible app\n"

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CI_REDACT_HELPER="$ROOT_DIR/script/ci_redact_stream.sh"
 CI_TMP_ROOT="${SUISUI_CI_TMP_ROOT:-$ROOT_DIR/.tmp}"
 CI_TMPDIR_CREATED=0
 CI_RUNTIME_GATES="${SUISUI_CI_RUNTIME_GATES:-0}"
@@ -15,6 +16,13 @@ CI_ARTIFACT_ROOT="${SUISUI_CI_ARTIFACT_ROOT:-$ROOT_DIR/.tmp/ci-artifacts}"
 UI_GATE_LOCK_DIR="${SUISUI_UI_GATE_LOCK_DIR:-/tmp/suisui-ui-gate-${UID}.lock}"
 UI_GATE_LOCK_TIMEOUT_SECONDS="${SUISUI_UI_GATE_LOCK_TIMEOUT_SECONDS:-180}"
 UI_GATE_LOCK_ACQUIRED=0
+
+if [[ ! -r "$CI_REDACT_HELPER" ]]; then
+  echo "missing CI redaction helper: $CI_REDACT_HELPER" >&2
+  exit 2
+fi
+# shellcheck source=../script/ci_redact_stream.sh
+source "$CI_REDACT_HELPER"
 
 if [[ $# -gt 1 ]]; then
   echo "usage: $0 [swiftpm|source-contracts|ui-runtime|ui-visual|ui-performance]" >&2
@@ -317,35 +325,20 @@ run_visual_gates() {
 sanitize_gate_log() {
   local input="$1"
   local output="${2:-}"
-  local sed_arguments=(
-    -E
-    -e 's#/(Users|Volumes)/[^[:space:]]+#<path>#g'
-    -e 's#/private/var/folders/[^[:space:]]+#<temp-path>#g'
-    -e 's#(/var)?/tmp/[^[:space:]]+#<temp-path>#g'
-    -e 's#(Authorization[[:space:]]*:[[:space:]]*Bearer)[[:space:]]+[^[:space:]]+#\1 <redacted>#Ig'
-    -e 's#(^|[^[:alnum:]_])sk-[A-Za-z0-9_-]{8,}#\1<redacted>#g'
-    -e 's#github_pat_[A-Za-z0-9_]{8,}#<redacted>#g'
-    -e 's#gh[pousr]_[A-Za-z0-9_]{8,}#<redacted>#g'
-    -e 's#xox[baprs]-[A-Za-z0-9-]{8,}#<redacted>#g'
-    -e 's#AKIA[0-9A-Z]{16}#<redacted>#g'
-    -e 's#("[[:alnum:]_.-]*(token|secret|password|api[_-]?key)"[[:space:]]*:[[:space:]]*)"[^"]*"#\1"<redacted>"#Ig'
-    -e "s#('[[:alnum:]_.-]*(token|secret|password|api[_-]?key)'[[:space:]]*:[[:space:]]*)'[^']*'#\\1'<redacted>'#Ig"
-    -e 's#([[:alnum:]_.-]*(token|secret|password|api[_-]?key))[[:space:]]*[=:][[:space:]]*[^[:space:]]+#\1=<redacted>#Ig'
-  )
   # When invoked with `-` as the input path, the sanitizer reads from
   # stdin and writes to stdout so the caller can pipe the lane output
   # through the sanitizer before `tee` exposes it to the Actions job
   # log. The path- and secret-pattern redactions are shared with the
   # file mode so the runtime/file pipelines stay equivalent.
   if [[ "$input" == "-" ]]; then
-    sed "${sed_arguments[@]}"
+    ci_redact_stream
     return 0
   fi
   if [[ -z "$output" ]]; then
     echo "BLOCKER: sanitize_gate_log output path is required in file mode" >&2
     return 2
   fi
-  sed "${sed_arguments[@]}" "$input" >"$output"
+  ci_redact_stream <"$input" >"$output"
 }
 
 run_lane_with_artifacts() {

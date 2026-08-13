@@ -508,7 +508,11 @@ private struct ProjectBoardDerivedReadModelInputs {
     var visibleNonArchivedTasks: [ProjectBoardTask]
     var nonArchivedTasks: [ProjectBoardTask]
 
-    init(snapshot: ProjectBoardSnapshot, showsCompletedWorkflowTasks: Bool) {
+    init(
+        snapshot: ProjectBoardSnapshot,
+        showsCompletedWorkflowTasks: Bool,
+        inboxUntriagedCountOverride: Int? = nil
+    ) {
         let nonArchivedProjects = snapshot.projects.filter { !$0.isArchived }
         let activeProjects = nonArchivedProjects.filter { !$0.isCompleted }
         let inboxProject = nonArchivedProjects.first(where: Self.isInboxProject)
@@ -524,7 +528,9 @@ private struct ProjectBoardDerivedReadModelInputs {
             .tasks
             .filter { showsCompletedWorkflowTasks || $0.status != .done }
             .sorted { $0.id > $1.id } ?? []
-        self.inboxUntriagedCount = inboxProject?.tasks.filter { $0.status != .done }.count ?? 0
+        self.inboxUntriagedCount = inboxUntriagedCountOverride
+            ?? inboxProject?.tasks.filter { $0.status != .done }.count
+            ?? 0
         self.nonArchivedTasks = nonArchivedProjects.flatMap(\.tasks)
         // Rebuilds need several workflow projections. Flattening once keeps a
         // large local board from paying the same project/task traversal for
@@ -604,9 +610,14 @@ public final class ProjectBoardViewModel: ObservableObject {
             }
         }
     }
+    // A successful mutation reload must not clear a provider failure that was
+    // raised by that same reload. Keep the result separate from `failure`,
+    // which may intentionally represent an earlier recoverable operation.
+    private var didLastLoadFail = false
     @Published public private(set) var failure: ProjectBoardFailure?
     @Published public private(set) var integrationStatusMessage: String?
     @Published public private(set) var inboxClassificationFeedback: InboxClassificationFeedback?
+    @Published public private(set) var inboxTriageErrorMessage: String?
     // Board-operation undo is deliberately separate from the Inbox
     // classification undo below: classification keeps its guided single-step
     // flow while this stack owns general task mutations (complete, status
@@ -664,6 +675,13 @@ public final class ProjectBoardViewModel: ObservableObject {
     // Inbox rows render often during filtering and selection changes, so capture
     // metadata is cached at board load time instead of hitting SQLite from SwiftUI body rendering.
     private var inboxCaptureRecordsByTaskID: [Int64: [InboxCaptureRecord]]
+    // Triage disposition is authoritative for Inbox filtering. Keeping it beside
+    // the capture cache lets row rendering distinguish an explicitly accepted
+    // Task from a raw, still-unprocessed capture without issuing store reads.
+    private var inboxTriageRecordsByTaskID: [Int64: InboxTriageRecord]
+    // Review Later visibility is a derived time boundary. Tests and the minute
+    // UI refresh inject this value so filtering stays deterministic and pure.
+    private var inboxVisibilityReferenceDate: Date?
     // Inspector receipt rows are cached as redacted read-model snapshots so
     // SwiftUI rendering never performs file I/O or holds raw receipt details.
     private var executionReceiptHistorySnapshotsByTaskID: [Int64: ExecutionReceiptHistorySnapshot]
@@ -738,11 +756,13 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.selectedProjectID = snapshot.projects.first?.id
         self.showsArchivedProjects = false
         self.showsCompletedWorkflowTasks = false
-        self.inboxTriageFilter = .all
+        self.inboxTriageFilter = .unprocessed
         self.boardOperationUndo = BoardOperationUndoStack()
         self.boardUndoFeedback = nil
         self.todayCommandFeedback = nil
         self.inboxCaptureRecordsByTaskID = [:]
+        self.inboxTriageRecordsByTaskID = [:]
+        self.inboxVisibilityReferenceDate = nil
         self.todayFocusTaskID = nil
         self.todayScheduleDraft = nil
         self.dailyPlanningReview = nil
@@ -982,6 +1002,11 @@ public final class ProjectBoardViewModel: ObservableObject {
         failure = nil
         failureTaskID = nil
         failureRetryAction = nil
+    }
+
+    private func clearErrorAfterSuccessfulLoad() {
+        guard !didLastLoadFail else { return }
+        errorMessage = nil
     }
 
     private func beginRecoverableOperation(taskID: Int64? = nil) {
@@ -3645,17 +3670,64 @@ public final class ProjectBoardViewModel: ObservableObject {
         }.count
     }
 
+    /// Returns the product-facing category used by the reference Inbox tabs.
+    /// The mapping is derived from cached capture metadata so rendering the
+    /// list does not perform a store read for every row.
+    public func inboxReferenceCategory(for task: ProjectBoardTask) -> InboxReferenceCategory {
+        let captures = captureRecords(for: task.id)
+        let interpretation = captures
+            .compactMap(\.interpretationSummary)
+            .joined(separator: " ")
+        let searchableText = [task.title, task.detail, interpretation]
+            .joined(separator: " ")
+            .lowercased()
+
+        if Self.inboxNotificationKeywords.contains(where: searchableText.contains) {
+            return .notification
+        }
+        if !interpretation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return .proposal
+        }
+        return .task
+    }
+
+    public func inboxReferenceTasks(
+        for filter: InboxReferenceFilter,
+        unprocessedOnly: Bool = false,
+        at referenceDate: Date? = nil
+    ) -> [ProjectBoardTask] {
+        let effectiveReferenceDate = referenceDate ?? inboxVisibilityReferenceDate ?? readModelNow()
+        return inboxTasks.filter { task in
+            guard !unprocessedOnly || isInboxUnprocessed(task, at: effectiveReferenceDate) else {
+                return false
+            }
+            guard filter != .all else {
+                return true
+            }
+            return inboxReferenceCategory(for: task) == filter.category
+        }
+    }
+
+    public func inboxReferenceCount(for filter: InboxReferenceFilter) -> Int {
+        inboxReferenceTasks(for: filter).count
+    }
+
+    private static let inboxNotificationKeywords = [
+        "notification", "alert", "お知らせ", "通知", "アラート"
+    ]
+
     public func inboxTriageSummary(for task: ProjectBoardTask) -> InboxTriageSummary {
         let captures = captureRecords(for: task.id)
         guard let capture = captures.first else {
             return InboxTriageSummary(
                 sourceLabel: "Manual",
-                interpretationLabel: task.status == .backlog && task.dueAt == nil ? "Unprocessed" : "Manual",
+                // Disposition is rendered by the dedicated triage badge. The
+                // source summary must stay about how the item arrived, or a
+                // processed manual task appears contradictory as "Unprocessed".
+                interpretationLabel: "Manual",
                 systemImage: "square.and.pencil",
                 tintName: "secondary",
-                accessibilityValue: task.status == .backlog && task.dueAt == nil
-                    ? "Source: Manual, Interpretation: Unprocessed"
-                    : "Source: Manual, Interpretation: Manual"
+                accessibilityValue: "Source: Manual, Interpretation: Manual"
             )
         }
 
@@ -3700,9 +3772,22 @@ public final class ProjectBoardViewModel: ObservableObject {
         )
     }
 
+    public func inboxTriageRecord(for task: ProjectBoardTask) -> InboxTriageRecord? {
+        inboxTriageRecordsByTaskID[task.id]
+    }
+
     public func setInboxTriageFilter(_ filter: InboxTriageFilter) {
         refreshInboxCaptureCacheForInbox()
         inboxTriageFilter = filter
+        ensureSelectedTaskIsVisibleInInboxFilter()
+    }
+
+    /// Re-evaluates deferred Inbox items against a caller-provided local time.
+    /// The UI invokes this on its minute boundary while tests inject exact
+    /// values, avoiding sleeps and global clock overrides in business logic.
+    public func refreshInboxReviewAvailability(at referenceDate: Date = Date()) {
+        inboxVisibilityReferenceDate = referenceDate
+        refreshDerivedReadModels(on: referenceDate, calendar: readModelCalendarProvider())
         ensureSelectedTaskIsVisibleInInboxFilter()
     }
 
@@ -3804,7 +3889,8 @@ public final class ProjectBoardViewModel: ObservableObject {
             visibleDayCount: visibleDayCount,
             inputs: ProjectBoardDerivedReadModelInputs(
                 snapshot: snapshot,
-                showsCompletedWorkflowTasks: showsCompletedWorkflowTasks
+                showsCompletedWorkflowTasks: showsCompletedWorkflowTasks,
+                inboxUntriagedCountOverride: inboxUnprocessedCount(at: referenceDate)
             )
         )
     }
@@ -3881,7 +3967,8 @@ public final class ProjectBoardViewModel: ObservableObject {
     private func rebuildDerivedReadModels(on referenceDate: Date, calendar: Calendar) {
         let inputs = ProjectBoardDerivedReadModelInputs(
             snapshot: snapshot,
-            showsCompletedWorkflowTasks: showsCompletedWorkflowTasks
+            showsCompletedWorkflowTasks: showsCompletedWorkflowTasks,
+            inboxUntriagedCountOverride: inboxUnprocessedCount(at: referenceDate)
         )
         let todayPlan = todayPlan(on: referenceDate, calendar: calendar, inputs: inputs)
         let workloadOverview = dailyWorkloadOverview(
@@ -3921,7 +4008,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         // workflow updates do not rescan every project/task or refresh local stores.
         derivedReadModels = ProjectBoardDerivedReadModels(
             sidebarMetrics: ProjectBoardSidebarMetrics(
-                inboxCount: inputs.inboxTasks.count,
+                inboxCount: inputs.inboxUntriagedCount,
                 todayCount: todayWorkflowSnapshot.plan.tasks.count,
                 catchUpCount: missedReview.newlyMissedCount,
                 scheduleCount: scheduleReadModel.unscheduledTasks.count,
@@ -4048,7 +4135,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             // changes reuse the immutable value without doing board work.
             self.dailyPlanningReviewPreviewBuildCount += 1
             projectBoardRuntimeDiagnosticLogger.notice(
-                "suisui.dailyPlanningPreview.buildCount=\(self.dailyPlanningReviewPreviewBuildCount, privacy: .public)"
+                "suisui.dailyPlanningPreview.buildCount=\(self.dailyPlanningReviewPreviewBuildCount, privacy: .public) temporalKey=\(cacheKey.runtimeDiagnosticTemporalKey, privacy: .public)"
             )
             return DailyPlanningReviewBuilder.review(
                 transcript: "Today daily planning review",
@@ -5037,7 +5124,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             selectedProjectID = task.projectID
             selectedTaskID = taskID
             todayCommandFeedback = String(format: String(localized: "Completed \"%@\" from missed review."), task.title)
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
             errorMessage = "Restore the project before moving tasks."
@@ -5070,7 +5157,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             selectedProjectID = updatedTask.projectID
             selectedTaskID = updatedTask.id
             todayCommandFeedback = String(format: String(localized: "Rescheduled \"%@\" for today."), task.title)
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
             errorMessage = "Restore the project before editing tasks."
@@ -6534,11 +6621,15 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     private func load(invalidationReason: TodaySnapshotInvalidationReason?) {
+        didLastLoadFail = false
         let failureAtLoadStart = failure
         do {
             let loadedSnapshot = try store.loadSnapshot(includeArchived: showsArchivedProjects)
             let snapshotChanged = loadedSnapshot != snapshot
             let captureCacheErrorMessage = refreshInboxCaptureCache(for: loadedSnapshot)
+            let previousTriageRecords = inboxTriageRecordsByTaskID
+            let triageCacheErrorMessage = refreshInboxTriageCache(for: loadedSnapshot)
+            let triageCacheChanged = previousTriageRecords != inboxTriageRecordsByTaskID
             let assistantQueueErrorMessage = refreshAssistantQueueSnapshot()
             resetScopedExecutionReceiptHistorySnapshots()
             snapshot = loadedSnapshot
@@ -6558,7 +6649,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             if hasLoadedBoardSnapshot || !hasPreloadedGoogleCalendarSyncStatus {
                 refreshGoogleCalendarSyncStatusOffMain()
             }
-            if snapshotChanged || invalidationReason != nil || derivedReadModelReferenceDate == nil {
+            if snapshotChanged || triageCacheChanged || invalidationReason != nil || derivedReadModelReferenceDate == nil {
                 // A mutation followed by its own board-change notification can
                 // load the same snapshot twice. Rebuild only on the first load
                 // so one logical mutation advances the preview revision once.
@@ -6570,12 +6661,16 @@ public final class ProjectBoardViewModel: ObservableObject {
                 }
             }
             hasLoadedBoardSnapshot = true
-            if let recoverableMessage = assistantQueueErrorMessage ?? captureCacheErrorMessage {
+            if let recoverableMessage = assistantQueueErrorMessage
+                ?? captureCacheErrorMessage
+                ?? triageCacheErrorMessage {
+                didLastLoadFail = true
                 recordFailure(.providerFailed(recoverableMessage), retryAction: .load)
             } else if failure == nil && failureAtLoadStart == nil {
                 clearFailure()
             }
         } catch {
+            didLastLoadFail = true
             let message = Self.userFacingMessage(for: error)
             if hasLoadedBoardSnapshot {
                 recordFailure(.saveFailed(message), retryAction: .load)
@@ -7593,7 +7688,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             ).importDocument(document)
             load()
             integrationStatusMessage = Self.importStatusMessage(for: result)
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
             return result
         } catch {
@@ -7746,6 +7841,30 @@ public final class ProjectBoardViewModel: ObservableObject {
                 resolvedDueAt = DeadlineDateParser.string(from: parsedDueAt)
             }
         }
+
+        if detail.isEmpty, priority == .medium, resolvedDueAt == nil {
+            do {
+                let task = try store.createInboxTask(title: resolvedTitle)
+                selectedProjectID = task.projectID
+                selectedTaskID = task.id
+                load()
+                selectedProjectID = task.projectID
+                selectedTaskID = task.id
+                clearErrorAfterSuccessfulLoad()
+                onChange()
+                return task
+            } catch ProjectBoardStoreError.emptyTitle {
+                errorMessage = "Task title is required."
+                return nil
+            } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
+                errorMessage = "Restore the project before adding tasks."
+                return nil
+            } catch {
+                errorMessage = Self.userFacingMessage(for: error)
+                return nil
+            }
+        }
+
         do {
             let liveSnapshot = try store.loadSnapshot(includeArchived: false)
             snapshot = liveSnapshot
@@ -7770,7 +7889,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             load()
             selectedProjectID = inboxProject.id
             selectedTaskID = task.id
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
             return task
         } catch ProjectBoardStoreError.emptyTitle {
@@ -7846,7 +7965,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             load()
             selectedProjectID = targetProjectID
             selectedTaskID = nil
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
             return true
         } catch ProjectBoardStoreError.nonAbsoluteWorkspacePath {
@@ -7873,7 +7992,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             load()
             selectedProjectID = targetProjectID
             selectedTaskID = nil
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
             return true
         } catch {
@@ -8047,17 +8166,8 @@ public final class ProjectBoardViewModel: ObservableObject {
             return
         }
 
-        applyInboxTaskUpdate(
-            originalTask: selectedTask,
-            draft: ProjectBoardTaskDraft(
-                projectID: selectedTask.projectID,
-                title: selectedTask.title,
-                detail: selectedTask.detail,
-                status: .backlog,
-                priority: selectedTask.priority,
-                dueAt: selectedTask.dueAt,
-                recurrence: selectedTask.recurrence
-            ),
+        performSelectedInboxTriage(
+            action: .makeTask,
             feedback: InboxClassificationFeedback(
                 message: String(format: String(localized: "Kept \"%@\" as a task."), selectedTask.title),
                 systemImage: "checkmark.circle",
@@ -8071,51 +8181,14 @@ public final class ProjectBoardViewModel: ObservableObject {
             return
         }
 
-        var createdProjectID: Int64?
-        do {
-            let project = try store.createProject(title: selectedTask.title)
-            createdProjectID = project.id
-            let movedTask = try store.updateTask(
-                id: selectedTask.id,
-                ProjectBoardTaskDraft(
-                    projectID: project.id,
-                    title: selectedTask.title,
-                    detail: selectedTask.detail,
-                    status: .planned,
-                    priority: selectedTask.priority,
-                    dueAt: selectedTask.dueAt,
-                    recurrence: selectedTask.recurrence
-                )
+        performSelectedInboxTriage(
+            action: .makeProject,
+            feedback: InboxClassificationFeedback(
+                message: String(format: String(localized: "Created project \"%@\"."), selectedTask.title),
+                systemImage: "folder.badge.plus",
+                canUndo: true
             )
-            finishInboxClassification(
-                originalTask: selectedTask,
-                fallbackTask: movedTask,
-                feedback: InboxClassificationFeedback(
-                    message: String(format: String(localized: "Created project \"%@\"."), selectedTask.title),
-                    systemImage: "folder.badge.plus",
-                    canUndo: true
-                ),
-                undo: .restoreTaskAndDeleteProject(originalTask: selectedTask, createdProjectID: project.id)
-            )
-            onChange()
-        } catch ProjectBoardStoreError.emptyProjectTitle {
-            errorMessage = "Project title is required."
-        } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
-            if let createdProjectID {
-                try? store.deleteProject(id: createdProjectID)
-            }
-            errorMessage = "Restore the project before editing tasks."
-        } catch ProjectBoardStoreError.emptyTitle {
-            if let createdProjectID {
-                try? store.deleteProject(id: createdProjectID)
-            }
-            errorMessage = "Task title is required."
-        } catch {
-            if let createdProjectID {
-                try? store.deleteProject(id: createdProjectID)
-            }
-            errorMessage = Self.userFacingMessage(for: error)
-        }
+        )
     }
 
     public func scheduleSelectedTaskForToday(referenceDate: Date = Date()) {
@@ -8123,17 +8196,9 @@ public final class ProjectBoardViewModel: ObservableObject {
             return
         }
 
-        applyInboxTaskUpdate(
-            originalTask: selectedTask,
-            draft: ProjectBoardTaskDraft(
-                projectID: selectedTask.projectID,
-                title: selectedTask.title,
-                detail: selectedTask.detail,
-                status: .planned,
-                priority: selectedTask.priority,
-                dueAt: ISO8601DateFormatter().string(from: referenceDate),
-                recurrence: selectedTask.recurrence
-            ),
+        performSelectedInboxTriage(
+            action: .scheduleToday,
+            referenceDate: referenceDate,
             feedback: InboxClassificationFeedback(
                 message: String(format: String(localized: "Scheduled \"%@\" for today."), selectedTask.title),
                 systemImage: "calendar.badge.plus",
@@ -8142,22 +8207,14 @@ public final class ProjectBoardViewModel: ObservableObject {
         )
     }
 
-    public func deferSelectedTaskForLater() {
+    public func deferSelectedTaskForLater(referenceDate: Date = Date()) {
         guard let selectedTask else {
             return
         }
 
-        applyInboxTaskUpdate(
-            originalTask: selectedTask,
-            draft: ProjectBoardTaskDraft(
-                projectID: selectedTask.projectID,
-                title: selectedTask.title,
-                detail: selectedTask.detail,
-                status: .backlog,
-                priority: selectedTask.priority,
-                dueAt: nil,
-                recurrence: selectedTask.recurrence
-            ),
+        performSelectedInboxTriage(
+            action: .reviewLater,
+            referenceDate: referenceDate,
             feedback: InboxClassificationFeedback(
                 message: String(format: String(localized: "Deferred \"%@\" for later review."), selectedTask.title),
                 systemImage: "clock",
@@ -8192,24 +8249,15 @@ public final class ProjectBoardViewModel: ObservableObject {
             guard let selectedTask = selectedInboxTaskForVoiceTriage() else {
                 return false
             }
-            deferSelectedTaskForLater()
-            let updatedTask = snapshot.projects.flatMap(\.tasks).first { $0.id == selectedTask.id }
-            return updatedTask?.status == .backlog && updatedTask?.dueAt == nil && errorMessage == nil
+            deferSelectedTaskForLater(referenceDate: referenceDate)
+            let record = inboxTriageRecordsByTaskID[selectedTask.id]
+            return record?.disposition == .reviewLater && errorMessage == nil
         case .complete:
             guard let selectedTask = selectedInboxTaskForVoiceTriage() else {
                 return false
             }
-            applyInboxTaskUpdate(
-                originalTask: selectedTask,
-                draft: ProjectBoardTaskDraft(
-                    projectID: selectedTask.projectID,
-                    title: selectedTask.title,
-                    detail: selectedTask.detail,
-                    status: .done,
-                    priority: selectedTask.priority,
-                    dueAt: selectedTask.dueAt,
-                    recurrence: selectedTask.recurrence
-                ),
+            performSelectedInboxTriage(
+                action: .complete,
                 feedback: InboxClassificationFeedback(
                     message: String(format: String(localized: "Completed \"%@\"."), selectedTask.title),
                     systemImage: "checkmark.circle.fill",
@@ -8252,6 +8300,11 @@ public final class ProjectBoardViewModel: ObservableObject {
         do {
             let restoredTask: ProjectBoardTask
             switch undo {
+            case .restoreMutation(let mutation, let regenerated):
+                restoredTask = try undoInboxTriageOperation(
+                    mutation: mutation,
+                    regenerated: regenerated
+                )
             case .restoreTask(let originalTask):
                 restoredTask = try store.updateTask(id: originalTask.id, originalTask.classificationDraft)
             case .restoreTaskAndDeleteProject(let originalTask, let createdProjectID):
@@ -8269,11 +8322,15 @@ public final class ProjectBoardViewModel: ObservableObject {
                 restoredTask = recreatedTask
             }
             load()
+            refreshDerivedReadModels(
+                on: inboxVisibilityReferenceDate ?? readModelNow(),
+                calendar: readModelCalendarProvider()
+            )
             selectedProjectID = restoredTask.projectID
             selectedTaskID = restoredTask.id
             inboxClassificationFeedback = nil
             lastInboxClassificationUndo = nil
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
             errorMessage = "Restore the project before undoing the classification."
@@ -8304,9 +8361,31 @@ public final class ProjectBoardViewModel: ObservableObject {
             var restoredSelection: (projectID: Int64, taskID: Int64)?
             switch entry {
             case .restoreTask(let snapshot):
-                let restored = try store.restoreTask(from: snapshot)
+                let restored = try restoreDeletedTask(
+                    snapshot: snapshot,
+                    triageRecord: nil,
+                    captures: []
+                )
                 restoredSelection = (restored.projectID, restored.id)
                 feedbackMessage = String(localized: "Undo: restored the deleted task.")
+            case .restoreTaskWithCaptures(let snapshot, let captures):
+                let restored = try restoreDeletedTask(
+                    snapshot: snapshot,
+                    triageRecord: nil,
+                    captures: captures
+                )
+                restoredSelection = (restored.projectID, restored.id)
+                feedbackMessage = String(localized: "Undo: restored the deleted task and voice memo.")
+            case .restoreInboxTask(let snapshot, let triageRecord, let captures):
+                let restored = try restoreDeletedTask(
+                    snapshot: snapshot,
+                    triageRecord: triageRecord,
+                    captures: captures
+                )
+                restoredSelection = (restored.projectID, restored.id)
+                feedbackMessage = captures.isEmpty
+                    ? String(localized: "Undo: restored the deleted task.")
+                    : String(localized: "Undo: restored the deleted task and voice memo.")
             case .revertStatus(let snapshot):
                 let reverted = try store.applyTaskUndoSnapshot(snapshot)
                 restoredSelection = (reverted.projectID, reverted.id)
@@ -8319,6 +8398,10 @@ public final class ProjectBoardViewModel: ObservableObject {
                 let reverted = try undoCompletionOperation(snapshot: snapshot, regenerated: regenerated)
                 restoredSelection = (reverted.projectID, reverted.id)
                 feedbackMessage = String(localized: "Undo: reopened the completed task.")
+            case .revertInboxTriage(let mutation, let regenerated):
+                let reverted = try undoInboxTriageOperation(mutation: mutation, regenerated: regenerated)
+                restoredSelection = (reverted.projectID, reverted.id)
+                feedbackMessage = String(localized: "Undo: restored the Inbox item.")
             case .revertStatusBatch(let snapshots, let regenerated):
                 for regeneratedTask in regenerated where isRegeneratedTaskUntouched(regeneratedTask) {
                     try store.deleteTask(id: regeneratedTask.id)
@@ -8336,12 +8419,73 @@ public final class ProjectBoardViewModel: ObservableObject {
                 selectedTaskID = restoredSelection.taskID
             }
             showBoardUndoFeedback(feedbackMessage)
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
             errorMessage = "Restore the project before undoing this change."
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
+    private func restoreDeletedTask(
+        snapshot: ProjectBoardTask,
+        triageRecord: InboxTriageRecord?,
+        captures: [InboxCaptureRecord]
+    ) throws -> ProjectBoardTask {
+        if let atomicStore = store as? any ProjectBoardDeleteUndoRestoring,
+           triageRecord != nil || !captures.isEmpty {
+            return try atomicStore.restoreDeletedTask(
+                from: snapshot,
+                triageRecord: triageRecord,
+                captures: captures
+            )
+        }
+
+        // Test doubles and non-SQLite integrations keep the additive fallback;
+        // production SQLite uses the capability above because compensation
+        // cannot provide an atomic retry guarantee after a storage failure.
+        let restored: ProjectBoardTask
+        if let triageRecord {
+            restored = try store.undoInboxTriage(InboxTriageMutation(
+                originalTask: snapshot,
+                originalRecord: triageRecord,
+                updatedTask: snapshot
+            ))
+        } else {
+            restored = try store.restoreTask(from: snapshot)
+        }
+        var restoredCaptureIDs: [Int64] = []
+        do {
+            if !captures.isEmpty {
+                guard let inboxCaptureStore else {
+                    throw InboxCaptureStoreError.linkedTaskMissing
+                }
+                for capture in captures {
+                    let restoredCapture = try inboxCaptureStore.createVoiceCapture(InboxVoiceCaptureDraft(
+                        taskID: restored.id,
+                        audioFilePath: capture.audioFilePath,
+                        durationSeconds: capture.durationSeconds,
+                        transcript: capture.transcript,
+                        interpretationSummary: capture.interpretationSummary,
+                        memo: capture.memo,
+                        classificationStatus: capture.classificationStatus,
+                        transcriptionStatus: capture.transcriptionStatus,
+                        createdAt: capture.createdAt
+                    ))
+                    restoredCaptureIDs.append(restoredCapture.id)
+                }
+            }
+            return restored
+        } catch {
+            // The recreated task has a new ID. Roll back every dependent row
+            // so a failed capture restore can be retried as one Undo. Triage
+            // restoration already shares the store's task transaction.
+            for captureID in restoredCaptureIDs {
+                try? inboxCaptureStore?.delete(id: captureID)
+            }
+            try? store.deleteTask(id: restored.id)
+            throw error
         }
     }
 
@@ -8363,6 +8507,26 @@ public final class ProjectBoardViewModel: ObservableObject {
             // be restored, put the regenerated occurrence back instead of
             // leaving the recurrence chain half-applied.
             _ = try? store.restoreTask(from: regenerated)
+            throw error
+        }
+    }
+
+    private func undoInboxTriageOperation(
+        mutation: InboxTriageMutation,
+        regenerated: ProjectBoardTask?
+    ) throws -> ProjectBoardTask {
+        let shouldRestoreRegenerated = regenerated.map(isRegeneratedTaskUntouched) == true
+        if let regenerated, shouldRestoreRegenerated {
+            try store.deleteTask(id: regenerated.id)
+        }
+        do {
+            return try store.undoInboxTriage(mutation)
+        } catch {
+            // Keep the undo retryable and restore a deleted recurrence if the
+            // disposition/task transaction cannot be applied.
+            if let regenerated, shouldRestoreRegenerated {
+                _ = try? store.restoreTask(from: regenerated)
+            }
             throw error
         }
     }
@@ -8475,16 +8639,32 @@ public final class ProjectBoardViewModel: ObservableObject {
         let taskIDsBeforeMutation = visibleTaskIDsForUndoDiff()
 
         do {
-            _ = try store.moveTask(id: id, to: targetStatus)
-            load()
-            recordStatusMoveUndo(
-                previousTasks: [task],
-                to: targetStatus,
-                taskIDsBeforeMutation: taskIDsBeforeMutation
-            )
+            if inboxProject?.id == task.projectID {
+                let mutation = try store.performInboxTriage(
+                    taskID: id,
+                    action: targetStatus == .done ? .complete : .reopen,
+                    referenceDate: readModelNow(),
+                    calendar: readModelCalendarProvider()
+                )
+                load()
+                boardOperationUndo.push(
+                    .revertInboxTriage(
+                        mutation: mutation,
+                        regenerated: regeneratedTasksAfterMutation(notIn: taskIDsBeforeMutation).first
+                    )
+                )
+            } else {
+                _ = try store.moveTask(id: id, to: targetStatus)
+                load()
+                recordStatusMoveUndo(
+                    previousTasks: [task],
+                    to: targetStatus,
+                    taskIDsBeforeMutation: taskIDsBeforeMutation
+                )
+            }
             selectedProjectID = previousProjectID
             selectedTaskID = previousTaskID
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
             errorMessage = "Restore the project before moving tasks."
@@ -8494,6 +8674,11 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     public func reopenCompletedTask(id: Int64) {
+        if let task = snapshot.projects.flatMap(\.tasks).first(where: { $0.id == id }),
+           inboxProject?.id == task.projectID {
+            toggleTaskCompletion(id: id)
+            return
+        }
         moveTask(id: id, to: .planned)
     }
 
@@ -8594,7 +8779,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             integrationStatusMessage = movedTasks.count == 1
                 ? String(localized: "Moved task to project.")
                 : String(format: String(localized: "Moved %d tasks to project."), movedTasks.count)
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
             return true
         } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
@@ -8613,10 +8798,36 @@ public final class ProjectBoardViewModel: ObservableObject {
         beginRecoverableOperation(taskID: selectedTaskID)
 
         let deletedTask = selectedTask
+        let deletedCaptures: [InboxCaptureRecord]
+        let deletedTriageRecord: InboxTriageRecord?
+        do {
+            deletedCaptures = try inboxCaptureStore?.list(taskID: selectedTaskID) ?? []
+            deletedTriageRecord = try store.loadInboxTriageRecords(taskIDs: [selectedTaskID])[selectedTaskID]
+        } catch {
+            recordFailure(
+                .saveFailed(Self.userFacingMessage(for: error)),
+                taskID: selectedTaskID,
+                retryAction: .deleteTask(id: selectedTaskID)
+            )
+            return
+        }
         do {
             try store.deleteTask(id: selectedTaskID)
             if let deletedTask {
-                boardOperationUndo.push(.restoreTask(snapshot: deletedTask))
+                if let deletedTriageRecord {
+                    boardOperationUndo.push(.restoreInboxTask(
+                        snapshot: deletedTask,
+                        triageRecord: deletedTriageRecord,
+                        captures: deletedCaptures
+                    ))
+                } else if deletedCaptures.isEmpty {
+                    boardOperationUndo.push(.restoreTask(snapshot: deletedTask))
+                } else {
+                    boardOperationUndo.push(.restoreTaskWithCaptures(
+                        snapshot: deletedTask,
+                        captures: deletedCaptures
+                    ))
+                }
             }
             self.selectedTaskID = nil
             load()
@@ -8641,7 +8852,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             let artifact = try store.createProjectArtifact(projectID: targetProjectID, expectedPath: expectedPath)
             load()
             selectedProjectID = targetProjectID
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
             return artifact
         } catch ProjectBoardStoreError.emptyArtifactPath {
@@ -8666,7 +8877,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             let targetProjectID = projectID ?? selectedProjectID
             load()
             selectedProjectID = targetProjectID
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
             return true
         } catch ArtifactStoreError.notFound {
@@ -8689,7 +8900,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             let milestone = try store.createProjectMilestone(projectID: targetProjectID, title: title, dueAt: dueAt)
             load()
             selectedProjectID = targetProjectID
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
             return milestone
         } catch ProjectBoardStoreError.emptyTitle {
@@ -8717,7 +8928,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             )
             load()
             selectedProjectID = projectID ?? milestone.projectID
-            errorMessage = nil
+            clearErrorAfterSuccessfulLoad()
             onChange()
             return updated
         } catch {
@@ -8823,6 +9034,60 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    private func performSelectedInboxTriage(
+        action: InboxTriageAction,
+        referenceDate: Date? = nil,
+        feedback: InboxClassificationFeedback
+    ) {
+        guard let selectedTask else {
+            return
+        }
+
+        do {
+            let taskIDsBeforeMutation = visibleTaskIDsForUndoDiff()
+            let mutation = try store.performInboxTriage(
+                taskID: selectedTask.id,
+                action: action,
+                referenceDate: referenceDate ?? readModelNow(),
+                calendar: readModelCalendarProvider()
+            )
+            let shouldAdvanceInboxSelection = inboxProject?.id == selectedTask.projectID
+            load()
+            refreshDerivedReadModels(
+                on: inboxVisibilityReferenceDate ?? readModelNow(),
+                calendar: readModelCalendarProvider()
+            )
+            let regenerated = regeneratedTasksAfterMutation(notIn: taskIDsBeforeMutation).first
+            selectedProjectID = mutation.updatedTask.projectID
+            selectedTaskID = mutation.updatedTask.id
+
+            if shouldAdvanceInboxSelection,
+               let nextInboxTask = filteredInboxTasks.first(where: { $0.id != selectedTask.id }) {
+                selectedProjectID = nextInboxTask.projectID
+                selectedTaskID = nextInboxTask.id
+            }
+
+            inboxClassificationFeedback = feedback
+            lastInboxClassificationUndo = .restoreMutation(
+                mutation: mutation,
+                regenerated: regenerated
+            )
+            clearErrorAfterSuccessfulLoad()
+            onChange()
+        } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
+            errorMessage = "Restore the project before editing tasks."
+        } catch ProjectBoardStoreError.emptyProjectTitle {
+            errorMessage = "Project title is required."
+        } catch ProjectBoardStoreError.emptyTitle {
+            errorMessage = "Task title is required."
+        } catch {
+            errorMessage = Self.userFacingMessage(
+                for: error,
+                fallback: String(localized: "Inbox triage update failed.")
+            )
+        }
+    }
+
     private func applyInboxTaskUpdate(
         originalTask: ProjectBoardTask,
         draft: ProjectBoardTaskDraft,
@@ -8864,7 +9129,7 @@ public final class ProjectBoardViewModel: ObservableObject {
 
         inboxClassificationFeedback = feedback
         lastInboxClassificationUndo = undo
-        errorMessage = nil
+        clearErrorAfterSuccessfulLoad()
     }
 
     private func ensureSelectedTaskIsVisibleInInboxFilter() {
@@ -8942,7 +9207,36 @@ public final class ProjectBoardViewModel: ObservableObject {
         case .manual:
             return captures.isEmpty
         case .unprocessed:
-            return task.status == .backlog && task.dueAt == nil
+            return isInboxUnprocessed(task, at: inboxVisibilityReferenceDate ?? readModelNow())
+        }
+    }
+
+    private func isInboxUnprocessed(_ task: ProjectBoardTask, at referenceDate: Date) -> Bool {
+        guard task.status != .done else {
+            return false
+        }
+
+        let legacyDisposition: InboxTriageDisposition = task.dueAt == nil ? .unprocessed : .scheduled
+        switch inboxTriageRecordsByTaskID[task.id]?.disposition ?? legacyDisposition {
+        case .unprocessed:
+            return true
+        case .reviewLater:
+            guard let rawReviewAt = inboxTriageRecordsByTaskID[task.id]?.reviewAt,
+                  let reviewAt = ISO8601DateFormatter().date(from: rawReviewAt) else {
+                // Corrupt deferred metadata must not silently hide captured work.
+                return true
+            }
+            return reviewAt <= referenceDate
+        case .task, .scheduled, .project:
+            return false
+        }
+    }
+
+    private func inboxUnprocessedCount(at referenceDate: Date) -> Int {
+        inboxTasks.reduce(into: 0) { count, task in
+            if isInboxUnprocessed(task, at: referenceDate) {
+                count += 1
+            }
         }
     }
 
@@ -8988,6 +9282,31 @@ public final class ProjectBoardViewModel: ObservableObject {
     private func refreshInboxCaptureCacheForInbox() {
         if let errorMessage = refreshInboxCaptureCache(for: snapshot) {
             self.errorMessage = errorMessage
+        }
+    }
+
+    private func refreshInboxTriageCache(for snapshot: ProjectBoardSnapshot) -> String? {
+        let taskIDs = Self.inboxTaskIDs(in: snapshot)
+        guard !taskIDs.isEmpty else {
+            inboxTriageRecordsByTaskID = [:]
+            inboxTriageErrorMessage = nil
+            return nil
+        }
+        do {
+            inboxTriageRecordsByTaskID = try store.loadInboxTriageRecords(taskIDs: taskIDs)
+            inboxTriageErrorMessage = nil
+            return nil
+        } catch {
+            // Missing or temporarily unavailable metadata must not hide Inbox
+            // rows. The filter derives a conservative legacy disposition from
+            // each task until the next successful load.
+            inboxTriageRecordsByTaskID = [:]
+            let message = Self.userFacingMessage(
+                for: error,
+                fallback: String(localized: "Inbox triage state unavailable.")
+            )
+            inboxTriageErrorMessage = message
+            return message
         }
     }
 
@@ -9664,6 +9983,7 @@ public final class ProjectBoardViewModel: ObservableObject {
 }
 
 private enum InboxClassificationUndo {
+    case restoreMutation(mutation: InboxTriageMutation, regenerated: ProjectBoardTask?)
     case restoreTask(originalTask: ProjectBoardTask)
     case restoreTaskAndDeleteProject(originalTask: ProjectBoardTask, createdProjectID: Int64)
 }

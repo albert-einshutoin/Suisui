@@ -136,9 +136,24 @@ public protocol InboxCaptureStore {
     func get(id: Int64) throws -> InboxCaptureRecord
     func list(taskID: Int64) throws -> [InboxCaptureRecord]
     func list(taskIDs: Set<Int64>) throws -> [Int64: [InboxCaptureRecord]]
+    /// Returns every persisted capture for startup audio reconciliation.
+    func listAll() throws -> [InboxCaptureRecord]
     func updateMemo(id: Int64, memo: String?) throws -> InboxCaptureRecord
+    /// Repoints a capture after a legacy temporary recording is migrated.
+    func updateAudioFilePath(id: Int64, audioFilePath: String) throws -> InboxCaptureRecord
     func relinkCaptures(fromTaskID: Int64, toTaskID: Int64) throws -> Int
     func delete(id: Int64) throws
+}
+
+public extension InboxCaptureStore {
+    // Existing integrations may provide only the read model used by Inbox.
+    // Startup reconciliation is an additive capability, so older test doubles
+    // remain valid and simply opt out until they implement the richer contract.
+    func listAll() throws -> [InboxCaptureRecord] { [] }
+
+    func updateAudioFilePath(id: Int64, audioFilePath: String) throws -> InboxCaptureRecord {
+        throw InboxCaptureStoreError.notFound(id)
+    }
 }
 
 public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendable {
@@ -248,6 +263,15 @@ public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendab
         return recordsByTaskID
     }
 
+    public func listAll() throws -> [InboxCaptureRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        return try connection.queryRows(
+            "SELECT * FROM inbox_capture_records ORDER BY id ASC;"
+        ).map(Self.record(row:))
+    }
+
     @discardableResult
     public func updateMemo(id: Int64, memo: String?) throws -> InboxCaptureRecord {
         lock.lock()
@@ -265,6 +289,25 @@ public final class SQLiteInboxCaptureStore: InboxCaptureStore, @unchecked Sendab
             WHERE id = ?;
             """,
             parameters: [SQLiteValue(normalizedMemo), .integer(id)]
+        )
+        return try getLocked(id: id)
+    }
+
+    @discardableResult
+    public func updateAudioFilePath(id: Int64, audioFilePath: String) throws -> InboxCaptureRecord {
+        let normalizedPath = try requiredTrimmedPath(audioFilePath)
+        lock.lock()
+        defer { lock.unlock() }
+
+        _ = try getLocked(id: id)
+        try connection.execute(
+            """
+            UPDATE inbox_capture_records
+            SET audio_file_path = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?;
+            """,
+            parameters: [.text(normalizedPath), .integer(id)]
         )
         return try getLocked(id: id)
     }
@@ -433,12 +476,23 @@ public protocol InboxVoiceCaptureSaving: AnyObject {
     ) throws -> InboxVoiceCaptureResult
 }
 
+/// Persists a completed recording into the Inbox-owned audio directory before
+/// the database row is created. Keeping this boundary in Core lets the app
+/// choose the filesystem policy without allowing capture records to point at
+/// short-lived temporary files.
+@MainActor
+public protocol InboxAudioPersisting {
+    func importRecording(from sourceURL: URL) throws -> URL
+    func removeImportedRecording(at url: URL)
+}
+
 @MainActor
 public final class InboxVoiceCaptureService: InboxVoiceCaptureSaving {
     private var audioRecorder: any AudioRecorder
     private let sttProvider: any SpeechToTextProvider
     private let projectBoardStore: any ProjectBoardStore
     private let inboxCaptureStore: any InboxCaptureStore
+    private let inboxAudioPersister: (any InboxAudioPersisting)?
     private let commandRouter: any VoiceCommandRouting
 
     public init(
@@ -446,12 +500,14 @@ public final class InboxVoiceCaptureService: InboxVoiceCaptureSaving {
         sttProvider: any SpeechToTextProvider,
         projectBoardStore: any ProjectBoardStore,
         inboxCaptureStore: any InboxCaptureStore,
+        inboxAudioPersister: (any InboxAudioPersisting)? = nil,
         commandRouter: any VoiceCommandRouting = VoiceCommandRouter()
     ) {
         self.audioRecorder = audioRecorder
         self.sttProvider = sttProvider
         self.projectBoardStore = projectBoardStore
         self.inboxCaptureStore = inboxCaptureStore
+        self.inboxAudioPersister = inboxAudioPersister
         self.commandRouter = commandRouter
     }
 
@@ -485,25 +541,39 @@ public final class InboxVoiceCaptureService: InboxVoiceCaptureSaving {
         let title = normalizedTranscriptText(transcript)
         let interpretation = makeInterpretation(for: title)
         let captureCreatedAt = createdAt ?? ISO8601DateFormatter().string(from: date)
-        let task = try projectBoardStore.createInboxTask(title: title?.isEmpty == false ? title! : "Voice memo")
-        let transcriptionStatus: InboxCaptureTranscriptionStatus = title == nil ? .failed : .succeeded
-        let capture = try inboxCaptureStore.createVoiceCapture(InboxVoiceCaptureDraft(
-            taskID: task.id,
-            audioFilePath: audio.fileURL.path,
-            durationSeconds: audio.duration ?? transcript?.duration ?? 0,
-            transcript: title,
-            interpretationSummary: interpretation?.summary,
-            memo: interpretation?.memo,
-            classificationStatus: .unclassified,
-            transcriptionStatus: transcriptionStatus,
-            createdAt: captureCreatedAt
-        ))
+        let persistedAudioURL = try inboxAudioPersister?.importRecording(from: audio.fileURL) ?? audio.fileURL
+        do {
+            let task = try projectBoardStore.createInboxTask(title: title?.isEmpty == false ? title! : "Voice memo")
+            do {
+                let transcriptionStatus: InboxCaptureTranscriptionStatus = title == nil ? .failed : .succeeded
+                let capture = try inboxCaptureStore.createVoiceCapture(InboxVoiceCaptureDraft(
+                    taskID: task.id,
+                    audioFilePath: persistedAudioURL.path,
+                    durationSeconds: audio.duration ?? transcript?.duration ?? 0,
+                    transcript: title,
+                    interpretationSummary: interpretation?.summary,
+                    memo: interpretation?.memo,
+                    classificationStatus: .unclassified,
+                    transcriptionStatus: transcriptionStatus,
+                    createdAt: captureCreatedAt
+                ))
 
-        return InboxVoiceCaptureResult(
-            task: task,
-            capture: capture,
-            transcriptionErrorMessage: transcriptionErrorMessage
-        )
+                return InboxVoiceCaptureResult(
+                    task: task,
+                    capture: capture,
+                    transcriptionErrorMessage: transcriptionErrorMessage
+                )
+            } catch {
+                // The task is created only to own this capture. Remove it when
+                // the capture insert fails so a failed save cannot leave an
+                // orphaned Inbox task behind.
+                try? projectBoardStore.deleteTask(id: task.id)
+                throw error
+            }
+        } catch {
+            inboxAudioPersister?.removeImportedRecording(at: persistedAudioURL)
+            throw error
+        }
     }
 
     private func transcribe(_ audio: RecordedAudio) async -> (transcript: STTTranscript?, errorMessage: String?) {

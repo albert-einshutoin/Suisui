@@ -38,7 +38,7 @@ final class AVFoundationAudioRecorder: AudioRecorder {
             throw AudioRecorderError.failed("Unknown microphone permission status.")
         }
 
-        let url = temporaryRecordingURL(startedAt: date)
+        let url = temporaryRecordingURL()
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
             AVSampleRateKey: 44_100,
@@ -114,9 +114,8 @@ final class AVFoundationAudioRecorder: AudioRecorder {
         state = .idle
     }
 
-    private func temporaryRecordingURL(startedAt date: Date) -> URL {
-        let timestamp = Int(date.timeIntervalSince1970)
-        return temporaryDirectory.appendingPathComponent("suisui-recording-\(timestamp).m4a")
+    func temporaryRecordingURL(identifier: UUID = UUID()) -> URL {
+        temporaryDirectory.appendingPathComponent("suisui-recording-\(identifier.uuidString).m4a")
     }
 
     private func requestMicrophoneAccess() async -> Bool {

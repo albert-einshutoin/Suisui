@@ -198,8 +198,12 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
     public var priority: ProjectTaskPriority
     public var dueAt: String?
     public var completedAt: String?
+    public var createdAt: String?
     public var updatedAt: String?
     public var recurrence: String?
+    /// Retained only for deterministic evidence isolation; ordinary board
+    /// consumers do not need the original command that created a task.
+    public var sourceCommand: String?
 
     public init(
         id: Int64,
@@ -210,8 +214,10 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
         priority: ProjectTaskPriority,
         dueAt: String?,
         completedAt: String? = nil,
+        createdAt: String? = nil,
         updatedAt: String? = nil,
-        recurrence: String? = nil
+        recurrence: String? = nil,
+        sourceCommand: String? = nil
     ) {
         self.id = id
         self.projectID = projectID
@@ -221,8 +227,10 @@ public struct ProjectBoardTask: Identifiable, Equatable, Sendable {
         self.priority = priority
         self.dueAt = dueAt
         self.completedAt = completedAt
+        self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.recurrence = recurrence
+        self.sourceCommand = sourceCommand
     }
 
     /// The label every board surface shows for a due date. `dueAt` stays the
@@ -718,4 +726,50 @@ public enum InboxTriageFilter: String, CaseIterable, Identifiable, Sendable {
             "Unprocessed"
         }
     }
+}
+
+/// Categories used by the reference Inbox surface. This is intentionally
+/// separate from `InboxTriageFilter`: triage filters describe capture origin
+/// and processing state, while the reference tabs describe the user's review
+/// queue. Keeping both contracts lets the workflow retain its existing
+/// lifecycle semantics while presenting the product-facing taxonomy.
+public enum InboxReferenceFilter: String, CaseIterable, Identifiable, Sendable {
+    case all
+    case task
+    case proposal
+    case notification
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .all:
+            "All"
+        case .task:
+            "Tasks"
+        case .proposal:
+            "Proposals"
+        case .notification:
+            "Notifications"
+        }
+    }
+
+    public var category: InboxReferenceCategory? {
+        switch self {
+        case .all:
+            nil
+        case .task:
+            .task
+        case .proposal:
+            .proposal
+        case .notification:
+            .notification
+        }
+    }
+}
+
+public enum InboxReferenceCategory: String, Sendable {
+    case task
+    case proposal
+    case notification
 }

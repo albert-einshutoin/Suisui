@@ -11,6 +11,18 @@ public enum BoardOperationUndoEntry: Equatable, Sendable {
     /// preserving detail, due date, priority, recurrence, and the original
     /// completion timestamp.
     case restoreTask(snapshot: ProjectBoardTask)
+    /// Inverse of deleting a task that owns Inbox voice captures. The capture
+    /// rows are recreated after the task so SQLite's foreign key remains valid
+    /// and the managed audio paths stay reachable for Undo playback.
+    case restoreTaskWithCaptures(snapshot: ProjectBoardTask, captures: [InboxCaptureRecord])
+    /// Inverse of deleting an Inbox task. The triage record is remapped to the
+    /// recreated task ID, and captures participate in the same rollback unit so
+    /// Undo never exposes a task with only part of its Inbox lifecycle restored.
+    case restoreInboxTask(
+        snapshot: ProjectBoardTask,
+        triageRecord: InboxTriageRecord,
+        captures: [InboxCaptureRecord]
+    )
     /// Inverse of a status move (keyboard, card controls, or a single-card
     /// drag & drop): put the previous status back.
     case revertStatus(snapshot: ProjectBoardTask)
@@ -21,9 +33,25 @@ public enum BoardOperationUndoEntry: Equatable, Sendable {
     /// recurrence occurrence, `regenerated` carries that occurrence exactly as
     /// it was created; undo deletes it only while it is still untouched.
     case undoCompletion(snapshot: ProjectBoardTask, regenerated: ProjectBoardTask?)
+    /// Inverse of completing/reopening an Inbox task. The mutation carries the
+    /// task fields and explicit Inbox disposition together so Edit-menu Undo
+    /// cannot restore one half of the lifecycle and leave the read model stale.
+    case revertInboxTriage(mutation: InboxTriageMutation, regenerated: ProjectBoardTask?)
     /// Inverse of a multi-task drag & drop status move. `regenerated` carries
     /// every next occurrence spawned by recurring tasks completed in the batch.
     case revertStatusBatch(snapshots: [ProjectBoardTask], regenerated: [ProjectBoardTask])
+}
+
+/// Persistence capability for delete Undo implementations that can restore the
+/// task and every dependent Inbox row in one transaction. This stays separate
+/// from `ProjectBoardStore`: only stores sharing the task, triage, and capture
+/// database can truthfully provide the all-or-nothing guarantee.
+protocol ProjectBoardDeleteUndoRestoring {
+    func restoreDeletedTask(
+        from snapshot: ProjectBoardTask,
+        triageRecord: InboxTriageRecord?,
+        captures: [InboxCaptureRecord]
+    ) throws -> ProjectBoardTask
 }
 
 /// Pure in-memory LIFO stack of board undo entries.

@@ -304,6 +304,13 @@ struct ProjectBoardView: View {
             )
         }
         .toolbar(removing: .sidebarToggle)
+        // The Inbox reference surface owns its sort/filter controls in the
+        // content header; hiding the global command toolbar keeps that review
+        // surface aligned with the compact reference composition.
+        .toolbar(
+            selectedDestination == .inbox ? .hidden : .automatic,
+            for: .windowToolbar
+        )
         .background(
             ProjectBoardToolbarLayoutBridge(
                 columnVisibility: columnVisibility,

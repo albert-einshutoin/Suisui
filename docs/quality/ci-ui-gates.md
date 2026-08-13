@@ -4,7 +4,7 @@
 [`selective-ci.md`](./selective-ci.md) を参照する。本書のproduction UI evidence契約は、
 選択的CIでも全件CIでも変わらない。
 
-Suisuiは、source/unit/buildだけでは検出できない通常製品routeの退行を、独立したmacOS UI gateで検証する。GitHub Actionsは描画差分を安定させるため`macos-26`へ固定し、次の5 checkを常に別jobとして返す。
+Suisuiは、source/unit/buildだけでは検出できない通常製品routeの退行を、独立したmacOS UI gateで検証する。GitHub Actionsは描画差分を安定させるため`macos-26`へ固定し、次の5 product checkを返す。Performanceはさらに、Release build用jobと測定用jobを分離する。
 
 | Check | ローカル再現コマンド | 証明する内容 |
 | --- | --- | --- |
@@ -33,6 +33,8 @@ UI laneは最初にrunner capabilityをfail closedで確認する。
 SwiftPM jobは証跡のsource commitをPR merge commitから正しく辿るためfull git historyをcheckoutし、security/release scriptsのallowlisted search toolとして`rg`を明示的に用意する。成功・失敗に関係なく、XCTestとSwift Testingの両方を合算したdiscovered/executed/skipped件数、sanitized test log、test name inventory、実件数をpropertyへ持つxUnit gate summaryを`.tmp/ci-artifacts/swiftpm`へ7日間保存する。0件、committed baseline未満、探索件数より少ない実行件数、`config/quality/swiftpm-max-skipped-tests.txt`の上限を超えたskip、件数を抽出できない結果はfail closedとし、retryでgreenへ変えない。
 
 各UI jobも成功・失敗に関係なく`.tmp/ci-artifacts/<lane>`を7日間保存する。Visual laneは`en-US`と`ja-JP`を独立したmatrix artifactとして保存し、既存required check名`UI Visual (live baseline)`のaggregate jobが両方の成功を要求する。PR selectorで明示的な`false`が返った場合だけmatrixをskipし、空・未知・不正な値は省略理由として扱わずfail closedにする。対象はcapability summary、sanitized stdout/stderr、allowlist済みAX probe、seed fixtureだけを含むvisual current/diff/metrics/receipt、performance summary/samplesである。実ユーザーのHOME、SQLite、raw unified log、secret、token、API key、絶対pathをartifactへ含めない。
+
+Performance build jobが作る`.app.tar.gz`と4行manifestは、同一run/attempt内だけで1日保持する中間artifactである。測定jobはfresh `macos-26` VMで、manifestのsource commit・Release構成・SHA-256を検証し、archive entry、special file、app外へ解決するsymlinkを拒否してから展開する。検証済みmanifestとverification receiptはperformance diagnosticsへ複製し、測定結果とともに7日間保存する。これによりRelease compilerのCPU・thermal履歴をcold-launch計測VMへ持ち込まず、artifact provenanceも後から監査できる。
 
 release readinessは、追跡済みの英日各39枚もlocale別manifestとbaseline metadataへ結び付け、既存semantic raster thresholdで再比較する。この比較は保存済み証跡を読むだけの`--raster-only` modeでありbaseline更新を禁止する。fresh AX receiptを省略できるのはこのread-only再検証だけで、hosted live captureとbaseline更新では引き続きsource/contextに一致するfresh AX receiptを必須とする。
 

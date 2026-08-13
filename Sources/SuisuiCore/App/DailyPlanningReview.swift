@@ -106,7 +106,7 @@ public enum DailyPlanningReviewRefreshSchedule {
     }
 }
 
-struct DailyPlanningReviewTimeBlockKey: Equatable, Sendable {
+struct DailyPlanningReviewTimeBlockKey: Hashable, Sendable {
     let year: Int
     let month: Int
     let day: Int
@@ -153,6 +153,18 @@ struct DailyPlanningReviewPreviewCacheKey: Equatable, Sendable {
             referenceDate: referenceDate,
             calendar: calendar
         )
+    }
+
+    /// PII-free identity for runtime cache diagnostics. Hashing every temporal
+    /// cache dimension distinguishes DST, calendar, timezone, and phase changes
+    /// without publishing a user's timezone identifier. Source revision stays
+    /// excluded so same-time mutation rebuilds remain visible to the smoke gate.
+    var runtimeDiagnosticTemporalKey: String {
+        var hasher = Hasher()
+        hasher.combine(planningDayKey)
+        hasher.combine(phase.rawValue)
+        hasher.combine(timeBlock)
+        return String(UInt(bitPattern: hasher.finalize()))
     }
 }
 
