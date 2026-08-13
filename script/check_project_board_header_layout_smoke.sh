@@ -650,11 +650,22 @@ exercise_sidebar_entrypoints() {
 }
 
 exercise_settings_utility() {
+  ensure_sidebar_visible
   press_ax_button "sidebar-action-settings"
   wait_for_process_ax_identifier "settings-status-overview" "present"
   close_window_containing_identifier "settings-status-overview"
   restore_project_board_window
   printf "OK: sidebar Settings opened and closed the verified Settings window\n"
+}
+
+ensure_sidebar_visible() {
+  local probe_file="$OUTPUT_DIR/sidebar-visibility.tsv"
+  if toolbar_items_deduplicated >"$probe_file" 2>/dev/null &&
+    awk -F $'\t' '$1 == "project-board-sidebar" { found = 1 } END { exit(found ? 0 : 1) }' "$probe_file"; then
+    return 0
+  fi
+  click_sidebar_toggle
+  wait_for_ax_identifier_present "project-board-sidebar"
 }
 
 press_keyboard_shortcut() {

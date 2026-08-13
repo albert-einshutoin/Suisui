@@ -2714,6 +2714,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("press_ax_button \"sidebar-action-voice-command\""))
         XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"voice-command-quick-command-tab\" \"present\""))
         XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"settings-status-overview\" \"present\""))
+        XCTAssertTrue(script.contains("ensure_sidebar_visible"))
         XCTAssertTrue(script.contains("close_window_containing_identifier"))
         XCTAssertTrue(script.contains("exercise_runtime_crud_recovery_entrypoints"))
         XCTAssertTrue(script.contains("SUISUI_HEADER_LAYOUT_ENTRYPOINTS_ONLY"))
