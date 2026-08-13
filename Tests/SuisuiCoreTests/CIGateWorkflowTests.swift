@@ -200,6 +200,7 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(script.contains("SUISUI_RUNTIME_ACCESSIBLE_CRUD_ARTIFACT_DIR=\"$artifact_dir/runtime-accessible-crud\""))
         XCTAssertTrue(script.contains("check_runtime_today_production_route_smoke.sh"))
         XCTAssertTrue(script.contains("SUISUI_HEADER_LAYOUT_SMOKE_OUTPUT_DIR=\"$artifact_dir/header-layout\""))
+        XCTAssertTrue(script.contains("SUISUI_HEADER_LAYOUT_ENTRYPOINTS_ONLY=1"))
         XCTAssertTrue(script.contains("check_project_board_header_layout_smoke.sh"))
         XCTAssertTrue(script.contains("check_runtime_accessible_crud_smoke.sh"))
         XCTAssertTrue(script.contains("check_layout_stability_smoke.sh"))

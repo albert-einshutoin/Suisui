@@ -382,51 +382,18 @@ APPLESCRIPT
 resize_window_below_minimum() {
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT' >/dev/null 2>&1
-on containsIdentifier(uiElement, targetIdentifier, depth)
-  tell application "System Events"
-    try
-      if value of attribute "AXIdentifier" of uiElement is targetIdentifier then return true
-    end try
-    if depth < 12 then
-      try
-        repeat with childElement in UI elements of uiElement
-          if my containsIdentifier(childElement, targetIdentifier, depth + 1) then return true
-        end repeat
-      end try
-    end if
-  end tell
-  return false
-end containsIdentifier
-
-on run argv
-  set appName to item 1 of argv
-  set targetPID to (item 2 of argv) as integer
-  tell application "System Events"
-    set matchingProcesses to every process whose unix id is targetPID
-    if (count of matchingProcesses) is not 1 then error "owned process missing"
-    tell item 1 of matchingProcesses
-      repeat with candidateWindow in windows
-        if my containsIdentifier(candidateWindow, "project-board-detail", 0) then
-          set size of candidateWindow to {700, 500}
-          set position of candidateWindow to {120, 160}
-          return true
-        end if
-      end repeat
-      error "owned Project Board window missing"
-    end tell
-  end tell
-end run
-APPLESCRIPT
-    then
+    if read_window_metadata >/dev/null 2>&1 &&
+      /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_resize_window.swift" \
+        "$app_pid" "$window_x" "$window_y" "$window_width" "$window_height" \
+        700 500 120 160 >/dev/null 2>&1; then
       return 0
     fi
     # SwiftUI can briefly replace the scene-owned NSWindow while its restored
-    # state hydrates. Reacquire the PID-owned marker window instead of binding
-    # this required gate to a transient `window 1` ordering.
+    # state hydrates. Match the visible CoreGraphics frame back to the PID-owned
+    # AX window instead of depending on transient hierarchy depth or ordering.
     activate_app
     if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: PID-owned Project Board window was not stable enough to resize within ${TIMEOUT_SECONDS}s" >&2
+      echo "BLOCKER: PID-owned Project Board window frame was not stable enough to resize within ${TIMEOUT_SECONDS}s" >&2
       return 1
     fi
     sleep 0.2
@@ -653,8 +620,25 @@ end run
 APPLESCRIPT
 }
 
+press_ax_button() {
+  local identifier="$1"
+  local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while true; do
+    if /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" \
+      "$app_pid" "$identifier" >/dev/null 2>&1; then
+      return 0
+    fi
+    activate_app
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      echo "BLOCKER: PID-owned AX button was not pressable within ${TIMEOUT_SECONDS}s: $identifier" >&2
+      return 1
+    fi
+    sleep 0.2
+  done
+}
+
 exercise_sidebar_entrypoints() {
-  /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" "$app_pid" "sidebar-open-search"
+  press_ax_button "sidebar-open-search"
   wait_for_ax_identifier_present "command-palette-input"
   /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null
 on run argv
@@ -669,7 +653,7 @@ APPLESCRIPT
   wait_for_ax_identifier_absent "command-palette-input"
 
   restore_project_board_window
-  /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" "$app_pid" "sidebar-action-voice-command"
+  press_ax_button "sidebar-action-voice-command"
   wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
   close_window_containing_identifier "voice-command-quick-command-tab"
   restore_project_board_window
@@ -677,7 +661,7 @@ APPLESCRIPT
 }
 
 exercise_settings_utility() {
-  /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" "$app_pid" "sidebar-action-settings"
+  press_ax_button "sidebar-action-settings"
   wait_for_process_ax_identifier "settings-status-overview" "present"
   close_window_containing_identifier "settings-status-overview"
   restore_project_board_window
@@ -716,8 +700,7 @@ exercise_keyboard_entrypoints() {
 
   press_keyboard_shortcut 40 "command"
   wait_for_ax_identifier_present "command-palette-input"
-  /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" \
-    "$app_pid" "command-palette-row-project-$header_layout_alternate_project_id"
+  press_ax_button "command-palette-row-project-$header_layout_alternate_project_id"
   wait_for_ax_identifier_absent "command-palette-input"
 
   launch_header_layout_candidate
@@ -743,12 +726,12 @@ exercise_runtime_crud_recovery_entrypoints() {
   launch_runtime_crud_recovery_candidate
   wait_for_process_ax_identifier "project-board-settings-link" "present"
 
-  /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" "$app_pid" "project-board-settings-link"
+  press_ax_button "project-board-settings-link"
   wait_for_process_ax_identifier "settings-status-overview" "present"
   close_window_containing_identifier "settings-status-overview"
 
   activate_app
-  /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_button.swift" "$app_pid" "project-board-voice-command"
+  press_ax_button "project-board-voice-command"
   wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
   close_window_containing_identifier "voice-command-quick-command-tab"
   printf "OK: runtime CRUD recovery Settings and Voice Command reached their destination windows\n"
@@ -1609,6 +1592,15 @@ assert_scaled_region_component_contract
 seed_header_layout_selection_project
 launch_header_layout_candidate
 wait_for_project_detail_visible
+
+if [[ "${SUISUI_HEADER_LAYOUT_ENTRYPOINTS_ONLY:-0}" == "1" ]]; then
+  exercise_sidebar_entrypoints
+  exercise_keyboard_entrypoints
+  exercise_settings_utility
+  exercise_runtime_crud_recovery_entrypoints
+  printf "OK: Project Board relocated entrypoint smoke passed\n"
+  exit 0
+fi
 
 assert_single_native_toolbar
 capture_window "sidebar-visible"

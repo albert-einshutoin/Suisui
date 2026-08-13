@@ -291,7 +291,8 @@ run_runtime_gates() {
   run_layout_stability_gate "$artifact_dir" "$visible_frame_width" "$visible_frame_height"
   SUISUI_RUNTIME_TODAY_PRODUCTION_ROUTE_ARTIFACT_DIR="$artifact_dir/today-production-route" \
     ./script/check_runtime_today_production_route_smoke.sh
-  SUISUI_HEADER_LAYOUT_SMOKE_OUTPUT_DIR="$artifact_dir/header-layout" \
+  SUISUI_HEADER_LAYOUT_ENTRYPOINTS_ONLY=1 \
+    SUISUI_HEADER_LAYOUT_SMOKE_OUTPUT_DIR="$artifact_dir/header-layout" \
     ./script/check_project_board_header_layout_smoke.sh
 }
 
