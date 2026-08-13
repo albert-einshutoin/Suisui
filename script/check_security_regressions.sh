@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 TOKEN_PATTERNS=(
-  'sk-[A-Za-z0-9_-]{16,}'
+  'sk-[A-Za-z0-9_-]{8,}'
   'xox[baprs]-[A-Za-z0-9-]{10,}'
   'ghp_[A-Za-z0-9]{20,}'
   'github_pat_[A-Za-z0-9_]{20,}'
@@ -21,7 +21,9 @@ RAW_SECRET_DENYLIST=(
 )
 
 SCAN_PATHS=(
+  "README.ja.md"
   "Tests/SuisuiCoreTests/Fixtures"
+  "docs/release/public-alpha-ja.md"
   "docs/release/evidence"
   "docs/release/evidence/ui-screenshots"
   "packaging"
@@ -157,9 +159,9 @@ if [[ "$failure_count" -ne 0 ]]; then
     echo "BLOCKER: security regression scan found tracked local voice model binaries" >&2
   fi
   if [[ "$secret_material_failure" -ne 0 ]]; then
-    echo "BLOCKER: security regression scan found secret-like material in fixture, screenshot metadata, release evidence, or packaging artifacts" >&2
+    echo "BLOCKER: security regression scan found secret-like material in public docs, fixture, screenshot metadata, release evidence, or packaging artifacts" >&2
   fi
   exit 1
 fi
 
-printf 'OK: security regression scan passed for fixtures, screenshot metadata, release evidence, packaging, tracked voice model binaries, Keychain references, OAuth, MCP, NOTARY, and runtime smoke artifacts\n'
+printf 'OK: security regression scan passed for public docs, fixtures, screenshot metadata, release evidence, packaging, tracked voice model binaries, Keychain references, OAuth, MCP, NOTARY, and runtime smoke artifacts\n'

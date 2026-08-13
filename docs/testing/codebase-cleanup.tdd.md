@@ -32,6 +32,7 @@ The work was split into five independently reviewable changes:
 | Migration runner consolidation | 328 tests, 1 skipped, 0 failures before replacement | Same 328 tests, 1 skipped, 0 failures; additional 17 related tests passed |
 | Full CI de-duplication | Swift and Python orchestration contracts failed against the old `source-contracts` invocation | Both focused contracts pass; `--swift-test` reintroduction is explicitly rejected |
 | Prose-only suite removal | Impact-analysis contract failed while `Phase5DocumentationTests` remained selected | Impact-analysis contract and `PublicBrandSurfaceTests` pass; no stale suite reference remains |
+| Public-doc secret coverage | An isolated repository fixture containing 8-character `sk-` payloads in both Japanese public entry points exited successfully and failed 3 assertions | The same fixture is rejected for both files; the live security scan and its existing artifact test pass |
 
 During final verification, the release fixture group first failed while another
 test process used the same fixed `.build` fixtures, then passed 253/253 when run
@@ -73,6 +74,10 @@ Before this evidence file, the branch changed 49 files with 336 additions and
   `--swift-test` in the full marker scan.
 - Prose-test removal review: approved; executable release, security,
   accessibility, schema, and public-brand contracts remain.
+- Fresh PR review found that two secret assertions had been coupled to the
+  removed prose suite. The security scanner now owns that behavior directly,
+  scans both Japanese public entry points, and preserves the prior 8-character
+  `sk-` threshold.
 
 ## Intentional exclusions
 
