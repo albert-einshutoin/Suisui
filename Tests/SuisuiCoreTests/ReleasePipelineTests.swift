@@ -12639,6 +12639,46 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(failing.output.contains("security regression scan found secret-like material"))
     }
 
+    func testSecurityRegressionScriptRejectsShortOpenAITokensInJapanesePublicDocs() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-security-regression-public-docs", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let releaseDocsDirectory = fixtureRoot.appendingPathComponent("docs/release", isDirectory: true)
+        let copiedScriptURL = scriptDirectory.appendingPathComponent("check_security_regressions.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: releaseDocsDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        try readPackageFile("script/check_security_regressions.sh")
+            .write(to: copiedScriptURL, atomically: true, encoding: .utf8)
+        try "/.tmp/\n".write(
+            to: fixtureRoot.appendingPathComponent(".gitignore"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "API key: sk-readme12\n".write(
+            to: fixtureRoot.appendingPathComponent("README.ja.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "API key: sk-alpha123\n".write(
+            to: releaseDocsDirectory.appendingPathComponent("public-alpha-ja.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: copiedScriptURL.path)
+
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "init"]).exitCode, 0)
+
+        let result = try runTool(["bash", copiedScriptURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("secret-like token matched in README.ja.md"))
+        XCTAssertTrue(result.output.contains("secret-like token matched in docs/release/public-alpha-ja.md"))
+    }
+
     func testSecurityRegressionScriptRejectsTrackedVoiceModelBinaries() throws {
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-security-regression-model-binary", isDirectory: true)
