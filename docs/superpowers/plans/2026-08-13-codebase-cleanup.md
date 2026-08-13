@@ -22,7 +22,7 @@
 - Modify: `Sources/SuisuiApp/Views/ProjectBoardSmartListViews.swift`
 - Delete: `Sources/SuisuiApp/Views/ProjectWorkflowViews.swift`
 
-- [ ] **Step 1: Write the failing live-owner contracts**
+- [x] **Step 1: Write the failing live-owner contracts**
 
 Change the quality contract to require `ProjectBoardSidebarView.swift`, reject `ProjectWorkflowViews.swift`, and inspect `ProjectBoardProjectsHubView.swift` for the Smart List selected trait.
 
@@ -32,24 +32,24 @@ XCTAssertFalse(script.contains("ProjectWorkflowViews.swift"))
 XCTAssertTrue(projectsHubSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `swift test --filter QualitySourceContractTests && swift test --filter AppExperienceSourceTests/testCalmSignalDeskStatusAndMotionKeepNonColorAccessibilityCues`
 
 Expected: failure because the script and Smart List assertion still point to obsolete owners.
 
-- [ ] **Step 3: Commit RED evidence**
+- [x] **Step 3: Commit RED evidence**
 
 ```bash
 git add Tests/SuisuiCoreTests
 git commit -m "test: require accessibility gates to inspect live sidebar owners"
 ```
 
-- [ ] **Step 4: Implement the minimal live-owner fix**
+- [x] **Step 4: Implement the minimal live-owner fix**
 
 Make `check_pseudo_voiceover_paths.sh` validate each concrete `sidebar-destination-*` identifier in `ProjectBoardSidebarView.swift`. Add the selected accessibility trait to the live Smart List row. Remove the obsolete sidebar row file and the unused `SmartListSidebarSection`; remove obsolete file aggregation from tests.
 
-- [ ] **Step 5: Run GREEN and commit**
+- [x] **Step 5: Run GREEN and commit**
 
 Run: `swift test --filter QualitySourceContractTests && swift test --filter AppExperienceSourceTests/testCalmSignalDeskStatusAndMotionKeepNonColorAccessibilityCues && ./script/check_pseudo_voiceover_paths.sh --swift-test`
 
@@ -75,15 +75,15 @@ git commit -m "fix: validate accessibility against live sidebar views"
 - Modify: `script/check_runtime_accessible_crud_smoke.sh`
 - Modify: `script/capture_ui_evidence.sh`
 
-- [ ] **Step 1: Delete only declaration-only private code**
+- [x] **Step 1: Delete only declaration-only private code**
 
 Remove `selectedSmartList`, the three unused sidebar project filters, `ProjectSidebarRow` and its dedicated extensions, `InboxTriageStateBadge`, the unused Settings snapshot input chain, and declaration-only design tokens. Remove shell variables with no reads. Do not touch public `SuisuiCore` declarations.
 
-- [ ] **Step 2: Verify behavior remains GREEN**
+- [x] **Step 2: Verify behavior remains GREEN**
 
 Run: `swift test --filter SuisuiDesignTokenContractTests && swift build --product Suisui && shellcheck -x <modified-shell-files>`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add Sources Tests script .takt
@@ -95,7 +95,7 @@ git commit -m "refactor: remove unreferenced private implementation"
 **Files:**
 - Modify: the 16 test files declaring `TestMigrationRunner`, `ReviewTestMigrationRunner`, or feature-specific migration runners identified by `rg '^private enum .*MigrationRunner' Tests/SuisuiCoreTests`
 
-- [ ] **Step 1: Replace custom runner calls**
+- [x] **Step 1: Replace custom runner calls**
 
 Use the already-tested production path:
 
@@ -105,11 +105,11 @@ try SQLiteMigrationRunner.migrate(connection: connection, migrations: migrations
 
 Delete only the duplicate enums. Preserve `LocalStoreTests` and `Support/ToolRegistryFactory.swift`, whose doubles intentionally exercise different boundaries.
 
-- [ ] **Step 2: Run focused migration/store suites**
+- [x] **Step 2: Run focused migration/store suites**
 
 Run: `swift test --filter DatabaseMigrationTests` followed by each modified test class.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add Tests/SuisuiCoreTests
@@ -122,31 +122,31 @@ git commit -m "refactor: reuse production migration runner in tests"
 - Modify: `Tests/SuisuiCoreTests/ReleasePipelineTests.swift`
 - Modify: `ci/run-full.sh`
 
-- [ ] **Step 1: Write the failing orchestration contract**
+- [x] **Step 1: Write the failing orchestration contract**
 
 ```swift
 XCTAssertFalse(fullRunner.contains("./scripts/ci.sh source-contracts"))
 XCTAssertTrue(fullRunner.contains("./script/check_pseudo_voiceover_paths.sh"))
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `swift test --filter ReleasePipelineTests/testGitHubCISeparatesCompleteSwiftPMSuiteFromSupplementalSourceContracts`
 
 Expected: failure because `run-full.sh` still reruns source-contract Swift suites.
 
-- [ ] **Step 3: Commit RED evidence**
+- [x] **Step 3: Commit RED evidence**
 
 ```bash
 git add Tests/SuisuiCoreTests/ReleasePipelineTests.swift
 git commit -m "test: prevent full CI from rerunning Swift source contracts"
 ```
 
-- [ ] **Step 4: Keep only the non-Swift static gate after the full suite**
+- [x] **Step 4: Keep only the non-Swift static gate after the full suite**
 
 Replace `./scripts/ci.sh source-contracts` with `./script/check_pseudo_voiceover_paths.sh`. Keep `scripts/ci.sh source-contracts` unchanged for focused/selective use.
 
-- [ ] **Step 5: Run GREEN and commit**
+- [x] **Step 5: Run GREEN and commit**
 
 Run the focused contract and `./script/check_pseudo_voiceover_paths.sh`.
 
@@ -163,19 +163,19 @@ git commit -m "ci: avoid duplicate Swift test execution in full validation"
 - Modify: `ci/tests/test_impact_analysis.py`
 - Modify: `Tests/SuisuiCoreTests/ReleasePipelineTests.swift`
 
-- [ ] **Step 1: Remove prose keyword contracts**
+- [x] **Step 1: Remove prose keyword contracts**
 
 Delete tests that make README/roadmap wording a product regression and remove their selective-CI mapping. Retain executable checks for links, schemas, secrets, release artifacts, signing, checksums, notarization, and security boundaries.
 
-- [ ] **Step 2: Table-drive repeated release rejection cases**
+- [x] **Step 2: Review repeated release rejection cases**
 
-Do not rewrite the full 18,000-line suite in this cleanup. Extract only one shared temporary release-evidence directory/setup helper used by the contiguous validation group; keep each failure classification and assertion visible in its existing test. A broader table-driven rewrite belongs in a dedicated follow-up because it changes failure granularity.
+Do not rewrite the full 18,000-line suite in this cleanup. Review found that even a shared fixture extraction would couple tests that intentionally preserve distinct failure classifications and fixed-directory behavior. Keep the suite unchanged in this branch; a broader table-driven rewrite belongs in a dedicated follow-up with isolated fixtures and its own RED/GREEN cycle.
 
-- [ ] **Step 3: Run release and full suites**
+- [x] **Step 3: Run release and full suites**
 
 Run: `python3 -m unittest ci.tests.test_impact_analysis`, `swift test --filter ReleasePipelineTests`, then `./script/run_complete_swiftpm_tests.sh`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add Tests/SuisuiCoreTests
