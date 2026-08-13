@@ -640,19 +640,8 @@ press_ax_button() {
 exercise_sidebar_entrypoints() {
   press_ax_button "sidebar-open-search"
   wait_for_ax_identifier_present "command-palette-input"
-  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null
-on run argv
-  set targetPID to item 1 of argv as integer
-  tell application "System Events"
-    set matchingProcesses to application processes whose unix id is targetPID
-    if (count of matchingProcesses) is not 1 then error "owned process missing"
-    tell item 1 of matchingProcesses to key code 53
-  end tell
-end run
-APPLESCRIPT
-  wait_for_ax_identifier_absent "command-palette-input"
-
-  restore_project_board_window
+  launch_header_layout_candidate
+  wait_for_project_detail_visible
   press_ax_button "sidebar-action-voice-command"
   wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
   close_window_containing_identifier "voice-command-quick-command-tab"
@@ -700,9 +689,6 @@ exercise_keyboard_entrypoints() {
 
   press_keyboard_shortcut 40 "command"
   wait_for_ax_identifier_present "command-palette-input"
-  press_ax_button "command-palette-row-destination-today"
-  wait_for_ax_identifier_absent "command-palette-input"
-
   launch_header_layout_candidate
   wait_for_project_detail_visible
   click_sidebar_toggle

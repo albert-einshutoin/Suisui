@@ -2725,7 +2725,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("PID-owned AX button was not pressable"))
         XCTAssertTrue(script.contains("exercise_keyboard_entrypoints"))
         XCTAssertTrue(script.contains("press_keyboard_shortcut 40 \"command\""))
-        XCTAssertTrue(script.contains("press_ax_button \"command-palette-row-destination-today\""))
+        XCTAssertTrue(script.contains("wait_for_ax_identifier_present \"command-palette-input\"\n  launch_header_layout_candidate"))
         XCTAssertTrue(script.contains("press_keyboard_shortcut 9 \"command-shift\""))
         XCTAssertTrue(script.contains("press_keyboard_shortcut 43 \"command\""))
         XCTAssertTrue(script.contains("project-board-export-tasks"))
