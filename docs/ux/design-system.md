@@ -27,7 +27,6 @@ Both colors are adaptive. Do not copy their RGB values into views.
 
 | Token | Use |
 | --- | --- |
-| `pageTitle` | Page or major panel heading |
 | `sectionTitle` | Group heading inside a page |
 | `body` | Normal explanatory or task content |
 | `metadata` | Supporting timestamps and secondary facts |
@@ -50,9 +49,9 @@ The type ramp uses semantic SwiftUI fonts so user scaling and system legibility 
 
 `quick`, `standard`, and `emphasis` are duration choices for state changes that benefit from spatial continuity. Call `SuisuiMotion.animation(duration:reduceMotion:)` with `@Environment(\.accessibilityReduceMotion)`. Under Reduce Motion the animation returns `nil`; do not substitute a faster decorative animation.
 
-### Icon and control metrics
-
-`SuisuiIconMetrics` defines `compact`, `standard`, and `feature` SF Symbol sizes. `SuisuiControlDensity` maps compact, standard, and prominent roles to native `ControlSize` values, allowing AppKit to preserve target geometry and focus behavior.
+Icon sizing and control density use SwiftUI's semantic font and native
+`ControlSize` APIs directly. Add a shared token only after multiple live views
+need the same non-native value.
 
 ### Spacing (`SuisuiSpacing`)
 
@@ -62,7 +61,6 @@ The type ramp uses semantic SwiftUI fonts so user scaling and system legibility 
 | `sm` | 8 | Related controls in a row, list row spacing |
 | `md` | 12 | Card interior padding, section internals |
 | `lg` | 16 | Panel edge padding, between sections |
-| `xl` | 24 | Large surface padding (sheets, onboarding) |
 
 ### Corner radius (`SuisuiRadius`)
 
@@ -95,7 +93,7 @@ Route every status color through `SuisuiTone`. A raw status color is not allowed
 - **Primary action**: exactly one `.borderedProminent` button per surface (e.g. onboarding Continue, quick-add submit). Secondary actions stay `.bordered` or `.borderless`.
 - **Empty states**: `ContentUnavailableView` with a one-line description that names the next action the user can take.
 - **Errors**: inline `Label` with `exclamationmark.triangle`, `attention` tone, max 2 lines with `fixedSize(horizontal: false, vertical: true)`. No modal alerts for recoverable errors.
-- **Icon feature marks** (onboarding, feature intros): use `SuisuiIconMetrics.feature` with a semantic tinted container.
+- **Icon feature marks** (onboarding, feature intros): use a semantic SwiftUI font with a tinted container.
 - **Step indicators**: capsule dots (active dot elongated + tinted), with a localized "Step N of M" accessibility label.
 
 ## Writing
