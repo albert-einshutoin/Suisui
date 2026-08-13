@@ -81,7 +81,7 @@
 
 ### Scope
 
-- 対象: `Sources/SuisuiCore/Voice`, `Sources/SuisuiCore/App/ProjectBoard.swift`, `Sources/SuisuiApp/Views/ProjectWorkflowViews.swift`, `Sources/SuisuiApp/SuisuiApp.swift`
+- 対象: `Sources/SuisuiCore/Voice`, `Sources/SuisuiCore/App/ProjectBoard.swift`, `Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift`, `Sources/SuisuiApp/SuisuiApp.swift`
 - `ProjectBoardTask` へ音声capture由来の表示metadataを追加するか、Inbox専用の `InboxCaptureRecord` を追加する。
 - 録音ファイルpath、duration、transcript、AI解釈summary、source kindを扱う。
 - 音声ファイルはApplication Support配下に保存し、API keyやtranscriptをログに出さない。
@@ -147,7 +147,7 @@
 
 ### Scope
 
-- 対象: `ProjectWorkflowViews.swift`, `ProjectBoardViewModel`, Inbox capture model。
+- 対象: `ProjectWorkflowInboxView.swift`, `ProjectBoardViewModel`, Inbox capture model。
 - Inbox item source、interpretation status、classification statusをqueryできるようにする。
 - 既存のTask化/Project化/Schedule Today/Review Laterを維持する。
 
@@ -209,7 +209,7 @@
 
 ### Scope
 
-- 対象: `ProjectWorkflowViews.swift`, `ProjectBoard.swift`, optional `TodayPlanService`。
+- 対象: `ProjectWorkflowTodayView.swift`, `ProjectBoard.swift`, optional `TodayPlanService`。
 - Today専用のcommand barとsuggestion chipsを追加する。
 - 現行のdue/overdueとtime block生成は保持する。
 - Schedule画面に渡すdraftを作るが、外部Calendar適用はP12-006で扱う。
@@ -602,7 +602,7 @@ Samples全体では、Inbox、Today、Projects、Schedule、Done、Settingsが�
 
 ### Scope
 
-- 対象: `ProjectWorkflowViews.swift`, `ProjectBoardView.swift`。
+- 対象: `ProjectBoardSidebarView.swift`, `ProjectBoardView.swift`。
 - Sidebar destinationを Inbox / Today / Projects / Schedule / Done / Project(id) へ拡張する。
 - 既存Project row selectionとProject Board detailを維持する。
 
