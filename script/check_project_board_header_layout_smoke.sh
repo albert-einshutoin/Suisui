@@ -700,7 +700,7 @@ exercise_keyboard_entrypoints() {
 
   press_keyboard_shortcut 40 "command"
   wait_for_ax_identifier_present "command-palette-input"
-  press_ax_button "command-palette-row-project-$header_layout_alternate_project_id"
+  press_ax_button "command-palette-row-destination-today"
   wait_for_ax_identifier_absent "command-palette-input"
 
   launch_header_layout_candidate
