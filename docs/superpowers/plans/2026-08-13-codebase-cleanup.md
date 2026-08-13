@@ -159,19 +159,21 @@ git commit -m "ci: avoid duplicate Swift test execution in full validation"
 
 **Files:**
 - Delete: `Tests/SuisuiCoreTests/Phase5DocumentationTests.swift`
+- Modify: `ci/config/impact.json`
+- Modify: `ci/tests/test_impact_analysis.py`
 - Modify: `Tests/SuisuiCoreTests/ReleasePipelineTests.swift`
 
 - [ ] **Step 1: Remove prose keyword contracts**
 
-Delete tests that make README/roadmap wording a product regression. Retain executable checks for links, schemas, secrets, release artifacts, signing, checksums, notarization, and security boundaries.
+Delete tests that make README/roadmap wording a product regression and remove their selective-CI mapping. Retain executable checks for links, schemas, secrets, release artifacts, signing, checksums, notarization, and security boundaries.
 
 - [ ] **Step 2: Table-drive repeated release rejection cases**
 
-Within the contiguous release-evidence validation groups, replace repeated temporary file/setup/run/assert blocks with a small local case table and one existing helper. Preserve distinct expected messages and side-effect assertions via named `XCTContext.runActivity` entries.
+Do not rewrite the full 18,000-line suite in this cleanup. Extract only one shared temporary release-evidence directory/setup helper used by the contiguous validation group; keep each failure classification and assertion visible in its existing test. A broader table-driven rewrite belongs in a dedicated follow-up because it changes failure granularity.
 
 - [ ] **Step 3: Run release and full suites**
 
-Run: `swift test --filter ReleasePipelineTests`, then `./script/run_complete_swiftpm_tests.sh`.
+Run: `python3 -m unittest ci.tests.test_impact_analysis`, `swift test --filter ReleasePipelineTests`, then `./script/run_complete_swiftpm_tests.sh`.
 
 - [ ] **Step 4: Commit**
 
