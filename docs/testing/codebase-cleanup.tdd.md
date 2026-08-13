@@ -44,7 +44,7 @@ running without concurrent fixture writers, the complete suite passed.
 
 | Command | Result |
 | --- | --- |
-| `./script/run_complete_swiftpm_tests.sh` | 3,298 discovered/executed, 6 skipped, 0 failures |
+| `./script/run_complete_swiftpm_tests.sh` | 3,299 discovered/executed, 6 skipped, 0 failures |
 | `swift build --product Suisui` | Passed |
 | `python3 -m unittest discover -s ci/tests -p 'test_*.py'` | 34 tests passed |
 | `./script/check_security_regressions.sh` | Passed |
@@ -54,9 +54,9 @@ running without concurrent fixture writers, the complete suite passed.
 | ShellCheck for every modified shell file | No new warning/error codes; existing SC1010, SC2318, SC2053, and SC1087 remain unchanged from `origin/main` |
 | `git diff --check origin/main...HEAD` | Passed before evidence commit |
 
-The baseline complete suite executed 3,304 tests. The final suite executes six
-fewer tests: seven prose-only documentation tests were removed and one negative
-accessibility gate contract was added.
+The baseline complete suite executed 3,304 tests. The final suite executes five
+fewer tests: seven prose-only documentation tests were removed, while negative
+accessibility and public-document secret contracts were added.
 
 Before this evidence file, the branch changed 49 files with 336 additions and
 779 deletions (net -443 lines).
