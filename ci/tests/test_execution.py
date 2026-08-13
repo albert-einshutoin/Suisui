@@ -87,7 +87,8 @@ class ExecutionContractTests(unittest.TestCase):
         contents = FULL_RUNNER.read_text(encoding="utf-8")
 
         self.assertIn("./scripts/ci.sh swiftpm", contents)
-        self.assertIn("./scripts/ci.sh source-contracts", contents)
+        self.assertIn("./script/check_pseudo_voiceover_paths.sh", contents)
+        self.assertNotIn("./scripts/ci.sh source-contracts", contents)
         self.assertIn("./script/check_security_regressions.sh", contents)
         self.assertIn("int(executed) - int(skipped)", contents)
         self.assertIn("BLOCKER: full execution report could not be written", contents)

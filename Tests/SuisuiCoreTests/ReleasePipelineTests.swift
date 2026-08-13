@@ -544,7 +544,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("fixture=provider-token-boundary status=passed"))
     }
 
-    func testGitHubCISeparatesCompleteSwiftPMSuiteFromSupplementalSourceContracts() throws {
+    func testGitHubCIAvoidsRerunningSourceContractXCTestsAfterCompleteSwiftPMSuite() throws {
         let workflow = try readPackageFile(".github/workflows/ci.yml")
         let script = try readPackageFile("scripts/ci.sh")
         let fullRunner = try readPackageFile("ci/run-full.sh")
@@ -555,7 +555,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(workflow.contains("name: complete-validation-${{ github.run_id }}-${{ github.run_attempt }}"))
         XCTAssertTrue(workflow.contains(".tmp/ci-artifacts/swiftpm"))
         XCTAssertTrue(workflow.contains("if: always()"))
-        XCTAssertTrue(fullRunner.contains("./scripts/ci.sh source-contracts"))
+        XCTAssertTrue(fullRunner.contains("./script/check_pseudo_voiceover_paths.sh"))
+        XCTAssertFalse(fullRunner.contains("./scripts/ci.sh source-contracts"))
         XCTAssertFalse(fullRunner.contains("impact/analyze"))
         XCTAssertFalse(fullRunner.contains("ci/config"))
         XCTAssertTrue(script.contains("./script/run_complete_swiftpm_tests.sh"))
