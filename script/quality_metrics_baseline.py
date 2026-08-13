@@ -29,9 +29,9 @@ def parse_workflow_runs(payload: str) -> list[dict[str, Any]]:
     if not isinstance(runs, list) or not all(isinstance(run, dict) for run in runs):
         raise ValueError("workflow_runs must be a list of objects")
     for run in runs:
-        if not isinstance(run.get("id"), int):
+        if type(run.get("id")) is not int:
             raise ValueError("workflow run id must be an integer")
-        if not isinstance(run.get("run_attempt"), int) or run["run_attempt"] <= 0:
+        if type(run.get("run_attempt")) is not int or run["run_attempt"] <= 0:
             raise ValueError("workflow run run_attempt must be a positive integer")
         if not isinstance(run.get("status"), str):
             raise ValueError("workflow run status must be a string")
@@ -78,7 +78,9 @@ def build_baseline(runs: Iterable[dict[str, Any]], sample: dict[str, Any]) -> di
     neutral = sum(conclusion in NEUTRAL_CONCLUSIONS for conclusion in known_conclusions)
     first_completed = [
         run for run in first_runs
-        if run is not None and run.get("status") == "completed" and isinstance(run.get("conclusion"), str)
+        if run is not None
+        and run.get("status") == "completed"
+        and run.get("conclusion") in RECOGNIZED_CONCLUSIONS
     ]
     reruns = sum(_attempt_number(run) > 1 for run in final_runs)
 
@@ -86,7 +88,7 @@ def build_baseline(runs: Iterable[dict[str, Any]], sample: dict[str, Any]) -> di
         sum(run.get("conclusion") == "success" for run in first_completed), len(first_completed)
     )
     overall_success_rate = _rate(success, len(known_conclusions))
-    missing_first = any(run is None for run in first_runs)
+    missing_first = len(first_completed) != len(first_runs)
     missing_final = len(known_conclusions) != len(completed)
     first_status = "unavailable" if not first_completed else "partial" if missing_first else "available"
     overall_status = "unavailable" if not known_conclusions else "partial" if missing_final else "available"
@@ -159,7 +161,13 @@ def load_live_runs(repository: str, workflow: str, branch: str, limit: int) -> l
         if first is None:
             # The final run remains useful; omitting attempt one makes partial data explicit.
             continue
-        first_attempts.append(first)
+        try:
+            validated = parse_workflow_runs(json.dumps({"workflow_runs": [first]}))[0]
+        except ValueError:
+            continue
+        if validated["id"] != run["id"] or validated["run_attempt"] != 1:
+            continue
+        first_attempts.append(validated)
     return latest_runs + first_attempts
 
 
@@ -168,12 +176,11 @@ def write_output(path: Path, content: str) -> None:
     if path.is_symlink():
         raise ValueError("output path must not be a symbolic link")
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
-    ) as temporary:
-        temporary.write(content)
-        temporary_path = Path(temporary.name)
+    descriptor, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    temporary_path = Path(name)
     try:
+        with open(descriptor, mode="w", encoding="utf-8", closefd=True) as temporary:
+            temporary.write(content)
         temporary_path.replace(path)
     finally:
         temporary_path.unlink(missing_ok=True)

@@ -36,6 +36,11 @@ class QualityMetricsBaselineTests(unittest.TestCase):
             with self.subTest(fixture=fixture), self.assertRaisesRegex(ValueError, "workflow run"):
                 METRICS.parse_workflow_runs(fixture)
 
+        with self.assertRaisesRegex(ValueError, "workflow run"):
+            METRICS.parse_workflow_runs(
+                '{"workflow_runs":[{"id":true,"run_attempt":true,"status":"completed","conclusion":"success"}]}'
+            )
+
     def test_build_baseline_uses_final_attempt_and_known_first_attempts(self) -> None:
         runs = METRICS.parse_workflow_runs(
             json.dumps(
@@ -100,6 +105,22 @@ class QualityMetricsBaselineTests(unittest.TestCase):
         self.assertEqual(baseline["sampleStatus"], "partial")
         self.assertIsNone(baseline["metrics"]["overallSuccessRate"])
         self.assertEqual(baseline["metrics"]["overallSuccessRateStatus"], "unavailable")
+
+    def test_build_baseline_marks_unknown_or_missing_first_conclusions_as_partial(self) -> None:
+        for conclusion in (None, "startup_failure"):
+            with self.subTest(conclusion=conclusion):
+                baseline = METRICS.build_baseline(
+                    [
+                        {"id": 1, "run_attempt": 1, "status": "completed", "conclusion": "success"},
+                        {"id": 2, "run_attempt": 1, "status": "completed", "conclusion": conclusion},
+                        {"id": 2, "run_attempt": 2, "status": "completed", "conclusion": "success"},
+                    ],
+                    {"repository": "owner/repo", "limit": 2},
+                )
+
+                self.assertEqual(baseline["metrics"]["firstAttemptSuccessRate"], 1.0)
+                self.assertEqual(baseline["metrics"]["firstAttemptSuccessRateStatus"], "partial")
+                self.assertEqual(baseline["sampleStatus"], "partial")
 
     def test_limit_logical_runs_keeps_all_attempts_for_the_first_ids(self) -> None:
         runs = [
