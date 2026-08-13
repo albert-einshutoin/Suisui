@@ -1,0 +1,29 @@
+{
+  "metrics": {
+    "averageAttempts": 1.0309278350515463,
+    "averageAttemptsStatus": "available",
+    "firstAttemptSuccessRate": 0.7291666666666666,
+    "firstAttemptSuccessRateStatus": "available",
+    "overallSuccessRate": 0.75,
+    "overallSuccessRateStatus": "available",
+    "rerunRate": 0.020618556701030927,
+    "rerunRateStatus": "available"
+  },
+  "runs": {
+    "cancelled": 0,
+    "completed": 96,
+    "failure": 24,
+    "neutral": 0,
+    "success": 72,
+    "total": 97
+  },
+  "sample": {
+    "branch": "main",
+    "limit": 100,
+    "repository": "albert-einshutoin/Suisui",
+    "source": "github-actions",
+    "workflow": "ci.yml"
+  },
+  "sampleStatus": "complete",
+  "schemaVersion": 1
+}
