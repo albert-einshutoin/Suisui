@@ -1935,7 +1935,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let doneSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift")
         let voiceSource = try readPackageFile("Sources/SuisuiApp/Views/VoiceCaptureView.swift")
         let commandPaletteSource = try readPackageFile("Sources/SuisuiApp/Views/CommandPaletteView.swift")
-        let smartListSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardSmartListViews.swift")
+        let projectsHubSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift")
         let boardDetailSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardDetailViews.swift")
 
         XCTAssertTrue(settingsSource.contains("Image(systemName: row.state.systemImage)"))
@@ -1949,7 +1949,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceSource.contains("SuisuiMotion.animation"))
         XCTAssertTrue(voiceSource.contains("Image(systemName: stateSystemImage)"))
         XCTAssertTrue(commandPaletteSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
-        XCTAssertTrue(smartListSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
+        XCTAssertTrue(projectsHubSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
         XCTAssertTrue(boardDetailSource.contains("@Environment(\\.accessibilityReduceMotion) private var reduceMotion"))
         XCTAssertTrue(boardDetailSource.contains("reduceMotion ? nil : .snappy(duration: 0.16)"))
         XCTAssertTrue(doneSource.contains("heatmapMarkerDiameter"))
@@ -7169,7 +7169,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("wait_for_window_capture_metadata"))
         XCTAssertTrue(script.contains("position_window_for_capture"))
         XCTAssertTrue(script.contains("AX_RESIZE_WINDOW_HELPER_BINARY"))
-        XCTAssertTrue(script.contains("read -r observed_x observed_y observed_width observed_height <<<\"$ax_window_size\""))
+        XCTAssertTrue(script.contains("read -r _ _ observed_width observed_height <<<\"$ax_window_size\""))
         XCTAssertTrue(script.contains("POSITIONED_WINDOW_WIDTH=\"$observed_width\""))
         XCTAssertTrue(script.contains("successful_window_width=\"$POSITIONED_WINDOW_WIDTH\""))
         XCTAssertTrue(script.contains("Avoid LaunchServices activation"))
@@ -8498,7 +8498,6 @@ final class AppExperienceSourceTests: XCTestCase {
 
     private func readProjectWorkflowSources() throws -> String {
         try [
-            "Sources/SuisuiApp/Views/ProjectWorkflowViews.swift",
             "Sources/SuisuiApp/Views/ProjectWorkflowSharedViews.swift",
             "Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift",
             "Sources/SuisuiApp/Views/TodayDashboardView.swift",

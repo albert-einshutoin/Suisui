@@ -1,7 +1,7 @@
 # Suisui Product Experience Renewal Design
 
 - Date: 2026-07-14
-- Status: proposed for implementation
+- Status: superseded by the implemented design system documented in `docs/ux/design-system.md`
 - Source baseline: `main` at `48358d029eb4a6862063443943a5b392398ff275`
 - Tracking: #11, #211, #244, #289, #291-#304
 

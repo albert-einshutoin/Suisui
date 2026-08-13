@@ -6,7 +6,7 @@ ARTIFACT_ROOT="${SUISUI_CI_IMPACT_ARTIFACT_DIR:-$ROOT_DIR/.tmp/ci-impact}"
 REPORT_PATH="${SUISUI_CI_EXECUTION_REPORT:-$ARTIFACT_ROOT/full-execution.json}"
 STARTED_AT="$(date +%s)"
 SWIFTPM_STATUS=0
-SOURCE_CONTRACT_STATUS=0
+ACCESSIBILITY_MARKER_STATUS=0
 SECURITY_STATUS=0
 COUNT_STATUS=0
 
@@ -15,7 +15,7 @@ cd "$ROOT_DIR" || exit 2
 
 SUISUI_SWIFTPM_ARTIFACT_DIR="${SUISUI_SWIFTPM_ARTIFACT_DIR:-$ROOT_DIR/.tmp/ci-artifacts/swiftpm}" \
   ./scripts/ci.sh swiftpm || SWIFTPM_STATUS=$?
-./scripts/ci.sh source-contracts || SOURCE_CONTRACT_STATUS=$?
+./script/check_pseudo_voiceover_paths.sh || ACCESSIBILITY_MARKER_STATUS=$?
 ./script/check_security_regressions.sh || SECURITY_STATUS=$?
 
 FINISHED_AT="$(date +%s)"
@@ -44,7 +44,7 @@ fi
 
 if ! python3 - "$REPORT_PATH" "$DURATION_SECONDS" "$DISCOVERED_TEST_COUNT" \
   "$EXECUTED_TEST_COUNT" "$SKIPPED_TEST_COUNT" "$SWIFTPM_STATUS" \
-  "$SOURCE_CONTRACT_STATUS" "$SECURITY_STATUS" "$COUNT_STATUS" <<'PY'
+  "$ACCESSIBILITY_MARKER_STATUS" "$SECURITY_STATUS" "$COUNT_STATUS" <<'PY'
 import json
 import os
 import sys
@@ -57,13 +57,13 @@ from pathlib import Path
     executed,
     skipped,
     swiftpm_status,
-    source_status,
+    accessibility_marker_status,
     security_status,
     count_status,
 ) = sys.argv[1:]
 statuses = [
     int(swiftpm_status),
-    int(source_status),
+    int(accessibility_marker_status),
     int(security_status),
     int(count_status),
 ]
@@ -82,7 +82,7 @@ report = {
     "totalComputeSeconds": int(duration),
     "gates": {
         "swiftpm": int(swiftpm_status),
-        "sourceContracts": int(source_status),
+        "accessibilityMarkers": int(accessibility_marker_status),
         "security": int(security_status),
         "testCountEvidence": int(count_status),
     },
@@ -94,7 +94,7 @@ then
   exit 1
 fi
 
-if [[ "$SWIFTPM_STATUS" -ne 0 || "$SOURCE_CONTRACT_STATUS" -ne 0 \
+if [[ "$SWIFTPM_STATUS" -ne 0 || "$ACCESSIBILITY_MARKER_STATUS" -ne 0 \
   || "$SECURITY_STATUS" -ne 0 || "$COUNT_STATUS" -ne 0 ]]; then
   exit 1
 fi

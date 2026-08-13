@@ -546,7 +546,7 @@ final class KnowledgeAdvancedTests: XCTestCase {
 
     private func migratedPhase9Connection() throws -> SQLiteConnection {
         let connection = try SQLiteConnection(path: ":memory:")
-        try TestMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase9)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase9)
         return connection
     }
 
@@ -555,23 +555,5 @@ final class KnowledgeAdvancedTests: XCTestCase {
             approvalToken: ApprovalToken(id: "approval", sessionID: "session"),
             source: .developerTool
         )
-    }
-}
-
-private enum TestMigrationRunner {
-    static func migrate(connection: SQLiteConnection, migrations: [DatabaseMigration]) throws {
-        try connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS schema_migrations (
-                id TEXT PRIMARY KEY NOT NULL,
-                applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            """
-        )
-        let alreadyApplied = Set(try connection.queryStrings("SELECT id FROM schema_migrations ORDER BY id;"))
-        for migration in migrations where !alreadyApplied.contains(migration.id) {
-            try migration.apply(connection)
-            try connection.execute("INSERT INTO schema_migrations (id) VALUES ('\(migration.id)');")
-        }
     }
 }

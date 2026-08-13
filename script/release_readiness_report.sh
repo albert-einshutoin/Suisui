@@ -126,7 +126,6 @@ XCODE_CONFIGURATION="${SUISUI_XCODE_CONFIGURATION:-Debug}"
 RELEASE_LAUNCH_PREFLIGHT="${SUISUI_RELEASE_LAUNCH_PREFLIGHT:-$AUTOMATED_PROOF_GATES}"
 RELEASE_LAUNCH_PREFLIGHT_RELATIVE="script/build_and_run.sh"
 MOCK_PATTERN="(?i:fake|mock|fixture|canned|stub|skeleton|fixme|not[[:space:]_-]*implemented|notimplemented|inmemory)|(?i:(^|[^[:alnum:]_])demo([^[:alnum:]_]|$))|(?i:(^|[[:space:]#/*_-])todo([[:space:]:;.,)_-]|$))|(^|[^[:alnum:]_])Static[A-Za-z0-9_]*|:memory:|fatalError|preconditionFailure"
-UI_EVIDENCE_RELATIVE="docs/release/evidence/ui-screenshots.md"
 UI_VISUAL_EVIDENCE_CONTRACTS=(
   "English|docs/release/evidence/ui-screenshots.md|docs/release/evidence/ui-screenshots/visual-baseline-capture-manifest.json|docs/quality/visual-baseline-manifest.json|docs/release/evidence/ui-screenshots|docs/quality/visual-baselines|en-US"
   "Japanese|docs/release/evidence/ui-screenshots-ja/ui-screenshots.md|docs/release/evidence/ui-screenshots-ja/visual-baseline-capture-manifest.json|docs/quality/visual-baseline-manifest-ja.json|docs/release/evidence/ui-screenshots-ja|docs/quality/visual-baselines-ja|ja-JP"
@@ -2838,7 +2837,6 @@ if [[ -n "$readme_template_unchecked" ]]; then
 fi
 
 section "UI screenshot evidence"
-ui_evidence_file="$ROOT_DIR/$UI_EVIDENCE_RELATIVE"
 ui_evidence_blocker_count=0
 ui_blocker() {
   blocker "$1"

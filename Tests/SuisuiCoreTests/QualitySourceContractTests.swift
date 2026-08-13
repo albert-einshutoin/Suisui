@@ -63,8 +63,18 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(script.contains("TODAY_UI_ACCESSIBILITY_IDENTIFIERS"))
         XCTAssertTrue(script.contains("SIDEBAR_DESTINATION_SOURCE"))
         XCTAssertTrue(script.contains(".accessibilityIdentifier(\\\"$identifier\\\")"))
-        XCTAssertTrue(script.contains("sidebar-destination-\\(destination.accessibilityIdentifierSuffix)"))
-        XCTAssertTrue(script.contains("ProjectWorkflowViews.swift"))
+        for identifier in [
+            "sidebar-destination-inbox",
+            "sidebar-destination-today",
+            "sidebar-destination-projects",
+            "sidebar-destination-schedule",
+            "sidebar-destination-completed"
+        ] {
+            XCTAssertTrue(script.contains(identifier), "script must check live sidebar marker \(identifier)")
+        }
+        XCTAssertFalse(script.contains("sidebar-destination-\\(destination.accessibilityIdentifierSuffix)"))
+        XCTAssertTrue(script.contains("ProjectBoardSidebarView.swift"))
+        XCTAssertFalse(script.contains("ProjectWorkflowViews.swift"))
         XCTAssertTrue(script.contains("ProjectBoardSelectionPersistence.swift"))
         XCTAssertTrue(script.contains("SuisuiHarnessTaskLifecycleOperation"))
         XCTAssertTrue(script.contains("SuisuiHarnessTodayCockpitOperation"))
@@ -82,6 +92,23 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(projectBoard.contains("retainUnexecutedReviewedTasks"))
         XCTAssertTrue(projectBoardView.contains("approved-execution-receipt"))
         XCTAssertTrue(projectBoardView.contains("latestApprovedExecutionReceipt"))
+    }
+
+    func testPseudoVoiceOverSidebarGateFailsClosedWhenLiveModifierIsRemoved() throws {
+        let script = try readPackageFile("script/check_pseudo_voiceover_paths.sh")
+
+        for marker in [
+            ".accessibilityIdentifier(accessibilityIdentifier(for: item.id))",
+            #"case .inbox: "sidebar-destination-inbox""#,
+            #"case .today: "sidebar-destination-today""#,
+            #"case .projects: "sidebar-destination-projects""#,
+            #"case .schedule: "sidebar-destination-schedule""#,
+            #"case .completed: "sidebar-destination-completed""#
+        ] {
+            XCTAssertTrue(script.contains(marker), "sidebar gate must inspect \(marker)")
+        }
+        XCTAssertTrue(script.contains("SIDEBAR_MARKER_SELF_TEST_FIXTURE"))
+        XCTAssertTrue(script.contains("missing modifier hookup"))
     }
 
     func testProductRoleDocumentationStatesLocalFirstReviewBeforeExecutionStrength() throws {
@@ -620,7 +647,6 @@ final class QualitySourceContractTests: XCTestCase {
             "OAUTH",
             "MCP",
             "NOTARY",
-            "KEYCHAIN_REFERENCE_ALLOWLIST",
             "RAW_SECRET_DENYLIST",
             "SUISUI_SECURITY_SCAN_INCLUDE_TMP"
         ] {

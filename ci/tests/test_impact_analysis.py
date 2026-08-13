@@ -112,7 +112,7 @@ class ImpactAnalysisTests(unittest.TestCase):
         self.assertEqual(plan["strategy"], "selective")
         self.assertEqual(
             plan["unitTestTargets"],
-            ["Phase5DocumentationTests", "PublicBrandSurfaceTests"],
+            ["PublicBrandSurfaceTests"],
         )
         self.assertEqual(plan["integrationTestTargets"], [])
         self.assertEqual(plan["e2eTestTargets"], [])

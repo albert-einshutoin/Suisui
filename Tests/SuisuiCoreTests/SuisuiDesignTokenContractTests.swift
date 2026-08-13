@@ -10,9 +10,7 @@ final class SuisuiDesignTokenContractTests: XCTestCase {
             "SuisuiTypography",
             "SuisuiSurface",
             "SuisuiBorder",
-            "SuisuiMotion",
-            "SuisuiIconMetrics",
-            "SuisuiControlDensity"
+            "SuisuiMotion"
         ] {
             XCTAssertTrue(source.contains("enum \(symbol)"), "Missing \(symbol)")
         }
@@ -24,11 +22,9 @@ final class SuisuiDesignTokenContractTests: XCTestCase {
         XCTAssertTrue(source.contains("Color(nsColor:"))
         XCTAssertTrue(source.contains("NSColor.Name(name)"))
         XCTAssertTrue(source.contains("dynamicProvider"))
-        XCTAssertTrue(source.contains("static let pageTitle: Font"))
+        XCTAssertTrue(source.contains("static let sectionTitle: Font"))
         XCTAssertTrue(source.contains("static let groupedContent: AnyShapeStyle"))
         XCTAssertTrue(source.contains("static let subtle: Color"))
-        XCTAssertTrue(source.contains("static let compact: CGFloat"))
-        XCTAssertTrue(source.contains("static let prominent: ControlSize"))
         XCTAssertTrue(source.contains("accessibilityReduceMotion"))
         XCTAssertTrue(source.contains("reduceMotion ? nil"))
     }

@@ -90,11 +90,7 @@ final class LazyObservableObjectLoader<Value: ObservableObject>: ObservableObjec
 }
 
 struct SettingsView: View {
-    let watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot
     let integrationPermissionSnapshot: PermissionSnapshot
-    let watcherDiagnosticsSnapshotFactory: () -> WatcherDiagnosticsSnapshot
-    let externalMCPSettingsViewModelFactory: () -> ExternalMCPSettingsViewModel
-    let syncSettingsViewModelFactory: () -> SyncSettingsViewModel
     let isGoogleCalendarRuntimeEnabled: Bool
     let googleCalendarStatusProvider: () -> GoogleCalendarRuntimeSyncStatus
     let googleCalendarOAuthConnector: (any GoogleCalendarOAuthConnecting)?
@@ -133,7 +129,6 @@ struct SettingsView: View {
         settingsViewModel: AppSettingsViewModel,
         shortcutSettingsViewModel: ShortcutSettingsViewModel,
         launchAtLoginViewModel: LaunchAtLoginSettingsViewModel,
-        watcherDiagnosticsSnapshot: WatcherDiagnosticsSnapshot,
         integrationPermissionSnapshot: PermissionSnapshot,
         watcherDiagnosticsSnapshotFactory: @escaping () -> WatcherDiagnosticsSnapshot,
         externalMCPSettingsViewModelFactory: @escaping () -> ExternalMCPSettingsViewModel,
@@ -149,11 +144,7 @@ struct SettingsView: View {
         initialTab: SettingsTab = .overview,
         onboardingRerunRequest: @escaping () -> Void = {}
     ) {
-        self.watcherDiagnosticsSnapshot = watcherDiagnosticsSnapshot
         self.integrationPermissionSnapshot = integrationPermissionSnapshot
-        self.watcherDiagnosticsSnapshotFactory = watcherDiagnosticsSnapshotFactory
-        self.externalMCPSettingsViewModelFactory = externalMCPSettingsViewModelFactory
-        self.syncSettingsViewModelFactory = syncSettingsViewModelFactory
         self.isGoogleCalendarRuntimeEnabled = isGoogleCalendarRuntimeEnabled
         self.googleCalendarStatusProvider = googleCalendarStatusProvider
         self.googleCalendarOAuthConnector = googleCalendarOAuthConnector
@@ -182,10 +173,6 @@ struct SettingsView: View {
         _googleCalendarSyncStatus = State(initialValue: nil)
         _googleCalendarSetupMessage = State(initialValue: nil)
         _googleCalendarListProvider = State(wrappedValue: nil)
-    }
-
-    private var watcherDiagnosticsSnapshotForPrivacy: WatcherDiagnosticsSnapshot {
-        watcherDiagnosticsLoader.value ?? watcherDiagnosticsSnapshot
     }
 
     private var externalMCPViewModel: ExternalMCPSettingsViewModel? {

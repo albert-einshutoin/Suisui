@@ -849,7 +849,7 @@ final class UIGateScriptsTests: XCTestCase {
         let positioningSource = String(script[positioningStart.lowerBound..<nextFunction.lowerBound])
 
         XCTAssertTrue(positioningSource.contains("\"$AX_RESIZE_WINDOW_HELPER_BINARY\""))
-        XCTAssertTrue(positioningSource.contains("read -r observed_x observed_y observed_width observed_height <<<\"$ax_window_size\""))
+        XCTAssertTrue(positioningSource.contains("read -r _ _ observed_width observed_height <<<\"$ax_window_size\""))
         XCTAssertTrue(positioningSource.contains("POSITIONED_WINDOW_WIDTH=\"$observed_width\""))
         XCTAssertTrue(positioningSource.contains("[[ \"$observed_width\" == \"$width\" && \"$observed_height\" == \"$height\" ]]"))
         XCTAssertTrue(positioningSource.contains("failure_message=visual-window-viewport-mismatch"))

@@ -661,26 +661,6 @@ private enum InboxTriageStatePresentation {
     }
 }
 
-private struct InboxTriageStateBadge: View {
-    let taskID: Int64
-    let record: InboxTriageRecord?
-    let referenceDate: Date
-
-    var body: some View {
-        Text(stateLabel)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color.accentColor.opacity(0.08), in: Capsule())
-            .accessibilityIdentifier("inbox-row-disposition-\(taskID)")
-    }
-
-    private var stateLabel: String {
-        InboxTriageStatePresentation.label(for: record, referenceDate: referenceDate)
-    }
-}
-
 private struct InboxQuickAddRow: View {
     @Binding var title: String
     @Binding var isExpanded: Bool

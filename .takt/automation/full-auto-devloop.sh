@@ -273,7 +273,7 @@ mark_next_issue_ready() {
     return 0
   fi
 
-  local line issue title labels
+  local issue title labels
   while IFS=$'\t' read -r issue title labels; do
     [[ -z "${issue:-}" ]] && continue
     if title_is_broad "$title"; then

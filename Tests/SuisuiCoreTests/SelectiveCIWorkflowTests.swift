@@ -54,7 +54,9 @@ final class SelectiveCIWorkflowTests: XCTestCase {
             XCTAssertTrue(config.contains(marker), "impact policy must include \(marker)")
         }
         XCTAssertTrue(fullRunner.contains("./scripts/ci.sh swiftpm"))
-        XCTAssertTrue(fullRunner.contains("./scripts/ci.sh source-contracts"))
+        XCTAssertTrue(fullRunner.contains("./script/check_pseudo_voiceover_paths.sh"))
+        XCTAssertFalse(fullRunner.contains("check_pseudo_voiceover_paths.sh --swift-test"))
+        XCTAssertFalse(fullRunner.contains("./scripts/ci.sh source-contracts"))
         XCTAssertTrue(fullRunner.contains("./script/check_security_regressions.sh"))
         XCTAssertFalse(fullRunner.contains("impact/analyze"))
         XCTAssertFalse(fullRunner.contains("ci/config"))

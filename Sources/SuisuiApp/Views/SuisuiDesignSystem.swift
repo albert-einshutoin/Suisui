@@ -9,7 +9,6 @@ enum SuisuiSpacing {
     static let sm: CGFloat = 8
     static let md: CGFloat = 12
     static let lg: CGFloat = 16
-    static let xl: CGFloat = 24
 }
 
 enum SuisuiRadius {
@@ -47,7 +46,6 @@ enum SuisuiBrand {
 /// A compact type ramp keeps hierarchy legible without making dense project
 /// data feel like a marketing page.
 enum SuisuiTypography {
-    static let pageTitle: Font = .system(.title2, design: .rounded, weight: .semibold)
     static let sectionTitle: Font = .system(.headline, design: .rounded, weight: .semibold)
     static let body: Font = .body
     static let metadata: Font = .caption
@@ -81,20 +79,6 @@ enum SuisuiMotion {
     static func animation(duration: Double = standard, reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .easeInOut(duration: duration)
     }
-}
-
-enum SuisuiIconMetrics {
-    static let compact: CGFloat = 12
-    static let standard: CGFloat = 16
-    static let feature: CGFloat = 34
-}
-
-/// ControlSize is semantic and lets AppKit continue to own exact control
-/// geometry, focus rings, and input-target behavior.
-enum SuisuiControlDensity {
-    static let compact: ControlSize = .small
-    static let standard: ControlSize = .regular
-    static let prominent: ControlSize = .large
 }
 
 /// Semantic status tones. Always route status coloring through this enum so

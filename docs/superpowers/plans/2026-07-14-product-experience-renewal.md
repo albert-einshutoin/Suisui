@@ -1,5 +1,8 @@
 # Suisui Product Experience Renewal Implementation Plan
 
+> **Status:** Historical implementation plan. The live design-system contract
+> is `docs/ux/design-system.md`; do not reintroduce tokens listed only here.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver the approved four-destination, progressive, accessible, native macOS Suisui experience without regressing approval-first execution, local-first data, undo, receipts, or existing deep links.

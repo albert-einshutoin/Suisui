@@ -945,8 +945,8 @@ wait_for_stable_ax_target_frame() {
 
 receipt_ax_target_frame_fields() {
   local fingerprint="$1"
-  local identifier target_width target_height visible_width visible_height remainder
-  IFS=$'\t' read -r identifier target_width target_height visible_width visible_height remainder <<<"$fingerprint"
+  local identifier target_width target_height visible_width visible_height
+  IFS=$'\t' read -r identifier target_width target_height visible_width visible_height _ <<<"$fingerprint"
   if [[ -z "$identifier" || -z "$target_width" || -z "$target_height" || -z "$visible_width" || -z "$visible_height" ]]; then
     echo "invalid AX identity fingerprint; receipt fields are incomplete" >&2
     return 1
@@ -1084,8 +1084,6 @@ position_window_for_capture() {
   local window_metadata
   local window_id window_x window_y window_width window_height
   local ax_window_size
-  local observed_x=""
-  local observed_y=""
   local observed_width=""
   local observed_height=""
   if [[ ! "$width" =~ ^[0-9]+$ || ! "$height" =~ ^[0-9]+$ ]]; then
@@ -1109,7 +1107,7 @@ position_window_for_capture() {
           "$width" "$height" "$origin_x" "$origin_y" \
           2>>"${diagnostic_file:-/dev/null}"
       )"; then
-        read -r observed_x observed_y observed_width observed_height <<<"$ax_window_size"
+        read -r _ _ observed_width observed_height <<<"$ax_window_size"
       fi
       if window_metadata="$(wait_for_window_capture_metadata "$window_name" 2>/dev/null)"; then
         # CG window bounds include compositor decoration on newer macOS
@@ -2268,7 +2266,6 @@ case "$EVIDENCE_LOCALE" in
     TODAY_ROUTE_LABEL="Today"
     PROJECTS_ROUTE_LABEL="Projects"
     SCHEDULE_ROUTE_LABEL="Schedule"
-    WEEKLY_GRID_LABEL="Weekly schedule grid"
     DONE_ROUTE_LABEL="Done"
     VOICE_COMMAND_LABEL="Voice Command"
     INBOX_CLASSIFICATION_ACTIONS_LABEL="Inbox classification actions"
@@ -2279,7 +2276,6 @@ case "$EVIDENCE_LOCALE" in
     TODAY_ROUTE_LABEL="今日"
     PROJECTS_ROUTE_LABEL="プロジェクト"
     SCHEDULE_ROUTE_LABEL="予定"
-    WEEKLY_GRID_LABEL="週間スケジュールグリッド"
     DONE_ROUTE_LABEL="完了"
     VOICE_COMMAND_LABEL="音声コマンド"
     INBOX_CLASSIFICATION_ACTIONS_LABEL="インボックス分類操作"

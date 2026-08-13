@@ -26,7 +26,9 @@ final class ArchitectureBoundaryTests: XCTestCase {
             "optional connector targets",
             "No broad file moves before boundary tests",
             "Phase 1: split Work Management",
-            "Phase 2: split `ProjectWorkflowViews.swift`",
+            "Phase 2: keep Today, Schedule, Catch Up, Done, Inbox, Assistant Queue",
+            "The superseded",
+            "`ProjectWorkflowViews.swift` owner has been removed",
             "Phase 3: extract app shell/runtime composition"
         ] {
             XCTAssertTrue(doc.contains(marker), "domain boundary documentation must include \(marker)")
@@ -222,7 +224,6 @@ final class ArchitectureBoundaryTests: XCTestCase {
     }
 
     func testProjectWorkflowSurfacesAreSplitIntoOwnedViewFiles() throws {
-        let workflowShellSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowViews.swift")
         let expectedSurfaceFiles = [
             ("Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift", "struct TodayWorkflowView"),
             ("Sources/SuisuiApp/Views/ProjectWorkflowCatchUpView.swift", "struct CatchUpWorkflowView"),
@@ -234,7 +235,6 @@ final class ArchitectureBoundaryTests: XCTestCase {
         for (path, marker) in expectedSurfaceFiles {
             let source = try readPackageFile(path)
             XCTAssertTrue(source.contains(marker), "\(path) should own \(marker)")
-            XCTAssertFalse(workflowShellSource.contains(marker), "ProjectWorkflowViews.swift should no longer own \(marker)")
         }
 
         let sharedSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowSharedViews.swift")

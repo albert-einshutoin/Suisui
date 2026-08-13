@@ -544,7 +544,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(result.output.contains("fixture=provider-token-boundary status=passed"))
     }
 
-    func testGitHubCISeparatesCompleteSwiftPMSuiteFromSupplementalSourceContracts() throws {
+    func testGitHubCIAvoidsRerunningSourceContractXCTestsAfterCompleteSwiftPMSuite() throws {
         let workflow = try readPackageFile(".github/workflows/ci.yml")
         let script = try readPackageFile("scripts/ci.sh")
         let fullRunner = try readPackageFile("ci/run-full.sh")
@@ -555,7 +555,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(workflow.contains("name: complete-validation-${{ github.run_id }}-${{ github.run_attempt }}"))
         XCTAssertTrue(workflow.contains(".tmp/ci-artifacts/swiftpm"))
         XCTAssertTrue(workflow.contains("if: always()"))
-        XCTAssertTrue(fullRunner.contains("./scripts/ci.sh source-contracts"))
+        XCTAssertTrue(fullRunner.contains("./script/check_pseudo_voiceover_paths.sh"))
+        XCTAssertFalse(fullRunner.contains("check_pseudo_voiceover_paths.sh --swift-test"))
+        XCTAssertFalse(fullRunner.contains("./scripts/ci.sh source-contracts"))
         XCTAssertFalse(fullRunner.contains("impact/analyze"))
         XCTAssertFalse(fullRunner.contains("ci/config"))
         XCTAssertTrue(script.contains("./script/run_complete_swiftpm_tests.sh"))
@@ -12635,6 +12637,46 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertNotEqual(failing.exitCode, 0)
         XCTAssertTrue(failing.output.contains("BLOCKER: secret-like token matched in .tmp/security-regression-test/leak.md"))
         XCTAssertTrue(failing.output.contains("security regression scan found secret-like material"))
+    }
+
+    func testSecurityRegressionScriptRejectsShortOpenAITokensInJapanesePublicDocs() throws {
+        let fixtureRoot = packageRoot()
+            .appendingPathComponent(".build/test-security-regression-public-docs", isDirectory: true)
+        let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
+        let releaseDocsDirectory = fixtureRoot.appendingPathComponent("docs/release", isDirectory: true)
+        let copiedScriptURL = scriptDirectory.appendingPathComponent("check_security_regressions.sh")
+
+        try? FileManager.default.removeItem(at: fixtureRoot)
+        try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: releaseDocsDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        try readPackageFile("script/check_security_regressions.sh")
+            .write(to: copiedScriptURL, atomically: true, encoding: .utf8)
+        try "/.tmp/\n".write(
+            to: fixtureRoot.appendingPathComponent(".gitignore"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "API key: sk-readme12\n".write(
+            to: fixtureRoot.appendingPathComponent("README.ja.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "API key: sk-alpha123\n".write(
+            to: releaseDocsDirectory.appendingPathComponent("public-alpha-ja.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: copiedScriptURL.path)
+
+        XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "init"]).exitCode, 0)
+
+        let result = try runTool(["bash", copiedScriptURL.path])
+
+        XCTAssertNotEqual(result.exitCode, 0)
+        XCTAssertTrue(result.output.contains("secret-like token matched in README.ja.md"))
+        XCTAssertTrue(result.output.contains("secret-like token matched in docs/release/public-alpha-ja.md"))
     }
 
     func testSecurityRegressionScriptRejectsTrackedVoiceModelBinaries() throws {
