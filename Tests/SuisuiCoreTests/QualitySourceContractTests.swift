@@ -63,8 +63,18 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(script.contains("TODAY_UI_ACCESSIBILITY_IDENTIFIERS"))
         XCTAssertTrue(script.contains("SIDEBAR_DESTINATION_SOURCE"))
         XCTAssertTrue(script.contains(".accessibilityIdentifier(\\\"$identifier\\\")"))
-        XCTAssertTrue(script.contains("sidebar-destination-\\(destination.accessibilityIdentifierSuffix)"))
-        XCTAssertTrue(script.contains("ProjectWorkflowViews.swift"))
+        for identifier in [
+            "sidebar-destination-inbox",
+            "sidebar-destination-today",
+            "sidebar-destination-projects",
+            "sidebar-destination-schedule",
+            "sidebar-destination-completed"
+        ] {
+            XCTAssertTrue(script.contains(identifier), "script must check live sidebar marker \(identifier)")
+        }
+        XCTAssertFalse(script.contains("sidebar-destination-\\(destination.accessibilityIdentifierSuffix)"))
+        XCTAssertTrue(script.contains("ProjectBoardSidebarView.swift"))
+        XCTAssertFalse(script.contains("ProjectWorkflowViews.swift"))
         XCTAssertTrue(script.contains("ProjectBoardSelectionPersistence.swift"))
         XCTAssertTrue(script.contains("SuisuiHarnessTaskLifecycleOperation"))
         XCTAssertTrue(script.contains("SuisuiHarnessTodayCockpitOperation"))

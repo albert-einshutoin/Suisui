@@ -1935,7 +1935,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let doneSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift")
         let voiceSource = try readPackageFile("Sources/SuisuiApp/Views/VoiceCaptureView.swift")
         let commandPaletteSource = try readPackageFile("Sources/SuisuiApp/Views/CommandPaletteView.swift")
-        let smartListSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardSmartListViews.swift")
+        let projectsHubSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift")
         let boardDetailSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardDetailViews.swift")
 
         XCTAssertTrue(settingsSource.contains("Image(systemName: row.state.systemImage)"))
@@ -1949,7 +1949,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceSource.contains("SuisuiMotion.animation"))
         XCTAssertTrue(voiceSource.contains("Image(systemName: stateSystemImage)"))
         XCTAssertTrue(commandPaletteSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
-        XCTAssertTrue(smartListSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
+        XCTAssertTrue(projectsHubSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
         XCTAssertTrue(boardDetailSource.contains("@Environment(\\.accessibilityReduceMotion) private var reduceMotion"))
         XCTAssertTrue(boardDetailSource.contains("reduceMotion ? nil : .snappy(duration: 0.16)"))
         XCTAssertTrue(doneSource.contains("heatmapMarkerDiameter"))
