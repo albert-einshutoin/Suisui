@@ -20,14 +20,14 @@ final class VoiceTaskContinuityHarnessTests: XCTestCase {
         }
     }
 
-    func testGivenScenarioWithoutRestartResumeWhenValidateThenFails() throws {
+    func testGivenScenarioWithoutRestartResumeWhenValidateThenReportsFirstMissingStage() throws {
         let source = try runtimeScript().replacingFirst(
             "run_product_stage \"restart\" \"restart\"\n  run_product_stage \"resume\" \"resume\"",
             with: ""
         )
 
         XCTAssertThrowsError(try VoiceTaskContinuityHarnessContract.validate(source: source)) { error in
-            XCTAssertEqual(error as? VoiceTaskContinuityHarnessContract.Error, .missingRestartResume)
+            XCTAssertEqual(error as? VoiceTaskContinuityHarnessContract.Error, .missingStage("restart"))
         }
     }
 
@@ -182,7 +182,6 @@ private enum VoiceTaskContinuityHarnessContract {
         case missingRuntimeScript
         case missingStage(String)
         case missingPreApprovalAssertion
-        case missingRestartResume
         case missingSourceCommitBinding
         case missingCurrentHeadBundleBinding
         case missingBundleHashBinding
@@ -222,9 +221,6 @@ private enum VoiceTaskContinuityHarnessContract {
         }
         guard source.contains("verify_pre_approval_snapshot\n  run_product_stage \"queue_approval_execution\"") else {
             throw Error.missingPreApprovalAssertion
-        }
-        guard source.contains("run_product_stage \"restart\" \"restart\"") && source.contains("run_product_stage \"resume\" \"resume\"") else {
-            throw Error.missingRestartResume
         }
         guard source.contains("grep -Fxq \"source_commit=$source_commit\" \"$witness\"") && source.contains("artifact_source_commit_mismatch") else {
             throw Error.missingSourceCommitBinding
