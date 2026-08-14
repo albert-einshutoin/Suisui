@@ -1149,7 +1149,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
         try fixture.write("設計 sqlite ftsexactmarker", to: "Docs/FTSExact.md")
-        try fixture.write("設計sqlite fallbackfullmarker", to: "Docs/Fallback.md")
+        try fixture.write("詳細設計 SQLite fallbackfullmarker", to: "Docs/Fallback.md")
         try fixture.write("sqlite englishonlymarker", to: "Docs/EnglishOnly.md")
         let index = try migratedIndex()
 

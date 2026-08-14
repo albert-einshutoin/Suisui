@@ -454,7 +454,9 @@ public actor DevelopmentRepositoryIndex {
         limit: Int
     ) throws -> [SQLiteMaterializedRow] {
         let selection = selectedPaths.sqlClause(column: "relative_path")
-        let predicate = terms.map { _ in "(instr(relative_path, ?) > 0 OR instr(contents, ?) > 0)" }.joined(separator: joiner)
+        // SQLite lower() gives the fallback its intended ASCII-insensitive
+        // behavior while preserving bound terms and CJK substring matching.
+        let predicate = terms.map { _ in "(instr(lower(relative_path), lower(?)) > 0 OR instr(lower(contents), lower(?)) > 0)" }.joined(separator: joiner)
         let exclusion = excludedPaths.isEmpty
             ? ""
             : " AND relative_path NOT IN (\(Array(repeating: "?", count: excludedPaths.count).joined(separator: ", ")))"
