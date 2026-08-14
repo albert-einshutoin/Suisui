@@ -63,6 +63,9 @@ public actor DevelopmentRepositoryIndex {
     private static let serializedCredential = try? NSRegularExpression(
         pattern: #"(?im)^\s*[\"']?client[-_]key[-_]data[\"']?\s*:\s*\S+|^\s*-----BEGIN (?:[A-Z0-9 ]*PRIVATE KEY)-----"#
     )
+    private static let yamlClientKeyData = try? NSRegularExpression(
+        pattern: #"(?i)[\"']?client[-_]key[-_]data[\"']?\s*:"#
+    )
     private static let swiftTypedDeclarationPrefix = try? NSRegularExpression(
         pattern: #"^\s*(?:@[A-Za-z_][A-Za-z0-9_]*\s+)*(?:(?:private|public|internal|fileprivate|static|final|lazy)\s+)*(?:let|var)\s+$"#
     )
@@ -492,7 +495,14 @@ public actor DevelopmentRepositoryIndex {
         if containsAmbiguousNonSwiftEscape(contents, relativePath: relativePath) {
             return true
         }
-        guard let serializedCredential else {
+        guard let serializedCredential, let yamlClientKeyData else {
+            return true
+        }
+        let extensionName = URL(fileURLWithPath: relativePath).pathExtension.lowercased()
+        // YAML permits flow mappings, so a line-start matcher would miss a
+        // credential nested in an otherwise ordinary list or object.
+        if ["yml", "yaml"].contains(extensionName),
+           yamlClientKeyData.firstMatch(in: contents, range: range) != nil {
             return true
         }
         if serializedCredential.firstMatch(in: contents, range: range) != nil {
