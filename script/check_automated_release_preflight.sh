@@ -245,7 +245,10 @@ section "Local CRUD smoke"
 ./script/check_local_crud_smoke.sh
 
 section "Production UI runtime gate"
-SUISUI_CI_ARTIFACT_ROOT="$TMP_DIR/ui-gates" ./scripts/ci.sh ui-runtime
+SUISUI_CI_COMPLETE_RUNTIME=1 \
+SUISUI_RUNTIME_POLICY=public-alpha \
+SUISUI_CI_ARTIFACT_ROOT="$TMP_DIR/ui-gates" \
+  ./scripts/ci.sh ui-runtime
 
 section "Xcode build preflight"
 if ! command -v xcodebuild >/dev/null 2>&1; then
@@ -265,6 +268,7 @@ SUISUI_PERFORMANCE_PROFILE=release \
 SUISUI_PERFORMANCE_BUILD_CONFIGURATION=release \
 SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS=1000 \
 SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS=3000 \
+SUISUI_RUNTIME_POLICY=public-alpha \
 SUISUI_CI_ARTIFACT_ROOT="$TMP_DIR/ui-gates" \
   ./scripts/ci.sh ui-performance
 

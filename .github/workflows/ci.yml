@@ -243,6 +243,8 @@ jobs:
       - name: Verify production runtime
         env:
           SUISUI_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
+          SUISUI_CI_COMPLETE_RUNTIME: ${{ github.event_name == 'pull_request' && '0' || '1' }}
+          SUISUI_RUNTIME_POLICY: public-alpha
         run: ./scripts/ci.sh ui-runtime
 
       - name: Upload sanitized runtime diagnostics

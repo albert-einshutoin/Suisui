@@ -404,6 +404,13 @@ run_lane_with_artifacts() {
   return "$status"
 }
 
+require_fully_exercised_runtime() {
+  if ! grep -Fxq 'status=passed' "$CI_ARTIFACT_ROOT/ui-runtime/gate-summary.txt"; then
+    echo "BLOCKER: complete runtime validation was not fully exercised" >&2
+    return 1
+  fi
+}
+
 validate_ci_flag "SUISUI_CI_RUNTIME_GATES" "$CI_RUNTIME_GATES"
 validate_ci_flag "SUISUI_CI_VISUAL_GATES" "$CI_VISUAL_GATES"
 validate_ci_flag "SUISUI_CI_RELEASE_GATES" "$CI_RELEASE_GATES"
@@ -422,6 +429,9 @@ case "$CI_LANE" in
   ui-runtime)
     acquire_ui_gate_lock
     run_lane_with_artifacts "ui-runtime" run_runtime_gates
+    if [[ "$CI_COMPLETE_RUNTIME" == "1" ]]; then
+      require_fully_exercised_runtime
+    fi
     ;;
   ui-visual)
     acquire_ui_gate_lock
@@ -453,6 +463,9 @@ if [[ "$CI_LANE_WAS_EXPLICIT" == "0" ]]; then
   if [[ "$CI_RUNTIME_GATES" == "1" ]]; then
     acquire_ui_gate_lock
     run_lane_with_artifacts "ui-runtime" run_runtime_gates
+    if [[ "$CI_COMPLETE_RUNTIME" == "1" ]]; then
+      require_fully_exercised_runtime
+    fi
   fi
   if [[ "$CI_VISUAL_GATES" == "1" ]]; then
     acquire_ui_gate_lock

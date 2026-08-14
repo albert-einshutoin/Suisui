@@ -11,6 +11,8 @@ SELECTED_RUNNER = REPOSITORY_ROOT / "ci" / "run-selected.py"
 FULL_RUNNER = REPOSITORY_ROOT / "ci" / "run-full.sh"
 ALL_RUNNER = REPOSITORY_ROOT / "ci" / "run-all.sh"
 CI_SCRIPT = REPOSITORY_ROOT / "scripts" / "ci.sh"
+WORKFLOW = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
+RELEASE_PREFLIGHT = REPOSITORY_ROOT / "script" / "check_automated_release_preflight.sh"
 ORCHESTRATOR = REPOSITORY_ROOT / "ci" / "run-pr-ci.sh"
 PLAN_EXPORTER = REPOSITORY_ROOT / "ci" / "export-plan.py"
 PLAN_ESCALATOR = REPOSITORY_ROOT / "ci" / "escalate-plan.py"
@@ -127,9 +129,12 @@ class ExecutionContractTests(unittest.TestCase):
             self.assertIn(f"-u {variable}", contents)
         self.assertIn("./scripts/ci.sh ui-runtime", contents)
         self.assertIn("SUISUI_CI_COMPLETE_RUNTIME=1", contents)
-        self.assertIn('if [[ "$CI_COMPLETE_RUNTIME" == "1" ]]', CI_SCRIPT.read_text(encoding="utf-8"))
-        self.assertIn('status=passed', contents)
-        self.assertIn("BLOCKER: complete runtime validation was not fully exercised", contents)
+        ci_contents = CI_SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('if [[ "$CI_COMPLETE_RUNTIME" == "1" ]]', ci_contents)
+        self.assertIn("require_fully_exercised_runtime", ci_contents)
+        self.assertIn("SUISUI_CI_COMPLETE_RUNTIME: ${{ github.event_name == 'pull_request' && '0' || '1' }}", WORKFLOW.read_text(encoding="utf-8"))
+        self.assertIn("SUISUI_CI_COMPLETE_RUNTIME=1", RELEASE_PREFLIGHT.read_text(encoding="utf-8"))
+        self.assertIn("SUISUI_RUNTIME_POLICY=public-alpha", contents)
         self.assertIn("-u SUISUI_CI_VISUAL_GATE_LOCALE", contents)
         self.assertIn("./scripts/ci.sh ui-visual", contents)
         for variable in (
