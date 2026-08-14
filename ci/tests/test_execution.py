@@ -109,6 +109,7 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn("cargo clippy --manifest-path", contents)
         self.assertIn("./scripts/ci.sh ui-runtime", contents)
         self.assertIn("./scripts/ci.sh ui-visual", contents)
+        self.assertNotIn("SUISUI_CI_VISUAL_GATE_LOCALE", contents)
         self.assertIn("./scripts/ci.sh ui-performance", contents)
         self.assertNotIn("impact/analyze", contents)
 

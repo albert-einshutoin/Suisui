@@ -24,7 +24,7 @@ before execution を維持する。例外と現行の所有範囲は
 ## 品質の入口
 
 - 実装・全 SwiftPM: `./scripts/ci.sh swiftpm`
-- 影響が不明なときの完全検証: `./ci/run-full.sh` と UI 3 レーン
+- 影響が不明なときの完全検証: `./ci/run-all.sh`
 - runtime: `./scripts/ci.sh ui-runtime`
 - visual / bilingual localization: `./scripts/ci.sh ui-visual`
 - performance: `./scripts/ci.sh ui-performance`

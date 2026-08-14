@@ -11,7 +11,5 @@ cargo fmt --manifest-path "$RUST_MANIFEST" --check
 cargo test --manifest-path "$RUST_MANIFEST" --locked --all-targets --all-features
 cargo clippy --manifest-path "$RUST_MANIFEST" --locked --all-targets --all-features -- -D warnings
 ./scripts/ci.sh ui-runtime
-for locale in en-US ja-JP; do
-  SUISUI_CI_VISUAL_GATE_LOCALE="$locale" ./scripts/ci.sh ui-visual
-done
+./scripts/ci.sh ui-visual
 ./scripts/ci.sh ui-performance
