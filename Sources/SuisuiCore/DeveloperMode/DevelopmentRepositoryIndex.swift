@@ -63,6 +63,11 @@ public actor DevelopmentRepositoryIndex {
         var unmatchedOpenParentheses: [String.Index]
     }
 
+    private struct SwiftStringDelimiter {
+        var hashCount: Int
+        var isMultiline: Bool
+    }
+
     public init(connection: SQLiteConnection, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) {
         database = SQLiteDatabaseWorker(connection: connection)
         self.redactor = redactor
@@ -438,8 +443,7 @@ public actor DevelopmentRepositoryIndex {
     private static func swiftLexicalContext(in source: String) -> SwiftLexicalContext {
         var lineComment = false
         var blockCommentDepth = 0
-        var singleString = false
-        var multilineString = false
+        var stringDelimiter: SwiftStringDelimiter?
         var unmatchedOpenParentheses: [String.Index] = []
         var index = source.startIndex
 
@@ -447,7 +451,6 @@ public actor DevelopmentRepositoryIndex {
             let character = source[index]
             let nextIndex = source.index(after: index)
             let nextCharacter = nextIndex < source.endIndex ? source[nextIndex] : nil
-            let hasTripleQuote = source[index...].hasPrefix("\"\"\"")
 
             if lineComment {
                 lineComment = character != "\n"
@@ -466,22 +469,13 @@ public actor DevelopmentRepositoryIndex {
                 }
                 continue
             }
-            if multilineString {
-                if character == "\\", nextIndex < source.endIndex {
-                    index = source.index(after: nextIndex)
-                } else if hasTripleQuote {
-                    multilineString = false
-                    index = source.index(index, offsetBy: 3)
+            if let delimiter = stringDelimiter {
+                if let escapedDelimiterEnd = escapedStringDelimiterEnd(at: index, in: source, delimiter: delimiter) {
+                    index = escapedDelimiterEnd
+                } else if let closingDelimiterEnd = stringDelimiterEnd(at: index, in: source, delimiter: delimiter) {
+                    stringDelimiter = nil
+                    index = closingDelimiterEnd
                 } else {
-                    index = nextIndex
-                }
-                continue
-            }
-            if singleString {
-                if character == "\\", nextIndex < source.endIndex {
-                    index = source.index(after: nextIndex)
-                } else {
-                    singleString = character != "\""
                     index = nextIndex
                 }
                 continue
@@ -493,12 +487,9 @@ public actor DevelopmentRepositoryIndex {
             } else if character == "/", nextCharacter == "*" {
                 blockCommentDepth = 1
                 index = source.index(after: nextIndex)
-            } else if hasTripleQuote {
-                multilineString = true
-                index = source.index(index, offsetBy: 3)
-            } else if character == "\"" {
-                singleString = true
-                index = nextIndex
+            } else if let delimiter = stringDelimiterStarting(at: index, in: source) {
+                stringDelimiter = delimiter
+                index = source.index(index, offsetBy: delimiter.isMultiline ? 3 + delimiter.hashCount : 1 + delimiter.hashCount)
             } else if character == "(" {
                 unmatchedOpenParentheses.append(index)
                 index = nextIndex
@@ -511,9 +502,67 @@ public actor DevelopmentRepositoryIndex {
         }
 
         return SwiftLexicalContext(
-            isInNormalCode: !lineComment && blockCommentDepth == 0 && !singleString && !multilineString,
+            isInNormalCode: !lineComment && blockCommentDepth == 0 && stringDelimiter == nil,
             unmatchedOpenParentheses: unmatchedOpenParentheses
         )
+    }
+
+    private static func stringDelimiterStarting(at index: String.Index, in source: String) -> SwiftStringDelimiter? {
+        if source[index] == "\"" {
+            return SwiftStringDelimiter(hashCount: 0, isMultiline: source[index...].hasPrefix("\"\"\""))
+        }
+        guard source[index] == "#" else {
+            return nil
+        }
+        var hashCount = 0
+        var cursor = index
+        while cursor < source.endIndex, source[cursor] == "#" {
+            hashCount += 1
+            cursor = source.index(after: cursor)
+        }
+        guard cursor < source.endIndex, source[cursor] == "\"" else {
+            return nil
+        }
+        return SwiftStringDelimiter(hashCount: hashCount, isMultiline: source[cursor...].hasPrefix("\"\"\""))
+    }
+
+    private static func escapedStringDelimiterEnd(
+        at index: String.Index,
+        in source: String,
+        delimiter: SwiftStringDelimiter
+    ) -> String.Index? {
+        guard source[index] == "\\" else {
+            return nil
+        }
+        var cursor = source.index(after: index)
+        for _ in 0..<delimiter.hashCount {
+            guard cursor < source.endIndex, source[cursor] == "#" else {
+                return nil
+            }
+            cursor = source.index(after: cursor)
+        }
+        return stringDelimiterEnd(at: cursor, in: source, delimiter: delimiter)
+    }
+
+    private static func stringDelimiterEnd(
+        at index: String.Index,
+        in source: String,
+        delimiter: SwiftStringDelimiter
+    ) -> String.Index? {
+        var cursor = index
+        for _ in 0..<(delimiter.isMultiline ? 3 : 1) {
+            guard cursor < source.endIndex, source[cursor] == "\"" else {
+                return nil
+            }
+            cursor = source.index(after: cursor)
+        }
+        for _ in 0..<delimiter.hashCount {
+            guard cursor < source.endIndex, source[cursor] == "#" else {
+                return nil
+            }
+            cursor = source.index(after: cursor)
+        }
+        return cursor < source.endIndex && source[cursor] == "#" ? nil : cursor
     }
 
     private static func hasOpenSwiftArgumentList(
