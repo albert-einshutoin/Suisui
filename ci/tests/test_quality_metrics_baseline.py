@@ -96,18 +96,19 @@ class QualityMetricsBaselineTests(unittest.TestCase):
         self.assertIsNone(baseline["metrics"]["overallSuccessRate"])
         self.assertEqual(baseline["metrics"]["overallSuccessRateStatus"], "unavailable")
 
-    def test_build_baseline_marks_unknown_conclusions_as_partial(self) -> None:
+    def test_build_baseline_counts_startup_failure_as_failure(self) -> None:
         baseline = METRICS.build_baseline(
             [{"id": 1, "run_attempt": 1, "status": "completed", "conclusion": "startup_failure"}],
             {"repository": "owner/repo", "limit": 1},
         )
 
-        self.assertEqual(baseline["sampleStatus"], "partial")
-        self.assertIsNone(baseline["metrics"]["overallSuccessRate"])
-        self.assertEqual(baseline["metrics"]["overallSuccessRateStatus"], "unavailable")
+        self.assertEqual(baseline["sampleStatus"], "complete")
+        self.assertEqual(baseline["runs"]["failure"], 1)
+        self.assertEqual(baseline["metrics"]["overallSuccessRate"], 0.0)
+        self.assertEqual(baseline["metrics"]["overallSuccessRateStatus"], "available")
 
     def test_build_baseline_marks_unknown_or_missing_first_conclusions_as_partial(self) -> None:
-        for conclusion in (None, "startup_failure"):
+        for conclusion in (None, "unknown_conclusion"):
             with self.subTest(conclusion=conclusion):
                 baseline = METRICS.build_baseline(
                     [

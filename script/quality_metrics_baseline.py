@@ -8,12 +8,12 @@ import sys
 import tempfile
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import quote, urlencode
 
 
 SCHEMA_VERSION = 1
-FAILURE_CONCLUSIONS = {"failure", "action_required", "timed_out"}
+FAILURE_CONCLUSIONS = {"failure", "action_required", "startup_failure", "timed_out"}
 CANCELLED_CONCLUSIONS = {"cancelled", "stale"}
 NEUTRAL_CONCLUSIONS = {"neutral", "skipped"}
 RECOGNIZED_CONCLUSIONS = {"success"} | FAILURE_CONCLUSIONS | CANCELLED_CONCLUSIONS | NEUTRAL_CONCLUSIONS
@@ -63,7 +63,7 @@ def build_baseline(runs: Iterable[dict[str, Any]], sample: dict[str, Any]) -> di
         grouped.setdefault(str(run_id), []).append(run)
 
     final_runs: list[dict[str, Any]] = []
-    first_runs: list[dict[str, Any] | None] = []
+    first_runs: list[Optional[dict[str, Any]]] = []
     for attempts in grouped.values():
         ordered = sorted(attempts, key=lambda run: _attempt_number(run))
         final_runs.append(ordered[-1])
@@ -77,7 +77,7 @@ def build_baseline(runs: Iterable[dict[str, Any]], sample: dict[str, Any]) -> di
     cancelled = sum(conclusion in CANCELLED_CONCLUSIONS for conclusion in known_conclusions)
     neutral = sum(conclusion in NEUTRAL_CONCLUSIONS for conclusion in known_conclusions)
     eligible_first_runs = [
-        first for first, final in zip(first_runs, final_runs, strict=True)
+        first for first, final in zip(first_runs, final_runs)
         if final.get("status") == "completed"
     ]
     first_completed = [
@@ -128,11 +128,11 @@ def _attempt_number(run: dict[str, Any]) -> int:
     return attempt if isinstance(attempt, int) and attempt > 0 else 1
 
 
-def _rate(numerator: int, denominator: int) -> float | None:
+def _rate(numerator: int, denominator: int) -> Optional[float]:
     return numerator / denominator if denominator else None
 
 
-def _gh_api(path: str) -> dict[str, Any] | None:
+def _gh_api(path: str) -> Optional[dict[str, Any]]:
     result = subprocess.run(
         ["gh", "api", "--method", "GET", path], text=True, capture_output=True, check=False
     )
