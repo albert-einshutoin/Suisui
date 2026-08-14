@@ -115,11 +115,11 @@ where
     }
 
     let model_dir = PathBuf::from(model_dir.ok_or(HelperError::INVALID_REQUEST)?);
-    let model_files = load_model_files(&model_dir)?;
     let text = read_text(PathBuf::from(
         text_file.ok_or(HelperError::INVALID_REQUEST)?,
     ))?;
     let output = validate_output(&PathBuf::from(output.ok_or(HelperError::INVALID_REQUEST)?))?;
+    let model_files = load_model_files(&model_dir)?;
 
     Ok(Request {
         model_files,
@@ -980,10 +980,6 @@ mod tests {
     fn rejects_oversized_text_before_model_loading() {
         let scratch = Scratch::new("limit");
         let model_dir = scratch.path().join("model");
-        fs::create_dir(&model_dir).expect("model directory");
-        for name in super::MODEL_FILES {
-            fs::write(model_dir.join(name), "placeholder").expect("model file");
-        }
         let text_file = scratch.path().join("input.txt");
         fs::write(&text_file, vec![b'x'; MAX_TEXT_BYTES as usize + 1]).expect("text file");
 
@@ -1012,6 +1008,7 @@ mod tests {
             fs::write(model_dir.join(name), "placeholder").expect("model file");
         }
         fs::write(model_dir.join("config.json"), []).expect("empty model file");
+        fs::write(scratch.path().join("input.txt"), "hello").expect("input file");
 
         let result = parse_request([
             "--model-dir".to_owned(),
@@ -1048,6 +1045,7 @@ mod tests {
         fs::write(&real_model, "placeholder").expect("real model");
         fs::remove_file(model_dir.join("model.onnx")).expect("replace model");
         symlink(&real_model, model_dir.join("model.onnx")).expect("model symlink");
+        fs::write(scratch.path().join("input.txt"), "hello").expect("input file");
 
         let result = parse_request([
             "--model-dir".to_owned(),
