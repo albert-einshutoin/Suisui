@@ -27,6 +27,7 @@ public actor DevelopmentRepositoryIndex {
     private let redactor: DeveloperSecretRedactor
     private let maximumRefreshReadBytes: Int
     private let manifestExecutableURL: URL
+    private let beforeRefreshCommit: (@Sendable () throws -> Void)?
 
     // Assignment-only redaction is deliberately broader for user-visible output.
     // For indexing, reject every such assignment unless it matches one of the
@@ -115,12 +116,14 @@ public actor DevelopmentRepositoryIndex {
         connection: SQLiteConnection,
         redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
         maximumRefreshReadBytes: Int = DevelopmentRepositoryIndex.maximumIndexedContentBytes,
-        manifestExecutableURL: URL = GitManifestReader.defaultExecutableURL
+        manifestExecutableURL: URL = GitManifestReader.defaultExecutableURL,
+        beforeRefreshCommit: (@Sendable () throws -> Void)? = nil
     ) {
         database = SQLiteDatabaseWorker(connection: connection)
         self.redactor = redactor
         self.maximumRefreshReadBytes = maximumRefreshReadBytes
         self.manifestExecutableURL = manifestExecutableURL
+        self.beforeRefreshCommit = beforeRefreshCommit
     }
 
     public init(path: String, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) throws {
@@ -128,6 +131,7 @@ public actor DevelopmentRepositoryIndex {
         self.redactor = redactor
         maximumRefreshReadBytes = DevelopmentRepositoryIndex.maximumIndexedContentBytes
         manifestExecutableURL = GitManifestReader.defaultExecutableURL
+        beforeRefreshCommit = nil
     }
 
     public func refresh(workspace: CodebaseMemoryWorkspace) async throws {
@@ -142,6 +146,7 @@ public actor DevelopmentRepositoryIndex {
             maximumRefreshReadBytes: maximumRefreshReadBytes,
             manifestExecutableURL: manifestExecutableURL
         )
+        let beforeRefreshCommit = self.beforeRefreshCommit
 
         try await database.transaction { connection in
             let generation = (try connection.queryRows(
@@ -185,6 +190,10 @@ public actor DevelopmentRepositoryIndex {
                     .text(workspaceKey),
                 ]
             )
+            try beforeRefreshCommit?()
+            // Keep the final identity check inside the transaction so a root
+            // replacement after scanning rolls back both publication and cleanup.
+            try Self.verifyWorkspaceRoot(root, matches: rootDescriptor)
         }
     }
 
@@ -492,16 +501,33 @@ public actor DevelopmentRepositoryIndex {
     }
 
     private static func cjkBigramsOrWord(_ word: String) -> [String] {
-        let characters = Array(word)
-        guard characters.count > 1,
-              characters.allSatisfy(isCJKCharacter) else {
-            return [word]
+        var runs: [String] = []
+        var currentRun = ""
+        var currentIsCJK: Bool?
+        for character in word {
+            let characterIsCJK = isCJKCharacter(character)
+            if currentIsCJK != nil, currentIsCJK != characterIsCJK {
+                runs.append(currentRun)
+                currentRun = ""
+            }
+            currentRun.append(character)
+            currentIsCJK = characterIsCJK
         }
-        // CJK natural-language queries have no word boundaries.  Use bounded
-        // 2-grams so the existing AND-first, OR-completion search can retrieve
-        // relevant fragments without requiring the whole sentence in one file.
-        return (0..<(characters.count - 1)).map { index in
-            String(characters[index...(index + 1)])
+        if !currentRun.isEmpty {
+            runs.append(currentRun)
+        }
+
+        return runs.flatMap { run in
+            let characters = Array(run)
+            guard characters.count > 1,
+                  characters.first.map(isCJKCharacter) == true else {
+                return [run]
+            }
+            // CJK has no word boundaries. Split only its run so adjacent Latin
+            // text remains searchable while bounded 2-grams find CJK fragments.
+            return (0..<(characters.count - 1)).map { index in
+                String(characters[index...(index + 1)])
+            }
         }
     }
 

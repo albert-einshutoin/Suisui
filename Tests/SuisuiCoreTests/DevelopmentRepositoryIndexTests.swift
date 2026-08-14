@@ -840,6 +840,42 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(try rows[0].string("contents"), "replacementidentitymarker")
     }
 
+    func testRefreshRollsBackWhenWorkspaceIsReplacedBeforeCommit() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let index = DevelopmentRepositoryIndex(connection: connection)
+        try fixture.write("preservedgenerationmarker", to: "Notes.md")
+        try await index.refresh(workspace: workspace(fixture))
+        try fixture.write("candidategenerationmarker", to: "Notes.md")
+
+        let fixtureURL = fixture.url
+        let movedRoot = fixtureURL.deletingLastPathComponent().appendingPathComponent("suisui-index-commit-race-\(UUID().uuidString)")
+        defer {
+            try? FileManager.default.removeItem(at: fixtureURL)
+            try? FileManager.default.moveItem(at: movedRoot, to: fixtureURL)
+        }
+        let racingIndex = DevelopmentRepositoryIndex(
+            connection: connection,
+            beforeRefreshCommit: {
+                try FileManager.default.moveItem(at: fixtureURL, to: movedRoot)
+                try FileManager.default.createDirectory(at: fixtureURL, withIntermediateDirectories: true)
+                try "replacementrootmarker".write(
+                    to: fixtureURL.appendingPathComponent("Notes.md"),
+                    atomically: true,
+                    encoding: .utf8
+                )
+            }
+        )
+
+        await XCTAssertThrowsErrorAsync(try await racingIndex.refresh(workspace: workspace(fixture)))
+
+        let rows = try connection.queryRows("SELECT contents FROM codebase_index_files;")
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(try rows[0].string("contents"), "preservedgenerationmarker")
+    }
+
     func testWorkspaceRootIdentityRejectsSamePathReplacement() throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
@@ -1222,6 +1258,18 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let results = try await index.search(query: "設定画面の保存処理を直して", workspace: workspace(fixture), topK: 2)
 
         XCTAssertEqual(results.map(\.sourcePath), ["Docs/Save.md", "Docs/Settings.md"])
+    }
+
+    func testSearchSplitsLatinAndCJKRunsWithinOneToken() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("Swift の実装 mixedrunmarker", to: "Docs/Mixed.md")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let results = try await index.search(query: "Swift実装", workspace: workspace(fixture))
+        XCTAssertEqual(results.map(\.sourcePath), ["Docs/Mixed.md"])
     }
 
     func testSearchRejectsPunctuationOnlyQuery() async throws {
