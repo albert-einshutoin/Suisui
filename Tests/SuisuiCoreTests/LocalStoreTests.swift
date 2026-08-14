@@ -929,6 +929,41 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(try store.search(query: "launchpad").map(\.id), [frame.id])
     }
 
+    func testKnowledgeTrigramIndexTracksUpdateAndDelete() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let frame = try store.create(name: "VorÜbe?rgabe notes", body: "handoff details")
+
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT rowid FROM knowledge_frames_trigram_fts WHERE knowledge_frames_trigram_fts MATCH '\"übe?\"';"
+            ),
+            [String(frame.id)]
+        )
+
+        _ = try store.update(id: frame.id, name: "Neue handoff notes")
+
+        XCTAssertTrue(
+            try connection.queryStrings(
+                "SELECT rowid FROM knowledge_frames_trigram_fts WHERE knowledge_frames_trigram_fts MATCH '\"übe?\"';"
+            ).isEmpty
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT rowid FROM knowledge_frames_trigram_fts WHERE knowledge_frames_trigram_fts MATCH '\"neu\"';"
+            ),
+            [String(frame.id)]
+        )
+
+        try store.delete(id: frame.id)
+
+        XCTAssertTrue(
+            try connection.queryStrings(
+                "SELECT rowid FROM knowledge_frames_trigram_fts WHERE knowledge_frames_trigram_fts MATCH '\"neu\"';"
+            ).isEmpty
+        )
+    }
+
     func testKnowledgeFrameCreateRollsBackBaseRowWhenFTSWriteFails() throws {
         let connection = try migratedConnection()
         let store = SQLiteKnowledgeFrameStore(connection: connection)

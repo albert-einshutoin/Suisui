@@ -2291,14 +2291,12 @@ public enum CoreMigrations {
 
                     CREATE TRIGGER knowledge_frames_trigram_fts_after_delete
                     AFTER DELETE ON knowledge_frames BEGIN
-                        INSERT INTO knowledge_frames_trigram_fts(knowledge_frames_trigram_fts, rowid, name, body)
-                        VALUES ('delete', old.id, old.name, old.body || char(10) || old.triggers_json);
+                        DELETE FROM knowledge_frames_trigram_fts WHERE rowid = old.id;
                     END;
 
                     CREATE TRIGGER knowledge_frames_trigram_fts_after_content_update
                     AFTER UPDATE OF name, body, triggers_json ON knowledge_frames BEGIN
-                        INSERT INTO knowledge_frames_trigram_fts(knowledge_frames_trigram_fts, rowid, name, body)
-                        VALUES ('delete', old.id, old.name, old.body || char(10) || old.triggers_json);
+                        DELETE FROM knowledge_frames_trigram_fts WHERE rowid = old.id;
                         INSERT INTO knowledge_frames_trigram_fts(rowid, name, body)
                         VALUES (new.id, new.name, new.body || char(10) || new.triggers_json);
                     END;
