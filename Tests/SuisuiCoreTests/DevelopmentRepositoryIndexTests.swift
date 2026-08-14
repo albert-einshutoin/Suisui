@@ -499,6 +499,52 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(nonSwiftFunctionResults.isEmpty)
     }
 
+    func testRefreshAndFileReadHandleBareRegexAndEvenBackslashStringDelimiters() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let regexSource = #"""
+        struct RegexSample {
+            let pattern = /token:[A-Z]+/
+            let bareRegexMarker = true
+        }
+        """#
+        let backslashSource = #"""
+        struct ApprovalToken {}
+        struct BackslashSample {
+            let separator = "\\\\"
+            let token: ApprovalToken
+            let evenBackslashMarker = true
+        }
+        """#
+        try fixture.write(regexSource, to: "Sources/BareRegex.swift")
+        try fixture.write(backslashSource, to: "Sources/EvenBackslash.swift")
+        try fixture.write("let token = \"literallexercredentialmarker\"", to: "Sources/LiteralCredential.swift")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let regex = try await index.search(query: "bareRegexMarker", workspace: workspace(fixture))
+        let backslash = try await index.search(query: "evenBackslashMarker", workspace: workspace(fixture))
+        let literal = try await index.search(query: "literallexercredentialmarker", workspace: workspace(fixture))
+        XCTAssertEqual(regex.map(\.sourcePath), ["Sources/BareRegex.swift"])
+        XCTAssertEqual(backslash.map(\.sourcePath), ["Sources/EvenBackslash.swift"])
+        XCTAssertTrue(literal.isEmpty)
+
+        let fileClient = DevelopmentRepositoryFileClient(project: ProjectRecord(
+            id: 42,
+            title: "Suisui",
+            status: "active",
+            workspacePath: fixture.url.path
+        ))
+        XCTAssertEqual(try fileClient.read(relativePath: "Sources/BareRegex.swift").contents, regexSource)
+        XCTAssertEqual(try fileClient.read(relativePath: "Sources/EvenBackslash.swift").contents, backslashSource)
+        XCTAssertThrowsError(try fileClient.read(relativePath: "Sources/LiteralCredential.swift")) { error in
+            guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                return XCTFail("Expected secret-like content rejection, got \(error)")
+            }
+        }
+    }
+
     func testRefreshIndexesSwiftCollectionTypesButRejectsLiteralAssignment() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }

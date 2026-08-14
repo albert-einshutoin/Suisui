@@ -51,6 +51,9 @@ public actor DevelopmentRepositoryIndex {
     private static let safeSwiftCallLabel = try? NSRegularExpression(
         pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*(.+?)\s*,?\s*\)*\s*$"#
     )
+    private static let safeBareSwiftRegexCredentialPattern = try? NSRegularExpression(
+        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*\[[^\]\r\n]{1,128}\](?:[+*?]|\{\d+(?:,\d*)?\})?/\s*$"#
+    )
     private static let safeSwiftExpressionAtom = try? NSRegularExpression(
         pattern: #"^(?:try\s+)?(?:nil|true|false|\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*(?:\(\s*(?:(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*(?:\s*,\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*)*)?\s*\))?)$"#
     )
@@ -84,6 +87,7 @@ public actor DevelopmentRepositoryIndex {
 
     private struct SwiftLexicalPosition {
         var isInNormalCode: Bool
+        var literalKind: SwiftLiteralKind?
         var openParenthesis: String.Index?
     }
 
@@ -720,6 +724,7 @@ public actor DevelopmentRepositoryIndex {
               let safeAssignment = safeSwiftAssignment,
               let safeOptionalBinding = safeSwiftOptionalBinding,
               let safeCallLabel = safeSwiftCallLabel,
+              let safeBareRegexPattern = safeBareSwiftRegexCredentialPattern,
               let safeExpressionAtom = safeSwiftExpressionAtom,
               let safeTypedDeclaration = safeSourceTypedDeclaration,
               let safeTypedFunctionParameter = safeSourceTypedFunctionParameter,
@@ -770,8 +775,18 @@ public actor DevelopmentRepositoryIndex {
             // operators and assignments to continue onto the next one, where a
             // literal credential could otherwise be appended after a safe name.
             let continuesOnNextLine = hasSwiftContinuation(after: lineRange.upperBound, in: contents)
-            guard let lexicalPosition = lexicalPositions[swiftRange.lowerBound], lexicalPosition.isInNormalCode else {
+            guard let lexicalPosition = lexicalPositions[swiftRange.lowerBound] else {
                 return true
+            }
+            if !lexicalPosition.isInNormalCode {
+                guard lexicalPosition.literalKind == .regex else {
+                    return true
+                }
+                let regexSuffix = String(contents[swiftRange.lowerBound..<lineRange.upperBound])
+                let regexRange = NSRange(regexSuffix.startIndex..<regexSuffix.endIndex, in: regexSuffix)
+                // Only a bounded character-class reference is harmless inside
+                // a regex. Literal token/password text remains fail-closed.
+                return safeBareRegexPattern.firstMatch(in: regexSuffix, range: regexRange) == nil
             }
             let assignmentPrefix = String(contents[lineRange.lowerBound..<swiftRange.lowerBound])
             let prefixRange = NSRange(assignmentPrefix.startIndex..<assignmentPrefix.endIndex, in: assignmentPrefix)
@@ -1086,6 +1101,7 @@ public actor DevelopmentRepositoryIndex {
             if positions.contains(index) {
                 snapshots[index] = SwiftLexicalPosition(
                     isInNormalCode: !lineComment && blockCommentDepth == 0 && literalDelimiter == nil,
+                    literalKind: literalDelimiter?.kind,
                     openParenthesis: unmatchedOpenParentheses.last
                 )
             }
@@ -1111,7 +1127,27 @@ public actor DevelopmentRepositoryIndex {
                 continue
             }
             if let delimiter = literalDelimiter {
-                if let escapedDelimiterEnd = escapedLiteralDelimiterEnd(at: index, in: source, delimiter: delimiter) {
+                if delimiter.kind == .string,
+                   delimiter.hashCount == 0,
+                   source[index] == "\\" {
+                    var cursor = index
+                    var backslashCount = 0
+                    while cursor < source.endIndex, source[cursor] == "\\" {
+                        backslashCount += 1
+                        cursor = source.index(after: cursor)
+                    }
+                    if let closingDelimiterEnd = literalDelimiterEnd(at: cursor, in: source, delimiter: delimiter) {
+                        // An even run leaves the quote unescaped; an odd run
+                        // consumes it as string content. Looking only at the
+                        // final backslash reverses this result for `"\\\\"`.
+                        if backslashCount.isMultiple(of: 2) {
+                            literalDelimiter = nil
+                        }
+                        index = closingDelimiterEnd
+                    } else {
+                        index = cursor
+                    }
+                } else if let escapedDelimiterEnd = escapedLiteralDelimiterEnd(at: index, in: source, delimiter: delimiter) {
                     index = escapedDelimiterEnd
                 } else if let closingDelimiterEnd = literalDelimiterEnd(at: index, in: source, delimiter: delimiter) {
                     literalDelimiter = nil
@@ -1152,6 +1188,9 @@ public actor DevelopmentRepositoryIndex {
         if source[index] == "\"" {
             return SwiftLiteralDelimiter(kind: .string, hashCount: 0, isMultiline: source[index...].hasPrefix("\"\"\""))
         }
+        if source[index] == "/", isBareSwiftRegexStart(at: index, in: source) {
+            return SwiftLiteralDelimiter(kind: .regex, hashCount: 0, isMultiline: false)
+        }
         guard source[index] == "#" else {
             return nil
         }
@@ -1171,6 +1210,34 @@ public actor DevelopmentRepositoryIndex {
             return SwiftLiteralDelimiter(kind: .regex, hashCount: hashCount, isMultiline: true)
         }
         return nil
+    }
+
+    private static func isBareSwiftRegexStart(at index: String.Index, in source: String) -> Bool {
+        var cursor = index
+        while cursor > source.startIndex {
+            let previous = source.index(before: cursor)
+            let character = source[previous]
+            if character.isWhitespace {
+                cursor = previous
+                continue
+            }
+            if ["=", ":", "(", "[", "{", ",", "!", "?", ";"].contains(character) {
+                return true
+            }
+            guard character.isLetter || character == "_" else {
+                return false
+            }
+            var tokenStart = previous
+            while tokenStart > source.startIndex {
+                let beforeToken = source.index(before: tokenStart)
+                guard source[beforeToken].isLetter || source[beforeToken].isNumber || source[beforeToken] == "_" else {
+                    break
+                }
+                tokenStart = beforeToken
+            }
+            return ["await", "case", "in", "return", "throw", "try"].contains(String(source[tokenStart...previous]))
+        }
+        return true
     }
 
     private static func escapedLiteralDelimiterEnd(
