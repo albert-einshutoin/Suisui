@@ -84,10 +84,10 @@ public struct DeveloperSecretRedactor: Sendable {
             )
         }
 
-        // JSON permits escaped key names (for example `to\u006ben`). Decode
-        // those keys before regex redaction so the spelling cannot hide a
-        // credential field from logs or repository-index checks.
-        if Self.containsEscapedCredentialJSONKey(text) {
+        // JSON and TOML permit escaped key names (for example `to\u006ben`).
+        // Decode those keys before regex redaction so the spelling cannot hide
+        // a credential field from logs or repository-index checks.
+        if Self.containsEscapedCredentialKey(text) {
             return SecretRedactionResult(
                 text: text.isEmpty ? "" : "[REDACTED_SECRET]",
                 report: SecretRedactionReport(
@@ -143,8 +143,12 @@ public struct DeveloperSecretRedactor: Sendable {
         )
     }
 
-    private static func containsEscapedCredentialJSONKey(_ text: String) -> Bool {
+    private static func containsEscapedCredentialKey(_ text: String) -> Bool {
         var index = text.startIndex
+        // Overlapping quote candidates recover from arbitrary log prefixes.
+        // Bound their total look-ahead so adversarial escaped quotes cannot
+        // turn redaction into quadratic work; exhaustion fails closed.
+        var scanBudget = text.count > Int.max / 2 ? Int.max : text.count * 2
         while index < text.endIndex {
             guard text[index] == "\"" else {
                 index = text.index(after: index)
@@ -155,6 +159,10 @@ public struct DeveloperSecretRedactor: Sendable {
             var escaped = false
             var sawEscape = false
             while cursor < text.endIndex {
+                guard scanBudget > 0 else {
+                    return true
+                }
+                scanBudget -= 1
                 let character = text[cursor]
                 if escaped {
                     escaped = false
@@ -167,14 +175,16 @@ public struct DeveloperSecretRedactor: Sendable {
                 cursor = text.index(after: cursor)
             }
             guard cursor < text.endIndex else {
-                return false
+                index = text.index(after: start)
+                continue
             }
             let end = text.index(after: cursor)
             var delimiter = end
             while delimiter < text.endIndex, text[delimiter].isWhitespace {
                 delimiter = text.index(after: delimiter)
             }
-            if sawEscape, delimiter < text.endIndex, text[delimiter] == ":" {
+            if sawEscape, delimiter < text.endIndex,
+               text[delimiter] == ":" || text[delimiter] == "=" {
                 let literal = String(text[start..<end])
                 guard let data = literal.data(using: .utf8),
                       let key = try? JSONDecoder().decode(String.self, from: data) else {
@@ -184,7 +194,10 @@ public struct DeveloperSecretRedactor: Sendable {
                     return true
                 }
             }
-            index = end
+            // Arbitrary log text can contain an unmatched quote before an
+            // embedded JSON object. Try the next quote as a candidate start;
+            // adjacent quote intervals are each scanned at most twice.
+            index = text.index(after: start)
         }
         return false
     }
