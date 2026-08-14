@@ -90,14 +90,22 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
         let encodedKeyData = "QUJDREVG" + "R0hJSktMTU4="
+        let quotedYAMLKeyData = "quoted-yaml-key-data-marker"
+        let jsonKeyData = "json-key-data-marker"
         try fixture.write("client-key-data: \(encodedKeyData)", to: "Kube.yml")
+        try fixture.write("\"client-key-data\": \"\(quotedYAMLKeyData)\"", to: "QuotedKube.yml")
+        try fixture.write("{\"client-key-data\":\"\(jsonKeyData)\"}", to: "Kube.json")
         try fixture.write("  -----BEGIN PRIVATE KEY-----\n  placeholder\n  -----END PRIVATE KEY-----", to: "KeyMaterial.txt")
         let index = try migratedIndex()
         try await index.refresh(workspace: workspace(fixture))
 
         let kubernetesResults = try await index.search(query: encodedKeyData, workspace: workspace(fixture))
+        let quotedYAMLResults = try await index.search(query: quotedYAMLKeyData, workspace: workspace(fixture))
+        let jsonResults = try await index.search(query: jsonKeyData, workspace: workspace(fixture))
         let pemResults = try await index.search(query: "PRIVATE", workspace: workspace(fixture))
         XCTAssertTrue(kubernetesResults.isEmpty)
+        XCTAssertTrue(quotedYAMLResults.isEmpty)
+        XCTAssertTrue(jsonResults.isEmpty)
         XCTAssertTrue(pemResults.isEmpty)
     }
 

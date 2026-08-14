@@ -61,7 +61,7 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"^\s*case\s+\.[A-Za-z_][A-Za-z0-9_]*\s*:\s*$"#
     )
     private static let serializedCredential = try? NSRegularExpression(
-        pattern: #"(?im)^\s*client[-_]key[-_]data\s*:\s*\S+|^\s*-----BEGIN (?:[A-Z0-9 ]*PRIVATE KEY)-----"#
+        pattern: #"(?im)^\s*[\"']?client[-_]key[-_]data[\"']?\s*:\s*\S+|^\s*-----BEGIN (?:[A-Z0-9 ]*PRIVATE KEY)-----"#
     )
     private static let swiftTypedDeclarationPrefix = try? NSRegularExpression(
         pattern: #"^\s*(?:@[A-Za-z_][A-Za-z0-9_]*\s+)*(?:(?:private|public|internal|fileprivate|static|final|lazy)\s+)*(?:let|var)\s+$"#
@@ -711,7 +711,7 @@ public actor DevelopmentRepositoryIndex {
         if ["auth", "auths", "authorization", "identitytoken"].contains(normalized) {
             return true
         }
-        return ["apikey", "accesskey", "privatekey", "token", "password", "secret"].contains {
+        return ["apikey", "accesskey", "privatekey", "clientkeydata", "token", "password", "secret"].contains {
             normalized.hasSuffix($0)
         }
     }
