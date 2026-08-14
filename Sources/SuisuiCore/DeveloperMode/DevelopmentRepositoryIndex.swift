@@ -23,7 +23,7 @@ public actor DevelopmentRepositoryIndex {
 
     private let database: SQLiteDatabaseWorker
     private let redactor: DeveloperSecretRedactor
-    private let maximumScannedContentBytes: Int
+    private let maximumRefreshReadBytes: Int
 
     // Assignment-only redaction is deliberately broader for user-visible output.
     // For indexing, reject every such assignment unless it matches one of the
@@ -88,24 +88,24 @@ public actor DevelopmentRepositoryIndex {
         self.init(
             connection: connection,
             redactor: redactor,
-            maximumScannedContentBytes: DevelopmentRepositoryIndex.maximumIndexedContentBytes
+            maximumRefreshReadBytes: DevelopmentRepositoryIndex.maximumIndexedContentBytes
         )
     }
 
     init(
         connection: SQLiteConnection,
         redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
-        maximumScannedContentBytes: Int
+        maximumRefreshReadBytes: Int
     ) {
         database = SQLiteDatabaseWorker(connection: connection)
         self.redactor = redactor
-        self.maximumScannedContentBytes = maximumScannedContentBytes
+        self.maximumRefreshReadBytes = maximumRefreshReadBytes
     }
 
     public init(path: String, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) throws {
         database = try SQLiteDatabaseWorker(path: path)
         self.redactor = redactor
-        maximumScannedContentBytes = DevelopmentRepositoryIndex.maximumIndexedContentBytes
+        maximumRefreshReadBytes = DevelopmentRepositoryIndex.maximumIndexedContentBytes
     }
 
     public func refresh(workspace: CodebaseMemoryWorkspace) async throws {
@@ -117,7 +117,7 @@ public actor DevelopmentRepositoryIndex {
             root: root,
             rootDescriptor: rootDescriptor,
             redactor: redactor,
-            maximumScannedContentBytes: maximumScannedContentBytes
+            maximumRefreshReadBytes: maximumRefreshReadBytes
         )
 
         try await database.transaction { connection in
@@ -247,7 +247,7 @@ public actor DevelopmentRepositoryIndex {
         root: URL,
         rootDescriptor: WorkspaceRootDescriptor,
         redactor: DeveloperSecretRedactor,
-        maximumScannedContentBytes: Int
+        maximumRefreshReadBytes: Int
     ) throws -> [IndexedFile] {
         try verifyWorkspaceRoot(root, matches: rootDescriptor)
         let entries = try GitManifestReader.entries(at: root)
@@ -286,7 +286,7 @@ public actor DevelopmentRepositoryIndex {
             // rejected as binary or secret. Otherwise a manifest full of
             // excluded files could bypass the aggregate work limit.
             totalBytes += read.data.count
-            guard totalBytes <= maximumScannedContentBytes else {
+            guard totalBytes <= maximumRefreshReadBytes else {
                 throw DevelopmentRepositoryIndexError.indexedContentTooLarge
             }
             guard !read.isOversized else {

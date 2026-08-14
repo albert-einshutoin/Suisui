@@ -198,7 +198,7 @@ public struct DeveloperSecretRedactor: Sendable {
             }
             // Arbitrary log text can contain an unmatched quote before an
             // embedded JSON object. Try the next quote as a candidate start;
-            // adjacent quote intervals are each scanned at most twice.
+            // adjacent quote intervals are each examined at most twice.
             index = text.index(after: start)
         }
         return false

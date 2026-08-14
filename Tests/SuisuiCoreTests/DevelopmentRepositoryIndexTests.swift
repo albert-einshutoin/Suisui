@@ -633,7 +633,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         defer { fixture.remove() }
         try fixture.write("previousbudgetmarker", to: "Notes.md")
         let perFileReadBytes = DevelopmentRepositoryFilePathPolicy.maximumContentBytes + 1
-        let index = try migratedIndex(maximumScannedContentBytes: perFileReadBytes * 2)
+        let index = try migratedIndex(maximumRefreshReadBytes: perFileReadBytes * 2)
         try await index.refresh(workspace: workspace(fixture))
 
         let oversized = Data(repeating: 0x61, count: perFileReadBytes)
@@ -749,11 +749,11 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
     }
 
     private func migratedIndex(
-        maximumScannedContentBytes: Int = DevelopmentRepositoryIndex.maximumIndexedContentBytes
+        maximumRefreshReadBytes: Int = DevelopmentRepositoryIndex.maximumIndexedContentBytes
     ) throws -> DevelopmentRepositoryIndex {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
-        return DevelopmentRepositoryIndex(connection: connection, maximumScannedContentBytes: maximumScannedContentBytes)
+        return DevelopmentRepositoryIndex(connection: connection, maximumRefreshReadBytes: maximumRefreshReadBytes)
     }
 
     private func workspace(_ fixture: RepositoryFixture) -> CodebaseMemoryWorkspace {
