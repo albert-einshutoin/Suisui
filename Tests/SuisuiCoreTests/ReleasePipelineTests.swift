@@ -12789,7 +12789,13 @@ final class ReleasePipelineTests: XCTestCase {
         let readme = try readPackageFile("rust/kokoro-helper/README.md")
         let workflow = try readPackageFile(".github/workflows/ci.yml")
         let gitignore = try readPackageFile(".gitignore")
-        let productionProvider = try readPackageFile("Sources/SuisuiCore/Voice/TTSProviders.swift")
+        let productionEntrypoints = try [
+            "Package.swift",
+            "Sources/SuisuiCore/Voice/TTSProviders.swift",
+            "script/build_and_run.sh",
+            "script/sign_app.sh",
+            "script/verify_release_architecture.sh"
+        ].map(readPackageFile).joined(separator: "\n")
 
         XCTAssertTrue(manifest.contains("kokoro-en"))
         XCTAssertTrue(readme.contains("PoC"))
@@ -12797,10 +12803,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(readme.contains("本番"))
         XCTAssertTrue(readme.contains("RUSTSEC-2025-0141"))
         XCTAssertTrue(gitignore.contains("/rust/kokoro-helper/target/"))
-        XCTAssertFalse(productionProvider.contains("rust/kokoro-helper"))
+        XCTAssertFalse(productionEntrypoints.contains("rust/kokoro-helper"))
         XCTAssertTrue(workflow.contains("cargo fmt --manifest-path rust/kokoro-helper/Cargo.toml --check"))
-        XCTAssertTrue(workflow.contains("cargo test --manifest-path rust/kokoro-helper/Cargo.toml --locked"))
-        XCTAssertTrue(workflow.contains("cargo clippy --manifest-path rust/kokoro-helper/Cargo.toml --locked -- -D warnings"))
+        XCTAssertTrue(workflow.contains("cargo test --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features"))
+        XCTAssertTrue(workflow.contains("cargo clippy --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features -- -D warnings"))
     }
 
     func testKokoroRuntimeWrapperFailsClosedBeforeImportForUnsafeRuntimeInputs() throws {

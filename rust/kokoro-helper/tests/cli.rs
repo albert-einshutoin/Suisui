@@ -2,10 +2,12 @@ use std::{
     env, fs,
     path::PathBuf,
     process::{self, Command},
+    sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 const HELPER: &str = env!("CARGO_BIN_EXE_suisui-kokoro-helper");
+static NEXT_TEST_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 
 #[test]
 fn japanese_language_is_rejected_before_model_loading() {
@@ -76,11 +78,12 @@ fn rejected_prompt_is_not_written_to_standard_streams() {
 
 fn unique_test_directory() -> PathBuf {
     env::temp_dir().join(format!(
-        "suisui-kokoro-helper-cli-{}-{}",
+        "suisui-kokoro-helper-cli-{}-{}-{}",
         process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        NEXT_TEST_DIRECTORY.fetch_add(1, Ordering::Relaxed)
     ))
 }

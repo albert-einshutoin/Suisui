@@ -16,10 +16,12 @@ KOKORO_ORT_PROVIDER=cpu cargo run --release --locked -- \
 
 量子化モデルは CPU provider で測定します。自動選択された CoreML provider は初回検証で CPU より遅く、メモリ使用量も多かったため、本番の backend 選定は未確定です。
 
+GPL の eSpeak NG を静的リンクしないよう `kokoro-en` は `misaki-lean` だけで構成しています。英語の未知語を含む発音品質も本番接続前の再評価対象です。
+
 No-Go: 日本語 G2P/音声品質の同等性は未検証のため、`--language ja` は明示的に拒否します。本番接続には、日本語パリティ、署名・notarization、実機 latency とメモリ、依存更新が必要です。`cargo audit` は既知脆弱性を検出していませんが、間接依存の `bincode 2.0.1` に `RUSTSEC-2025-0141`（unmaintained）があるため、現状の依存グラフは本番利用しません。
 
 ```sh
 cargo fmt --check
-cargo test --locked
-cargo clippy --locked -- -D warnings
+cargo test --locked --all-targets --all-features
+cargo clippy --locked --all-targets --all-features -- -D warnings
 ```
