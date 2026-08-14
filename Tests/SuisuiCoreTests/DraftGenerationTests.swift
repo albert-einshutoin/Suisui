@@ -48,6 +48,15 @@ final class DraftGenerationTests: XCTestCase {
         XCTAssertEqual(draft.redactionReport.replacementCount, 3)
     }
 
+    func testGitHubTokenFamilyIsRedactedWithCompatiblePatternName() {
+        let tokens = ["gho", "ghu", "ghs", "ghr"].map { $0 + "_" + "githubsecretmarker" }
+        let redaction = DeveloperSecretRedactor().redact(tokens.joined(separator: "\n"))
+
+        XCTAssertTrue(tokens.allSatisfy { !redaction.text.contains($0) })
+        XCTAssertEqual(redaction.report.replacementCount, tokens.count)
+        XCTAssertEqual(redaction.report.matchedPatternNames, ["ghp"])
+    }
+
     func testAssignmentRedactionDoesNotConsumeFollowingAuditFields() {
         let apiKey = "secret-value"
         let summary = "apiKey=string(\"\(apiKey)\"),title=string(\"Secret task\")"

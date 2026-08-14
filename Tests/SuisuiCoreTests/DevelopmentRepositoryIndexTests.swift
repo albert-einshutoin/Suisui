@@ -93,10 +93,16 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let googleCredential = "AIza" + "googleindexmarker1234567890"
         let gitLabCredential = "glpat-" + "gitlabindexmarker123"
         let stripeCredential = "sk_live_" + "stripeindexmarker123"
+        let githubCredentials = ["gho", "ghu", "ghs", "ghr"].enumerated().map { index, prefix in
+            ("GitHub\(index).md", prefix + "_" + "githubfamilymarker\(index)")
+        }
         try fixture.write("Leaked sample: \(slackCredential)", to: "Slack.md")
         try fixture.write("Copied value: \(googleCredential)", to: "Notes.md")
         try fixture.write("Leaked sample: \(gitLabCredential)", to: "README.md")
         try fixture.write("Captured output: \(stripeCredential)", to: "BuildLog.txt")
+        for (path, credential) in githubCredentials {
+            try fixture.write("Leaked sample: \(credential)", to: path)
+        }
         let index = try migratedIndex()
 
         try await index.refresh(workspace: workspace(fixture))
@@ -105,10 +111,26 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let google = try await index.search(query: "googleindexmarker1234567890", workspace: workspace(fixture))
         let gitLab = try await index.search(query: "gitlabindexmarker123", workspace: workspace(fixture))
         let stripe = try await index.search(query: "stripeindexmarker123", workspace: workspace(fixture))
+        let github = try await index.search(query: "githubfamilymarker", workspace: workspace(fixture))
         XCTAssertTrue(slack.isEmpty)
         XCTAssertTrue(google.isEmpty)
         XCTAssertTrue(gitLab.isEmpty)
         XCTAssertTrue(stripe.isEmpty)
+        XCTAssertTrue(github.isEmpty)
+
+        let fileClient = DevelopmentRepositoryFileClient(project: ProjectRecord(
+            id: 42,
+            title: "Suisui",
+            status: "active",
+            workspacePath: fixture.url.path
+        ))
+        for (path, _) in githubCredentials {
+            XCTAssertThrowsError(try fileClient.read(relativePath: path)) { error in
+                guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                    return XCTFail("Expected secret-like content rejection, got \(error)")
+                }
+            }
+        }
     }
 
     func testRefreshDoesNotPersistGenericCredentialKeys() async throws {
@@ -603,6 +625,101 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(globalIgnored.isEmpty)
         XCTAssertEqual(visible.map(\.sourcePath), ["Visible.md"])
         XCTAssertFalse(FileManager.default.fileExists(atPath: hookMarker.path))
+    }
+
+    func testRefreshHonorsSystemExcludeWithoutLoadingSystemHooksOrGlobalConfig() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let home = fixture.url.appendingPathComponent("home", isDirectory: true)
+        let systemConfig = fixture.url.appendingPathComponent("system-gitconfig")
+        let systemExcludes = fixture.url.appendingPathComponent("system-ignore")
+        let globalExcludes = fixture.url.appendingPathComponent("global-ignore")
+        let hookMarker = fixture.url.appendingPathComponent("system-fsmonitor-ran")
+        let hook = fixture.url.appendingPathComponent("system-fsmonitor.sh")
+        let gitWrapper = fixture.url.appendingPathComponent("git-wrapper.sh")
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        try "SystemIgnored.md\n".write(to: systemExcludes, atomically: true, encoding: .utf8)
+        try "GlobalIgnored.md\n".write(to: globalExcludes, atomically: true, encoding: .utf8)
+        try "[core]\n\texcludesFile = \(globalExcludes.path)\n".write(
+            to: home.appendingPathComponent(".gitconfig"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "#!/bin/sh\ntouch '\(hookMarker.path)'\n".write(to: hook, atomically: true, encoding: .utf8)
+        try "[core]\n\texcludesFile = \(systemExcludes.path)\n\tfsmonitor = \(hook.path)\n".write(
+            to: systemConfig,
+            atomically: true,
+            encoding: .utf8
+        )
+        try """
+        #!/bin/sh
+        if [ "$1" = "config" ] && [ "$2" = "--system" ]; then
+          [ "${HOME:-}" = "/nonexistent" ] || exit 91
+          [ "${GIT_CONFIG_GLOBAL:-}" = "/dev/null" ] || exit 92
+          [ "${GIT_CONFIG_SYSTEM:-}" = "\(systemConfig.path)" ] || exit 93
+        fi
+        exec /usr/bin/git "$@"
+        """.write(to: gitWrapper, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: hook.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: gitWrapper.path)
+        try fixture.write("systemignoremarker", to: "SystemIgnored.md")
+        try fixture.write("globalwithsystemmarker", to: "GlobalIgnored.md")
+        try fixture.write("systemvisiblemarker", to: "Visible.md")
+
+        let previousHome = ProcessInfo.processInfo.environment["HOME"]
+        let previousXDGConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
+        let previousSystemConfig = ProcessInfo.processInfo.environment["GIT_CONFIG_SYSTEM"]
+        setenv("HOME", home.path, 1)
+        unsetenv("XDG_CONFIG_HOME")
+        setenv("GIT_CONFIG_SYSTEM", systemConfig.path, 1)
+        defer {
+            if let previousHome { setenv("HOME", previousHome, 1) } else { unsetenv("HOME") }
+            if let previousXDGConfigHome { setenv("XDG_CONFIG_HOME", previousXDGConfigHome, 1) } else { unsetenv("XDG_CONFIG_HOME") }
+            if let previousSystemConfig { setenv("GIT_CONFIG_SYSTEM", previousSystemConfig, 1) } else { unsetenv("GIT_CONFIG_SYSTEM") }
+        }
+
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let index = DevelopmentRepositoryIndex(connection: connection, manifestExecutableURL: gitWrapper)
+        try await index.refresh(workspace: workspace(fixture))
+
+        let ignored = try await index.search(query: "systemignoremarker", workspace: workspace(fixture))
+        let globallyIgnored = try await index.search(query: "globalwithsystemmarker", workspace: workspace(fixture))
+        let visible = try await index.search(query: "systemvisiblemarker", workspace: workspace(fixture))
+        XCTAssertTrue(ignored.isEmpty)
+        XCTAssertTrue(globallyIgnored.isEmpty)
+        XCTAssertEqual(visible.map(\.sourcePath), ["Visible.md"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: hookMarker.path))
+    }
+
+    func testSystemExcludeLookupFailureKeepsPriorGeneration() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("priorsystemignoremarker", to: "Notes.md")
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let index = DevelopmentRepositoryIndex(connection: connection)
+        try await index.refresh(workspace: workspace(fixture))
+
+        let helper = fixture.url.appendingPathComponent("fail-system-config.sh")
+        try """
+        #!/bin/sh
+        if [ "$1" = "config" ] && [ "$2" = "--global" ]; then exit 1; fi
+        if [ "$1" = "config" ] && [ "$2" = "--system" ]; then exit 2; fi
+        exec /usr/bin/git "$@"
+        """.write(to: helper, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
+        let failingIndex = DevelopmentRepositoryIndex(connection: connection, manifestExecutableURL: helper)
+
+        do {
+            try await failingIndex.refresh(workspace: workspace(fixture))
+            XCTFail("Expected system excludes lookup to fail closed")
+        } catch {
+            XCTAssertEqual(error as? DevelopmentRepositoryIndexError, .gitManifestUnavailable)
+        }
+
+        let retained = try await index.search(query: "priorsystemignoremarker", workspace: workspace(fixture))
+        XCTAssertEqual(retained.map(\.sourcePath), ["Notes.md"])
     }
 
     func testRefreshHonorsDefaultGlobalExcludeForUntrackedFiles() async throws {

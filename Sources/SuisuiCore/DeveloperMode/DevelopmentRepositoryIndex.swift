@@ -1329,8 +1329,8 @@ private extension Array where Element == RepositorySelection {
 
 enum GitManifestReader {
     static let defaultExecutableURL = URL(fileURLWithPath: "/usr/bin/git")
-    private static let maximumGlobalExcludesOutputBytes = 4 * 1024
-    private static let globalExcludesLookupTimeout: TimeInterval = 1
+    private static let maximumExcludesOutputBytes = 4 * 1024
+    private static let excludesLookupTimeout: TimeInterval = 1
 
     struct Entry {
         let path: String
@@ -1451,6 +1451,9 @@ enum GitManifestReader {
             // ignore sources while global hooks and commands remain isolated.
             manifestArguments.append("--exclude-from=\(globalExcludesFile)")
         }
+        if let systemExcludesFile = try systemExcludesFile(executableURL: executableURL) {
+            manifestArguments.append("--exclude-from=\(systemExcludesFile)")
+        }
         // Process holds `.` as its cwd across exec. Verify that inode inside the
         // child before invoking git so an ABA path replacement cannot redirect a
         // valid parent-side check to another workspace.
@@ -1500,12 +1503,6 @@ enum GitManifestReader {
 
     #if !(os(iOS) || targetEnvironment(macCatalyst))
     private static func globalExcludesFile(executableURL: URL) throws -> String? {
-        let process = Process()
-        let standardOutput = Pipe()
-        process.executableURL = executableURL
-        process.arguments = ["config", "--global", "--path", "--get", "core.excludesFile"]
-        process.standardOutput = standardOutput
-        process.standardError = FileHandle.nullDevice
         var environment = [
             "PATH": "/usr/bin:/bin",
             "GIT_CONFIG_NOSYSTEM": "1",
@@ -1517,15 +1514,54 @@ enum GitManifestReader {
                 environment[key] = value
             }
         }
+        return try configuredExcludesFile(
+            arguments: ["config", "--global", "--path", "--get", "core.excludesFile"],
+            environment: environment,
+            executableURL: executableURL
+        ) ?? defaultGlobalExcludesFile(in: inherited)
+    }
+
+    private static func systemExcludesFile(executableURL: URL) throws -> String? {
+        let inherited = ProcessInfo.processInfo.environment
+        var environment = [
+            "PATH": "/usr/bin:/bin",
+            "HOME": "/nonexistent",
+            "XDG_CONFIG_HOME": "/nonexistent",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0",
+        ]
+        if let systemConfig = inherited["GIT_CONFIG_SYSTEM"], !systemConfig.isEmpty {
+            environment["GIT_CONFIG_SYSTEM"] = systemConfig
+        }
+        // Read only the system ignore path, then disable all system config for
+        // the manifest itself so hooks and fsmonitor commands remain unreachable.
+        return try configuredExcludesFile(
+            arguments: ["config", "--system", "--path", "--get", "core.excludesFile"],
+            environment: environment,
+            executableURL: executableURL
+        )
+    }
+
+    private static func configuredExcludesFile(
+        arguments: [String],
+        environment: [String: String],
+        executableURL: URL
+    ) throws -> String? {
+        let process = Process()
+        let standardOutput = Pipe()
+        process.executableURL = executableURL
+        process.arguments = arguments
+        process.standardOutput = standardOutput
+        process.standardError = FileHandle.nullDevice
         process.environment = environment
         let result = try boundedGitOutput(
             process: process,
             standardOutput: standardOutput,
-            timeout: globalExcludesLookupTimeout,
-            limit: maximumGlobalExcludesOutputBytes
+            timeout: excludesLookupTimeout,
+            limit: maximumExcludesOutputBytes
         )
         if result.terminationStatus == 1, result.output.data.isEmpty {
-            return defaultGlobalExcludesFile(in: inherited)
+            return nil
         }
         guard result.terminationStatus == 0, !result.output.exceeded,
               var path = String(data: result.output.data, encoding: .utf8) else {
