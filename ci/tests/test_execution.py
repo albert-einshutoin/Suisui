@@ -137,7 +137,12 @@ class ExecutionContractTests(unittest.TestCase):
             "SUISUI_CI_COMPLETE_RUNTIME: 0",
             WORKFLOW.read_text(encoding="utf-8"),
         )
-        self.assertIn("SUISUI_CI_COMPLETE_RUNTIME=1", RELEASE_PREFLIGHT.read_text(encoding="utf-8"))
+        release_contents = RELEASE_PREFLIGHT.read_text(encoding="utf-8")
+        self.assertIn("SUISUI_CI_COMPLETE_RUNTIME=1", release_contents)
+        self.assertIn("-u SUISUI_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX", release_contents)
+        self.assertIn("-u SUISUI_LAYOUT_STABILITY_CLIPPING_TOLERANCE_PX", release_contents)
+        self.assertIn("-u SUISUI_RUNTIME_TODAY_MAX_TOOLBAR_LAYOUT_DEPTH", release_contents)
+        self.assertIn("SUISUI_CI_VISUAL_BASELINE_PROFILE=local-display", release_contents)
         self.assertIn("SUISUI_RUNTIME_POLICY=public-alpha", contents)
         self.assertIn("-u SUISUI_CI_VISUAL_GATE_LOCALE", contents)
         self.assertIn("-u SUISUI_VISUAL_SOURCE_REF", contents)
