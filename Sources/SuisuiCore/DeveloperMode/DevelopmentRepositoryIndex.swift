@@ -24,16 +24,17 @@ public actor DevelopmentRepositoryIndex {
     private let redactor: DeveloperSecretRedactor
 
     // Assignment-only redaction is deliberately broader for user-visible output.
-    // Indexing needs the narrower configuration forms below so source declarations
-    // such as `let token = value` remain searchable without persisting credentials.
-    private static let indexCredentialAssignments = [
-        try? NSRegularExpression(
-            pattern: #"(?m)^\s*(?:export\s+)?(?:API_KEY|TOKEN|PASSWORD|SECRET|CLIENT_SECRET|PRIVATE_KEY)\s*=\s*\S{8,}"#
-        ),
-        try? NSRegularExpression(
-            pattern: #"(?i)\b(?:api[_-]?key|apikey|token|password|secret|client[_-]?secret|clientsecret|private[_-]?key|privatekey)\s*[:=]\s*[\"'][^\"']{8,}[\"']"#
-        ),
-    ]
+    // For indexing, reject every such assignment unless its complete source line
+    // is one of the narrow declarations below; unknown syntax stays fail-closed.
+    private static let indexAssignments = try? NSRegularExpression(
+        pattern: #"(?i)\b(?:api[_-]?key|token|password|secret)\s*[:=]"#
+    )
+    private static let safeSourceEqualsAssignment = try? NSRegularExpression(
+        pattern: #"^\s*(?:let|var)\s+[A-Za-z_][A-Za-z0-9_]*\s+=\s+[A-Za-z_][A-Za-z0-9_.]*\s*$"#
+    )
+    private static let safeSourceTypedAssignment = try? NSRegularExpression(
+        pattern: #"(?i:\b(?:api[_-]?key|token|password|secret))\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?=\s*(?:[,){]|$))"#
+    )
 
     public init(connection: SQLiteConnection, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) {
         database = SQLiteDatabaseWorker(connection: connection)
@@ -119,26 +120,31 @@ public actor DevelopmentRepositoryIndex {
                 )
                 : rows
             let cjkTerms = terms.filter(Self.containsCJK)
-            let matchedRows = ftsRows.isEmpty && !cjkTerms.isEmpty
-                ? try Self.fallbackRows(
+            var finalRows = ftsRows
+            if !cjkTerms.isEmpty, finalRows.count < limit {
+                let exactFallback = try Self.fallbackRows(
                     connection: connection,
                     terms: cjkTerms,
                     joiner: " AND ",
                     workspaceKey: workspaceKey,
                     selectedPaths: selectedPaths,
-                    limit: limit
+                    excludedPaths: try finalRows.map { try $0.string("relative_path") },
+                    limit: limit - finalRows.count
                 )
-                : ftsRows
-            let finalRows = matchedRows.isEmpty && !cjkTerms.isEmpty
-                ? try Self.fallbackRows(
+                finalRows.append(contentsOf: exactFallback)
+            }
+            if !cjkTerms.isEmpty, finalRows.count < limit {
+                let partialFallback = try Self.fallbackRows(
                     connection: connection,
                     terms: cjkTerms,
                     joiner: " OR ",
                     workspaceKey: workspaceKey,
                     selectedPaths: selectedPaths,
-                    limit: limit
+                    excludedPaths: try finalRows.map { try $0.string("relative_path") },
+                    limit: limit - finalRows.count
                 )
-                : matchedRows
+                finalRows.append(contentsOf: partialFallback)
+            }
             return try finalRows.map { row in
                 let path = try row.string("relative_path")
                 let preview = try row.string("preview")
@@ -256,13 +262,17 @@ public actor DevelopmentRepositoryIndex {
         joiner: String,
         workspaceKey: String,
         selectedPaths: [RepositorySelection],
+        excludedPaths: [String],
         limit: Int
     ) throws -> [SQLiteMaterializedRow] {
         let selection = selectedPaths.sqlClause(column: "relative_path")
         let predicate = terms.map { _ in "(instr(relative_path, ?) > 0 OR instr(contents, ?) > 0)" }.joined(separator: joiner)
+        let exclusion = excludedPaths.isEmpty
+            ? ""
+            : " AND relative_path NOT IN (\(Array(repeating: "?", count: excludedPaths.count).joined(separator: ", ")))"
         return try connection.queryRows(
-            "SELECT relative_path, contents FROM codebase_index_files WHERE workspace_key = ? AND (\(predicate))\(selection) ORDER BY relative_path LIMIT ?;",
-            parameters: [.text(workspaceKey)] + terms.flatMap { [.text($0), .text($0)] } + selectedPaths.sqlParameters + [.integer(Int64(limit))]
+            "SELECT relative_path, contents FROM codebase_index_files WHERE workspace_key = ? AND (\(predicate))\(selection)\(exclusion) ORDER BY relative_path LIMIT ?;",
+            parameters: [.text(workspaceKey)] + terms.flatMap { [.text($0), .text($0)] } + selectedPaths.sqlParameters + excludedPaths.map(SQLiteValue.text) + [.integer(Int64(limit))]
         )
         .map { row in
             let contents = try row.string("contents")
@@ -303,12 +313,30 @@ public actor DevelopmentRepositoryIndex {
         if report.matchedPatternNames.contains(where: { $0 != "assignment" }) {
             return true
         }
-        guard !indexCredentialAssignments.contains(nil) else {
+        guard report.matchedPatternNames.contains("assignment") else {
+            return false
+        }
+        guard let assignments = indexAssignments,
+              let safeEquals = safeSourceEqualsAssignment,
+              let safeTyped = safeSourceTypedAssignment else {
             return true
         }
         let range = NSRange(contents.startIndex..<contents.endIndex, in: contents)
-        return indexCredentialAssignments.compactMap { $0 }.contains {
-            $0.firstMatch(in: contents, range: range) != nil
+        let matches = assignments.matches(in: contents, range: range)
+        guard !matches.isEmpty else {
+            return true
+        }
+        return matches.contains { match in
+            guard let swiftRange = Range(match.range, in: contents) else {
+                return true
+            }
+            let lineRange = contents.lineRange(for: swiftRange)
+            let line = String(contents[lineRange])
+            let lineNSRange = NSRange(line.startIndex..<line.endIndex, in: line)
+            let typedMatch = safeTyped.firstMatch(in: line, range: lineNSRange) != nil
+            let isTypedDeclaration = typedMatch && !line.contains("=") && !line.contains("\"") && !line.contains("'")
+            let isEqualsDeclaration = safeEquals.firstMatch(in: line, range: lineNSRange) != nil
+            return !(isTypedDeclaration || isEqualsDeclaration)
         }
     }
 
