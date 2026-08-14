@@ -164,6 +164,16 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             "MultilineCallCredential.swift": "request(\naccessToken: safe\n + \"long-secret-value\"\n)",
             "MultilineCustomOperatorCredential.swift": "infix operator <>\nfunc <>(lhs: String, rhs: String) -> String { lhs + rhs }\nlet safe = \"x\"\nlet accessToken = safe\n <> \"long-secret-value\"",
             "MultilineCastCredential.swift": "let safe: Any = \"x\"\nlet accessToken = safe\n as! String + \"long-secret-value\"",
+            "MultilineCastTabCredential.swift": "let safe: String = \"x\"\nlet accessToken = safe\n as\tString + \"long-secret-value\"",
+            "MultilineCastNewlineCredential.swift": "let safe: String = \"x\"\nlet accessToken = safe\n as\n String + \"long-secret-value\"",
+            "MultilineIsCredential.swift": "let safe: Any = \"x\"\nlet accessToken = safe\n is\n String ? \"long-secret-value\" : \"\"",
+            "ConditionalCompilationCredential.swift": "import Foundation\nlet safe = \"x\"\nlet accessToken = safe\n#if DEBUG\n.appending(\"long-secret-value\")\n#endif",
+            "CArrayCredential.c": "char accessToken[32] = \"long-secret-value\";",
+            "GoTypedCredential.go": "var accessToken []byte = []byte(\"long-secret-value\")",
+            "TypeScriptOptionalCredential.ts": "class C { accessToken?: string = \"long-secret-value\" }",
+            "TypeScriptDefiniteCredential.ts": "class C { accessToken!: string = \"long-secret-value\" }",
+            "CppBraceCredential.cpp": "std::string accessToken{\"long-secret-value\"};",
+            "CppParenCredential.cpp": "std::string refreshToken(\"long-secret-value\");",
             "SingleQuotedCredential.yml": "'token': long-secret-value",
             "CommentOpen.swift": "// fake(\ntoken: ABCDEFGHIJK1234",
             "CommentInsideCall.swift": "request(\n// token: ABCDEFGHIJK1234\n)",
@@ -257,6 +267,8 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         try fixture.write(#"{"items":[{"client_\u0073ecret":"escapedsecretmarker"}]}"#, to: "Config/EscapedSecret.json")
         try fixture.write(#"{"auths":{"registry":{"au\u0074h":"escapedauthmarker"}}}"#, to: "Config/EscapedDocker.json")
         try fixture.write(#"{"to\u006ben":"malformedjsonmarker""#, to: "Config/MalformedEscapedToken.json")
+        try fixture.write(#""to\u006ben" = "escapedtomlmarker""#, to: "Config/EscapedToken.toml")
+        try fixture.write(#""client_\u0073ecret" = "escapedtomlsecretmarker""#, to: "Config/EscapedSecret.toml")
         try fixture.write(#"{"message":"OAuth token lifecycle harmlessjsonmarker","items":[{"label":"normal"}]}"#, to: "Config/Harmless.json")
         let index = try migratedIndex()
 
@@ -266,12 +278,86 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let escapedSecret = try await index.search(query: "escapedsecretmarker", workspace: workspace(fixture))
         let escapedAuth = try await index.search(query: "escapedauthmarker", workspace: workspace(fixture))
         let malformed = try await index.search(query: "malformedjsonmarker", workspace: workspace(fixture))
+        let escapedTOML = try await index.search(query: "escapedtomlmarker", workspace: workspace(fixture))
+        let escapedTOMLSecret = try await index.search(query: "escapedtomlsecretmarker", workspace: workspace(fixture))
         let harmless = try await index.search(query: "harmlessjsonmarker", workspace: workspace(fixture))
         XCTAssertTrue(escapedToken.isEmpty)
         XCTAssertTrue(escapedSecret.isEmpty)
         XCTAssertTrue(escapedAuth.isEmpty)
         XCTAssertTrue(malformed.isEmpty)
+        XCTAssertTrue(escapedTOML.isEmpty)
+        XCTAssertTrue(escapedTOMLSecret.isEmpty)
         XCTAssertEqual(harmless.map(\.sourcePath), ["Config/Harmless.json"])
+    }
+
+    func testRefreshExcludesEscapedJavaScriptCredentialIdentifiers() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write(#"const to\u006ben = "escapedjstokenmarker";"#, to: "Scripts/EscapedToken.js")
+        try fixture.write(#"const access\u0054oken = "escapedtsaccessmarker";"#, to: "Scripts/EscapedAccess.ts")
+        try fixture.write(#"const \u{74}oken = "escapedjsxmarker";"#, to: "Scripts/EscapedBrace.jsx")
+        try fixture.write(#"const pattern = /"/; const config = {"to\u006ben":"escapedpropertymarker"};"#, to: "Scripts/EscapedProperty.js")
+        try fixture.write(#"const $access\u0054oken = "escapeddollarmarker";"#, to: "Scripts/EscapedDollar.js")
+        try fixture.write(#"class Credential { String to\u006ben = "escapedjavamarker"; }"#, to: "Sources/EscapedCredential.java")
+        try fixture.write(#"const pattern = /"/; const config = {"to\x6ben":"escapedhexmarker"};"#, to: "Scripts/EscapedHex.js")
+        try fixture.write(#"const config = {["to\x6ben"]:"escapedcomputedmarker"};"#, to: "Scripts/EscapedComputed.js")
+        try fixture.write(#"const message = "harmlessjsmarker";"#, to: "Scripts/Harmless.js")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let escapedToken = try await index.search(query: "escapedjstokenmarker", workspace: workspace(fixture))
+        let escapedAccess = try await index.search(query: "escapedtsaccessmarker", workspace: workspace(fixture))
+        let escapedBrace = try await index.search(query: "escapedjsxmarker", workspace: workspace(fixture))
+        let escapedProperty = try await index.search(query: "escapedpropertymarker", workspace: workspace(fixture))
+        let escapedDollar = try await index.search(query: "escapeddollarmarker", workspace: workspace(fixture))
+        let escapedJava = try await index.search(query: "escapedjavamarker", workspace: workspace(fixture))
+        let escapedHex = try await index.search(query: "escapedhexmarker", workspace: workspace(fixture))
+        let escapedComputed = try await index.search(query: "escapedcomputedmarker", workspace: workspace(fixture))
+        let harmless = try await index.search(query: "harmlessjsmarker", workspace: workspace(fixture))
+        XCTAssertTrue(escapedToken.isEmpty)
+        XCTAssertTrue(escapedAccess.isEmpty)
+        XCTAssertTrue(escapedBrace.isEmpty)
+        XCTAssertTrue(escapedProperty.isEmpty)
+        XCTAssertTrue(escapedDollar.isEmpty)
+        XCTAssertTrue(escapedJava.isEmpty)
+        XCTAssertTrue(escapedHex.isEmpty)
+        XCTAssertTrue(escapedComputed.isEmpty)
+        XCTAssertEqual(harmless.map(\.sourcePath), ["Scripts/Harmless.js"])
+    }
+
+    func testRefreshHandlesCRCommentsAndSwiftTriviaAfterSafeAssignments() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("const char *accessToken // note\r= \"crcredentialmarker\";", to: "Sources/CRCredential.c")
+        try fixture.write(
+            """
+            let accessToken = safe
+            // documentation
+            let commenttriviamarker = true
+            let refreshToken = safe
+            @MainActor
+            func marked() {}
+            let attributetriviamarker = true
+            let clientSecret = safe
+            #if DEBUG
+            let directivetriviamarker = true
+            #endif
+            """,
+            to: "Sources/Trivia.swift"
+        )
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let credential = try await index.search(query: "crcredentialmarker", workspace: workspace(fixture))
+        let comment = try await index.search(query: "commenttriviamarker", workspace: workspace(fixture))
+        let attribute = try await index.search(query: "attributetriviamarker", workspace: workspace(fixture))
+        let directive = try await index.search(query: "directivetriviamarker", workspace: workspace(fixture))
+        XCTAssertTrue(credential.isEmpty)
+        XCTAssertEqual(comment.map(\.sourcePath), ["Sources/Trivia.swift"])
+        XCTAssertEqual(attribute.map(\.sourcePath), ["Sources/Trivia.swift"])
+        XCTAssertEqual(directive.map(\.sourcePath), ["Sources/Trivia.swift"])
     }
 
     func testRefreshIndexesDenseCredentialWordsInsideLineComment() async throws {
@@ -305,6 +391,43 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
 
         let stale = try await index.search(query: "previousrepositorymarker", workspace: workspace(fixture))
         XCTAssertTrue(stale.isEmpty)
+    }
+
+    func testSuccessfulRefreshRetiresPriorIdentityAtSameWorkspacePath() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("prioridentitymarker", to: "Notes.md")
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let index = DevelopmentRepositoryIndex(connection: connection)
+        try await index.refresh(workspace: workspace(fixture))
+
+        let replacement = fixture.url.deletingLastPathComponent().appendingPathComponent("suisui-index-cleanup-replacement-\(UUID().uuidString)")
+        try FileManager.default.moveItem(at: fixture.url, to: replacement)
+        defer {
+            try? FileManager.default.removeItem(at: fixture.url)
+            try? FileManager.default.moveItem(at: replacement, to: fixture.url)
+        }
+        try FileManager.default.createDirectory(at: fixture.url, withIntermediateDirectories: true)
+        try "replacementidentitymarker".write(to: fixture.url.appendingPathComponent("Notes.md"), atomically: true, encoding: .utf8)
+
+        await XCTAssertThrowsErrorAsync(try await index.refresh(workspace: workspace(fixture)))
+        let retained = try connection.queryRows("SELECT contents FROM codebase_index_files;")
+        XCTAssertEqual(retained.count, 1)
+        XCTAssertEqual(try retained[0].string("contents"), "prioridentitymarker")
+
+        let git = Process()
+        git.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        git.arguments = ["init"]
+        git.currentDirectoryURL = fixture.url
+        try git.run()
+        git.waitUntilExit()
+        XCTAssertEqual(git.terminationStatus, 0)
+        try await index.refresh(workspace: workspace(fixture))
+
+        let rows = try connection.queryRows("SELECT contents FROM codebase_index_files;")
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(try rows[0].string("contents"), "replacementidentitymarker")
     }
 
     func testWorkspaceRootIdentityRejectsSamePathReplacement() throws {

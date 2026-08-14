@@ -131,6 +131,17 @@ public actor DevelopmentRepositoryIndex {
                 "DELETE FROM codebase_index_files WHERE workspace_key = ? AND generation < ?;",
                 parameters: [.text(workspaceKey), .integer(generation)]
             )
+            // A successful refresh is the only point at which a same-path
+            // replacement may retire its former inode's snapshot. Keeping this
+            // inside the transaction preserves it if the new snapshot fails.
+            try connection.execute(
+                "DELETE FROM codebase_index_files WHERE workspace_key = ? OR (workspace_key LIKE ? AND workspace_key <> ?);",
+                parameters: [
+                    .text(Self.legacyWorkspaceKey(root: root)),
+                    .text("\(Self.workspaceKeyPrefix(root: root))%"),
+                    .text(workspaceKey),
+                ]
+            )
         }
     }
 
@@ -306,7 +317,15 @@ public actor DevelopmentRepositoryIndex {
     }
 
     private static func workspaceKey(root: URL, descriptor: WorkspaceRootDescriptor) -> String {
-        sha256("\(root.path)\u{0}\(descriptor.device)\u{0}\(descriptor.inode)")
+        "\(workspaceKeyPrefix(root: root))\(descriptor.device):\(descriptor.inode)"
+    }
+
+    private static func workspaceKeyPrefix(root: URL) -> String {
+        "repository-index:\(sha256(root.path)):"
+    }
+
+    private static func legacyWorkspaceKey(root: URL) -> String {
+        sha256(root.path)
     }
 
     static func verifyWorkspaceRootIdentity(_ root: URL, device: dev_t, inode: ino_t) throws {
@@ -429,6 +448,9 @@ public actor DevelopmentRepositoryIndex {
         if relativePath.lowercased().hasSuffix(".json"), containsJSONCredentialKey(contents) {
             return true
         }
+        if containsAmbiguousNonSwiftEscape(contents, relativePath: relativePath) {
+            return true
+        }
         guard let serializedCredential else {
             return true
         }
@@ -455,6 +477,12 @@ public actor DevelopmentRepositoryIndex {
             return true
         }
         let candidateMatches = assignments.matches(in: contents, range: range)
+        // Non-Swift source languages do not have a narrow, shared safe grammar.
+        // A credential-shaped identifier is enough to exclude that whole file;
+        // prose/config extensions still require an assignment delimiter below.
+        if isNonSwiftSourceFile(relativePath), !candidateMatches.isEmpty {
+            return true
+        }
         let candidateEnds = Set(candidateMatches.compactMap { Range($0.range, in: contents)?.upperBound })
         let assignmentEnds = credentialAssignmentDelimiterEnds(in: contents, candidateEnds: candidateEnds)
         let matches = candidateMatches.filter {
@@ -521,8 +549,35 @@ public actor DevelopmentRepositoryIndex {
 
     private static func hasSwiftContinuation(after lineEnd: String.Index, in source: String) -> Bool {
         var index = lineEnd
-        while index < source.endIndex, source[index].isWhitespace {
-            index = source.index(after: index)
+        while true {
+            while index < source.endIndex, source[index].isWhitespace {
+                index = source.index(after: index)
+            }
+            guard index < source.endIndex else {
+                return false
+            }
+            let nextIndex = source.index(after: index)
+            let nextCharacter = nextIndex < source.endIndex ? source[nextIndex] : nil
+            if source[index] == "/", nextCharacter == "/" {
+                while index < source.endIndex, source[index] != "\n", source[index] != "\r" {
+                    index = source.index(after: index)
+                }
+                continue
+            }
+            if source[index] == "@" {
+                // Attributes begin a new declaration context; they cannot
+                // continue an expression.
+                return false
+            }
+            if source[index] == "#" {
+                // A conditional-compilation line may surround a postfix chain.
+                // Skip the directive and classify the next normal code token.
+                while index < source.endIndex, source[index] != "\n", source[index] != "\r" {
+                    index = source.index(after: index)
+                }
+                continue
+            }
+            break
         }
         guard index < source.endIndex else {
             return false
@@ -534,9 +589,21 @@ public actor DevelopmentRepositoryIndex {
             // list would reopen the multiline literal bypass.
             return true
         }
-        let remaining = source[index...]
-        return remaining.hasPrefix("as ") || remaining.hasPrefix("as!") ||
-            remaining.hasPrefix("as?") || remaining.hasPrefix("is ")
+        var tokenEnd = index
+        while tokenEnd < source.endIndex,
+              (source[tokenEnd].isLetter || source[tokenEnd].isNumber || source[tokenEnd] == "_") {
+            tokenEnd = source.index(after: tokenEnd)
+        }
+        // `as` and `is` may place their type on a following line or after a
+        // tab. Treat the complete identifier token as a continuation keyword.
+        let token = String(source[index..<tokenEnd])
+        return token == "as" || token == "is"
+    }
+
+    private static func isNonSwiftSourceFile(_ relativePath: String) -> Bool {
+        ["c", "cc", "cpp", "cxx", "h", "hpp", "m", "mm", "go", "js", "jsx", "ts", "tsx", "py", "rb", "java", "kt", "kts", "rs", "cs", "fs", "fsx", "scala", "sh", "bash", "zsh", "fish", "lua", "pl", "php", "sql"].contains(
+            URL(fileURLWithPath: relativePath).pathExtension.lowercased()
+        )
     }
 
     private static func containsJSONCredentialKey(_ contents: String) -> Bool {
@@ -546,6 +613,20 @@ public actor DevelopmentRepositoryIndex {
             return true
         }
         return containsJSONCredentialKey(in: object)
+    }
+
+    private static func containsAmbiguousNonSwiftEscape(
+        _ contents: String,
+        relativePath: String
+    ) -> Bool {
+        let extensionName = URL(fileURLWithPath: relativePath).pathExtension.lowercased()
+        guard extensionName != "json", extensionName != "swift" else {
+            return false
+        }
+        // Escape expansion differs across non-Swift languages and can turn a
+        // harmless raw token into a credential key. Reject it at this boundary
+        // rather than attempting to maintain parsers for every indexed format.
+        return contents.contains("\\u") || contents.contains("\\U") || contents.contains("\\x")
     }
 
     private static func containsJSONCredentialKey(in object: Any) -> Bool {
@@ -617,7 +698,7 @@ public actor DevelopmentRepositoryIndex {
             let nextCharacter = nextIndex < source.endIndex ? source[nextIndex] : nil
 
             if lineComment {
-                if character == "\n" {
+                if character == "\n" || character == "\r" {
                     lineComment = false
                 }
             } else if blockCommentDepth > 0 {
@@ -695,7 +776,7 @@ public actor DevelopmentRepositoryIndex {
             let nextCharacter = nextIndex < source.endIndex ? source[nextIndex] : nil
 
             if lineComment {
-                lineComment = character != "\n"
+                lineComment = character != "\n" && character != "\r"
                 index = nextIndex
                 continue
             }
