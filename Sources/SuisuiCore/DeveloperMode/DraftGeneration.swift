@@ -41,7 +41,7 @@ public struct DeveloperSecretRedactor: Sendable {
     private static let defaultPatternDefinitions: [SecretRedactionPatternDefinition] = [
         SecretRedactionPatternDefinition(name: "github_pat", expression: #"github_pat_[A-Za-z0-9_]{8,}"#),
         // Keep the historical report name while covering GitHub's complete
-        // token-prefix family; classic ghp fixtures retain their old threshold.
+        // token-prefix family; classic ghp values retain their compatibility threshold.
         SecretRedactionPatternDefinition(name: "ghp", expression: #"gh(?:p_[A-Za-z0-9_]{6,}|[ousr]_[A-Za-z0-9_]{8,})"#),
         SecretRedactionPatternDefinition(name: "openai", expression: #"sk-(?:proj-)?[A-Za-z0-9_-]{8,}"#),
         SecretRedactionPatternDefinition(name: "stripe", expression: #"(?<![A-Za-z0-9_-])(?:sk|rk)_(?:live|test)_[A-Za-z0-9_-]{8,}(?![A-Za-z0-9_-])"#),
