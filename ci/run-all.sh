@@ -11,5 +11,5 @@ cargo fmt --manifest-path "$RUST_MANIFEST" --check
 cargo test --manifest-path "$RUST_MANIFEST" --locked --all-targets --all-features
 cargo clippy --manifest-path "$RUST_MANIFEST" --locked --all-targets --all-features -- -D warnings
 ./scripts/ci.sh ui-runtime
-./scripts/ci.sh ui-visual
+env -u SUISUI_CI_VISUAL_GATE_LOCALE ./scripts/ci.sh ui-visual
 ./scripts/ci.sh ui-performance

@@ -74,13 +74,10 @@ UI・Rust境界を含むローカル完全検証:
 UIを必要としない完全SwiftPM・source contract・securityの確認だけを行う場合は
 `./ci/run-full.sh` を使う。これは `ci` 完了の代替ではない。
 
-手動GitHub Actionsは常に完全検証になる。ローカルで明示的に完全検証へ固定する場合:
+手動GitHub Actionsは常に完全検証になる。ローカル完全検証は同じ入口を使う:
 
 ```bash
-./ci/run-pr-ci.sh \
-  --base-revision HEAD \
-  --head-revision HEAD \
-  --force-full-reason "manual complete validation"
+./ci/run-all.sh
 ```
 
 JSON planは `.tmp/ci-impact/test-plan.json`、実行履歴は `.tmp/ci-impact/execution.json` に出る。CIログではbase/head、project、adapter、変更file、影響module、unit/integration/E2E/smoke件数、strategy、fallback reasonを確認する。executionの`targetCount`はfilter数、`executedTestCount`はSwiftPM出力から検証した実テスト件数である。
