@@ -878,7 +878,8 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         let ftsTerms = boundedTokens
             .filter { !Self.containsCJK($0) }
             .map { "\"\(SQL.escapeFTS($0))\"" }
-        var recordsByID: [Int64: TaskRecord] = [:]
+        var records: [TaskRecord] = []
+        var seenIDs = Set<Int64>()
 
         if !ftsTerms.isEmpty {
             for record in try connection.queryRows(
@@ -893,25 +894,25 @@ public final class SQLiteTaskStore: @unchecked Sendable {
                 LIMIT ?;
                 """,
                 parameters: [.text(ftsTerms.joined(separator: " OR ")), .integer(Int64(limit))]
-            ).map(TaskRecord.init(row:)) {
-                recordsByID[record.id] = record
+            ).map(TaskRecord.init(row:)) where seenIDs.insert(record.id).inserted {
+                records.append(record)
             }
         }
 
-        if recordsByID.count < limit {
-            // unicode61 cannot index arbitrary CJK or ASCII substrings. Keep
-            // the previous contains contract inside bounded SQLite queries;
-            // never materialize the task history in Swift just to filter it.
+        if records.count < limit {
+            // Keep FTS-ranked exact hits first, then recover CJK and ASCII
+            // substrings inside bounded SQLite queries; never materialize the
+            // task history in Swift just to filter it.
             for record in try searchOpenTasksByContainsLocked(
                 tokens: boundedTokens,
-                excludingIDs: Set(recordsByID.keys),
-                limit: limit - recordsByID.count
-            ) {
-                recordsByID[record.id] = record
+                excludingIDs: seenIDs,
+                limit: limit - records.count
+            ) where seenIDs.insert(record.id).inserted {
+                records.append(record)
             }
         }
 
-        return Array(recordsByID.values.sorted { $0.id < $1.id }.prefix(limit))
+        return Array(records.prefix(limit))
     }
 
     public func createMany(_ drafts: [TaskCreateDraft]) throws -> [TaskRecord] {
@@ -1949,7 +1950,7 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
             for record in try connection.queryRows(
                 """
                 SELECT * FROM knowledge_frames
-                WHERE \(predicate)\(exclusion)
+                WHERE (\(predicate))\(exclusion)
                 ORDER BY id ASC
                 LIMIT ?;
                 """,

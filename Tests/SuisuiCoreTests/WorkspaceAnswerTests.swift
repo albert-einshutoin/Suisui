@@ -174,6 +174,20 @@ final class WorkspaceAnswerTests: XCTestCase {
         XCTAssertEqual(all.filter { $0.kind == "task" && $0.title == "Launch review" }.count, 1)
     }
 
+    func testRetrieveUsesExactTaskMatchBeforeOlderSubstringAfterDeadlineConsumesSlot() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "Send daily summary", dueAt: "2026-06-17T06:00:00Z")
+        _ = try stores.tasks.create(title: "Prepare invoice report")
+        _ = try stores.tasks.create(title: "Record voice memo")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "What about voice?", limit: 2).map(\.title),
+            ["Send daily summary", "Record voice memo"]
+        )
+    }
+
     func testRetrieveReturnsNothingForBlankQuestion() throws {
         let stores = try makeStores()
         _ = try stores.tasks.create(title: "Overdue invoice", dueAt: "2026-06-15T00:00:00Z")

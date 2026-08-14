@@ -385,6 +385,18 @@ final class LocalStoreTests: XCTestCase {
         )
     }
 
+    func testKnowledgeSearchExcludesEarlierFTSHitBeforeCompletingAnotherTokenSubstring() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let ftsFrame = try store.create(name: "Voice notes", body: "Record the voice memo")
+        let substringFrame = try store.create(name: "Meetings", body: "Prepare the premeeting checklist")
+
+        XCTAssertEqual(
+            try store.search(matching: ["voice", "meet"], limit: 2).map(\.id),
+            [ftsFrame.id, substringFrame.id]
+        )
+    }
+
     func testTaskStoreRejectsCorruptedProjectIDInsteadOfDetachingTask() throws {
         let connection = try migratedConnection()
         let projects = SQLiteProjectStore(connection: connection)
