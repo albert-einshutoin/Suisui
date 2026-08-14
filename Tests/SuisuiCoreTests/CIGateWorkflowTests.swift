@@ -125,15 +125,17 @@ final class CIGateWorkflowTests: XCTestCase {
             eventName: String,
             selectionState: String,
             matrixResult: String,
+            rustResult: String,
             expectedExitCode: Int32,
             expectedOutput: String
         )] = [
-            ("pull_request", "0", "skipped", 0, "status=not-required"),
-            ("pull_request", "1", "success", 0, "status=passed"),
-            ("pull_request", "1", "failure", 1, "locale-visual-gate-did-not-succeed"),
-            ("pull_request", "", "success", 1, "visual-selection-result-invalid"),
-            ("pull_request", "2", "success", 1, "visual-selection-result-invalid"),
-            ("push", "", "success", 0, "status=passed")
+            ("pull_request", "0", "skipped", "success", 0, "status=not-required"),
+            ("pull_request", "1", "success", "success", 0, "status=passed"),
+            ("pull_request", "1", "failure", "success", 1, "locale-visual-gate-did-not-succeed"),
+            ("pull_request", "", "success", "success", 1, "visual-selection-result-invalid"),
+            ("pull_request", "2", "success", "success", 1, "visual-selection-result-invalid"),
+            ("push", "", "success", "success", 0, "status=passed"),
+            ("pull_request", "0", "skipped", "failure", 1, "rust-boundary-gate-did-not-succeed")
         ]
 
         for testCase in cases {
@@ -141,6 +143,7 @@ final class CIGateWorkflowTests: XCTestCase {
                 script,
                 environment: [
                     "EVENT_NAME": testCase.eventName,
+                    "KOKORO_RUST_RESULT": testCase.rustResult,
                     "VISUAL_SELECTION_STATE": testCase.selectionState,
                     "LOCALE_VISUAL_RESULT": testCase.matrixResult
                 ]
