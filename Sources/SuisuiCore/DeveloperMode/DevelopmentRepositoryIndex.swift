@@ -28,13 +28,13 @@ public actor DevelopmentRepositoryIndex {
     // For indexing, reject every such assignment unless it matches one of the
     // narrow Swift grammars below; unknown syntax stays fail-closed.
     private static let credentialKeyAssignments = try? NSRegularExpression(
-        pattern: #"(?:\b[a-z_]*(?i:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret)|\b(?:[A-Z][A-Z0-9]*_)*(?:API_KEY|ACCESS_KEY|PRIVATE_KEY|TOKEN|PASSWORD|SECRET))\s*[:=]"#
+        pattern: #"(?:\b(?=[a-z_])[A-Za-z0-9_]*(?i:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret)|\b(?:[A-Z][A-Z0-9]*_)*(?:API_KEY|ACCESS_KEY|PRIVATE_KEY|TOKEN|PASSWORD|SECRET))\s*[:=]"#
     )
     private static let safeSwiftAssignment = try? NSRegularExpression(
         pattern: #"^\s*(?:(?:let|var)\s+)?(?:self\.)?[A-Za-z_][A-Za-z0-9_]*\s+=\s*(.+?)\s*$"#
     )
     private static let safeSwiftCallLabel = try? NSRegularExpression(
-        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*(.+?)\s*,?\s*$"#
+        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*(.+?)\s*,?\s*\)*\s*$"#
     )
     private static let safeSwiftExpressionAtom = try? NSRegularExpression(
         pattern: #"^(?:try\s+)?(?:nil|true|false|[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*(?:\(\s*(?:(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*(?:\s*,\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*)*)?\s*\))?)$"#
@@ -54,8 +54,8 @@ public actor DevelopmentRepositoryIndex {
     private static let swiftFunctionParameterPrefix = try? NSRegularExpression(
         pattern: #"\b(?:func\s+[A-Za-z_][A-Za-z0-9_]*\s*|init\s*)\([^)]*$"#
     )
-    private static let swiftArgumentListPrefix = try? NSRegularExpression(
-        pattern: #"\([^)]*$"#
+    private static let swiftCallOpener = try? NSRegularExpression(
+        pattern: #"^\s*(?:try\s+)?[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\s*$"#
     )
 
     public init(connection: SQLiteConnection, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) {
@@ -364,7 +364,7 @@ public actor DevelopmentRepositoryIndex {
               let safeTypedFunctionParameter = safeSourceTypedFunctionParameter,
               let typedDeclarationPrefix = swiftTypedDeclarationPrefix,
               let functionParameterPrefix = swiftFunctionParameterPrefix,
-              let argumentListPrefix = swiftArgumentListPrefix else {
+              let callOpener = swiftCallOpener else {
             return true
         }
         let matches = assignments.matches(in: contents, range: range)
@@ -398,7 +398,12 @@ public actor DevelopmentRepositoryIndex {
             // These forms contain only source identifiers/member references, never
             // a literal credential. The surrounding argument list prevents config
             // syntax from becoming an indexing exception.
-            let isCallLabel = argumentListPrefix.firstMatch(in: sourcePrefix, range: sourcePrefixRange) != nil &&
+            let hasCurrentLineCommentOrQuote = assignmentPrefix.contains("//") ||
+                assignmentPrefix.contains("/*") ||
+                assignmentPrefix.contains("\"") ||
+                assignmentPrefix.contains("'")
+            let isCallLabel = !hasCurrentLineCommentOrQuote &&
+                hasOpenSwiftArgumentList(in: sourcePrefix, callOpener: callOpener) &&
                 containsSafeSwiftExpression(in: assignmentSuffix, grammar: safeCallLabel, atom: safeExpressionAtom)
             return !(isTypedDeclaration || isSafeAssignment || isCallLabel)
         }
@@ -417,13 +422,44 @@ public actor DevelopmentRepositoryIndex {
         return isSafeSwiftExpression(String(value[expressionRange]), atom: atom)
     }
 
+    // Walking nesting from the end survives nested calls, but only a real call
+    // opener is trusted: comments and strings must never create a safe exception.
+    private static func hasOpenSwiftArgumentList(
+        in sourcePrefix: String,
+        callOpener: NSRegularExpression
+    ) -> Bool {
+        var closedParentheses = 0
+        for index in sourcePrefix.indices.reversed() {
+            let character = sourcePrefix[index]
+            switch character {
+            case ")":
+                closedParentheses += 1
+            case "(":
+                if closedParentheses == 0 {
+                    let lineRange = sourcePrefix.lineRange(for: index..<sourcePrefix.index(after: index))
+                    let openerPrefix = String(sourcePrefix[lineRange.lowerBound..<index])
+                    let range = NSRange(openerPrefix.startIndex..<openerPrefix.endIndex, in: openerPrefix)
+                    return !openerPrefix.contains("//") &&
+                        !openerPrefix.contains("/*") &&
+                        !openerPrefix.contains("\"") &&
+                        !openerPrefix.contains("'") &&
+                        callOpener.firstMatch(in: openerPrefix, range: range) != nil
+                }
+                closedParentheses -= 1
+            default:
+                continue
+            }
+        }
+        return false
+    }
+
     private static func isSafeSwiftExpression(_ expression: String, atom: NSRegularExpression) -> Bool {
         let comparisonParts = expression.components(separatedBy: "==")
         guard comparisonParts.count <= 2 else {
             return false
         }
         if comparisonParts.count == 2,
-           !["true", "false", "nil"].contains(comparisonParts[1].trimmingCharacters(in: .whitespaces)) {
+           !["true", "false", "nil"].contains(comparisonParts[1].trimmingCharacters(in: .whitespacesAndNewlines)) {
             return false
         }
         // Each operand is intentionally limited to source names, member access,
@@ -432,7 +468,7 @@ public actor DevelopmentRepositoryIndex {
         return comparisonParts[0]
             .components(separatedBy: "??")
             .allSatisfy { candidate in
-                let trimmed = candidate.trimmingCharacters(in: .whitespaces)
+                let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
                 let range = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
                 return atom.firstMatch(in: trimmed, range: range) != nil
             }

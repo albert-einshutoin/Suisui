@@ -114,6 +114,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
                     let normalizedToken = value.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
                 func send(response: OAuthTokenResponse) {
+                    request(accessToken: response.accessToken)
                     request(
                         accessToken: response.accessToken,
                         refreshToken: response.refreshToken ?? refreshToken,
@@ -143,6 +144,13 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             "ClientSecretSource.swift": "let clientSecret = \"compound-secret-value\"",
             "ClientSecretSnakeSource.swift": "let client_secret = \"compound-secret-value\"",
             "PrivateKeySource.swift": "let privateKey = \"compound-secret-value\"",
+            "GoogleClientSecret.swift": "let googleClientSecret = \"long-secret-value\"",
+            "GitHubAccessToken.swift": "let githubAccessToken = \"long-secret-value\"",
+            "OAuthRefreshToken.swift": "let oauthRefreshToken = \"long-secret-value\"",
+            "AWSSecretAccessKey.swift": "let awsSecretAccessKey = \"long-secret-value\"",
+            "OAuth2Token.yml": "oauth2_token: long-secret-value",
+            "CommentOpen.swift": "// fake(\ntoken: ABCDEFGHIJK1234",
+            "CommentInsideCall.swift": "request(\n// token: ABCDEFGHIJK1234\n)",
             "TokenStandalone.swift": "TOKEN: ABCDEFGHIJK1234",
             "TokenSource.txt": "let token = textonlymarker",
             "TokenFunction.yml": "func f(token: NonSwiftMarker)",
