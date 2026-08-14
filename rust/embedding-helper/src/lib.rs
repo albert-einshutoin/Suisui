@@ -14,6 +14,7 @@ use fastembed::{
 const MAX_TEXT_BYTES: u64 = 64 * 1024;
 const MAX_MODEL_BYTES: u64 = 400 * 1024 * 1024;
 const EXPECTED_DIMENSIONS: usize = 384;
+#[cfg(any(test, not(unix)))]
 const MODEL_FILES: [&str; 5] = [
     "model.onnx",
     "tokenizer.json",
@@ -52,7 +53,7 @@ trait EmbeddingEngine {
 }
 
 struct Request {
-    model_dir: PathBuf,
+    model_files: ModelFiles,
     text: String,
     output: OutputTarget,
 }
@@ -73,7 +74,7 @@ where
     I: IntoIterator<Item = String>,
 {
     let request = parse_request(arguments)?;
-    let mut engine = FastEmbedEngine::load(&request.model_dir)?;
+    let mut engine = FastEmbedEngine::load(request.model_files)?;
     write_embedding_to_target(&mut engine, &request.text, &request.output)
 }
 
@@ -114,14 +115,14 @@ where
     }
 
     let model_dir = PathBuf::from(model_dir.ok_or(HelperError::INVALID_REQUEST)?);
-    validate_model_dir(&model_dir)?;
+    let model_files = load_model_files(&model_dir)?;
     let text = read_text(PathBuf::from(
         text_file.ok_or(HelperError::INVALID_REQUEST)?,
     ))?;
     let output = validate_output(&PathBuf::from(output.ok_or(HelperError::INVALID_REQUEST)?))?;
 
     Ok(Request {
-        model_dir,
+        model_files,
         text,
         output,
     })
@@ -139,8 +140,7 @@ struct FastEmbedEngine {
 }
 
 impl FastEmbedEngine {
-    fn load(model_dir: &Path) -> AppResult<Self> {
-        let files = load_model_files(model_dir)?;
+    fn load(files: ModelFiles) -> AppResult<Self> {
         let model = UserDefinedEmbeddingModel::new(
             files.model,
             TokenizerFiles {
@@ -182,17 +182,35 @@ struct ModelFiles {
 }
 
 fn load_model_files(model_dir: &Path) -> AppResult<ModelFiles> {
-    validate_model_dir(model_dir)?;
+    #[cfg(unix)]
+    {
+        let model_dir = open_existing_directory(model_dir, HelperError::MODEL_INVALID)?;
+        load_model_files_from_directory(&model_dir)
+    }
+
+    #[cfg(not(unix))]
+    {
+        validate_model_dir(model_dir)?;
+        load_model_files_from_paths(model_dir)
+    }
+}
+
+#[cfg(unix)]
+fn load_model_files_from_directory(model_dir: &File) -> AppResult<ModelFiles> {
     // UserDefinedEmbeddingModel owns these buffers; enforcing the aggregate cap
     // before construction bounds the helper's peak untrusted-model allocation.
     let mut remaining = MAX_MODEL_BYTES;
     let mut read = |name: &str| {
-        let bytes = read_bounded_file(
-            &model_dir.join(name),
+        let bytes = read_bounded_file_from_directory(
+            model_dir,
+            name,
             remaining,
             HelperError::MODEL_INVALID,
             HelperError::MODEL_INVALID,
         )?;
+        if bytes.is_empty() {
+            return Err(HelperError::MODEL_INVALID);
+        }
         remaining = remaining
             .checked_sub(bytes.len() as u64)
             .ok_or(HelperError::MODEL_INVALID)?;
@@ -208,6 +226,37 @@ fn load_model_files(model_dir: &Path) -> AppResult<ModelFiles> {
     })
 }
 
+#[cfg(not(unix))]
+fn load_model_files_from_paths(model_dir: &Path) -> AppResult<ModelFiles> {
+    // UserDefinedEmbeddingModel owns these buffers; enforcing the aggregate cap
+    // before construction bounds the helper's peak untrusted-model allocation.
+    let mut remaining = MAX_MODEL_BYTES;
+    let mut read = |name: &str| {
+        let bytes = read_bounded_file(
+            &model_dir.join(name),
+            remaining,
+            HelperError::MODEL_INVALID,
+            HelperError::MODEL_INVALID,
+        )?;
+        if bytes.is_empty() {
+            return Err(HelperError::MODEL_INVALID);
+        }
+        remaining = remaining
+            .checked_sub(bytes.len() as u64)
+            .ok_or(HelperError::MODEL_INVALID)?;
+        Ok(bytes)
+    };
+
+    Ok(ModelFiles {
+        model: read("model.onnx")?,
+        tokenizer: read("tokenizer.json")?,
+        config: read("config.json")?,
+        special_tokens_map: read("special_tokens_map.json")?,
+        tokenizer_config: read("tokenizer_config.json")?,
+    })
+}
+
+#[cfg(not(unix))]
 fn validate_model_dir(path: &Path) -> AppResult<()> {
     validate_existing_directory(path, HelperError::MODEL_INVALID)?;
     let mut total = 0_u64;
@@ -255,10 +304,23 @@ fn read_bounded_file(
     too_large: HelperError,
     read_error: HelperError,
 ) -> AppResult<Vec<u8>> {
+    read_bounded_open_file(
+        open_regular_file(path, read_error)?,
+        maximum,
+        too_large,
+        read_error,
+    )
+}
+
+fn read_bounded_open_file(
+    file: File,
+    maximum: u64,
+    too_large: HelperError,
+    read_error: HelperError,
+) -> AppResult<Vec<u8>> {
     let capacity = usize::try_from(maximum.min(64 * 1024)).map_err(|_| too_large)?;
     let mut bytes = Vec::with_capacity(capacity);
-    open_regular_file(path, read_error)?
-        .take(maximum.saturating_add(1))
+    file.take(maximum.saturating_add(1))
         .read_to_end(&mut bytes)
         .map_err(|_| read_error)?;
     if bytes.len() as u64 > maximum {
@@ -291,6 +353,50 @@ fn open_regular_file(path: &Path, error: HelperError) -> AppResult<File> {
     Ok(file)
 }
 
+#[cfg(unix)]
+fn read_bounded_file_from_directory(
+    directory: &File,
+    name: &str,
+    maximum: u64,
+    too_large: HelperError,
+    read_error: HelperError,
+) -> AppResult<Vec<u8>> {
+    read_bounded_open_file(
+        open_regular_file_at(directory, name, read_error)?,
+        maximum,
+        too_large,
+        read_error,
+    )
+}
+
+#[cfg(unix)]
+fn open_regular_file_at(directory: &File, name: &str, error: HelperError) -> AppResult<File> {
+    use std::{
+        ffi::CString,
+        os::unix::io::{AsRawFd, FromRawFd},
+    };
+
+    let name = CString::new(name).map_err(|_| error)?;
+    // SAFETY: directory owns the FD and name is a NUL-terminated basename.
+    // O_NONBLOCK rejects a raced FIFO/device without blocking before fstat.
+    let descriptor = unsafe {
+        libc::openat(
+            directory.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC,
+        )
+    };
+    if descriptor < 0 {
+        return Err(error);
+    }
+    // SAFETY: openat returned a new owned descriptor on success.
+    let file = unsafe { File::from_raw_fd(descriptor) };
+    if !file.metadata().map_err(|_| error)?.file_type().is_file() {
+        return Err(error);
+    }
+    Ok(file)
+}
+
 fn validate_regular_file(path: &Path, error: HelperError) -> AppResult<fs::Metadata> {
     validate_absolute(path, error)?;
     let parent = path.parent().ok_or(error)?;
@@ -309,7 +415,7 @@ fn validate_output(path: &Path) -> AppResult<OutputTarget> {
 
     #[cfg(unix)]
     {
-        let parent = open_output_directory(parent)?;
+        let parent = open_existing_directory(parent, HelperError::OUTPUT_FAILED)?;
         ensure_output_missing(&parent, name)?;
         Ok(OutputTarget {
             parent,
@@ -330,21 +436,22 @@ fn validate_output(path: &Path) -> AppResult<OutputTarget> {
 }
 
 #[cfg(unix)]
-fn open_output_directory(path: &Path) -> AppResult<File> {
+fn open_existing_directory(path: &Path, error: HelperError) -> AppResult<File> {
     use std::os::unix::fs::OpenOptionsExt;
 
+    validate_absolute(path, error)?;
     let directory = OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW)
         .open(path)
-        .map_err(|_| HelperError::OUTPUT_FAILED)?;
+        .map_err(|_| error)?;
     if !directory
         .metadata()
-        .map_err(|_| HelperError::OUTPUT_FAILED)?
+        .map_err(|_| error)?
         .file_type()
         .is_dir()
     {
-        return Err(HelperError::OUTPUT_FAILED);
+        return Err(error);
     }
     Ok(directory)
 }
@@ -811,6 +918,62 @@ mod tests {
 
         assert!(retained_parent.join("embedding.json").is_file());
         assert!(!replacement.join("embedding.json").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn model_parent_swap_does_not_replace_validated_generation() {
+        use std::os::unix::fs::symlink;
+
+        let scratch = Scratch::new("model-parent-swap");
+        let model = scratch.path().join("model");
+        let retained_model = scratch.path().join("validated-model");
+        let replacement = scratch.path().join("replacement-model");
+        write_model_generation(&model, "original");
+        write_model_generation(&replacement, "replacement");
+
+        let model_directory = super::open_existing_directory(&model, HelperError::MODEL_INVALID)
+            .expect("open original model");
+        fs::rename(&model, &retained_model).expect("retain original model");
+        symlink(&replacement, &model).expect("replace model parent with symlink");
+
+        assert_eq!(
+            model_generation(
+                super::load_model_files_from_directory(&model_directory).expect("load fixed model"),
+            ),
+            "original"
+        );
+    }
+
+    #[cfg(unix)]
+    fn write_model_generation(directory: &Path, generation: &str) {
+        fs::create_dir(directory).expect("model directory");
+        for name in super::MODEL_FILES {
+            fs::write(directory.join(name), format!("{generation}:{name}")).expect("model asset");
+        }
+    }
+
+    #[cfg(unix)]
+    fn model_generation(files: super::ModelFiles) -> String {
+        let files = [
+            files.model,
+            files.tokenizer,
+            files.config,
+            files.special_tokens_map,
+            files.tokenizer_config,
+        ];
+        let generation = std::str::from_utf8(&files[0])
+            .expect("model bytes")
+            .split_once(':')
+            .expect("generation separator")
+            .0
+            .to_owned();
+        assert!(
+            files.iter().all(|file| {
+                String::from_utf8_lossy(file).starts_with(&format!("{generation}:"))
+            })
+        );
+        generation
     }
 
     #[test]
