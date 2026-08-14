@@ -26,6 +26,90 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(Set(found.map(\.sourcePath)), ["Notes.md", "Sources/Tracked.swift"])
     }
 
+    func testRefreshFailsClosedForFinalSymlinksAndCredentialFiles() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("safe marker", to: "Notes.md")
+        try fixture.write("credential marker", to: ".docker/config.json")
+        try fixture.write("credential marker", to: "Nested/.docker/config.json")
+        try fixture.write("credential marker", to: "auth.json")
+        try FileManager.default.createSymbolicLink(
+            at: fixture.url.appendingPathComponent("Race.md"),
+            withDestinationURL: fixture.url.appendingPathComponent("Notes.md")
+        )
+
+        let index = try migratedIndex()
+        try await index.refresh(workspace: workspace(fixture))
+
+        let safeResults = try await index.search(query: "safe", workspace: workspace(fixture))
+        let credentialResults = try await index.search(query: "credential", workspace: workspace(fixture))
+        XCTAssertEqual(safeResults.map(\.sourcePath), ["Notes.md"])
+        XCTAssertTrue(credentialResults.isEmpty)
+    }
+
+    func testRefreshDoesNotPersistDockerOrCredentialJSON() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("{\"auths\": {\"registry.invalid\": {\"auth\": \"encoded-placeholder\"}}}", to: "Settings.json")
+        try fixture.write("{\"client_secret\": \"placeholder\", \"private_key\": \"placeholder\"}", to: "Service.json")
+
+        let index = try migratedIndex()
+        try await index.refresh(workspace: workspace(fixture))
+
+        let results = try await index.search(query: "registry", workspace: workspace(fixture))
+        XCTAssertTrue(results.isEmpty)
+        let serviceResults = try await index.search(query: "client", workspace: workspace(fixture))
+        XCTAssertTrue(serviceResults.isEmpty)
+    }
+
+    func testRepositoryDescriptorWalkRejectsIntermediateAndFinalSymlinks() throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let outside = FileManager.default.temporaryDirectory.appendingPathComponent("suisui-index-outside-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: outside) }
+        try "outside".write(to: outside.appendingPathComponent("Outside.md"), atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(
+            at: fixture.url.appendingPathComponent("Docs"),
+            withDestinationURL: outside
+        )
+        try FileManager.default.createSymbolicLink(
+            at: fixture.url.appendingPathComponent("Race.md"),
+            withDestinationURL: outside.appendingPathComponent("Outside.md")
+        )
+
+        XCTAssertThrowsError(try DevelopmentRepositoryIndex.boundedFileData(root: fixture.url, relativePath: "Docs/Outside.md"))
+        XCTAssertThrowsError(try DevelopmentRepositoryIndex.boundedFileData(root: fixture.url, relativePath: "Race.md"))
+    }
+
+    func testRefreshDoesNotRunRepositoryConfiguredFsmonitor() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("safe marker", to: "Notes.md")
+        let markerURL = fixture.url.appendingPathComponent("fsmonitor-ran")
+        let hookURL = fixture.url.appendingPathComponent("fsmonitor.sh")
+        try "#!/bin/sh\ntouch '\(markerURL.path)'\n".write(to: hookURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: hookURL.path)
+        try fixture.runGit(["config", "core.fsmonitor", hookURL.path])
+
+        let index = try migratedIndex()
+        try await index.refresh(workspace: workspace(fixture))
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: markerURL.path))
+    }
+
+    func testManifestTimeoutTerminatesHungProcessWithinBound() throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let helper = fixture.url.appendingPathComponent("hang.sh")
+        try "#!/bin/sh\ntrap '' TERM\nwhile :; do :; done\n".write(to: helper, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
+
+        let startedAt = Date()
+        XCTAssertThrowsError(try GitManifestReader.paths(at: fixture.url, timeout: 0.01, executableURL: helper))
+        XCTAssertLessThan(Date().timeIntervalSince(startedAt), 3)
+    }
+
     func testRefreshReplacesSnapshotAndKeepsPreviousGenerationAfterGitFailure() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }

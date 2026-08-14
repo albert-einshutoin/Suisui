@@ -43,6 +43,10 @@ public struct DeveloperSecretRedactor: Sendable {
         SecretRedactionPatternDefinition(name: "ghp", expression: #"ghp_[A-Za-z0-9_]{6,}"#),
         SecretRedactionPatternDefinition(name: "openai", expression: #"sk-(?:proj-)?[A-Za-z0-9_-]{8,}"#),
         SecretRedactionPatternDefinition(name: "aws_access_key", expression: #"AKIA[0-9A-Z]{16}"#),
+        // Repository indexes must reject Docker credential JSON before it can be
+        // persisted; matching field names catches encoded values too.
+        SecretRedactionPatternDefinition(name: "docker_auth_json", expression: #"(?i)\"(?:auths|auth|identitytoken)\"\s*:\s*(?:\{|\"[^\"]+\")"#),
+        SecretRedactionPatternDefinition(name: "credential_json", expression: #"(?i)\"(?:api[_-]?key|token|password|secret|client_secret|private_key)\"\s*:\s*\"[^\"]+\""#),
         SecretRedactionPatternDefinition(name: "assignment", expression: #"(?i)\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*(?!\[REDACTED_SECRET\])[^\s,;]+"#)
     ]
 

@@ -138,11 +138,16 @@ public enum DevelopmentRepositoryFilePathPolicy {
 
     private static let secretBasenames: Set<String> = [
         ".env", ".netrc", ".npmrc", ".pypirc", ".yarnrc", "credentials", "credentials.json",
-        "id_rsa", "id_dsa", "password.json", "secret.json", "secrets.json", "token.json"
+        "credential.json", "id_rsa", "id_dsa", "password.json", "secret.json", "secrets.json", "token.json",
+        "tokens.json", "auth.json", "login.json"
     ]
 
     private static let secretDirectories: Set<String> = [
         ".aws", ".config/gh", ".gnupg", ".ssh"
+    ]
+
+    private static let secretPathPairs: Set<String> = [
+        ".docker/config.json"
     ]
 
     public static func validatedRelativePath(_ rawPath: String) throws -> String {
@@ -255,6 +260,13 @@ public enum DevelopmentRepositoryFilePathPolicy {
     }
 
     private static func isSecretLike(components: [String]) -> Bool {
+        let lowercased = components.map { $0.lowercased() }
+        if secretPathPairs.contains(lowercased.joined(separator: "/")) ||
+            zip(lowercased, lowercased.dropFirst()).contains(where: { pair in
+                secretPathPairs.contains("\(pair.0)/\(pair.1)")
+            }) {
+            return true
+        }
         for (index, component) in components.enumerated() {
             let lowercased = component.lowercased()
             if secretDirectories.contains(lowercased) {

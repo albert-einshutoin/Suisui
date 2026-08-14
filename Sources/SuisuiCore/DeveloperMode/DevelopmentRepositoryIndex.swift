@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 
 public enum DevelopmentRepositoryIndexError: Error, Equatable, Sendable {
@@ -120,11 +121,10 @@ public actor DevelopmentRepositoryIndex {
             guard let relativePath = try? DevelopmentRepositoryFilePathPolicy.validatedRelativePath(path) else {
                 continue
             }
-            let fileURL = root.appendingPathComponent(relativePath)
-            guard let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
-                  values.isRegularFile == true,
-                  values.isSymbolicLink != true,
-                  let data = try? boundedFileData(fileURL),
+            // The manifest name is untrusted filesystem input.  Descending from
+            // the approved root with openat/O_NOFOLLOW rejects both an ancestor
+            // swap and a final-component symlink before any bytes are indexed.
+            guard let data = try? boundedFileData(root: root, relativePath: relativePath),
                   let contents = String(data: data, encoding: .utf8),
                   (try? DevelopmentRepositoryFilePathPolicy.validateTextContent(contents)) != nil,
                   redactor.redact(contents).report.replacementCount == 0 else {
@@ -240,9 +240,45 @@ public actor DevelopmentRepositoryIndex {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func boundedFileData(_ url: URL) throws -> Data {
-        let handle = try FileHandle(forReadingFrom: url)
+    static func boundedFileData(root: URL, relativePath: String) throws -> Data {
+        let components = relativePath.split(separator: "/").map(String.init)
+        guard !components.isEmpty else {
+            throw DevelopmentRepositoryFileError.invalidRelativePath
+        }
+        var directoryDescriptor = Darwin.open(root.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard directoryDescriptor >= 0 else {
+            throw DevelopmentRepositoryFileError.symlinkNotAllowed
+        }
+        defer { Darwin.close(directoryDescriptor) }
+
+        for component in components.dropLast() {
+            let nextDescriptor = Darwin.openat(
+                directoryDescriptor,
+                component,
+                O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW
+            )
+            guard nextDescriptor >= 0 else {
+                throw DevelopmentRepositoryFileError.symlinkNotAllowed
+            }
+            Darwin.close(directoryDescriptor)
+            directoryDescriptor = nextDescriptor
+        }
+
+        let descriptor = Darwin.openat(
+            directoryDescriptor,
+            components[components.count - 1],
+            O_RDONLY | O_CLOEXEC | O_NOFOLLOW
+        )
+        guard descriptor >= 0 else {
+            throw DevelopmentRepositoryFileError.symlinkNotAllowed
+        }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         defer { try? handle.close() }
+        var descriptorState = stat()
+        guard Darwin.fstat(descriptor, &descriptorState) == 0,
+              (descriptorState.st_mode & S_IFMT) == S_IFREG else {
+            throw DevelopmentRepositoryFileError.targetIsDirectory
+        }
         let data = try handle.read(upToCount: DevelopmentRepositoryFilePathPolicy.maximumContentBytes + 1) ?? Data()
         guard data.count <= DevelopmentRepositoryFilePathPolicy.maximumContentBytes else {
             throw DevelopmentRepositoryIndexError.indexedContentTooLarge
@@ -299,15 +335,33 @@ private extension Array where Element == RepositorySelection {
     }
 }
 
-private enum GitManifestReader {
-    static func paths(at root: URL) throws -> [String] {
+enum GitManifestReader {
+    static func paths(
+        at root: URL,
+        timeout: TimeInterval = 15,
+        executableURL: URL = URL(fileURLWithPath: "/usr/bin/git")
+    ) throws -> [String] {
         let process = Process()
         let standardOutput = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]
+        process.executableURL = executableURL
+        // This read-only manifest must not inherit repository or user hooks.
+        // In particular, core.fsmonitor can execute a repo-configured command.
+        process.arguments = [
+            "-c", "core.fsmonitor=false",
+            "-c", "core.hooksPath=/dev/null",
+            "ls-files", "--cached", "--others", "--exclude-standard", "-z",
+        ]
         process.currentDirectoryURL = root
         process.standardOutput = standardOutput
         process.standardError = FileHandle.nullDevice
+        process.environment = [
+            "PATH": "/usr/bin:/bin",
+            "HOME": "/nonexistent",
+            "XDG_CONFIG_HOME": "/nonexistent",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+        ]
         let result = ProcessResult()
         let group = DispatchGroup()
         group.enter()
@@ -329,9 +383,18 @@ private enum GitManifestReader {
             }
             group.leave()
         }
-        if group.wait(timeout: .now() + 15) == .timedOut {
-            process.terminate()
-            group.wait()
+        if group.wait(timeout: .now() + timeout) == .timedOut {
+            // A stuck git process must not pin the refresh actor indefinitely.
+            // Close the read side after a bounded TERM grace period so the drain
+            // task also gets a deterministic upper bound before SIGKILL.
+            if process.isRunning {
+                process.terminate()
+            }
+            if group.wait(timeout: .now() + 1) == .timedOut, process.isRunning {
+                _ = Darwin.kill(process.processIdentifier, SIGKILL)
+            }
+            try? standardOutput.fileHandleForReading.close()
+            _ = group.wait(timeout: .now() + 1)
             throw DevelopmentRepositoryIndexError.gitManifestUnavailable
         }
         guard !result.output.exceeded else {
