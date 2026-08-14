@@ -96,6 +96,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
         try fixture.write("func approve(token: ApprovalToken) {}\nprivate let clientSecret: String\nfunc use(authToken: Token) {}\nlet apiKey = value\nlet password: Password\nlet token = value", to: "Sources/Approval.swift")
+        try fixture.write("public struct ServiceAccessToken: Codable {}", to: "Sources/ServiceAccessToken.swift")
         try fixture.write(
             """
             public struct OAuthTokenResponse: Decodable {}
@@ -149,6 +150,9 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             "OAuthRefreshToken.swift": "let oauthRefreshToken = \"long-secret-value\"",
             "AWSSecretAccessKey.swift": "let awsSecretAccessKey = \"long-secret-value\"",
             "OAuth2Token.yml": "oauth2_token: long-secret-value",
+            "PascalCredential.swift": "let ServiceAccessToken = \"long-secret-value\"",
+            "PascalCredential.json": "{\"ServiceAccessToken\":\"long-secret-value\"}",
+            "TypealiasCredential.swift": "typealias ServiceAccessToken: Codable",
             "CommentOpen.swift": "// fake(\ntoken: ABCDEFGHIJK1234",
             "CommentInsideCall.swift": "request(\n// token: ABCDEFGHIJK1234\n)",
             "BlockCommentCall.swift": "request(\n/*\naccessToken: ABCDEFGHIJK1234\n*/\n)",
@@ -159,6 +163,10 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             "RawMultilineAssignment.swift": "#\"\"\"\nliteral \"\"\"\nlet googleClientSecret = ABCDEFGHIJK1234\n\"\"\"#",
             "RawMultilineCall.swift": "request(\n#\"\"\"\naccessToken: ABCDEFGHIJK1234\n\"\"\"#\n)",
             "RawEscapedDelimiter.swift": "#\"\"\"\n\\#\"\"\"#\nlet googleClientSecret = ABCDEFGHIJK1234\n\"\"\"#",
+            "RawRegexAssignment.swift": "let pattern = #/\nliteral \\/\nlet googleClientSecret = ABCDEFGHIJK1234\n/#",
+            "RawRegexDoubleHashAssignment.swift": "##/\nliteral /#\nlet googleClientSecret = ABCDEFGHIJK1234\n/##",
+            "RawRegexCall.swift": "request(\n#/\naccessToken: ABCDEFGHIJK1234\n/#\n)",
+            "RawRegexEscapedDelimiter.swift": "#/\n\\#/#\nlet googleClientSecret = ABCDEFGHIJK1234\n/#",
             "TokenStandalone.swift": "TOKEN: ABCDEFGHIJK1234",
             "TokenSource.txt": "let token = textonlymarker",
             "TokenFunction.yml": "func f(token: NonSwiftMarker)",
@@ -178,6 +186,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let localAssignmentResults = try await index.search(query: "connectorID", workspace: workspace(fixture))
         let optionalExpressionResults = try await index.search(query: "hasRefreshToken", workspace: workspace(fixture))
         let enumShorthandResults = try await index.search(query: "normalizedToken", workspace: workspace(fixture))
+        let nominalTypeResults = try await index.search(query: "ServiceAccessToken", workspace: workspace(fixture))
         let credentialResults = try await index.search(query: "long", workspace: workspace(fixture))
         let uppercaseCredentialResults = try await index.search(query: "ABCDEFGHIJK1234", workspace: workspace(fixture))
         let compoundCredentialResults = try await index.search(query: "compound", workspace: workspace(fixture))
@@ -192,11 +201,55 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(localAssignmentResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
         XCTAssertEqual(optionalExpressionResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
         XCTAssertEqual(enumShorthandResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
+        XCTAssertEqual(nominalTypeResults.map(\.sourcePath), ["Sources/ServiceAccessToken.swift"])
         XCTAssertTrue(credentialResults.isEmpty)
         XCTAssertTrue(uppercaseCredentialResults.isEmpty)
         XCTAssertTrue(compoundCredentialResults.isEmpty)
         XCTAssertTrue(textCredentialResults.isEmpty)
         XCTAssertTrue(nonSwiftFunctionResults.isEmpty)
+    }
+
+    func testRefreshIndexesDenseSafeSwiftCredentialNames() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write(String(repeating: "let accessToken = denseSafeMarker\n", count: 6_000), to: "Sources/Dense.swift")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let results = try await index.search(query: "denseSafeMarker", workspace: workspace(fixture))
+        XCTAssertEqual(results.map(\.sourcePath), ["Sources/Dense.swift"])
+    }
+
+    func testRefreshSkipsUnavailableManifestEntriesAndGitlinks() async throws {
+        let fixture = try RepositoryFixture()
+        let submodule = try RepositoryFixture()
+        defer {
+            fixture.remove()
+            submodule.remove()
+        }
+        try submodule.write("gitlink content", to: "Inner.md")
+        try submodule.runGit(["add", "Inner.md"])
+        try submodule.runGit(["commit", "-m", "Initial submodule"])
+        try fixture.write("stable manifest marker", to: "Notes.md")
+        try fixture.write("retiredonlymarker", to: "Deleted.md")
+        try fixture.write("skiponlymarker", to: "Skipped.md")
+        try fixture.runGit(["add", "Deleted.md", "Skipped.md"])
+        try FileManager.default.removeItem(at: fixture.url.appendingPathComponent("Deleted.md"))
+        try fixture.runGit(["update-index", "--skip-worktree", "Skipped.md"])
+        try fixture.runGit(["-c", "protocol.file.allow=always", "submodule", "add", submodule.url.path, "Vendor/Inner"])
+        let unavailable = Set(try GitManifestReader.entries(at: fixture.url).filter(\.isUnavailable).map(\.path))
+        XCTAssertTrue(unavailable.isSuperset(of: ["Deleted.md", "Skipped.md", "Vendor/Inner"]))
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let stable = try await index.search(query: "stable manifest marker", workspace: workspace(fixture))
+        let deleted = try await index.search(query: "retiredonlymarker", workspace: workspace(fixture))
+        let skipped = try await index.search(query: "skiponlymarker", workspace: workspace(fixture))
+        XCTAssertEqual(stable.map(\.sourcePath), ["Notes.md"])
+        XCTAssertTrue(deleted.isEmpty)
+        XCTAssertTrue(skipped.isEmpty)
     }
 
     func testRepositoryDescriptorWalkRejectsIntermediateAndFinalSymlinks() throws {
@@ -300,6 +353,26 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path) }
         await XCTAssertThrowsErrorAsync(try await index.refresh(workspace: workspace(fixture)))
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+
+        let preservedResults = try await index.search(query: "previous", workspace: workspace(fixture))
+        XCTAssertEqual(preservedResults.map(\.sourcePath), ["Notes.md"])
+    }
+
+    func testRefreshFailsClosedWhenManifestFileBecomesFIFO() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("previous marker", to: "Notes.md")
+        try fixture.write("placeholder", to: "Pipe.md")
+        try fixture.runGit(["add", "Pipe.md"])
+        let index = try migratedIndex()
+        try await index.refresh(workspace: workspace(fixture))
+
+        let pipeURL = fixture.url.appendingPathComponent("Pipe.md")
+        try FileManager.default.removeItem(at: pipeURL)
+        XCTAssertEqual(Darwin.mkfifo(pipeURL.path, 0o600), 0)
+        let startedAt = Date()
+        await XCTAssertThrowsErrorAsync(try await index.refresh(workspace: workspace(fixture)))
+        XCTAssertLessThan(Date().timeIntervalSince(startedAt), 1)
 
         let preservedResults = try await index.search(query: "previous", workspace: workspace(fixture))
         XCTAssertEqual(preservedResults.map(\.sourcePath), ["Notes.md"])

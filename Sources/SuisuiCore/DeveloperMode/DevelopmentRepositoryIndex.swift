@@ -28,7 +28,7 @@ public actor DevelopmentRepositoryIndex {
     // For indexing, reject every such assignment unless it matches one of the
     // narrow Swift grammars below; unknown syntax stays fail-closed.
     private static let credentialKeyAssignments = try? NSRegularExpression(
-        pattern: #"(?:\b(?=[a-z_])[A-Za-z0-9_]*(?i:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret)|\b(?:[A-Z][A-Z0-9]*_)*(?:API_KEY|ACCESS_KEY|PRIVATE_KEY|TOKEN|PASSWORD|SECRET))\s*[:=]"#
+        pattern: #"\b(?i:(?:[A-Za-z_][A-Za-z0-9_]*)?(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret))\s*\"?\s*[:=]"#
     )
     private static let safeSwiftAssignment = try? NSRegularExpression(
         pattern: #"^\s*(?:(?:let|var)\s+)?(?:self\.)?[A-Za-z_][A-Za-z0-9_]*\s+=\s*(.+?)\s*$"#
@@ -45,6 +45,9 @@ public actor DevelopmentRepositoryIndex {
     private static let safeSourceTypedFunctionParameter = try? NSRegularExpression(
         pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?=\s*(?:,|\)))"#
     )
+    private static let safeSwiftNominalTypeDeclaration = try? NSRegularExpression(
+        pattern: #"^\s*(?:(?:private|public|internal|fileprivate|final)\s+)*(?:struct|class|enum|protocol|actor)\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?:\s*,\s*[A-Z][A-Za-z0-9_.<>?]*)*\s*(?:[{][}]?)?\s*$"#
+    )
     private static let serializedCredential = try? NSRegularExpression(
         pattern: #"(?im)^\s*client[-_]key[-_]data\s*:\s*\S+|^\s*-----BEGIN (?:[A-Z0-9 ]*PRIVATE KEY)-----"#
     )
@@ -52,18 +55,24 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"^\s*(?:(?:private|public|internal|fileprivate|static|final|lazy)\s+)*(?:let|var)\s+$"#
     )
     private static let swiftFunctionParameterPrefix = try? NSRegularExpression(
-        pattern: #"\b(?:func\s+[A-Za-z_][A-Za-z0-9_]*\s*|init\s*)\([^)]*$"#
+        pattern: #"\b(?:func\s+[A-Za-z_][A-Za-z0-9_]*\s*|init\s*)$"#
     )
     private static let swiftCallOpener = try? NSRegularExpression(
         pattern: #"^\s*(?:try\s+)?[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\s*$"#
     )
 
-    private struct SwiftLexicalContext {
+    private struct SwiftLexicalPosition {
         var isInNormalCode: Bool
-        var unmatchedOpenParentheses: [String.Index]
+        var openParenthesis: String.Index?
     }
 
-    private struct SwiftStringDelimiter {
+    private enum SwiftLiteralKind: Equatable {
+        case string
+        case regex
+    }
+
+    private struct SwiftLiteralDelimiter {
+        var kind: SwiftLiteralKind
         var hashCount: Int
         var isMultiline: Bool
     }
@@ -191,10 +200,17 @@ public actor DevelopmentRepositoryIndex {
     }
 
     private static func records(root: URL, redactor: DeveloperSecretRedactor) throws -> [IndexedFile] {
-        let paths = try GitManifestReader.paths(at: root)
+        let entries = try GitManifestReader.entries(at: root)
         var totalBytes = 0
         var records: [IndexedFile] = []
-        for path in paths {
+        for entry in entries {
+            // Git itself marks these entries as absent from this checkout. They
+            // are intentional manifest exclusions, unlike a post-manifest
+            // file-to-directory replacement which must abort the refresh.
+            guard !entry.isUnavailable else {
+                continue
+            }
+            let path = entry.path
             guard let relativePath = try? DevelopmentRepositoryFilePathPolicy.validatedRelativePath(path),
                   // The policy trims user-facing paths, but git names are byte-level
                   // identities.  Never let a trimmed manifest name reopen another file.
@@ -372,6 +388,7 @@ public actor DevelopmentRepositoryIndex {
               let safeExpressionAtom = safeSwiftExpressionAtom,
               let safeTypedDeclaration = safeSourceTypedDeclaration,
               let safeTypedFunctionParameter = safeSourceTypedFunctionParameter,
+              let safeNominalTypeDeclaration = safeSwiftNominalTypeDeclaration,
               let typedDeclarationPrefix = swiftTypedDeclarationPrefix,
               let functionParameterPrefix = swiftFunctionParameterPrefix,
               let callOpener = swiftCallOpener else {
@@ -386,28 +403,36 @@ public actor DevelopmentRepositoryIndex {
         guard relativePath.lowercased().hasSuffix(".swift") else {
             return true
         }
+        let matchPositions = Set(matches.compactMap { Range($0.range, in: contents)?.lowerBound })
+        let lexicalPositions = swiftLexicalPositions(in: contents, at: matchPositions)
         return matches.contains { match in
             guard let swiftRange = Range(match.range, in: contents) else {
                 return true
             }
             let lineRange = contents.lineRange(for: swiftRange)
             let line = String(contents[lineRange])
-            let sourcePrefix = String(contents[..<swiftRange.lowerBound])
-            let lexicalContext = swiftLexicalContext(in: sourcePrefix)
-            guard lexicalContext.isInNormalCode else {
+            guard let lexicalPosition = lexicalPositions[swiftRange.lowerBound], lexicalPosition.isInNormalCode else {
                 return true
             }
-            let sourcePrefixRange = NSRange(sourcePrefix.startIndex..<sourcePrefix.endIndex, in: sourcePrefix)
             let assignmentPrefix = String(contents[lineRange.lowerBound..<swiftRange.lowerBound])
             let prefixRange = NSRange(assignmentPrefix.startIndex..<assignmentPrefix.endIndex, in: assignmentPrefix)
             let assignmentSuffix = String(contents[swiftRange.lowerBound..<lineRange.upperBound])
             let suffixRange = NSRange(assignmentSuffix.startIndex..<assignmentSuffix.endIndex, in: assignmentSuffix)
+            let openerPrefix = lexicalPosition.openParenthesis.map { openParenthesis in
+                let openerLineRange = contents.lineRange(for: openParenthesis..<contents.index(after: openParenthesis))
+                return String(contents[openerLineRange.lowerBound..<openParenthesis])
+            }
             let hasSafeTypedDeclaration = typedDeclarationPrefix.firstMatch(in: assignmentPrefix, range: prefixRange) != nil &&
                 safeTypedDeclaration.firstMatch(in: assignmentSuffix, range: suffixRange) != nil
-            let isTypedFunctionParameter = functionParameterPrefix.firstMatch(in: sourcePrefix, range: sourcePrefixRange) != nil &&
+            let isTypedFunctionParameter = openerPrefix.map { prefix in
+                let range = NSRange(prefix.startIndex..<prefix.endIndex, in: prefix)
+                return functionParameterPrefix.firstMatch(in: prefix, range: range) != nil
+            } == true &&
                 safeTypedFunctionParameter.firstMatch(in: assignmentSuffix, range: suffixRange) != nil
             let isTypedDeclaration = (hasSafeTypedDeclaration || isTypedFunctionParameter) &&
                 !line.contains("=") && !line.contains("\"") && !line.contains("'")
+            let fullLineRange = NSRange(line.startIndex..<line.endIndex, in: line)
+            let isNominalType = safeNominalTypeDeclaration.firstMatch(in: line, range: fullLineRange) != nil
             let isSafeAssignment = containsSafeSwiftExpression(in: line, grammar: safeAssignment, atom: safeExpressionAtom)
             // These forms contain only source identifiers/member references, never
             // a literal credential. The surrounding argument list prevents config
@@ -417,9 +442,9 @@ public actor DevelopmentRepositoryIndex {
                 assignmentPrefix.contains("\"") ||
                 assignmentPrefix.contains("'")
             let isCallLabel = !hasCurrentLineCommentOrQuote &&
-                hasOpenSwiftArgumentList(in: sourcePrefix, context: lexicalContext, callOpener: callOpener) &&
+                hasOpenSwiftArgumentList(in: contents, openParenthesis: lexicalPosition.openParenthesis, callOpener: callOpener) &&
                 containsSafeSwiftExpression(in: assignmentSuffix, grammar: safeCallLabel, atom: safeExpressionAtom)
-            return !(isTypedDeclaration || isSafeAssignment || isCallLabel)
+            return !(isTypedDeclaration || isNominalType || isSafeAssignment || isCallLabel)
         }
     }
 
@@ -436,18 +461,30 @@ public actor DevelopmentRepositoryIndex {
         return isSafeSwiftExpression(String(value[expressionRange]), atom: atom)
     }
 
-    // Build lexical state before each match so comment/string text cannot create
-    // an indexing exception or contribute a misleading unmatched parenthesis.
+    // Scan once and snapshot only credential-like positions: rescanning each
+    // prefix would make a dense, 256 KiB source file quadratic.
+    // The snapshots also keep comment/string text from creating a safe exception
+    // or contributing a misleading unmatched parenthesis.
     // ponytail: this intentionally recognizes only the lexical states needed by
     // the credential exceptions; use SwiftSyntax if those exceptions grow.
-    private static func swiftLexicalContext(in source: String) -> SwiftLexicalContext {
+    private static func swiftLexicalPositions(
+        in source: String,
+        at positions: Set<String.Index>
+    ) -> [String.Index: SwiftLexicalPosition] {
         var lineComment = false
         var blockCommentDepth = 0
-        var stringDelimiter: SwiftStringDelimiter?
+        var literalDelimiter: SwiftLiteralDelimiter?
         var unmatchedOpenParentheses: [String.Index] = []
+        var snapshots: [String.Index: SwiftLexicalPosition] = [:]
         var index = source.startIndex
 
         while index < source.endIndex {
+            if positions.contains(index) {
+                snapshots[index] = SwiftLexicalPosition(
+                    isInNormalCode: !lineComment && blockCommentDepth == 0 && literalDelimiter == nil,
+                    openParenthesis: unmatchedOpenParentheses.last
+                )
+            }
             let character = source[index]
             let nextIndex = source.index(after: index)
             let nextCharacter = nextIndex < source.endIndex ? source[nextIndex] : nil
@@ -469,11 +506,11 @@ public actor DevelopmentRepositoryIndex {
                 }
                 continue
             }
-            if let delimiter = stringDelimiter {
-                if let escapedDelimiterEnd = escapedStringDelimiterEnd(at: index, in: source, delimiter: delimiter) {
+            if let delimiter = literalDelimiter {
+                if let escapedDelimiterEnd = escapedLiteralDelimiterEnd(at: index, in: source, delimiter: delimiter) {
                     index = escapedDelimiterEnd
-                } else if let closingDelimiterEnd = stringDelimiterEnd(at: index, in: source, delimiter: delimiter) {
-                    stringDelimiter = nil
+                } else if let closingDelimiterEnd = literalDelimiterEnd(at: index, in: source, delimiter: delimiter) {
+                    literalDelimiter = nil
                     index = closingDelimiterEnd
                 } else {
                     index = nextIndex
@@ -487,9 +524,12 @@ public actor DevelopmentRepositoryIndex {
             } else if character == "/", nextCharacter == "*" {
                 blockCommentDepth = 1
                 index = source.index(after: nextIndex)
-            } else if let delimiter = stringDelimiterStarting(at: index, in: source) {
-                stringDelimiter = delimiter
-                index = source.index(index, offsetBy: delimiter.isMultiline ? 3 + delimiter.hashCount : 1 + delimiter.hashCount)
+            } else if let delimiter = literalDelimiterStarting(at: index, in: source) {
+                literalDelimiter = delimiter
+                let delimiterLength = delimiter.kind == .regex
+                    ? 1 + delimiter.hashCount
+                    : (delimiter.isMultiline ? 3 : 1) + delimiter.hashCount
+                index = source.index(index, offsetBy: delimiterLength)
             } else if character == "(" {
                 unmatchedOpenParentheses.append(index)
                 index = nextIndex
@@ -501,15 +541,12 @@ public actor DevelopmentRepositoryIndex {
             }
         }
 
-        return SwiftLexicalContext(
-            isInNormalCode: !lineComment && blockCommentDepth == 0 && stringDelimiter == nil,
-            unmatchedOpenParentheses: unmatchedOpenParentheses
-        )
+        return snapshots
     }
 
-    private static func stringDelimiterStarting(at index: String.Index, in source: String) -> SwiftStringDelimiter? {
+    private static func literalDelimiterStarting(at index: String.Index, in source: String) -> SwiftLiteralDelimiter? {
         if source[index] == "\"" {
-            return SwiftStringDelimiter(hashCount: 0, isMultiline: source[index...].hasPrefix("\"\"\""))
+            return SwiftLiteralDelimiter(kind: .string, hashCount: 0, isMultiline: source[index...].hasPrefix("\"\"\""))
         }
         guard source[index] == "#" else {
             return nil
@@ -520,16 +557,22 @@ public actor DevelopmentRepositoryIndex {
             hashCount += 1
             cursor = source.index(after: cursor)
         }
-        guard cursor < source.endIndex, source[cursor] == "\"" else {
+        guard cursor < source.endIndex else {
             return nil
         }
-        return SwiftStringDelimiter(hashCount: hashCount, isMultiline: source[cursor...].hasPrefix("\"\"\""))
+        if source[cursor] == "\"" {
+            return SwiftLiteralDelimiter(kind: .string, hashCount: hashCount, isMultiline: source[cursor...].hasPrefix("\"\"\""))
+        }
+        if source[cursor] == "/" {
+            return SwiftLiteralDelimiter(kind: .regex, hashCount: hashCount, isMultiline: true)
+        }
+        return nil
     }
 
-    private static func escapedStringDelimiterEnd(
+    private static func escapedLiteralDelimiterEnd(
         at index: String.Index,
         in source: String,
-        delimiter: SwiftStringDelimiter
+        delimiter: SwiftLiteralDelimiter
     ) -> String.Index? {
         guard source[index] == "\\" else {
             return nil
@@ -541,17 +584,18 @@ public actor DevelopmentRepositoryIndex {
             }
             cursor = source.index(after: cursor)
         }
-        return stringDelimiterEnd(at: cursor, in: source, delimiter: delimiter)
+        return literalDelimiterEnd(at: cursor, in: source, delimiter: delimiter)
     }
 
-    private static func stringDelimiterEnd(
+    private static func literalDelimiterEnd(
         at index: String.Index,
         in source: String,
-        delimiter: SwiftStringDelimiter
+        delimiter: SwiftLiteralDelimiter
     ) -> String.Index? {
         var cursor = index
-        for _ in 0..<(delimiter.isMultiline ? 3 : 1) {
-            guard cursor < source.endIndex, source[cursor] == "\"" else {
+        let closingCharacter: Character = delimiter.kind == .regex ? "/" : "\""
+        for _ in 0..<(delimiter.kind == .regex ? 1 : (delimiter.isMultiline ? 3 : 1)) {
+            guard cursor < source.endIndex, source[cursor] == closingCharacter else {
                 return nil
             }
             cursor = source.index(after: cursor)
@@ -566,15 +610,15 @@ public actor DevelopmentRepositoryIndex {
     }
 
     private static func hasOpenSwiftArgumentList(
-        in sourcePrefix: String,
-        context: SwiftLexicalContext,
+        in source: String,
+        openParenthesis: String.Index?,
         callOpener: NSRegularExpression
     ) -> Bool {
-        guard context.isInNormalCode, let openParenthesis = context.unmatchedOpenParentheses.last else {
+        guard let openParenthesis else {
             return false
         }
-        let lineRange = sourcePrefix.lineRange(for: openParenthesis..<sourcePrefix.index(after: openParenthesis))
-        let openerPrefix = String(sourcePrefix[lineRange.lowerBound..<openParenthesis])
+        let lineRange = source.lineRange(for: openParenthesis..<source.index(after: openParenthesis))
+        let openerPrefix = String(source[lineRange.lowerBound..<openParenthesis])
         let range = NSRange(openerPrefix.startIndex..<openerPrefix.endIndex, in: openerPrefix)
         return callOpener.firstMatch(in: openerPrefix, range: range) != nil
     }
@@ -651,7 +695,9 @@ public actor DevelopmentRepositoryIndex {
         let descriptor = Darwin.openat(
             directoryDescriptor,
             components[components.count - 1],
-            O_RDONLY | O_CLOEXEC | O_NOFOLLOW
+            // A tracked pathname can be replaced with a FIFO after manifest
+            // creation. Nonblocking open lets fstat reject it without a writer.
+            O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW
         )
         guard descriptor >= 0 else {
             throw errno == ELOOP
@@ -665,7 +711,7 @@ public actor DevelopmentRepositoryIndex {
             throw DevelopmentRepositoryIndexError.fileReadUnavailable
         }
         guard (descriptorState.st_mode & S_IFMT) == S_IFREG else {
-            throw DevelopmentRepositoryFileError.targetIsDirectory
+            throw DevelopmentRepositoryIndexError.fileReadUnavailable
         }
         let data = try handle.read(upToCount: DevelopmentRepositoryFilePathPolicy.maximumContentBytes + 1) ?? Data()
         guard data.count <= DevelopmentRepositoryFilePathPolicy.maximumContentBytes else {
@@ -724,11 +770,82 @@ private extension Array where Element == RepositorySelection {
 }
 
 enum GitManifestReader {
+    struct Entry {
+        let path: String
+        let isUnavailable: Bool
+    }
+
     static func paths(
         at root: URL,
         timeout: TimeInterval = 15,
         executableURL: URL = URL(fileURLWithPath: "/usr/bin/git")
     ) throws -> [String] {
+        let output = try manifestData(
+            at: root,
+            arguments: ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+            timeout: timeout,
+            executableURL: executableURL
+        )
+        let paths = nullTerminatedStrings(from: output)
+        guard paths.count <= DevelopmentRepositoryIndex.maximumFiles else {
+            throw DevelopmentRepositoryIndexError.tooManyFiles
+        }
+        return paths
+    }
+
+    static func entries(at root: URL) throws -> [Entry] {
+        // Capture Git's intentional-unavailability metadata before listing the
+        // names. A later filesystem change then remains a read failure instead
+        // of being mistaken for an intentional manifest exclusion.
+        let stages = try stagedModes(at: root)
+        let deleted = try deletedPaths(at: root)
+        let skipWorktree = try skipWorktreePaths(at: root)
+        let paths = try paths(at: root)
+        return paths.map { path in
+            Entry(
+                path: path,
+                isUnavailable: stages[path] == "160000" || deleted.contains(path) || skipWorktree.contains(path)
+            )
+        }
+    }
+
+    private static func stagedModes(at root: URL) throws -> [String: String] {
+        let output = try manifestData(at: root, arguments: ["ls-files", "--cached", "--stage", "-z"])
+        return nullTerminatedStrings(from: output).reduce(into: [:]) { modes, entry in
+            guard let separator = entry.firstIndex(of: "\t") else {
+                return
+            }
+            let fields = entry[..<separator].split(separator: " ", maxSplits: 1)
+            guard let mode = fields.first else {
+                return
+            }
+            modes[String(entry[entry.index(after: separator)...])] = String(mode)
+        }
+    }
+
+    private static func deletedPaths(at root: URL) throws -> Set<String> {
+        Set(nullTerminatedStrings(from: try manifestData(at: root, arguments: ["ls-files", "--deleted", "-z"])))
+    }
+
+    private static func skipWorktreePaths(at root: URL) throws -> Set<String> {
+        Set(nullTerminatedStrings(from: try manifestData(at: root, arguments: ["ls-files", "--cached", "-v", "-z"])).compactMap { entry in
+            guard entry.hasPrefix("S ") else {
+                return nil
+            }
+            return String(entry.dropFirst(2))
+        })
+    }
+
+    private static func nullTerminatedStrings(from output: ManifestData) -> [String] {
+        output.data.split(separator: 0, omittingEmptySubsequences: true).compactMap { String(data: $0, encoding: .utf8) }
+    }
+
+    private static func manifestData(
+        at root: URL,
+        arguments: [String],
+        timeout: TimeInterval = 15,
+        executableURL: URL = URL(fileURLWithPath: "/usr/bin/git")
+    ) throws -> ManifestData {
         let process = Process()
         let standardOutput = Pipe()
         process.executableURL = executableURL
@@ -737,8 +854,7 @@ enum GitManifestReader {
         process.arguments = [
             "-c", "core.fsmonitor=false",
             "-c", "core.hooksPath=/dev/null",
-            "ls-files", "--cached", "--others", "--exclude-standard", "-z",
-        ]
+        ] + arguments
         process.currentDirectoryURL = root
         process.standardOutput = standardOutput
         process.standardError = FileHandle.nullDevice
@@ -791,11 +907,7 @@ enum GitManifestReader {
         guard process.terminationStatus == 0 else {
             throw DevelopmentRepositoryIndexError.gitManifestUnavailable
         }
-        let paths = result.output.data.split(separator: 0, omittingEmptySubsequences: true).compactMap { String(data: $0, encoding: .utf8) }
-        guard paths.count <= DevelopmentRepositoryIndex.maximumFiles else {
-            throw DevelopmentRepositoryIndexError.tooManyFiles
-        }
-        return paths
+        return result.output
     }
 }
 
