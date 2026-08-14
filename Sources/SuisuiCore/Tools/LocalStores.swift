@@ -1884,33 +1884,68 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
+        return try searchLocked(query: query, limit: nil)
+    }
+
+    /// Bounded literal search for interactive callers such as the command palette.
+    /// At most 128 rows are returned to keep SQLite bind counts bounded.
+    /// The compatibility overload above intentionally remains unbounded for
+    /// existing read-only tools that render every matching knowledge frame.
+    public func search(query: String, limit: Int) throws -> [KnowledgeFrameRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard limit > 0 else {
+            return []
+        }
+        return try searchLocked(
+            query: query,
+            limit: min(limit, Self.maximumBoundedSearchResults)
+        )
+    }
+
+    private func searchLocked(query: String, limit: Int?) throws -> [KnowledgeFrameRecord] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return []
         }
 
         let match = "\"\(SQL.escapeFTS(trimmed))\""
+        let ftsLimit = limit.map { _ in "LIMIT ?" } ?? ""
+        var ftsParameters: [SQLiteValue] = [.text(match)]
+        if let limit {
+            ftsParameters.append(.integer(Int64(limit)))
+        }
         let ftsCandidates = try connection.queryRows(
             """
             SELECT knowledge_frames.*
             FROM knowledge_frames_fts
             JOIN knowledge_frames ON knowledge_frames_fts.rowid = knowledge_frames.id
             WHERE knowledge_frames_fts MATCH ?
-            ORDER BY rank;
+            ORDER BY rank
+            \(ftsLimit);
             """,
-            parameters: [.text(match)]
+            parameters: ftsParameters
         ).map(KnowledgeFrameRecord.init(row:))
         // FTS strips punctuation, so an FTS phrase alone can widen a literal
         // palette query. Keep only source-confirmed rows and recover any FTS
         // false negatives with the same SQLite `instr` semantics.
         var records = ftsCandidates.filter { Self.matchesLiteral($0, text: trimmed) }
         var seenIDs = Set(records.map(\.id))
+        let remaining = limit.map { $0 - records.count }
+        guard remaining != 0 else {
+            return records
+        }
         let exclusion = seenIDs.isEmpty
             ? ""
             : " AND id NOT IN (\(Array(repeating: "?", count: seenIDs.count).joined(separator: ", ")))"
         let lowered = trimmed.lowercased()
         var parameters: [SQLiteValue] = [.text(lowered), .text(lowered), .text(lowered)]
         parameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
+        let fallbackLimit = remaining.map { _ in "LIMIT ?" } ?? ""
+        if let remaining {
+            parameters.append(.integer(Int64(remaining)))
+        }
         let fallbackCandidates = try connection.queryRows(
             """
             SELECT * FROM knowledge_frames
@@ -1920,7 +1955,8 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
                        SELECT 1 FROM json_each(knowledge_frames.triggers_json)
                        WHERE instr(lower(json_each.value), ?) > 0
                    ))\(exclusion)
-            ORDER BY id ASC;
+            ORDER BY id ASC
+            \(fallbackLimit);
             """,
             parameters: parameters
         ).map(KnowledgeFrameRecord.init(row:))
@@ -1930,7 +1966,7 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
             }
             records.append(record)
         }
-        return records
+        return limit.map { Array(records.prefix($0)) } ?? records
     }
 
     func search(matching tokens: [String], limit: Int) throws -> [KnowledgeFrameRecord] {
@@ -2031,6 +2067,8 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
     private static func indexedKnowledgeBody(body: String, triggersJSON: String) -> String {
         body + "\n" + triggersJSON
     }
+
+    private static let maximumBoundedSearchResults = 128
 
     private static func matchesLiteral(_ record: KnowledgeFrameRecord, text: String) -> Bool {
         record.name.range(of: text, options: .caseInsensitive) != nil

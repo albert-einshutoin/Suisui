@@ -409,6 +409,36 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(try store.search(query: "50% done").map(\.id), [literalFrame.id])
     }
 
+    func testKnowledgeBoundedSearchCompletesAfterManyFalseFTSCandidates() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        for index in 0..<160 {
+            _ = try store.create(
+                name: "Shortcut \(index)",
+                body: "50 done 50 done 50 done"
+            )
+        }
+        let literalFrame = try store.create(
+            name: "Migration",
+            body: "Roughly 50% done as of Friday"
+        )
+
+        XCTAssertEqual(
+            try store.search(query: "50% done", limit: 1).map(\.id),
+            [literalFrame.id]
+        )
+    }
+
+    func testKnowledgeBoundedSearchCapsSQLiteBindSet() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        for index in 0..<129 {
+            _ = try store.create(name: "Bounded \(index)", body: "bounded literal result")
+        }
+
+        XCTAssertEqual(try store.search(query: "bounded literal", limit: 10_000).count, 128)
+    }
+
     func testKnowledgeLiteralSearchUsesDecodedTriggersInsteadOfJSONSyntax() throws {
         let connection = try currentConnection()
         let store = SQLiteKnowledgeFrameStore(connection: connection)

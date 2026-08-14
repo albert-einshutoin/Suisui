@@ -51,8 +51,11 @@ public final class CommandPaletteContentSearchService: @unchecked Sendable {
         // `SQLiteKnowledgeFrameStore.search` (`SQL.escapeFTS` + quoted phrase),
         // so quotes and asterisks in the query cannot break the MATCH clause.
         if matches.count < limit {
-            let frames = (try? knowledgeFrameStore.search(query: trimmed)) ?? []
-            for frame in frames.prefix(limit - matches.count) {
+            let frames = (try? knowledgeFrameStore.search(
+                query: trimmed,
+                limit: limit - matches.count
+            )) ?? []
+            for frame in frames {
                 matches.append(
                     CommandPaletteContentMatch(
                         source: .knowledge(id: frame.id),
