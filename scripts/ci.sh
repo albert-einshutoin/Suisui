@@ -247,6 +247,7 @@ run_layout_stability_gate() {
     set +e
     SUISUI_LAYOUT_STABILITY_OUTPUT_DIR="$layout_dir" \
     SUISUI_LAYOUT_STABILITY_RUNTIME_DIR="$CI_TMPDIR/layout-stability-runtime" \
+    SUISUI_LAYOUT_STABILITY_DATABASE_PATH="$layout_dir/Suisui-layout-stability.sqlite" \
     SUISUI_LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH="$visible_frame_width" \
     SUISUI_LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT="$visible_frame_height" \
       ./script/check_layout_stability_smoke.sh
@@ -293,10 +294,13 @@ run_runtime_gates() {
   SUISUI_RUNTIME_TODAY_PRODUCTION_ROUTE_ARTIFACT_DIR="$artifact_dir/today-production-route" \
     ./script/check_runtime_today_production_route_smoke.sh
   if [[ "$CI_COMPLETE_RUNTIME" == "1" ]]; then
-    SUISUI_HEADER_LAYOUT_SMOKE_OUTPUT_DIR="$artifact_dir/header-layout" \
+    SUISUI_HEADER_LAYOUT_ENTRYPOINTS_ONLY=0 \
+      SUISUI_HEADER_LAYOUT_DATABASE_PATH="$artifact_dir/header-layout/Suisui-header-layout.sqlite" \
+      SUISUI_HEADER_LAYOUT_SMOKE_OUTPUT_DIR="$artifact_dir/header-layout" \
       ./script/check_project_board_header_layout_smoke.sh
   else
     SUISUI_HEADER_LAYOUT_ENTRYPOINTS_ONLY=1 \
+      SUISUI_HEADER_LAYOUT_DATABASE_PATH="$artifact_dir/header-layout/Suisui-header-layout.sqlite" \
       SUISUI_HEADER_LAYOUT_SMOKE_OUTPUT_DIR="$artifact_dir/header-layout" \
       ./script/check_project_board_header_layout_smoke.sh
   fi
