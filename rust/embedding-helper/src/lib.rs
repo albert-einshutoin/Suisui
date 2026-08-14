@@ -299,7 +299,7 @@ fn read_text(path: PathBuf) -> AppResult<String> {
             MAX_TEXT_BYTES,
             HelperError::INPUT_TOO_LARGE,
             HelperError::INPUT_INVALID,
-        )?);
+        )?)
     }
 }
 
