@@ -7,7 +7,10 @@ CI_ARTIFACT_ROOT="$ROOT_DIR/.tmp/ci-artifacts"
 
 cd "$ROOT_DIR"
 
-./ci/run-full.sh
+env \
+  -u SUISUI_SWIFTPM_TEST_BASELINE_FILE \
+  -u SUISUI_SWIFTPM_MAX_SKIPPED_FILE \
+  ./ci/run-full.sh
 cargo fmt --manifest-path "$RUST_MANIFEST" --check
 cargo test --manifest-path "$RUST_MANIFEST" --locked --all-targets --all-features
 cargo clippy --manifest-path "$RUST_MANIFEST" --locked --all-targets --all-features -- -D warnings

@@ -103,6 +103,8 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertTrue(ALL_RUNNER.exists(), "complete local CI runner must exist")
         contents = ALL_RUNNER.read_text(encoding="utf-8")
 
+        self.assertIn("-u SUISUI_SWIFTPM_TEST_BASELINE_FILE", contents)
+        self.assertIn("-u SUISUI_SWIFTPM_MAX_SKIPPED_FILE", contents)
         self.assertIn("./ci/run-full.sh", contents)
         self.assertIn("cargo fmt --manifest-path", contents)
         self.assertIn("cargo test --manifest-path", contents)
