@@ -121,6 +121,14 @@ class ImpactAnalysisTests(unittest.TestCase):
             ["DevelopmentAutomationRuntimeSmokeTests"],
         )
 
+    def test_isolated_kokoro_rust_poc_does_not_disable_selective_ci(self) -> None:
+        self._write("rust/kokoro-helper/Cargo.toml", "[package]\nname = \"kokoro-helper\"\n")
+
+        plan = self._analyze([{"status": "M", "path": "docs/quality/guide.md"}])
+
+        self.assertEqual(plan["strategy"], "selective")
+        self.assertEqual({project["type"] for project in plan["detectedProjects"]}, {"swift"})
+
     def test_visual_baseline_change_routes_to_ui_visual(self) -> None:
         plan = self._analyze(
             [{"status": "M", "path": "docs/quality/visual-baseline-manifest-ja.json"}]

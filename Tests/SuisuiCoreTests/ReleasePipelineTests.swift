@@ -12784,6 +12784,35 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(docs.contains("sets Hugging Face/Transformers offline flags"))
     }
 
+    func testRustKokoroInferencePoCIsIsolatedBehindParityGate() throws {
+        let manifest = try readPackageFile("rust/kokoro-helper/Cargo.toml")
+        let readme = try readPackageFile("rust/kokoro-helper/README.md")
+        let workflow = try readPackageFile(".github/workflows/ci.yml")
+        let gitignore = try readPackageFile(".gitignore")
+        let productionEntrypoints = try [
+            "Package.swift",
+            "Sources/SuisuiCore/Voice/TTSProviders.swift",
+            "script/build_and_run.sh",
+            "script/sign_app.sh",
+            "script/verify_release_architecture.sh"
+        ].map(readPackageFile).joined(separator: "\n")
+
+        XCTAssertTrue(manifest.contains("ort ="))
+        XCTAssertFalse(manifest.contains("kokoro-en"))
+        XCTAssertTrue(readme.contains("tokens-file"))
+        XCTAssertTrue(readme.contains("PoC"))
+        XCTAssertTrue(readme.contains("日本語"))
+        XCTAssertTrue(readme.contains("本番"))
+        XCTAssertTrue(readme.contains("G2P実装や辞書を依存グラフへ含めず"))
+        XCTAssertTrue(gitignore.contains("/rust/kokoro-helper/target/"))
+        XCTAssertFalse(productionEntrypoints.contains("rust/kokoro-helper"))
+        XCTAssertTrue(workflow.contains("cargo fmt --manifest-path rust/kokoro-helper/Cargo.toml --check"))
+        XCTAssertTrue(workflow.contains("cargo test --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features"))
+        XCTAssertTrue(workflow.contains("cargo clippy --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features -- -D warnings"))
+        XCTAssertTrue(workflow.contains("KOKORO_RUST_RESULT: ${{ needs.kokoro-rust-poc.result }}"))
+        XCTAssertTrue(workflow.contains("failure_reason=rust-boundary-gate-did-not-succeed"))
+    }
+
     func testKokoroRuntimeWrapperFailsClosedBeforeImportForUnsafeRuntimeInputs() throws {
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-kokoro-runtime-wrapper-input-boundaries", isDirectory: true)

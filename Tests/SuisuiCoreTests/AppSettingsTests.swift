@@ -2009,7 +2009,7 @@ final class AppSettingsTests: XCTestCase {
         viewModel.setTTSProvider(.systemSpeech)
         viewModel.setTTSVoiceID("com.apple.voice.compact.en-US.Samantha")
         viewModel.setTTSProvider(.localKokoro)
-        viewModel.setTTSVoiceID("af_heart")
+        viewModel.setTTSVoiceID("bf_emma")
         viewModel.setTTSProvider(.systemSpeech)
         viewModel.saveSettings()
 
@@ -2017,10 +2017,10 @@ final class AppSettingsTests: XCTestCase {
             viewModel.settings.selectedTTSVoiceID,
             "com.apple.voice.compact.en-US.Samantha"
         )
-        XCTAssertEqual(viewModel.settings.ttsVoiceID, "af_heart")
+        XCTAssertEqual(viewModel.settings.ttsVoiceID, "bf_emma")
         let loaded = try UserDefaultsAppSettingsStore(defaults: defaults).load()
         XCTAssertEqual(loaded.systemSpeechVoiceID, "com.apple.voice.compact.en-US.Samantha")
-        XCTAssertEqual(loaded.ttsVoiceID, "af_heart")
+        XCTAssertEqual(loaded.ttsVoiceID, "bf_emma")
     }
 
     @MainActor

@@ -50,6 +50,19 @@ final class TTSProviderTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: runner.invocations[0].textFileURL.path))
     }
 
+    func testKokoroProviderAcceptsBritishEnglishVoice() async throws {
+        let fixture = try makeKokoroFixture(languageCode: "en", voiceID: "bf_emma")
+        let runner = RecordingKokoroCommandRunner()
+        let provider = KokoroLocalTTSProvider(configuration: fixture.configuration, commandRunner: runner)
+
+        let audio = try await provider.synthesize(
+            TextToSpeechRequest(text: "Review today's tasks", languageCode: "en", voiceID: "bf_emma")
+        )
+
+        XCTAssertEqual(audio.voiceID, "bf_emma")
+        XCTAssertEqual(runner.invocations.first?.voiceID, "bf_emma")
+    }
+
     func testKokoroProviderRejectsMissingModelBeforeStartingRunner() async throws {
         let fixture = try makeKokoroFixture(installModel: false)
         let runner = RecordingKokoroCommandRunner()

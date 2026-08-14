@@ -191,6 +191,32 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
+  kokoro-rust-poc:
+    name: Kokoro Rust boundary checks
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Checkout tested revision
+        uses: actions/checkout@v4
+
+      - name: Restore bounded Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            rust/kokoro-helper/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-kokoro-rust-${{ hashFiles('rust/kokoro-helper/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-kokoro-rust-
+
+      - name: Verify Rust Kokoro boundary
+        run: |
+          rustc --version
+          cargo fmt --manifest-path rust/kokoro-helper/Cargo.toml --check
+          cargo test --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features
+          cargo clippy --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features -- -D warnings
+
   ui-runtime:
     name: UI Runtime (production route)
     needs:
@@ -282,12 +308,13 @@ jobs:
 
   ui-visual:
     # Preserve the established required-check context while the locale matrix
-    # provides independent evidence. This aggregator fails unless every
-    # required locale completed successfully.
+    # provides independent evidence. It also carries the isolated Rust result
+    # so a broken helper cannot pass an established product gate.
     name: UI Visual (live baseline)
     needs:
       - test_strategy
       - full_validation
+      - kokoro-rust-poc
       - ui-visual-locales
     if: ${{ always() }}
     runs-on: ubuntu-latest
@@ -296,9 +323,15 @@ jobs:
       - name: Aggregate locale visual gates
         env:
           EVENT_NAME: ${{ github.event_name }}
+          KOKORO_RUST_RESULT: ${{ needs.kokoro-rust-poc.result }}
           VISUAL_SELECTION_STATE: ${{ needs.test_strategy.outputs.ui_visual_state }}
           LOCALE_VISUAL_RESULT: ${{ needs.ui-visual-locales.result }}
         run: |
+          if [[ "$KOKORO_RUST_RESULT" != "success" ]]; then
+            echo "failure_category=rust" >&2
+            echo "failure_reason=rust-boundary-gate-did-not-succeed" >&2
+            exit 1
+          fi
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             case "$VISUAL_SELECTION_STATE" in
               1)
