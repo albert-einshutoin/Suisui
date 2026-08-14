@@ -107,7 +107,10 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn("cargo fmt --manifest-path", contents)
         self.assertIn("cargo test --manifest-path", contents)
         self.assertIn("cargo clippy --manifest-path", contents)
-        self.assertIn("./scripts/ci.sh ui-runtime", contents)
+        self.assertIn(
+            "env -u SUISUI_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY ./scripts/ci.sh ui-runtime",
+            contents,
+        )
         self.assertIn("env -u SUISUI_CI_VISUAL_GATE_LOCALE ./scripts/ci.sh ui-visual", contents)
         for variable in (
             "SUISUI_PERFORMANCE_PROFILE",
