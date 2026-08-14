@@ -12809,8 +12809,32 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(workflow.contains("cargo fmt --manifest-path rust/kokoro-helper/Cargo.toml --check"))
         XCTAssertTrue(workflow.contains("cargo test --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features"))
         XCTAssertTrue(workflow.contains("cargo clippy --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features -- -D warnings"))
-        XCTAssertTrue(workflow.contains("KOKORO_RUST_RESULT: ${{ needs.kokoro-rust-poc.result }}"))
+        XCTAssertTrue(workflow.contains("RUST_BOUNDARY_RESULT: ${{ needs.kokoro-rust-poc.result }}"))
         XCTAssertTrue(workflow.contains("failure_reason=rust-boundary-gate-did-not-succeed"))
+    }
+
+    func testRustEmbeddingPoCIsSourceOnlyAndCoveredByRustBoundaryCI() throws {
+        let manifest = try readPackageFile("rust/embedding-helper/Cargo.toml")
+        let readme = try readPackageFile("rust/embedding-helper/README.md")
+        let workflow = try readPackageFile(".github/workflows/ci.yml")
+        let gitignore = try readPackageFile(".gitignore")
+        let productionEntrypoints = try [
+            "Package.swift",
+            "script/build_and_run.sh",
+            "script/package_release.sh",
+            "script/sign_app.sh",
+            "script/verify_release_architecture.sh"
+        ].map(readPackageFile).joined(separator: "\n")
+
+        XCTAssertTrue(manifest.contains("fastembed"))
+        XCTAssertTrue(readme.contains("source-only"))
+        XCTAssertTrue(readme.contains("384"))
+        XCTAssertTrue(readme.contains("未接続"))
+        XCTAssertTrue(gitignore.contains("/rust/embedding-helper/target/"))
+        XCTAssertFalse(productionEntrypoints.contains("rust/embedding-helper"))
+        XCTAssertTrue(workflow.contains("cargo fmt --manifest-path rust/embedding-helper/Cargo.toml --check"))
+        XCTAssertTrue(workflow.contains("cargo test --manifest-path rust/embedding-helper/Cargo.toml --locked --all-targets --all-features"))
+        XCTAssertTrue(workflow.contains("cargo clippy --manifest-path rust/embedding-helper/Cargo.toml --locked --all-targets --all-features -- -D warnings"))
     }
 
     func testKokoroRuntimeWrapperFailsClosedBeforeImportForUnsafeRuntimeInputs() throws {

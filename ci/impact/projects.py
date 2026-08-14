@@ -22,9 +22,10 @@ EXCLUDED_DIRECTORIES = {
     "vendor",
 }
 EXCLUDED_MANIFESTS = {
-    # This source-only PoC has its own dedicated Rust job; treating it as an
+    # These source-only PoCs have a dedicated Rust job; treating them as an
     # unsupported project would force unrelated Swift/documentation PRs to full CI.
     "rust/kokoro-helper/Cargo.toml",
+    "rust/embedding-helper/Cargo.toml",
 }
 
 

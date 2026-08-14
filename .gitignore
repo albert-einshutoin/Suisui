@@ -33,6 +33,7 @@ Package.resolved
 /.claude/
 /.build-xcode/
 /rust/kokoro-helper/target/
+/rust/embedding-helper/target/
 
 # TAKT personal automation runtime state
 .env.local

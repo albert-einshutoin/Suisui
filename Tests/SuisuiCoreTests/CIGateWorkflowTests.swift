@@ -143,7 +143,7 @@ final class CIGateWorkflowTests: XCTestCase {
                 script,
                 environment: [
                     "EVENT_NAME": testCase.eventName,
-                    "KOKORO_RUST_RESULT": testCase.rustResult,
+                    "RUST_BOUNDARY_RESULT": testCase.rustResult,
                     "VISUAL_SELECTION_STATE": testCase.selectionState,
                     "LOCALE_VISUAL_RESULT": testCase.matrixResult
                 ]

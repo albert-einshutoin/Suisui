@@ -1,6 +1,6 @@
 # Suisui Tech Stack
 
-Last updated: 2026-06-30
+Last updated: 2026-08-14
 Verified against public docs: 2026-06-17  
 Target: macOS native app / local-first / BYOK / voice-first personal PM
 
@@ -19,7 +19,7 @@ Long-term product direction: iOS / Web / macOS からアクセスできる会話
 | TTS | macOS 標準 TTS | **Local Kokoro + AVAudioPlayer preview** に更新。Product TTS は VoiceOver / AVSpeechSynthesizer に依存しない |
 | LLM API | OpenAI-compatible adapter | **OpenAI Responses API adapter first** に更新。OpenAI-compatible Chat Completions は OpenRouter / Ollama fallback として維持 |
 | MCP | 2025-03-26 transport前提 | **legacy MCP spec 2025-11-25** を実装基準にする。公式current stableは2026-07-28で、現行public alphaでは未対応。外部MCPはstdio Tools subsetに限定 |
-| Knowledge | SQLite + FTS5 | そのまま採用。sqlite-vec はまだ later/experimental 扱い |
+| Knowledge | SQLite + FTS5 | Task / Knowledge / repository のローカル索引に採用。sqlite-vec はまだ later/experimental 扱い |
 | Apple on-device LLM | 未記載 | **Foundation Models framework** を later に追加。macOS 26+ / Apple Intelligence availability 依存のためMVPコアにはしない |
 | 配布 | Developer ID + Sparkle | そのまま採用。Xcode 27 beta / macOS 27 beta は本番基準にしない |
 
@@ -576,6 +576,8 @@ MVP で検索するもの:
 - タスク名
 ```
 
+Task は external-content FTS5 と更新triggerで索引を同期し、Knowledge Frame は name / body / triggers を検索対象にする。日本語などunicode61で中間一致できない入力だけ、件数とtoken長を制限したSQLite `instr` fallbackを使う。Swiftへ全件を読み出してから絞り込まない。
+
 ## 9.3 Later: sqlite-vec
 
 ベクトル検索が必要になったら `sqlite-vec` を検討する。
@@ -600,17 +602,23 @@ MVP では入れない。
 - 初期プロダクト価値に直結しない
 ```
 
-## 9.4 Later: fastembed-rs / MLX Swift
+## 9.4 Experimental: fastembed-rs / MLX Swift
 
 ローカル embedding が必要になったら以下を検討する。
 
 | 候補 | 位置づけ |
 |---|---|
-| fastembed-rs | Rust core / CLI / Developer Mode 向け |
+| fastembed-rs | source-only Rust CLI PoC。ローカルUserDefined ONNX / 384次元だけを検証 |
 | MLX Swift | Apple Silicon 向けのローカル ML 実験候補 |
 | OpenAI embeddings | BYOK fallback |
 
-MVP では不要。
+`rust/embedding-helper` はアプリ・release bundleへ未接続で、実行時にモデルを取得しない。固定revision/checksumとlicenseを確認したモデルで、日本語/英語retrieval品質、latency、RSS、bundle署名を測定してからSwift接続を別PRで判断する。
+
+## 9.5 大規模repository索引
+
+Developer Modeのrepository索引は、Gitのignore済みmanifest（tracked + untracked）を入力にし、秘密らしいpath/content、binary、symlink、巨大fileを除外してSQLite FTS5へ世代単位で反映する。完全scanが成功するまで旧世代を残すため、失敗した再索引で検索結果を失わない。watcher、独自vector DB、repository chunk embeddingは実測で必要になるまで追加しない。
+
+Rust化の対象はembedding推論境界だけとする。STT、SQLite DB、承認、同期、UIはSwift / OS nativeのまま維持する。
 
 ---
 
@@ -925,7 +933,7 @@ Pro later:
 | Global Shortcut | KeyboardShortcuts | Yes | ユーザー設定可能な hotkey |
 | Updater | Sparkle | Yes | 公式サイト配布時の自動更新 |
 | Vector search | sqlite-vec | Later | 小型 vector search。MVP では不要 |
-| Embedding | fastembed-rs | Later | Rust core を入れる時に検討 |
+| Embedding | fastembed-rs | Experimental | source-only CLI PoC。品質・checksum・license・実測後に本番接続を判断 |
 | Apple Silicon ML | MLX Swift | Later | 実験・高機能版向け |
 | TTS | Kokoro | Yes | ready-gated local TTS provider。モデルはcache + checksum、Settings Test Playは短文previewのみ |
 | MCP | Swift MCP SDK | Later | 外部 MCP 対応を本格化する時。implemented legacy spec 2025-11-25からcurrent stable 2026-07-28への移行を別途評価 |

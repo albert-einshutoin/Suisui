@@ -192,9 +192,9 @@ jobs:
           retention-days: 14
 
   kokoro-rust-poc:
-    name: Kokoro Rust boundary checks
+    name: Rust boundary checks
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout tested revision
         uses: actions/checkout@v4
@@ -204,18 +204,22 @@ jobs:
         with:
           path: |
             rust/kokoro-helper/target
+            rust/embedding-helper/target
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-${{ runner.arch }}-kokoro-rust-${{ hashFiles('rust/kokoro-helper/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-rust-boundaries-${{ hashFiles('rust/kokoro-helper/Cargo.lock', 'rust/embedding-helper/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-kokoro-rust-
+            ${{ runner.os }}-${{ runner.arch }}-rust-boundaries-
 
-      - name: Verify Rust Kokoro boundary
+      - name: Verify isolated Rust boundaries
         run: |
           rustc --version
           cargo fmt --manifest-path rust/kokoro-helper/Cargo.toml --check
           cargo test --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features
           cargo clippy --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features -- -D warnings
+          cargo fmt --manifest-path rust/embedding-helper/Cargo.toml --check
+          cargo test --manifest-path rust/embedding-helper/Cargo.toml --locked --all-targets --all-features
+          cargo clippy --manifest-path rust/embedding-helper/Cargo.toml --locked --all-targets --all-features -- -D warnings
 
   ui-runtime:
     name: UI Runtime (production route)
@@ -323,11 +327,11 @@ jobs:
       - name: Aggregate locale visual gates
         env:
           EVENT_NAME: ${{ github.event_name }}
-          KOKORO_RUST_RESULT: ${{ needs.kokoro-rust-poc.result }}
+          RUST_BOUNDARY_RESULT: ${{ needs.kokoro-rust-poc.result }}
           VISUAL_SELECTION_STATE: ${{ needs.test_strategy.outputs.ui_visual_state }}
           LOCALE_VISUAL_RESULT: ${{ needs.ui-visual-locales.result }}
         run: |
-          if [[ "$KOKORO_RUST_RESULT" != "success" ]]; then
+          if [[ "$RUST_BOUNDARY_RESULT" != "success" ]]; then
             echo "failure_category=rust" >&2
             echo "failure_reason=rust-boundary-gate-did-not-succeed" >&2
             exit 1
