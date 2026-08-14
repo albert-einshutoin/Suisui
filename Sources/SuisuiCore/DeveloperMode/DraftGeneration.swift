@@ -48,7 +48,7 @@ public struct DeveloperSecretRedactor: Sendable {
         SecretRedactionPatternDefinition(name: "docker_auth_json", expression: #"(?i)\"(?:auths|auth|identitytoken)\"\s*:\s*(?:\{|\"(?:\\.|[^\"\\])*\")"#),
         SecretRedactionPatternDefinition(name: "credential_json", expression: #"(?i)\"(?:api[_-]?key|token|password|secret|client_secret|private_key)\"\s*:\s*\"(?:\\.|[^\"\\])*\""#),
         SecretRedactionPatternDefinition(name: "credential_uri", expression: #"(?i)\b[a-z][a-z0-9+.-]*://[^/\s:@]+:[^@\s/]+@"#),
-        SecretRedactionPatternDefinition(name: "authorization_header", expression: #"(?i)\bauthorization\b\s*[\"']?\s*[:=]\s*[\"']?\s*(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]+"#),
+        SecretRedactionPatternDefinition(name: "authorization_header", expression: #"(?i)\bauthorization\b\s*[\"']?\s*[:=]\s*(?:\"(?:\\.|[^\"\\\r\n])*\"|'(?:\\.|[^'\\\r\n])*'|[^\s,;\r\n][^\r\n]*)"#),
         SecretRedactionPatternDefinition(name: "jwt", expression: #"(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*(?![A-Za-z0-9_-])"#),
         SecretRedactionPatternDefinition(name: "assignment", expression: #"(?i)\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*(?!\[REDACTED_SECRET\])[^\s,;]+"#)
     ]

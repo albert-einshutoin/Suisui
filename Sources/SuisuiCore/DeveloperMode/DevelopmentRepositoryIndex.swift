@@ -576,7 +576,9 @@ public actor DevelopmentRepositoryIndex {
                 // assignment in the same body could inherit the binding's safety.
                 containsSafeSwiftOptionalBinding(
                     in: line,
-                    candidate: String(contents[swiftRange]),
+                    source: contents,
+                    lineStart: lineRange.lowerBound,
+                    candidateRange: swiftRange,
                     grammar: safeOptionalBinding,
                     atom: safeExpressionAtom
                 )
@@ -718,15 +720,21 @@ public actor DevelopmentRepositoryIndex {
 
     private static func containsSafeSwiftOptionalBinding(
         in value: String,
-        candidate: String,
+        source: String,
+        lineStart: String.Index,
+        candidateRange: Range<String.Index>,
         grammar: NSRegularExpression,
         atom: NSRegularExpression
     ) -> Bool {
         let range = NSRange(value.startIndex..<value.endIndex, in: value)
         guard let match = grammar.firstMatch(in: value, range: range),
               let nameRange = Range(match.range(at: 1), in: value),
-              String(value[nameRange]) == candidate,
               let expressionRange = Range(match.range(at: 2), in: value) else {
+            return false
+        }
+        let nameStart = source.index(lineStart, offsetBy: value.distance(from: value.startIndex, to: nameRange.lowerBound))
+        let nameEnd = source.index(lineStart, offsetBy: value.distance(from: value.startIndex, to: nameRange.upperBound))
+        guard (nameStart..<nameEnd) == candidateRange else {
             return false
         }
         return isSafeSwiftExpression(String(value[expressionRange]), atom: atom)

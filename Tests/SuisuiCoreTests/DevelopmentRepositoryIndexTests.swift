@@ -112,6 +112,11 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         try fixture.write("{\"Authorization\":\"Basic quotedbasicindexmarker\"}", to: "Config/QuotedBasic.json")
         try fixture.write("Authorization = \"Bearer equalsbearerindexmarker\"", to: "Config/Authorization.toml")
         try fixture.write("AUTHORIZATION=Basic equalsbasicindexmarker", to: "Config/Authorization.env")
+        try fixture.write("Authorization = \"Token customtokenindexmarker\"", to: "Config/CustomAuthorization.toml")
+        try fixture.write("Authorization: AWS4-HMAC-SHA256 Credential=awscredentialindexmarker", to: "Config/AWSAuthorization.txt")
+        try fixture.write("Authorization: Digest digestindexmarker", to: "Config/DigestAuthorization.txt")
+        try fixture.write("Authorization: Negotiate negotiateindexmarker", to: "Config/NegotiateAuthorization.txt")
+        try fixture.write("AuthorizationPolicy = harmlessauthorizationmarker", to: "Config/AuthorizationPolicy.txt")
         try fixture.write("session eyJheadersentinel.payloadsentinel.signaturesentinel", to: "Config/Token.txt")
         try fixture.write("session eyJhbGciOiJub25lIn0.e30.", to: "Config/UnsignedToken.txt")
         try fixture.write("session eyJhbGciOiJub25lIn0.e30.trailinghyphen-", to: "Config/TrailingHyphenToken.txt")
@@ -128,6 +133,11 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let quotedBasic = try await index.search(query: "quotedbasicindexmarker", workspace: workspace(fixture))
         let equalsBearer = try await index.search(query: "equalsbearerindexmarker", workspace: workspace(fixture))
         let equalsBasic = try await index.search(query: "equalsbasicindexmarker", workspace: workspace(fixture))
+        let customToken = try await index.search(query: "customtokenindexmarker", workspace: workspace(fixture))
+        let awsCredential = try await index.search(query: "awscredentialindexmarker", workspace: workspace(fixture))
+        let digest = try await index.search(query: "digestindexmarker", workspace: workspace(fixture))
+        let negotiate = try await index.search(query: "negotiateindexmarker", workspace: workspace(fixture))
+        let harmlessAuthorization = try await index.search(query: "harmlessauthorizationmarker", workspace: workspace(fixture))
         let unsignedJWT = try await index.search(query: "e30", workspace: workspace(fixture))
         let trailingHyphenJWT = try await index.search(query: "trailinghyphen", workspace: workspace(fixture))
         XCTAssertTrue(bearer.isEmpty)
@@ -139,6 +149,11 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(quotedBasic.isEmpty)
         XCTAssertTrue(equalsBearer.isEmpty)
         XCTAssertTrue(equalsBasic.isEmpty)
+        XCTAssertTrue(customToken.isEmpty)
+        XCTAssertTrue(awsCredential.isEmpty)
+        XCTAssertTrue(digest.isEmpty)
+        XCTAssertTrue(negotiate.isEmpty)
+        XCTAssertEqual(harmlessAuthorization.map(\.sourcePath), ["Config/AuthorizationPolicy.txt"])
         XCTAssertTrue(unsignedJWT.isEmpty)
         XCTAssertTrue(trailingHyphenJWT.isEmpty)
     }
@@ -221,6 +236,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             "CredentialValueSuffix.swift": "let accessTokenValue = \"long-secret-value\"\nlet apiKeyString = \"long-secret-value\"",
             "OptionalBindingLiteral.swift": "guard let accessToken = \"long-secret-value\" else { return }",
             "OptionalBindingTrailingCredential.swift": "if let idToken = cachedToken { accessToken = \"long-secret-value\" }\nguard let refreshToken = cachedRefreshToken else { accessToken = \"long-secret-value\" }",
+            "SameNameOptionalBindingTrailingCredential.swift": "if let accessToken = cachedToken { accessToken = \"long-secret-value\" }\nguard let accessToken = cachedToken else { accessToken = \"long-secret-value\" }",
             "PascalCredential.json": "{\"ServiceAccessToken\":\"long-secret-value\"}",
             "TypealiasCredential.swift": "typealias ServiceAccessToken: Codable",
             "BacktickedCredential.swift": "let `accessToken` = \"long-secret-value\"",
