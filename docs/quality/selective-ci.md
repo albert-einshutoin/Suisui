@@ -74,7 +74,8 @@ UI・Rust境界を含むローカル完全検証:
 UIを必要としない完全SwiftPM・source contract・securityの確認だけを行う場合は
 `./ci/run-full.sh` を使う。これは `ci` 完了の代替ではない。
 
-手動GitHub Actionsは常に完全検証になる。ローカル完全検証は同じ入口を使う:
+手動GitHub Actionsはselective判定を使わず、hosted runnerで実行可能な全laneを検証する。
+ただし1024x676のhosted画面ではwide layoutを完遂できないため、UIの完全検証はローカルで次の入口を使う:
 
 ```bash
 ./ci/run-all.sh

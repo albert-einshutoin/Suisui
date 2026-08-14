@@ -139,6 +139,7 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn("SUISUI_CI_COMPLETE_RUNTIME=1", RELEASE_PREFLIGHT.read_text(encoding="utf-8"))
         self.assertIn("SUISUI_RUNTIME_POLICY=public-alpha", contents)
         self.assertIn("-u SUISUI_CI_VISUAL_GATE_LOCALE", contents)
+        self.assertIn("-u SUISUI_VISUAL_SOURCE_REF", contents)
         self.assertIn("./scripts/ci.sh ui-visual", contents)
         for variable in (
             "SUISUI_PERFORMANCE_PROFILE",
