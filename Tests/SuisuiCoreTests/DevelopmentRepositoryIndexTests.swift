@@ -1342,6 +1342,18 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         }
     }
 
+    func testSearchReturnsEmptyForNonPositiveTopKBeforeDatabaseQuery() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let index = DevelopmentRepositoryIndex(connection: try SQLiteConnection(path: ":memory:"))
+
+        let zeroResults = try await index.search(query: "sqlite", workspace: workspace(fixture), topK: 0)
+        let negativeResults = try await index.search(query: "sqlite", workspace: workspace(fixture), topK: -1)
+
+        XCTAssertTrue(zeroResults.isEmpty)
+        XCTAssertTrue(negativeResults.isEmpty)
+    }
+
     private func migratedIndex(
         maximumRefreshReadBytes: Int = DevelopmentRepositoryIndex.maximumIndexedContentBytes
     ) throws -> DevelopmentRepositoryIndex {

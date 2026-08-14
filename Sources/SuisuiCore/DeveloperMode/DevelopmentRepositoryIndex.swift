@@ -213,6 +213,9 @@ public actor DevelopmentRepositoryIndex {
             throw DevelopmentRepositoryIndexError.invalidQuery
         }
         let selectedPaths = try Self.validatedSelectedPaths(workspace.selectedRelativePaths, root: root)
+        guard topK > 0 else {
+            return []
+        }
         let limit = max(1, min(topK, Self.maximumResults))
         try Self.verifyWorkspaceRoot(root, matches: rootDescriptor)
         let workspaceKey = Self.workspaceKey(root: root, descriptor: rootDescriptor)
@@ -338,7 +341,7 @@ public actor DevelopmentRepositoryIndex {
             let data = read.data
             guard let contents = String(data: data, encoding: .utf8),
                   (try? DevelopmentRepositoryFilePathPolicy.validateTextContent(contents)) != nil,
-                  !containsIndexCredential(contents, relativePath: relativePath, redactor: redactor) else {
+                  !containsRepositoryCredential(contents, relativePath: relativePath, redactor: redactor) else {
                 continue
             }
             records.append(IndexedFile(
@@ -614,7 +617,9 @@ public actor DevelopmentRepositoryIndex {
         return (start == contents.startIndex ? "" : "…") + String(contents[start..<end]) + (end == contents.endIndex ? "" : "…")
     }
 
-    private static func containsIndexCredential(
+    // Indexing and direct repository reads share one credential policy so a
+    // safe Swift type cannot be accepted for persistence but rejected on egress.
+    static func containsRepositoryCredential(
         _ contents: String,
         relativePath: String,
         redactor: DeveloperSecretRedactor

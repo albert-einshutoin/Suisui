@@ -187,6 +187,40 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
         XCTAssertEqual(accessCounter.value, 1)
     }
 
+    func testRepositoryFileClientAllowsSwiftAuthorizationTypesButRejectsLiteralCredentials() throws {
+        let workspace = temporaryDirectory()
+        let safeSource = """
+        struct Tooling {
+            var authorization: ToolActionAuthorization?
+
+            func use(authorization: AuthorizationPolicy) {
+                request(authorization: authorizationStatus())
+            }
+        }
+        """
+        try write(safeSource, to: workspace.appendingPathComponent("Sources/Tooling.swift"))
+        try write(
+            "request(authorization: \"Token file-access-secret-marker\")\n",
+            to: workspace.appendingPathComponent("Sources/Unsafe.swift")
+        )
+        let project = ProjectRecord(
+            id: 42,
+            title: "Suisui",
+            status: "active",
+            workspacePath: workspace.path
+        )
+        let client = DevelopmentRepositoryFileClient(project: project)
+
+        let safeRecord = try client.read(relativePath: "Sources/Tooling.swift")
+
+        XCTAssertEqual(safeRecord.contents, safeSource)
+        XCTAssertThrowsError(try client.read(relativePath: "Sources/Unsafe.swift")) { error in
+            guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                return XCTFail("Expected secret-like content rejection, got \(error)")
+            }
+        }
+    }
+
     func testListFilesWithinApprovedWorkspaceReturnsSortedEntries() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
