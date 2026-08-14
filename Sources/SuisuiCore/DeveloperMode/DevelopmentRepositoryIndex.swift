@@ -64,7 +64,7 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"(?im)^\s*[\"']?client[-_]key[-_]data[\"']?\s*:\s*\S+|^\s*-----BEGIN (?:[A-Z0-9 ]*PRIVATE KEY)-----"#
     )
     private static let yamlClientKeyData = try? NSRegularExpression(
-        pattern: #"(?i)[\"']?client[-_]key[-_]data[\"']?\s*:"#
+        pattern: #"(?i)client[-_]key[-_]data"#
     )
     private static let swiftTypedDeclarationPrefix = try? NSRegularExpression(
         pattern: #"^\s*(?:@[A-Za-z_][A-Za-z0-9_]*\s+)*(?:(?:private|public|internal|fileprivate|static|final|lazy)\s+)*(?:let|var)\s+$"#
@@ -498,8 +498,8 @@ public actor DevelopmentRepositoryIndex {
         guard let serializedCredential, let yamlClientKeyData else {
             return true
         }
-        // A client-key-data key is itself secret material regardless of the
-        // surrounding format; flow mappings are not limited to YAML extensions.
+        // A client-key-data token is secret material regardless of delimiter or
+        // format; YAML anchors can separate its key from the eventual mapping.
         if yamlClientKeyData.firstMatch(in: contents, range: range) != nil {
             return true
         }

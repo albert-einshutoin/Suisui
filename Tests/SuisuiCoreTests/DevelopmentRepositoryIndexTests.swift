@@ -93,10 +93,12 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let quotedYAMLKeyData = "quotedkubesentinel"
         let flowYAMLKeyData = "flowkubesentinel"
         let extensionlessFlowKeyData = "extensionlesskubesentinel"
+        let aliasYAMLKeyData = "aliaskubesentinel"
         let jsonKeyData = "jsonkubesentinel"
         try fixture.write("client-key-data: \(encodedKeyData)", to: "Kube.yml")
         try fixture.write("\"client-key-data\": \"\(quotedYAMLKeyData)\"", to: "QuotedKube.yml")
         try fixture.write("users: [{name: prod, user: {\"client_key_data\": \"\(flowYAMLKeyData)\"}}]", to: "FlowKube.yaml")
+        try fixture.write("key_name: &k client-key-data\nusers: [{user: {*k: \(aliasYAMLKeyData)}}]", to: "AliasKube.yaml")
         try fixture.write("users: [{name: prod, user: {\"client-key-data\": \"\(extensionlessFlowKeyData)\"}}]", to: "Dockerfile")
         try fixture.write("{\"client-key-data\":\"\(jsonKeyData)\"}", to: "Kube.json")
         try fixture.write("  -----BEGIN PRIVATE KEY-----\n  placeholder\n  -----END PRIVATE KEY-----", to: "KeyMaterial.txt")
@@ -106,12 +108,14 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let kubernetesResults = try await index.search(query: encodedKeyData, workspace: workspace(fixture))
         let quotedYAMLResults = try await index.search(query: quotedYAMLKeyData, workspace: workspace(fixture))
         let flowYAMLResults = try await index.search(query: flowYAMLKeyData, workspace: workspace(fixture))
+        let aliasYAMLResults = try await index.search(query: aliasYAMLKeyData, workspace: workspace(fixture))
         let extensionlessFlowResults = try await index.search(query: extensionlessFlowKeyData, workspace: workspace(fixture))
         let jsonResults = try await index.search(query: jsonKeyData, workspace: workspace(fixture))
         let pemResults = try await index.search(query: "PRIVATE", workspace: workspace(fixture))
         XCTAssertTrue(kubernetesResults.isEmpty)
         XCTAssertTrue(quotedYAMLResults.isEmpty)
         XCTAssertTrue(flowYAMLResults.isEmpty)
+        XCTAssertTrue(aliasYAMLResults.isEmpty)
         XCTAssertTrue(extensionlessFlowResults.isEmpty)
         XCTAssertTrue(jsonResults.isEmpty)
         XCTAssertTrue(pemResults.isEmpty)
