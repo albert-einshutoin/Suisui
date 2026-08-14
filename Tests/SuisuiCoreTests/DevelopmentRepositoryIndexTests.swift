@@ -1145,6 +1145,20 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(results.map(\.sourcePath), ["Docs/Exact.md", "Docs/Partial.md"])
     }
 
+    func testSearchPrefersCJKFullFallbackBeforeEnglishOnlyORMatches() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("設計 sqlite ftsexactmarker", to: "Docs/FTSExact.md")
+        try fixture.write("設計sqlite fallbackfullmarker", to: "Docs/Fallback.md")
+        try fixture.write("sqlite englishonlymarker", to: "Docs/EnglishOnly.md")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let results = try await index.search(query: "設計 sqlite", workspace: workspace(fixture), topK: 2)
+        XCTAssertEqual(results.map(\.sourcePath), ["Docs/FTSExact.md", "Docs/Fallback.md"])
+    }
+
     func testSearchRejectsPunctuationOnlyQuery() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }

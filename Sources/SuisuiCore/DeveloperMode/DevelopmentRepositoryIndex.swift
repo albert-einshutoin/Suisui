@@ -211,27 +211,12 @@ public actor DevelopmentRepositoryIndex {
                 selectedPaths: selectedPaths,
                 limit: limit
             )
-            var ftsRows = rows
-            if ftsRows.count < limit {
-                // Keep all-term matches first, then use only the remaining
-                // capacity for partial matches without duplicating a path.
-                let partialRows = try Self.ftsRows(
-                    connection: connection,
-                    terms: terms,
-                    joiner: " OR ",
-                    workspaceKey: workspaceKey,
-                    selectedPaths: selectedPaths,
-                    excludedPaths: try ftsRows.map { try $0.string("relative_path") },
-                    limit: limit - ftsRows.count
-                )
-                ftsRows.append(contentsOf: partialRows)
-            }
             let cjkTerms = terms.filter(Self.containsCJK)
-            var finalRows = ftsRows
+            var finalRows = rows
             if !cjkTerms.isEmpty, finalRows.count < limit {
                 let exactFallback = try Self.fallbackRows(
                     connection: connection,
-                    terms: cjkTerms,
+                    terms: terms,
                     joiner: " AND ",
                     workspaceKey: workspaceKey,
                     selectedPaths: selectedPaths,
@@ -239,6 +224,20 @@ public actor DevelopmentRepositoryIndex {
                     limit: limit - finalRows.count
                 )
                 finalRows.append(contentsOf: exactFallback)
+            }
+            if finalRows.count < limit {
+                // Prefer full-term FTS and CJK substring matches before partial
+                // matches, then fill only the remaining slots without duplicates.
+                let partialRows = try Self.ftsRows(
+                    connection: connection,
+                    terms: terms,
+                    joiner: " OR ",
+                    workspaceKey: workspaceKey,
+                    selectedPaths: selectedPaths,
+                    excludedPaths: try finalRows.map { try $0.string("relative_path") },
+                    limit: limit - finalRows.count
+                )
+                finalRows.append(contentsOf: partialRows)
             }
             if !cjkTerms.isEmpty, finalRows.count < limit {
                 let partialFallback = try Self.fallbackRows(
