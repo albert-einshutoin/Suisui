@@ -21,6 +21,11 @@ EXCLUDED_DIRECTORIES = {
     "node_modules",
     "vendor",
 }
+EXCLUDED_MANIFESTS = {
+    # This source-only PoC has its own dedicated Rust job; treating it as an
+    # unsupported project would force unrelated Swift/documentation PRs to full CI.
+    "rust/kokoro-helper/Cargo.toml",
+}
 
 
 def detect_projects(repo: Path) -> List[Dict[str, str]]:
@@ -30,6 +35,9 @@ def detect_projects(repo: Path) -> List[Dict[str, str]]:
             continue
         if not path.is_file() or path.name not in MANIFEST_TYPES:
             continue
+        manifest = path.relative_to(repo).as_posix()
+        if manifest in EXCLUDED_MANIFESTS:
+            continue
         project_type, tool = MANIFEST_TYPES[path.name]
         project_path = path.parent.relative_to(repo).as_posix() or "."
         key = (project_path, project_type)
@@ -37,7 +45,7 @@ def detect_projects(repo: Path) -> List[Dict[str, str]]:
             "path": project_path,
             "type": project_type,
             "tool": tool,
-            "manifest": path.relative_to(repo).as_posix(),
+            "manifest": manifest,
             "adapter": "swift" if project_type == "swift" else "unsupported",
         }
     return sorted(detected.values(), key=lambda item: (item["path"], item["type"]))
