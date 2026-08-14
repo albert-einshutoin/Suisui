@@ -12,4 +12,10 @@ cargo test --manifest-path "$RUST_MANIFEST" --locked --all-targets --all-feature
 cargo clippy --manifest-path "$RUST_MANIFEST" --locked --all-targets --all-features -- -D warnings
 ./scripts/ci.sh ui-runtime
 env -u SUISUI_CI_VISUAL_GATE_LOCALE ./scripts/ci.sh ui-visual
-./scripts/ci.sh ui-performance
+env \
+  -u SUISUI_PERFORMANCE_PROFILE \
+  -u SUISUI_PERFORMANCE_BUILD_CONFIGURATION \
+  -u SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS \
+  -u SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS \
+  -u SUISUI_PERFORMANCE_USE_PREBUILT_APP \
+  ./scripts/ci.sh ui-performance

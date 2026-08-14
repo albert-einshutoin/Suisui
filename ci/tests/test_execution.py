@@ -109,6 +109,14 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn("cargo clippy --manifest-path", contents)
         self.assertIn("./scripts/ci.sh ui-runtime", contents)
         self.assertIn("env -u SUISUI_CI_VISUAL_GATE_LOCALE ./scripts/ci.sh ui-visual", contents)
+        for variable in (
+            "SUISUI_PERFORMANCE_PROFILE",
+            "SUISUI_PERFORMANCE_BUILD_CONFIGURATION",
+            "SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS",
+            "SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS",
+            "SUISUI_PERFORMANCE_USE_PREBUILT_APP",
+        ):
+            self.assertIn(f"-u {variable}", contents)
         self.assertIn("./scripts/ci.sh ui-performance", contents)
         self.assertNotIn("impact/analyze", contents)
 
