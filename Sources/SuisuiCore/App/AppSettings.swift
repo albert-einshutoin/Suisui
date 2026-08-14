@@ -561,8 +561,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
               normalized.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
             return defaultTTSVoiceID(for: languageCode)
         }
-        let expectedPrefix = normalizedTTSLanguageCode(languageCode) == "ja" ? "j" : "a"
-        return normalized.hasPrefix(expectedPrefix) ? normalized : defaultTTSVoiceID(for: languageCode)
+        // Kokoro reserves both `a` (American) and `b` (British) for English voices.
+        let expectedPrefixes = normalizedTTSLanguageCode(languageCode) == "ja" ? ["j"] : ["a", "b"]
+        return expectedPrefixes.contains { normalized.hasPrefix($0) }
+            ? normalized
+            : defaultTTSVoiceID(for: languageCode)
     }
 
     public static func normalizedTTSVoiceID(
