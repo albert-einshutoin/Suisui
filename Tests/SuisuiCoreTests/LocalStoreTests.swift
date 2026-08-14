@@ -338,6 +338,26 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertTrue(try store.searchOpenTasksByContent(text: "sprint", limit: 10).isEmpty)
     }
 
+    func testTaskSearchKeepsDanglingProjectTasksAndExcludesArchivedProjects() throws {
+        let connection = try currentConnection()
+        let projects = SQLiteProjectStore(connection: connection)
+        let tasks = SQLiteTaskStore(connection: connection)
+        let dangling = try tasks.create(title: "Recover dangling reference", projectID: 99_999)
+        let archivedProject = try projects.create(title: "Archived project")
+        _ = try tasks.create(title: "Recover archived reference", projectID: archivedProject.id)
+        _ = try projects.archive(id: archivedProject.id)
+        let unassigned = try tasks.create(title: "Recover unassigned reference")
+
+        XCTAssertEqual(
+            try tasks.searchOpenTasksByContent(text: "recover", limit: 2).map(\.id),
+            [unassigned.id, dangling.id]
+        )
+        XCTAssertEqual(
+            try tasks.searchOpenTasks(matching: ["recover"], limit: 2).map(\.id),
+            [dangling.id, unassigned.id]
+        )
+    }
+
     func testContentSearchMigrationBackfillsExistingTasksAndKnowledgeTriggers() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         let migrationsBeforeTaskSearch = CoreMigrations.current.filter {

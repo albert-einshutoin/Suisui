@@ -841,7 +841,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             LEFT JOIN projects ON projects.id = tasks.project_id
             WHERE tasks_fts MATCH ?
               AND tasks.status != 'completed'
-              AND (tasks.project_id IS NULL OR projects.status != 'archived')
+              AND COALESCE(projects.status, 'active') != 'archived'
             ORDER BY tasks.id DESC
             LIMIT ?;
             """,
@@ -896,7 +896,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
                 LEFT JOIN projects ON projects.id = tasks.project_id
                 WHERE tasks_fts MATCH ?
                   AND tasks.status != 'completed'
-                  AND (tasks.project_id IS NULL OR projects.status != 'archived')
+                  AND COALESCE(projects.status, 'active') != 'archived'
                 ORDER BY tasks.id ASC
                 LIMIT ?;
                 """,
@@ -1528,7 +1528,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             LEFT JOIN projects ON projects.id = tasks.project_id
             WHERE (\(predicate))
               AND tasks.status != 'completed'
-              AND (tasks.project_id IS NULL OR projects.status != 'archived')\(exclusion)
+              AND COALESCE(projects.status, 'active') != 'archived'\(exclusion)
             ORDER BY tasks.id DESC
             LIMIT ?;
             """,
@@ -1561,7 +1561,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
                 LEFT JOIN projects ON projects.id = tasks.project_id
                 WHERE tasks_fts MATCH ?
                   AND tasks.status != 'completed'
-                  AND (tasks.project_id IS NULL OR projects.status != 'archived')
+                  AND COALESCE(projects.status, 'active') != 'archived'
                   \(prefixExclusion)
                 ORDER BY tasks.id DESC
                 LIMIT ?;
@@ -1602,7 +1602,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             SELECT tasks.* FROM tasks
             LEFT JOIN projects ON projects.id = tasks.project_id
             WHERE tasks.status != 'completed'
-              AND (tasks.project_id IS NULL OR projects.status != 'archived')\(exclusion)
+              AND COALESCE(projects.status, 'active') != 'archived'\(exclusion)
             ORDER BY tasks.id DESC
             LIMIT ?;
             """,
