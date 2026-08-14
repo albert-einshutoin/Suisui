@@ -85,6 +85,29 @@ final class DraftGenerationTests: XCTestCase {
         XCTAssertTrue(redaction.report.matchedPatternNames.contains("credential_uri"))
     }
 
+    func testAuthorizationHeadersAndJWTsAreRedacted() {
+        let bearer = "Bearer bearercredentialmarker"
+        let basic = "Basic basiccredentialmarker"
+        let shortBearer = "Bearer abc"
+        let shortBasic = "Basic dTpw"
+        let jwt = "eyJheadersentinel.payloadsentinel.signaturesentinel"
+        let unsignedJWT = "eyJhbGciOiJub25lIn0.e30."
+        let trailingHyphenJWT = "eyJhbGciOiJub25lIn0.e30.signaturesentinel-"
+        let redaction = DeveloperSecretRedactor().redact(
+            "Authorization: \(bearer)\nAuthorization: \(basic)\nAuthorization: \(shortBearer)\nAuthorization: \(shortBasic)\ncredential=\(jwt)\ncredential=\(unsignedJWT)\ncredential=\(trailingHyphenJWT)"
+        )
+
+        XCTAssertFalse(redaction.text.contains("bearercredentialmarker"))
+        XCTAssertFalse(redaction.text.contains("basiccredentialmarker"))
+        XCTAssertFalse(redaction.text.contains("Authorization: Bearer abc"))
+        XCTAssertFalse(redaction.text.contains("Authorization: Basic dTpw"))
+        XCTAssertFalse(redaction.text.contains("signaturesentinel"))
+        XCTAssertFalse(redaction.text.contains(unsignedJWT))
+        XCTAssertFalse(redaction.text.contains(trailingHyphenJWT))
+        XCTAssertTrue(redaction.report.matchedPatternNames.contains("authorization_header"))
+        XCTAssertTrue(redaction.report.matchedPatternNames.contains("jwt"))
+    }
+
     func testEscapedCredentialKeysFailClosed() {
         for fixture in [
             #"{"to\u006ben":"long-secret-value"}"#,

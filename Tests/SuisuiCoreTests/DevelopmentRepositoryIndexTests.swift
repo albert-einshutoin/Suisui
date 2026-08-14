@@ -92,6 +92,36 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(pemResults.isEmpty)
     }
 
+    func testRefreshDoesNotPersistAuthorizationHeadersOrJWTs() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("Authorization: Bearer bearerindexmarker", to: "Config/Authorization.txt")
+        try fixture.write("Authorization: Basic basicindexmarker", to: "Config/Basic.txt")
+        try fixture.write("Authorization: Bearer abc", to: "Config/ShortBearer.txt")
+        try fixture.write("Authorization: Basic dTpw", to: "Config/ShortBasic.txt")
+        try fixture.write("session eyJheadersentinel.payloadsentinel.signaturesentinel", to: "Config/Token.txt")
+        try fixture.write("session eyJhbGciOiJub25lIn0.e30.", to: "Config/UnsignedToken.txt")
+        try fixture.write("session eyJhbGciOiJub25lIn0.e30.trailinghyphen-", to: "Config/TrailingHyphenToken.txt")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let bearer = try await index.search(query: "bearerindexmarker", workspace: workspace(fixture))
+        let basic = try await index.search(query: "basicindexmarker", workspace: workspace(fixture))
+        let jwt = try await index.search(query: "signaturesentinel", workspace: workspace(fixture))
+        let shortBearer = try await index.search(query: "abc", workspace: workspace(fixture))
+        let shortBasic = try await index.search(query: "dTpw", workspace: workspace(fixture))
+        let unsignedJWT = try await index.search(query: "e30", workspace: workspace(fixture))
+        let trailingHyphenJWT = try await index.search(query: "trailinghyphen", workspace: workspace(fixture))
+        XCTAssertTrue(bearer.isEmpty)
+        XCTAssertTrue(basic.isEmpty)
+        XCTAssertTrue(jwt.isEmpty)
+        XCTAssertTrue(shortBearer.isEmpty)
+        XCTAssertTrue(shortBasic.isEmpty)
+        XCTAssertTrue(unsignedJWT.isEmpty)
+        XCTAssertTrue(trailingHyphenJWT.isEmpty)
+    }
+
     func testRefreshIndexesTypedSwiftTokenButExcludesCredentialAssignment() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
