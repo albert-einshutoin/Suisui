@@ -2232,7 +2232,7 @@ public enum CoreMigrations {
                         detail,
                         content='tasks',
                         content_rowid='id',
-                        tokenize='trigram case_sensitive 0 remove_diacritics 0'
+                        tokenize='trigram'
                     );
 
                     INSERT INTO tasks_trigram_fts(tasks_trigram_fts) VALUES ('rebuild');
@@ -2276,7 +2276,7 @@ public enum CoreMigrations {
                     CREATE VIRTUAL TABLE knowledge_frames_trigram_fts USING fts5(
                         name,
                         body,
-                        tokenize='trigram case_sensitive 0 remove_diacritics 0'
+                        tokenize='trigram'
                     );
 
                     INSERT INTO knowledge_frames_trigram_fts(rowid, name, body)
