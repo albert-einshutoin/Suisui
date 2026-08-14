@@ -270,7 +270,11 @@ public actor DevelopmentRepositoryIndex {
         manifestExecutableURL: URL
     ) throws -> [IndexedFile] {
         try verifyWorkspaceRoot(root, matches: rootDescriptor)
-        let entries = try GitManifestReader.entries(at: root, executableURL: manifestExecutableURL)
+        let entries = try GitManifestReader.entries(
+            at: root,
+            executableURL: manifestExecutableURL,
+            expectedRootIdentity: .init(device: rootDescriptor.device, inode: rootDescriptor.inode)
+        )
         try verifyWorkspaceRoot(root, matches: rootDescriptor)
         var totalBytes = 0
         var records: [IndexedFile] = []
@@ -671,6 +675,10 @@ public actor DevelopmentRepositoryIndex {
     }
 
     private static func isNonSwiftNonProseFile(_ relativePath: String) -> Bool {
+        let filename = URL(fileURLWithPath: relativePath).lastPathComponent.lowercased()
+        if ["readme", "license"].contains(filename) {
+            return false
+        }
         let extensionName = URL(fileURLWithPath: relativePath).pathExtension.lowercased()
         return extensionName != "swift" && extensionName != "json" &&
             !["md", "markdown", "txt", "rst", "adoc"].contains(extensionName)
@@ -1195,32 +1203,51 @@ enum GitManifestReader {
         let isUnavailable: Bool
     }
 
+    struct RootIdentity {
+        let device: dev_t
+        let inode: ino_t
+    }
+
     static func paths(
         at root: URL,
         timeout: TimeInterval = 15,
-        executableURL: URL = defaultExecutableURL
+        executableURL: URL = defaultExecutableURL,
+        expectedRootIdentity: RootIdentity? = nil
     ) throws -> [String] {
-        try manifestEntries(at: root, timeout: timeout, executableURL: executableURL).map(\.path)
+        try manifestEntries(
+            at: root,
+            timeout: timeout,
+            executableURL: executableURL,
+            expectedRootIdentity: expectedRootIdentity
+        ).map(\.path)
     }
 
     static func entries(
         at root: URL,
         timeout: TimeInterval = 15,
-        executableURL: URL = defaultExecutableURL
+        executableURL: URL = defaultExecutableURL,
+        expectedRootIdentity: RootIdentity? = nil
     ) throws -> [Entry] {
-        try manifestEntries(at: root, timeout: timeout, executableURL: executableURL)
+        try manifestEntries(
+            at: root,
+            timeout: timeout,
+            executableURL: executableURL,
+            expectedRootIdentity: expectedRootIdentity
+        )
     }
 
     private static func manifestEntries(
         at root: URL,
         timeout: TimeInterval = 15,
-        executableURL: URL = defaultExecutableURL
+        executableURL: URL = defaultExecutableURL,
+        expectedRootIdentity: RootIdentity? = nil
     ) throws -> [Entry] {
         let output = try manifestData(
             at: root,
             arguments: ["ls-files", "--cached", "--others", "--deleted", "--stage", "-v", "-z", "--exclude-standard"],
             timeout: timeout,
-            executableURL: executableURL
+            executableURL: executableURL,
+            expectedRootIdentity: expectedRootIdentity
         )
         var orderedPaths: [String] = []
         var unavailableByPath: [String: Bool] = [:]
@@ -1265,16 +1292,18 @@ enum GitManifestReader {
         at root: URL,
         arguments: [String],
         timeout: TimeInterval = 15,
-        executableURL: URL = defaultExecutableURL
+        executableURL: URL = defaultExecutableURL,
+        expectedRootIdentity: RootIdentity? = nil
     ) throws -> ManifestData {
         #if os(iOS) || targetEnvironment(macCatalyst)
         // Repository manifests require a local git subprocess, which mobile
         // targets intentionally do not ship. Never fall back to a filesystem walk.
         throw DevelopmentRepositoryIndexError.gitManifestUnsupported
         #else
+        let rootIdentity = try expectedRootIdentity ?? currentRootIdentity(at: root)
         let process = Process()
         let standardOutput = Pipe()
-        process.executableURL = executableURL
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
         // This read-only manifest must not inherit repository or user hooks.
         // In particular, core.fsmonitor can execute a repo-configured command.
         var options = [
@@ -1286,7 +1315,16 @@ enum GitManifestReader {
             // process itself remains isolated from global hooks and commands.
             options += ["-c", "core.excludesFile=\(globalExcludesFile)"]
         }
-        process.arguments = options + arguments
+        // Process holds `.` as its cwd across exec. Verify that inode inside the
+        // child before invoking git so an ABA path replacement cannot redirect a
+        // valid parent-side check to another workspace.
+        process.arguments = [
+            "-c",
+            "actual=$(/usr/bin/stat -f '%d:%i' .) || exit 125\n[ \"$actual\" = \"$1\" ] || exit 125\nshift\nexec \"$@\"",
+            "repository-manifest",
+            "\(rootIdentity.device):\(rootIdentity.inode)",
+            executableURL.path,
+        ] + options + arguments
         process.currentDirectoryURL = root
         process.standardOutput = standardOutput
         process.standardError = FileHandle.nullDevice
@@ -1313,6 +1351,16 @@ enum GitManifestReader {
         return result.output
         #endif
     }
+
+    #if !(os(iOS) || targetEnvironment(macCatalyst))
+    private static func currentRootIdentity(at root: URL) throws -> RootIdentity {
+        var state = stat()
+        guard Darwin.lstat(root.path, &state) == 0, (state.st_mode & S_IFMT) == S_IFDIR else {
+            throw DevelopmentRepositoryIndexError.gitManifestUnavailable
+        }
+        return RootIdentity(device: state.st_dev, inode: state.st_ino)
+    }
+    #endif
 
     #if !(os(iOS) || targetEnvironment(macCatalyst))
     private static func globalExcludesFile(executableURL: URL) throws -> String? {

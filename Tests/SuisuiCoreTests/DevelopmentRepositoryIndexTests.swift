@@ -608,6 +608,24 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(results.map(\.sourcePath), ["Docs/DenseComment.md"])
     }
 
+    func testRefreshTreatsExtensionlessReadmeAndLicenseAsProse() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("OAuth token lifecycle readmeprosemarker", to: "README")
+        try fixture.write("refresh token lifecycle licenseprosemarker", to: "LICENSE")
+        try fixture.write("accessToken = longsecretassignmentmarker", to: "README.md")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let readme = try await index.search(query: "readmeprosemarker", workspace: workspace(fixture))
+        let license = try await index.search(query: "licenseprosemarker", workspace: workspace(fixture))
+        let assignment = try await index.search(query: "longsecretassignmentmarker", workspace: workspace(fixture))
+        XCTAssertEqual(readme.map(\.sourcePath), ["README"])
+        XCTAssertEqual(license.map(\.sourcePath), ["LICENSE"])
+        XCTAssertTrue(assignment.isEmpty)
+    }
+
     func testSearchDoesNotExposePriorRepositoryAfterSamePathReplacement() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
@@ -779,6 +797,26 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let startedAt = Date()
         XCTAssertThrowsError(try GitManifestReader.paths(at: fixture.url, timeout: 0.01, executableURL: helper))
         XCTAssertLessThan(Date().timeIntervalSince(startedAt), 3)
+    }
+
+    func testManifestRejectsMismatchedChildWorkingDirectoryIdentity() throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let marker = fixture.url.appendingPathComponent("manifest-helper-ran")
+        let helper = fixture.url.appendingPathComponent("manifest-helper.sh")
+        try "#!/bin/sh\nif [ \"$1\" = \"config\" ]; then exit 1; fi\ntouch '\(marker.path)'\nprintf '? Notes.md\\0'\n".write(to: helper, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
+
+        XCTAssertThrowsError(
+            try GitManifestReader.paths(
+                at: fixture.url,
+                executableURL: helper,
+                expectedRootIdentity: .init(device: 0, inode: 0)
+            )
+        ) { error in
+            XCTAssertEqual(error as? DevelopmentRepositoryIndexError, .gitManifestUnavailable)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
     }
 
     func testGlobalExcludeLookupTimeoutKeepsPriorGeneration() async throws {
