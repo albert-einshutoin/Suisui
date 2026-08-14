@@ -96,6 +96,35 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
         try fixture.write("func approve(token: ApprovalToken) {}\nprivate let clientSecret: String\nfunc use(authToken: Token) {}\nlet apiKey = value\nlet password: Password\nlet token = value", to: "Sources/Approval.swift")
+        try fixture.write(
+            """
+            public struct OAuthTokenResponse: Decodable {}
+            enum OAuthError {
+            case .tokenExpiredWithoutRefresh:
+            }
+            struct Connector {
+                let accessTokenKey: SecretKey
+                init(
+                    accessTokenKey: SecretKey
+                ) {
+                    self.accessTokenKey = accessTokenKey
+                    let accessTokenKey = Self.accessTokenKey(connectorID)
+                    accessToken = try store.accessToken(for: credential)
+                    accessToken = nil
+                    let normalizedToken = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                func send(response: OAuthTokenResponse) {
+                    request(
+                        accessToken: response.accessToken,
+                        refreshToken: response.refreshToken ?? refreshToken,
+                        accessToken: try tokenProvider.bearerToken(),
+                        hasRefreshToken: refreshToken?.isEmpty == false
+                    )
+                }
+            }
+            """,
+            to: "Sources/SaaSConnectors.swift"
+        )
         let credentials = [
             "Settings.env.swift": "API_KEY=long-secret-value",
             "TokenQuoted.swift": "token=\"long-secret-value\"",
@@ -126,6 +155,13 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
 
         let sourceResults = try await index.search(query: "approve", workspace: workspace(fixture))
         let compoundSourceResults = try await index.search(query: "authToken", workspace: workspace(fixture))
+        let responseResults = try await index.search(query: "OAuthTokenResponse", workspace: workspace(fixture))
+        let caseResults = try await index.search(query: "tokenExpiredWithoutRefresh", workspace: workspace(fixture))
+        let memberResults = try await index.search(query: "accessTokenKey", workspace: workspace(fixture))
+        let callLabelResults = try await index.search(query: "response", workspace: workspace(fixture))
+        let localAssignmentResults = try await index.search(query: "connectorID", workspace: workspace(fixture))
+        let optionalExpressionResults = try await index.search(query: "hasRefreshToken", workspace: workspace(fixture))
+        let enumShorthandResults = try await index.search(query: "normalizedToken", workspace: workspace(fixture))
         let credentialResults = try await index.search(query: "long", workspace: workspace(fixture))
         let uppercaseCredentialResults = try await index.search(query: "ABCDEFGHIJK1234", workspace: workspace(fixture))
         let compoundCredentialResults = try await index.search(query: "compound", workspace: workspace(fixture))
@@ -133,6 +169,13 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let nonSwiftFunctionResults = try await index.search(query: "NonSwiftMarker", workspace: workspace(fixture))
         XCTAssertEqual(sourceResults.map(\.sourcePath), ["Sources/Approval.swift"])
         XCTAssertEqual(compoundSourceResults.map(\.sourcePath), ["Sources/Approval.swift"])
+        XCTAssertEqual(responseResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
+        XCTAssertEqual(caseResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
+        XCTAssertEqual(memberResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
+        XCTAssertEqual(callLabelResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
+        XCTAssertEqual(localAssignmentResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
+        XCTAssertEqual(optionalExpressionResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
+        XCTAssertEqual(enumShorthandResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
         XCTAssertTrue(credentialResults.isEmpty)
         XCTAssertTrue(uppercaseCredentialResults.isEmpty)
         XCTAssertTrue(compoundCredentialResults.isEmpty)
@@ -273,6 +316,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         }
         try first.write("設計", to: "Docs/Japanese.md")
         try first.write("filename only", to: "Docs/設計ノート.md")
+        try first.write("half-width filename only", to: "Docs/ｶﾀｶﾅ.md")
         try first.write("shared secret-free phrase", to: "Sources/Only.swift")
         try second.write("shared secret-free phrase", to: "Other.md")
         let index = try migratedIndex()
@@ -281,6 +325,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         try await index.refresh(workspace: workspace(first))
 
         let cjkResults = try await index.search(query: "設計", workspace: workspace(first), topK: 2)
+        let halfWidthResults = try await index.search(query: "ｶﾀｶﾅ", workspace: workspace(first))
         let selectedResults = try await index.search(
             query: "shared",
             workspace: CodebaseMemoryWorkspace(rootPath: first.url.path, selectedRelativePaths: ["Sources/Only.swift"])
@@ -291,6 +336,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         )
         let isolatedResults = try await index.search(query: "shared", workspace: workspace(second))
         XCTAssertEqual(Set(cjkResults.map(\.sourcePath)), ["Docs/Japanese.md", "Docs/設計ノート.md"])
+        XCTAssertEqual(halfWidthResults.map(\.sourcePath), ["Docs/ｶﾀｶﾅ.md"])
         XCTAssertEqual(selectedResults.map(\.sourcePath), ["Sources/Only.swift"])
         XCTAssertEqual(directoryResults.map(\.sourcePath), ["Sources/Only.swift"])
         XCTAssertEqual(isolatedResults.map(\.sourcePath), ["Other.md"])

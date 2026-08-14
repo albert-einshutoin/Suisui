@@ -25,13 +25,19 @@ public actor DevelopmentRepositoryIndex {
     private let redactor: DeveloperSecretRedactor
 
     // Assignment-only redaction is deliberately broader for user-visible output.
-    // For indexing, reject every such assignment unless its complete source line
-    // is one of the narrow declarations below; unknown syntax stays fail-closed.
+    // For indexing, reject every such assignment unless it matches one of the
+    // narrow Swift grammars below; unknown syntax stays fail-closed.
     private static let credentialKeyAssignments = try? NSRegularExpression(
-        pattern: #"(?i)\b[A-Za-z_]*(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret)[A-Za-z_]*\s*[:=]"#
+        pattern: #"(?:\b[a-z_]*(?i:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret)|\b(?:[A-Z][A-Z0-9]*_)*(?:API_KEY|ACCESS_KEY|PRIVATE_KEY|TOKEN|PASSWORD|SECRET))\s*[:=]"#
     )
-    private static let safeSourceEqualsAssignment = try? NSRegularExpression(
-        pattern: #"^\s*(?:let|var)\s+[A-Za-z_][A-Za-z0-9_]*\s+=\s+[A-Za-z_][A-Za-z0-9_.]*\s*$"#
+    private static let safeSwiftAssignment = try? NSRegularExpression(
+        pattern: #"^\s*(?:(?:let|var)\s+)?(?:self\.)?[A-Za-z_][A-Za-z0-9_]*\s+=\s*(.+?)\s*$"#
+    )
+    private static let safeSwiftCallLabel = try? NSRegularExpression(
+        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*(.+?)\s*,?\s*$"#
+    )
+    private static let safeSwiftExpressionAtom = try? NSRegularExpression(
+        pattern: #"^(?:try\s+)?(?:nil|true|false|[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*(?:\(\s*(?:(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*(?:\s*,\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*)*)?\s*\))?)$"#
     )
     private static let safeSourceTypedDeclaration = try? NSRegularExpression(
         pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.<>?]*\s*$"#
@@ -46,7 +52,10 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"^\s*(?:(?:private|public|internal|fileprivate|static|final|lazy)\s+)*(?:let|var)\s+$"#
     )
     private static let swiftFunctionParameterPrefix = try? NSRegularExpression(
-        pattern: #"\bfunc\s+[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*$"#
+        pattern: #"\b(?:func\s+[A-Za-z_][A-Za-z0-9_]*\s*|init\s*)\([^)]*$"#
+    )
+    private static let swiftArgumentListPrefix = try? NSRegularExpression(
+        pattern: #"\([^)]*$"#
     )
 
     public init(connection: SQLiteConnection, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) {
@@ -348,11 +357,14 @@ public actor DevelopmentRepositoryIndex {
             return true
         }
         guard let assignments = credentialKeyAssignments,
-              let safeEquals = safeSourceEqualsAssignment,
+              let safeAssignment = safeSwiftAssignment,
+              let safeCallLabel = safeSwiftCallLabel,
+              let safeExpressionAtom = safeSwiftExpressionAtom,
               let safeTypedDeclaration = safeSourceTypedDeclaration,
               let safeTypedFunctionParameter = safeSourceTypedFunctionParameter,
               let typedDeclarationPrefix = swiftTypedDeclarationPrefix,
-              let functionParameterPrefix = swiftFunctionParameterPrefix else {
+              let functionParameterPrefix = swiftFunctionParameterPrefix,
+              let argumentListPrefix = swiftArgumentListPrefix else {
             return true
         }
         let matches = assignments.matches(in: contents, range: range)
@@ -370,26 +382,66 @@ public actor DevelopmentRepositoryIndex {
             }
             let lineRange = contents.lineRange(for: swiftRange)
             let line = String(contents[lineRange])
-            let lineNSRange = NSRange(line.startIndex..<line.endIndex, in: line)
+            let sourcePrefix = String(contents[..<swiftRange.lowerBound])
+            let sourcePrefixRange = NSRange(sourcePrefix.startIndex..<sourcePrefix.endIndex, in: sourcePrefix)
             let assignmentPrefix = String(contents[lineRange.lowerBound..<swiftRange.lowerBound])
             let prefixRange = NSRange(assignmentPrefix.startIndex..<assignmentPrefix.endIndex, in: assignmentPrefix)
             let assignmentSuffix = String(contents[swiftRange.lowerBound..<lineRange.upperBound])
             let suffixRange = NSRange(assignmentSuffix.startIndex..<assignmentSuffix.endIndex, in: assignmentSuffix)
             let hasSafeTypedDeclaration = typedDeclarationPrefix.firstMatch(in: assignmentPrefix, range: prefixRange) != nil &&
                 safeTypedDeclaration.firstMatch(in: assignmentSuffix, range: suffixRange) != nil
-            let isTypedFunctionParameter = functionParameterPrefix.firstMatch(in: assignmentPrefix, range: prefixRange) != nil &&
+            let isTypedFunctionParameter = functionParameterPrefix.firstMatch(in: sourcePrefix, range: sourcePrefixRange) != nil &&
                 safeTypedFunctionParameter.firstMatch(in: assignmentSuffix, range: suffixRange) != nil
             let isTypedDeclaration = (hasSafeTypedDeclaration || isTypedFunctionParameter) &&
                 !line.contains("=") && !line.contains("\"") && !line.contains("'")
-            let isEqualsDeclaration = safeEquals.firstMatch(in: line, range: lineNSRange) != nil
-            return !(isTypedDeclaration || isEqualsDeclaration)
+            let isSafeAssignment = containsSafeSwiftExpression(in: line, grammar: safeAssignment, atom: safeExpressionAtom)
+            // These forms contain only source identifiers/member references, never
+            // a literal credential. The surrounding argument list prevents config
+            // syntax from becoming an indexing exception.
+            let isCallLabel = argumentListPrefix.firstMatch(in: sourcePrefix, range: sourcePrefixRange) != nil &&
+                containsSafeSwiftExpression(in: assignmentSuffix, grammar: safeCallLabel, atom: safeExpressionAtom)
+            return !(isTypedDeclaration || isSafeAssignment || isCallLabel)
         }
+    }
+
+    private static func containsSafeSwiftExpression(
+        in value: String,
+        grammar: NSRegularExpression,
+        atom: NSRegularExpression
+    ) -> Bool {
+        let range = NSRange(value.startIndex..<value.endIndex, in: value)
+        guard let match = grammar.firstMatch(in: value, range: range),
+              let expressionRange = Range(match.range(at: 1), in: value) else {
+            return false
+        }
+        return isSafeSwiftExpression(String(value[expressionRange]), atom: atom)
+    }
+
+    private static func isSafeSwiftExpression(_ expression: String, atom: NSRegularExpression) -> Bool {
+        let comparisonParts = expression.components(separatedBy: "==")
+        guard comparisonParts.count <= 2 else {
+            return false
+        }
+        if comparisonParts.count == 2,
+           !["true", "false", "nil"].contains(comparisonParts[1].trimmingCharacters(in: .whitespaces)) {
+            return false
+        }
+        // Each operand is intentionally limited to source names, member access,
+        // and calls with the same. Quotes and config-style literals cannot form an
+        // atom, so the exception cannot persist a credential value.
+        return comparisonParts[0]
+            .components(separatedBy: "??")
+            .allSatisfy { candidate in
+                let trimmed = candidate.trimmingCharacters(in: .whitespaces)
+                let range = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
+                return atom.firstMatch(in: trimmed, range: range) != nil
+            }
     }
 
     private static func containsCJK(_ value: String) -> Bool {
         value.unicodeScalars.contains { scalar in
             switch scalar.value {
-            case 0x3040...0x30FF, 0x3400...0x9FFF, 0xAC00...0xD7AF:
+            case 0x3040...0x30FF, 0x3400...0x9FFF, 0xAC00...0xD7AF, 0xFF66...0xFF9F:
                 true
             default:
                 false
