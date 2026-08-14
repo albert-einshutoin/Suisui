@@ -26,14 +26,23 @@ public actor DevelopmentRepositoryIndex {
     // Assignment-only redaction is deliberately broader for user-visible output.
     // For indexing, reject every such assignment unless its complete source line
     // is one of the narrow declarations below; unknown syntax stays fail-closed.
-    private static let indexAssignments = try? NSRegularExpression(
-        pattern: #"(?i)\b(?:api[_-]?key|token|password|secret)\s*[:=]"#
+    private static let credentialKeyAssignments = try? NSRegularExpression(
+        pattern: #"(?i)\b[A-Za-z_]*(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret)[A-Za-z_]*\s*[:=]"#
     )
     private static let safeSourceEqualsAssignment = try? NSRegularExpression(
         pattern: #"^\s*(?:let|var)\s+[A-Za-z_][A-Za-z0-9_]*\s+=\s+[A-Za-z_][A-Za-z0-9_.]*\s*$"#
     )
-    private static let safeSourceTypedAssignment = try? NSRegularExpression(
-        pattern: #"(?i:^(?:api[_-]?key|token|password|secret))\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?=\s*(?:[,){]|$))"#
+    private static let safeSourceTypedDeclaration = try? NSRegularExpression(
+        pattern: #"(?i:^(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret))\s*:\s*[A-Z][A-Za-z0-9_.<>?]*\s*$"#
+    )
+    private static let safeSourceTypedFunctionParameter = try? NSRegularExpression(
+        pattern: #"(?i:^(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret))\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?=\s*(?:,|\)))"#
+    )
+    private static let swiftTypedDeclarationPrefix = try? NSRegularExpression(
+        pattern: #"^\s*(?:(?:private|public|internal|fileprivate|static|final|lazy)\s+)*(?:let|var)\s+$"#
+    )
+    private static let swiftFunctionParameterPrefix = try? NSRegularExpression(
+        pattern: #"\bfunc\s+[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*$"#
     )
 
     public init(connection: SQLiteConnection, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) {
@@ -310,6 +319,7 @@ public actor DevelopmentRepositoryIndex {
         relativePath: String,
         redactor: DeveloperSecretRedactor
     ) -> Bool {
+        let range = NSRange(contents.startIndex..<contents.endIndex, in: contents)
         let report = redactor.redact(contents).report
         // Shared redaction intentionally treats every token assignment as risky for
         // user-visible output. Source indexing keeps that policy for specific
@@ -317,22 +327,21 @@ public actor DevelopmentRepositoryIndex {
         if report.matchedPatternNames.contains(where: { $0 != "assignment" }) {
             return true
         }
-        guard report.matchedPatternNames.contains("assignment") else {
-            return false
-        }
-        // Only Swift syntax has the typed declaration forms accepted below.
-        // Configuration and prose formats with the same tokens remain fail-closed.
-        guard relativePath.lowercased().hasSuffix(".swift") else {
-            return true
-        }
-        guard let assignments = indexAssignments,
+        guard let assignments = credentialKeyAssignments,
               let safeEquals = safeSourceEqualsAssignment,
-              let safeTyped = safeSourceTypedAssignment else {
+              let safeTypedDeclaration = safeSourceTypedDeclaration,
+              let safeTypedFunctionParameter = safeSourceTypedFunctionParameter,
+              let typedDeclarationPrefix = swiftTypedDeclarationPrefix,
+              let functionParameterPrefix = swiftFunctionParameterPrefix else {
             return true
         }
-        let range = NSRange(contents.startIndex..<contents.endIndex, in: contents)
         let matches = assignments.matches(in: contents, range: range)
         guard !matches.isEmpty else {
+            return report.matchedPatternNames.contains("assignment")
+        }
+        // The source-shape exceptions below are meaningful only for Swift files.
+        // A config or prose file using the same text remains fail-closed.
+        guard relativePath.lowercased().hasSuffix(".swift") else {
             return true
         }
         return matches.contains { match in
@@ -342,10 +351,16 @@ public actor DevelopmentRepositoryIndex {
             let lineRange = contents.lineRange(for: swiftRange)
             let line = String(contents[lineRange])
             let lineNSRange = NSRange(line.startIndex..<line.endIndex, in: line)
+            let assignmentPrefix = String(contents[lineRange.lowerBound..<swiftRange.lowerBound])
+            let prefixRange = NSRange(assignmentPrefix.startIndex..<assignmentPrefix.endIndex, in: assignmentPrefix)
             let assignmentSuffix = String(contents[swiftRange.lowerBound..<lineRange.upperBound])
             let suffixRange = NSRange(assignmentSuffix.startIndex..<assignmentSuffix.endIndex, in: assignmentSuffix)
-            let typedMatch = safeTyped.firstMatch(in: assignmentSuffix, range: suffixRange) != nil
-            let isTypedDeclaration = typedMatch && !line.contains("=") && !line.contains("\"") && !line.contains("'")
+            let hasSafeTypedDeclaration = typedDeclarationPrefix.firstMatch(in: assignmentPrefix, range: prefixRange) != nil &&
+                safeTypedDeclaration.firstMatch(in: assignmentSuffix, range: suffixRange) != nil
+            let isTypedFunctionParameter = functionParameterPrefix.firstMatch(in: assignmentPrefix, range: prefixRange) != nil &&
+                safeTypedFunctionParameter.firstMatch(in: assignmentSuffix, range: suffixRange) != nil
+            let isTypedDeclaration = (hasSafeTypedDeclaration || isTypedFunctionParameter) &&
+                !line.contains("=") && !line.contains("\"") && !line.contains("'")
             let isEqualsDeclaration = safeEquals.firstMatch(in: line, range: lineNSRange) != nil
             return !(isTypedDeclaration || isEqualsDeclaration)
         }

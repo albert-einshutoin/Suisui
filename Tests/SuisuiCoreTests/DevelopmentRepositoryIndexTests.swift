@@ -92,6 +92,17 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             "TokenTyped.swift": "token: String = \"long-secret-value\"",
             "TokenMixed.swift": "func f(token: ApprovalToken, password: long-secret-value) {}\n{ token: ApprovalToken, password: long-secret-value }",
             "TokenUppercase.yml": "TOKEN: ABCDEFGHIJK1234",
+            "ClientSecret.env.swift": "CLIENT_SECRET=compound-secret-value",
+            "PrivateKey.env.swift": "PRIVATE_KEY=compound-secret-value",
+            "AWSSecret.env.swift": "AWS_SECRET_ACCESS_KEY=compound-secret-value",
+            "DatabasePassword.env.swift": "DATABASE_PASSWORD=compound-secret-value",
+            "AccessToken.env.swift": "access_token=compound-secret-value",
+            "ClientSecretSource.swift": "let clientSecret = \"compound-secret-value\"",
+            "ClientSecretSnakeSource.swift": "let client_secret = \"compound-secret-value\"",
+            "PrivateKeySource.swift": "let privateKey = \"compound-secret-value\"",
+            "TokenStandalone.swift": "TOKEN: ABCDEFGHIJK1234",
+            "TokenSource.txt": "let token = textonlymarker",
+            "TokenFunction.yml": "func f(token: NonSwiftMarker)",
         ]
         for (path, contents) in credentials {
             try fixture.write(contents, to: path)
@@ -102,9 +113,15 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let sourceResults = try await index.search(query: "approve", workspace: workspace(fixture))
         let credentialResults = try await index.search(query: "long", workspace: workspace(fixture))
         let uppercaseCredentialResults = try await index.search(query: "ABCDEFGHIJK1234", workspace: workspace(fixture))
+        let compoundCredentialResults = try await index.search(query: "compound", workspace: workspace(fixture))
+        let textCredentialResults = try await index.search(query: "textonlymarker", workspace: workspace(fixture))
+        let nonSwiftFunctionResults = try await index.search(query: "NonSwiftMarker", workspace: workspace(fixture))
         XCTAssertEqual(sourceResults.map(\.sourcePath), ["Sources/Approval.swift"])
         XCTAssertTrue(credentialResults.isEmpty)
         XCTAssertTrue(uppercaseCredentialResults.isEmpty)
+        XCTAssertTrue(compoundCredentialResults.isEmpty)
+        XCTAssertTrue(textCredentialResults.isEmpty)
+        XCTAssertTrue(nonSwiftFunctionResults.isEmpty)
     }
 
     func testRepositoryDescriptorWalkRejectsIntermediateAndFinalSymlinks() throws {
