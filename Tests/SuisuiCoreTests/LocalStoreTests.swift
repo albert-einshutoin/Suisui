@@ -367,10 +367,15 @@ final class LocalStoreTests: XCTestCase {
         let taskStore = SQLiteTaskStore(connection: connection)
         let knowledgeStore = SQLiteKnowledgeFrameStore(connection: connection)
         let task = try taskStore.create(title: "Restore search index")
+        let unicodeTask = try taskStore.create(title: "VorÜbergabe handoff")
         let frame = try knowledgeStore.create(
             name: "Release guide",
             body: "Verify signing",
             triggers: ["shiproom"]
+        )
+        let unicodeFrame = try knowledgeStore.create(
+            name: "VorÜbergabe notes",
+            body: "handoff details"
         )
 
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
@@ -380,6 +385,14 @@ final class LocalStoreTests: XCTestCase {
             [task.id]
         )
         XCTAssertEqual(try knowledgeStore.search(query: "shiproom").map(\.id), [frame.id])
+        XCTAssertEqual(
+            try taskStore.searchOpenTasks(matching: ["übe"], limit: 10).map(\.id),
+            [unicodeTask.id]
+        )
+        XCTAssertEqual(
+            try knowledgeStore.search(matching: ["übe"], limit: 10).map(\.id),
+            [unicodeFrame.id]
+        )
     }
 
     func testTaskContentSearchBoundsTokensBeforeBuildingQuery() {
@@ -404,6 +417,10 @@ final class LocalStoreTests: XCTestCase {
         )
         XCTAssertEqual(
             try store.searchOpenTasks(matching: ["übe"], limit: 1).map(\.id),
+            [task.id]
+        )
+        XCTAssertEqual(
+            try store.searchOpenTasksByContent(text: "übe", limit: 1).map(\.id),
             [task.id]
         )
     }
@@ -447,6 +464,20 @@ final class LocalStoreTests: XCTestCase {
         )
     }
 
+    func testTaskWorkspaceSearchFindsUnicodeInternalSubstringBeyondNewerRows() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+        let task = try store.create(title: "VorÜbergabe handoff")
+        for index in 0..<129 {
+            _ = try store.create(title: "Unrelated newer task \(index)")
+        }
+
+        XCTAssertEqual(
+            try store.searchOpenTasks(matching: ["übe"], limit: 1).map(\.id),
+            [task.id]
+        )
+    }
+
     func testTaskTokenSearchFiltersDiacriticFTSFalseHitBeforeFillingLimit() throws {
         let connection = try currentConnection()
         let store = SQLiteTaskStore(connection: connection)
@@ -468,6 +499,24 @@ final class LocalStoreTests: XCTestCase {
             try store.search(query: "übe", limit: 1).map(\.id),
             [frame.id]
         )
+        XCTAssertEqual(
+            try store.search(matching: ["übe"], limit: 1).map(\.id),
+            [frame.id]
+        )
+        XCTAssertEqual(
+            try store.search(query: "übe", limit: 1).map(\.id),
+            [frame.id]
+        )
+    }
+
+    func testKnowledgeSearchFindsUnicodeInternalSubstringBeyondOlderRows() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        for index in 0..<129 {
+            _ = try store.create(name: "Unrelated frame \(index)", body: "No matching text")
+        }
+        let frame = try store.create(name: "VorÜbergabe notes", body: "handoff details")
+
         XCTAssertEqual(
             try store.search(matching: ["übe"], limit: 1).map(\.id),
             [frame.id]

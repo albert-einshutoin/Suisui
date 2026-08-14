@@ -1576,12 +1576,39 @@ public final class SQLiteTaskStore: @unchecked Sendable {
                 records.append(record)
             }
         }
+        if records.count < limit, let trigramMatch = Self.unicodeTrigramMatch(for: tokens) {
+            let placeholders = Array(repeating: "?", count: seenIDs.count).joined(separator: ", ")
+            let exclusion = placeholders.isEmpty ? "" : " AND tasks.id NOT IN (\(placeholders))"
+            var parameters: [SQLiteValue] = [.text(trigramMatch)]
+            parameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
+            parameters.append(.integer(Int64(limit - records.count)))
+            // Trigrams index Unicode infixes in SQLite, so the source literal
+            // check can find an old `VorÜbergabe` without a fixed Swift window.
+            let trigramCandidates = try connection.queryRows(
+                """
+                SELECT tasks.* FROM tasks
+                JOIN tasks_trigram_fts ON tasks_trigram_fts.rowid = tasks.id
+                LEFT JOIN projects ON projects.id = tasks.project_id
+                WHERE tasks_trigram_fts MATCH ?
+                  AND tasks.status != 'completed'
+                  AND COALESCE(projects.status, 'active') != 'archived'\(exclusion)
+                ORDER BY tasks.id DESC
+                LIMIT ?;
+                """,
+                parameters: parameters
+            ).map(TaskRecord.init(row:))
+            for record in trigramCandidates {
+                guard tokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
+                      seenIDs.insert(record.id).inserted else {
+                    continue
+                }
+                records.append(record)
+            }
+        }
         if records.count < limit, Self.needsUnicodeLiteralCandidateWindow(for: tokens) {
-            // FTS5 only supports token prefixes, while `lower()` cannot fold
-            // a Unicode character inside a token. Inspect a fixed SQLite
-            // window rather than restoring the old unbounded Swift scan.
-            let literalCandidates = try unicodeLiteralCandidateWindowLocked(excludingIDs: seenIDs)
-            for record in literalCandidates {
+            // FTS5 trigrams start at three scalars. Preserve the existing
+            // bounded fallback only for shorter Unicode literals.
+            for record in try unicodeLiteralCandidateWindowLocked(excludingIDs: seenIDs) {
                 guard tokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
                       seenIDs.insert(record.id).inserted else {
                     continue
@@ -1651,7 +1678,8 @@ public final class SQLiteTaskStore: @unchecked Sendable {
 
     private static func needsUnicodeLiteralCandidateWindow(for tokens: [String]) -> Bool {
         tokens.contains { token in
-            token.unicodeScalars.contains { $0.value > 0x7F }
+            token.unicodeScalars.count < 3
+                && token.unicodeScalars.contains { $0.value > 0x7F }
         }
     }
 
@@ -1669,6 +1697,21 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             return nil
         }
         return prefixes.joined(separator: " OR ")
+    }
+
+    private static func unicodeTrigramMatch(for tokens: [String]) -> String? {
+        let terms = tokens.compactMap { token -> String? in
+            guard token.unicodeScalars.count >= 3,
+                  token.unicodeScalars.contains(where: { $0.value > 0x7F }),
+                  token.allSatisfy({ $0.isLetter || $0.isNumber }) else {
+                return nil
+            }
+            return "\"\(SQL.escapeFTS(token))\""
+        }
+        guard !terms.isEmpty else {
+            return nil
+        }
+        return terms.joined(separator: " OR ")
     }
 
     static func boundedSearchTokens(_ tokens: [String]) -> [String] {
@@ -2076,6 +2119,38 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
             records.append(record)
         }
         if limit.map({ records.count < $0 }) ?? true,
+           let trigramMatch = Self.unicodeTrigramMatch(for: [trimmed]) {
+            let trigramLimit = limit.map { $0 - records.count }
+            let exclusion = seenIDs.isEmpty
+                ? ""
+                : " AND knowledge_frames.id NOT IN (\(Array(repeating: "?", count: seenIDs.count).joined(separator: ", ")))"
+            var trigramParameters: [SQLiteValue] = [.text(trigramMatch)]
+            trigramParameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
+            let trigramLimitClause = trigramLimit.map { _ in "LIMIT ?" } ?? ""
+            if let trigramLimit {
+                trigramParameters.append(.integer(Int64(trigramLimit)))
+            }
+            // Trigrams locate Unicode infixes in SQLite before source fields
+            // reapply the literal contract, independent of table age.
+            let trigramCandidates = try connection.queryRows(
+                """
+                SELECT knowledge_frames.*
+                FROM knowledge_frames_trigram_fts
+                JOIN knowledge_frames ON knowledge_frames_trigram_fts.rowid = knowledge_frames.id
+                WHERE knowledge_frames_trigram_fts MATCH ?\(exclusion)
+                ORDER BY knowledge_frames.id ASC
+                \(trigramLimitClause);
+                """,
+                parameters: trigramParameters
+            ).map(KnowledgeFrameRecord.init(row:))
+            for record in trigramCandidates {
+                guard Self.matchesLiteral(record, text: trimmed), seenIDs.insert(record.id).inserted else {
+                    continue
+                }
+                records.append(record)
+            }
+        }
+        if limit.map({ records.count < $0 }) ?? true,
            Self.needsUnicodeLiteralCandidateWindow(for: [trimmed]) {
             for record in try unicodeLiteralCandidateWindowLocked(excludingIDs: seenIDs) {
                 guard Self.matchesLiteral(record, text: trimmed), seenIDs.insert(record.id).inserted else {
@@ -2171,6 +2246,33 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
             }
         }
 
+        if records.count < limit, let trigramMatch = Self.unicodeTrigramMatch(for: boundedTokens) {
+            let exclusion = seenIDs.isEmpty
+                ? ""
+                : " AND knowledge_frames.id NOT IN (\(Array(repeating: "?", count: seenIDs.count).joined(separator: ", ")))"
+            var trigramParameters: [SQLiteValue] = [.text(trigramMatch)]
+            trigramParameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
+            trigramParameters.append(.integer(Int64(limit - records.count)))
+            let trigramCandidates = try connection.queryRows(
+                """
+                SELECT knowledge_frames.*
+                FROM knowledge_frames_trigram_fts
+                JOIN knowledge_frames ON knowledge_frames_trigram_fts.rowid = knowledge_frames.id
+                WHERE knowledge_frames_trigram_fts MATCH ?\(exclusion)
+                ORDER BY knowledge_frames.id ASC
+                LIMIT ?;
+                """,
+                parameters: trigramParameters
+            ).map(KnowledgeFrameRecord.init(row:))
+            for record in trigramCandidates {
+                guard boundedTokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
+                      seenIDs.insert(record.id).inserted else {
+                    continue
+                }
+                records.append(record)
+            }
+        }
+
         if records.count < limit, Self.needsUnicodeLiteralCandidateWindow(for: boundedTokens) {
             for record in try unicodeLiteralCandidateWindowLocked(excludingIDs: seenIDs) {
                 guard records.count < limit,
@@ -2220,8 +2322,24 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
 
     private static func needsUnicodeLiteralCandidateWindow(for tokens: [String]) -> Bool {
         tokens.contains { token in
-            token.unicodeScalars.contains { $0.value > 0x7F }
+            token.unicodeScalars.count < 3
+                && token.unicodeScalars.contains { $0.value > 0x7F }
         }
+    }
+
+    private static func unicodeTrigramMatch(for tokens: [String]) -> String? {
+        let terms = tokens.compactMap { token -> String? in
+            guard token.unicodeScalars.count >= 3,
+                  token.unicodeScalars.contains(where: { $0.value > 0x7F }),
+                  token.allSatisfy({ $0.isLetter || $0.isNumber }) else {
+                return nil
+            }
+            return "\"\(SQL.escapeFTS(token))\""
+        }
+        guard !terms.isEmpty else {
+            return nil
+        }
+        return terms.joined(separator: " OR ")
     }
 
     private static func matchesLiteral(_ record: KnowledgeFrameRecord, text: String) -> Bool {

@@ -95,6 +95,21 @@ final class WorkspaceAnswerTests: XCTestCase {
         XCTAssertEqual(snippets.first?.detail, "Ask the printing vendor about quotes")
     }
 
+    func testRetrieveFindsUnicodeInternalTaskSubstringBeyondNewerRows() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "VorÜbergabe handoff")
+        for index in 0..<129 {
+            _ = try stores.tasks.create(title: "Unrelated newer task \(index)")
+        }
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "übe", limit: 1).map(\.title),
+            ["VorÜbergabe handoff"]
+        )
+    }
+
     func testRetrieveCompletesLiteralTaskSubstringsAlongsideFTSHits() throws {
         let stores = try makeStores()
         _ = try stores.tasks.create(title: "Prepare invoice report")

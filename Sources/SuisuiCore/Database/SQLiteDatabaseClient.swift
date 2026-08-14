@@ -2225,6 +2225,38 @@ public enum CoreMigrations {
                         VALUES (new.id, new.title, new.detail);
                     END;
 
+                    -- Keep word FTS for its exact-token ranking, and add a
+                    -- separate Unicode trigram index only for infix recovery.
+                    CREATE VIRTUAL TABLE tasks_trigram_fts USING fts5(
+                        title,
+                        detail,
+                        content='tasks',
+                        content_rowid='id',
+                        tokenize='trigram case_sensitive 0 remove_diacritics 0'
+                    );
+
+                    INSERT INTO tasks_trigram_fts(tasks_trigram_fts) VALUES ('rebuild');
+
+                    CREATE TRIGGER tasks_trigram_fts_after_insert
+                    AFTER INSERT ON tasks BEGIN
+                        INSERT INTO tasks_trigram_fts(rowid, title, detail)
+                        VALUES (new.id, new.title, new.detail);
+                    END;
+
+                    CREATE TRIGGER tasks_trigram_fts_after_delete
+                    AFTER DELETE ON tasks BEGIN
+                        INSERT INTO tasks_trigram_fts(tasks_trigram_fts, rowid, title, detail)
+                        VALUES ('delete', old.id, old.title, old.detail);
+                    END;
+
+                    CREATE TRIGGER tasks_trigram_fts_after_content_update
+                    AFTER UPDATE OF title, detail ON tasks BEGIN
+                        INSERT INTO tasks_trigram_fts(tasks_trigram_fts, rowid, title, detail)
+                        VALUES ('delete', old.id, old.title, old.detail);
+                        INSERT INTO tasks_trigram_fts(rowid, title, detail)
+                        VALUES (new.id, new.title, new.detail);
+                    END;
+
                     DROP TABLE knowledge_frames_fts;
 
                     CREATE VIRTUAL TABLE knowledge_frames_fts USING fts5(
@@ -2240,6 +2272,36 @@ public enum CoreMigrations {
                     INSERT INTO knowledge_frames_fts(rowid, name, body)
                     SELECT id, name, body || char(10) || triggers_json
                     FROM knowledge_frames;
+
+                    CREATE VIRTUAL TABLE knowledge_frames_trigram_fts USING fts5(
+                        name,
+                        body,
+                        tokenize='trigram case_sensitive 0 remove_diacritics 0'
+                    );
+
+                    INSERT INTO knowledge_frames_trigram_fts(rowid, name, body)
+                    SELECT id, name, body || char(10) || triggers_json
+                    FROM knowledge_frames;
+
+                    CREATE TRIGGER knowledge_frames_trigram_fts_after_insert
+                    AFTER INSERT ON knowledge_frames BEGIN
+                        INSERT INTO knowledge_frames_trigram_fts(rowid, name, body)
+                        VALUES (new.id, new.name, new.body || char(10) || new.triggers_json);
+                    END;
+
+                    CREATE TRIGGER knowledge_frames_trigram_fts_after_delete
+                    AFTER DELETE ON knowledge_frames BEGIN
+                        INSERT INTO knowledge_frames_trigram_fts(knowledge_frames_trigram_fts, rowid, name, body)
+                        VALUES ('delete', old.id, old.name, old.body || char(10) || old.triggers_json);
+                    END;
+
+                    CREATE TRIGGER knowledge_frames_trigram_fts_after_content_update
+                    AFTER UPDATE OF name, body, triggers_json ON knowledge_frames BEGIN
+                        INSERT INTO knowledge_frames_trigram_fts(knowledge_frames_trigram_fts, rowid, name, body)
+                        VALUES ('delete', old.id, old.name, old.body || char(10) || old.triggers_json);
+                        INSERT INTO knowledge_frames_trigram_fts(rowid, name, body)
+                        VALUES (new.id, new.name, new.body || char(10) || new.triggers_json);
+                    END;
                     """
                 )
             },
