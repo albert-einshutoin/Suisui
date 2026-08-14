@@ -79,6 +79,10 @@ public actor DevelopmentRepositoryIndex {
     ) async throws -> [CodebaseMemorySnippet] {
         let root = try Self.workspaceRoot(workspace.rootPath)
         let query = try Self.validatedQuery(rawQuery)
+        let terms = Self.searchTerms(query)
+        guard !terms.isEmpty else {
+            throw DevelopmentRepositoryIndexError.invalidQuery
+        }
         let selectedPaths = try Self.validatedSelectedPaths(workspace.selectedRelativePaths, root: root)
         let limit = max(1, min(topK, Self.maximumResults))
         let workspaceKey = Self.sha256(root.path)
@@ -86,28 +90,51 @@ public actor DevelopmentRepositoryIndex {
         return try await database.run { connection in
             let rows = try Self.ftsRows(
                 connection: connection,
-                query: query,
+                terms: terms,
+                joiner: " AND ",
                 workspaceKey: workspaceKey,
                 selectedPaths: selectedPaths,
                 limit: limit
             )
-            let fallback = rows.isEmpty && Self.containsCJK(query)
-                ? try Self.fallbackRows(
+            let ftsRows = rows.isEmpty
+                ? try Self.ftsRows(
                     connection: connection,
-                    query: query,
+                    terms: terms,
+                    joiner: " OR ",
                     workspaceKey: workspaceKey,
                     selectedPaths: selectedPaths,
                     limit: limit
                 )
                 : rows
-            return try fallback.map { row in
+            let cjkTerms = terms.filter(Self.containsCJK)
+            let matchedRows = ftsRows.isEmpty && !cjkTerms.isEmpty
+                ? try Self.fallbackRows(
+                    connection: connection,
+                    terms: cjkTerms,
+                    joiner: " AND ",
+                    workspaceKey: workspaceKey,
+                    selectedPaths: selectedPaths,
+                    limit: limit
+                )
+                : ftsRows
+            let finalRows = matchedRows.isEmpty && !cjkTerms.isEmpty
+                ? try Self.fallbackRows(
+                    connection: connection,
+                    terms: cjkTerms,
+                    joiner: " OR ",
+                    workspaceKey: workspaceKey,
+                    selectedPaths: selectedPaths,
+                    limit: limit
+                )
+                : matchedRows
+            return try finalRows.map { row in
                 let path = try row.string("relative_path")
-                let contents = try row.string("contents")
+                let preview = try row.string("preview")
                 return CodebaseMemorySnippet(
                     id: Self.sha256("\(workspaceKey):\(path)"),
                     title: path,
                     sourcePath: path,
-                    bodyPreview: String(contents.prefix(400))
+                    bodyPreview: String(preview.prefix(400))
                 )
             }
         }
@@ -118,7 +145,10 @@ public actor DevelopmentRepositoryIndex {
         var totalBytes = 0
         var records: [IndexedFile] = []
         for path in paths {
-            guard let relativePath = try? DevelopmentRepositoryFilePathPolicy.validatedRelativePath(path) else {
+            guard let relativePath = try? DevelopmentRepositoryFilePathPolicy.validatedRelativePath(path),
+                  // The policy trims user-facing paths, but git names are byte-level
+                  // identities.  Never let a trimmed manifest name reopen another file.
+                  relativePath == path else {
                 continue
             }
             // The manifest name is untrusted filesystem input.  Descending from
@@ -183,14 +213,16 @@ public actor DevelopmentRepositoryIndex {
 
     private static func ftsRows(
         connection: SQLiteConnection,
-        query: String,
+        terms: [String],
+        joiner: String,
         workspaceKey: String,
         selectedPaths: [RepositorySelection],
         limit: Int
     ) throws -> [SQLiteMaterializedRow] {
         let selection = selectedPaths.sqlClause(column: "i.relative_path")
         let sql = """
-        SELECT i.relative_path, i.contents
+        SELECT i.relative_path,
+               snippet(codebase_index_files_fts, 1, '', '', '…', 32) AS preview
         FROM codebase_index_files_fts
         INNER JOIN codebase_index_files i ON i.id = codebase_index_files_fts.rowid
         WHERE codebase_index_files_fts MATCH ? AND i.workspace_key = ?\(selection)
@@ -199,26 +231,53 @@ public actor DevelopmentRepositoryIndex {
         """
         return try connection.queryRows(
             sql,
-            parameters: [.text(ftsPhrase(query)), .text(workspaceKey)] + selectedPaths.sqlParameters + [.integer(Int64(limit))]
+            parameters: [.text(ftsMatch(terms, joiner: joiner)), .text(workspaceKey)] + selectedPaths.sqlParameters + [.integer(Int64(limit))]
         )
     }
 
     private static func fallbackRows(
         connection: SQLiteConnection,
-        query: String,
+        terms: [String],
+        joiner: String,
         workspaceKey: String,
         selectedPaths: [RepositorySelection],
         limit: Int
     ) throws -> [SQLiteMaterializedRow] {
         let selection = selectedPaths.sqlClause(column: "relative_path")
+        let predicate = terms.map { _ in "instr(contents, ?) > 0" }.joined(separator: joiner)
         return try connection.queryRows(
-            "SELECT relative_path, contents FROM codebase_index_files WHERE workspace_key = ? AND instr(contents, ?) > 0\(selection) ORDER BY relative_path LIMIT ?;",
-            parameters: [.text(workspaceKey), .text(query)] + selectedPaths.sqlParameters + [.integer(Int64(limit))]
+            "SELECT relative_path, contents FROM codebase_index_files WHERE workspace_key = ? AND (\(predicate))\(selection) ORDER BY relative_path LIMIT ?;",
+            parameters: [.text(workspaceKey)] + terms.map(SQLiteValue.text) + selectedPaths.sqlParameters + [.integer(Int64(limit))]
         )
+        .map { row in
+            let contents = try row.string("contents")
+            return SQLiteMaterializedRow(cells: [
+                "relative_path": try row.cell("relative_path"),
+                "preview": .text(contextualPreview(contents: contents, terms: terms)),
+            ])
+        }
     }
 
-    private static func ftsPhrase(_ query: String) -> String {
-        "\"\(query.replacingOccurrences(of: "\"", with: "\"\""))\""
+    private static func searchTerms(_ query: String) -> [String] {
+        let separators = CharacterSet.whitespacesAndNewlines
+            .union(.punctuationCharacters)
+            .union(.symbols)
+        return SQLiteTaskStore.boundedSearchTokens(query.components(separatedBy: separators))
+    }
+
+    private static func ftsMatch(_ terms: [String], joiner: String) -> String {
+        terms.map { "\"\($0.replacingOccurrences(of: "\"", with: "\"\""))\"" }.joined(separator: joiner)
+    }
+
+    private static func contextualPreview(contents: String, terms: [String]) -> String {
+        guard let match = terms.lazy.compactMap({
+            contents.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive])
+        }).first else {
+            return String(contents.prefix(400))
+        }
+        let start = contents.index(match.lowerBound, offsetBy: -160, limitedBy: contents.startIndex) ?? contents.startIndex
+        let end = contents.index(match.upperBound, offsetBy: 238, limitedBy: contents.endIndex) ?? contents.endIndex
+        return (start == contents.startIndex ? "" : "…") + String(contents[start..<end]) + (end == contents.endIndex ? "" : "…")
     }
 
     private static func containsCJK(_ value: String) -> Bool {

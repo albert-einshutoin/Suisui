@@ -26,6 +26,22 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(Set(found.map(\.sourcePath)), ["Notes.md", "Sources/Tracked.swift"])
     }
 
+    func testRefreshDoesNotNormalizeManifestPathIntoIgnoredSibling() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("ignored marker", to: "Notes.md")
+        try fixture.write("tracked marker", to: "Notes.md ")
+        try fixture.write("Notes.md\n", to: ".gitignore")
+        try fixture.runGit(["add", ".gitignore"])
+        try fixture.runGit(["add", "Notes.md "])
+
+        let index = try migratedIndex()
+        try await index.refresh(workspace: workspace(fixture))
+
+        let results = try await index.search(query: "ignored", workspace: workspace(fixture))
+        XCTAssertTrue(results.isEmpty)
+    }
+
     func testRefreshFailsClosedForFinalSymlinksAndCredentialFiles() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
@@ -170,6 +186,33 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(selectedResults.map(\.sourcePath), ["Sources/Only.swift"])
         XCTAssertEqual(directoryResults.map(\.sourcePath), ["Sources/Only.swift"])
         XCTAssertEqual(isolatedResults.map(\.sourcePath), ["Other.md"])
+    }
+
+    func testSearchTokenizesNaturalLanguageAndReturnsMatchContextPreview() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write(
+            String(repeating: "prefix ", count: 100) + "sqlite stores project search state; a natural interface supports language queries.",
+            to: "Docs/Search.md"
+        )
+        let index = try migratedIndex()
+        try await index.refresh(workspace: workspace(fixture))
+
+        let naturalLanguage = try await index.search(query: "sqlite natural language", workspace: workspace(fixture))
+        let operatorSyntax = try await index.search(query: "\" OR *", workspace: workspace(fixture))
+
+        XCTAssertEqual(naturalLanguage.map(\.sourcePath), ["Docs/Search.md"])
+        XCTAssertTrue(naturalLanguage[0].bodyPreview.contains("sqlite"))
+        XCTAssertFalse(naturalLanguage[0].bodyPreview.hasPrefix("prefix"))
+        XCTAssertTrue(operatorSyntax.isEmpty)
+    }
+
+    func testSearchRejectsPunctuationOnlyQuery() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let index = try migratedIndex()
+
+        await XCTAssertThrowsErrorAsync(try await index.search(query: "***", workspace: workspace(fixture)))
     }
 
     private func migratedIndex() throws -> DevelopmentRepositoryIndex {
