@@ -31,10 +31,13 @@ public actor DevelopmentRepositoryIndex {
     // For indexing, reject every such assignment unless it matches one of the
     // narrow Swift grammars below; unknown syntax stays fail-closed.
     private static let credentialKeyAssignments = try? NSRegularExpression(
-        pattern: #"\b(?i:(?:[A-Za-z_][A-Za-z0-9_]*)?(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret))\b"#
+        pattern: #"\b(?i:(?:[A-Za-z_][A-Za-z0-9_]*)?(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret)[A-Za-z0-9_]*)\b"#
     )
     private static let safeSwiftAssignment = try? NSRegularExpression(
         pattern: #"^\s*(?:(?:let|var)\s+)?(?:self\.)?[A-Za-z_][A-Za-z0-9_]*\s+=\s*(.+?)\s*$"#
+    )
+    private static let safeSwiftOptionalBinding = try? NSRegularExpression(
+        pattern: #"^\s*(?:guard|if)\s+let\s+(?:self\.)?[A-Za-z_][A-Za-z0-9_]*\s+=\s*(.+?)(?:\s+else)?\s*\{"#
     )
     private static let safeSwiftCallLabel = try? NSRegularExpression(
         pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*(.+?)\s*,?\s*\)*\s*$"#
@@ -51,11 +54,14 @@ public actor DevelopmentRepositoryIndex {
     private static let safeSwiftNominalTypeDeclaration = try? NSRegularExpression(
         pattern: #"^\s*(?:(?:private|public|internal|fileprivate|final)\s+)*(?:struct|class|enum|protocol|actor|extension)\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?:\s*,\s*[A-Z][A-Za-z0-9_.<>?]*)*\s*(?:[{][}]?)?\s*$"#
     )
+    private static let safeSwiftCaseDeclaration = try? NSRegularExpression(
+        pattern: #"^\s*case\s+\.[A-Za-z_][A-Za-z0-9_]*\s*:\s*$"#
+    )
     private static let serializedCredential = try? NSRegularExpression(
         pattern: #"(?im)^\s*client[-_]key[-_]data\s*:\s*\S+|^\s*-----BEGIN (?:[A-Z0-9 ]*PRIVATE KEY)-----"#
     )
     private static let swiftTypedDeclarationPrefix = try? NSRegularExpression(
-        pattern: #"^\s*(?:(?:private|public|internal|fileprivate|static|final|lazy)\s+)*(?:let|var)\s+$"#
+        pattern: #"^\s*(?:@[A-Za-z_][A-Za-z0-9_]*\s+)*(?:(?:private|public|internal|fileprivate|static|final|lazy)\s+)*(?:let|var)\s+$"#
     )
     private static let swiftFunctionParameterPrefix = try? NSRegularExpression(
         pattern: #"\b(?:func\s+[A-Za-z_][A-Za-z0-9_]*\s*|init\s*)$"#
@@ -498,11 +504,13 @@ public actor DevelopmentRepositoryIndex {
         }
         guard let assignments = credentialKeyAssignments,
               let safeAssignment = safeSwiftAssignment,
+              let safeOptionalBinding = safeSwiftOptionalBinding,
               let safeCallLabel = safeSwiftCallLabel,
               let safeExpressionAtom = safeSwiftExpressionAtom,
               let safeTypedDeclaration = safeSourceTypedDeclaration,
               let safeTypedFunctionParameter = safeSourceTypedFunctionParameter,
               let safeNominalTypeDeclaration = safeSwiftNominalTypeDeclaration,
+              let safeCaseDeclaration = safeSwiftCaseDeclaration,
               let typedDeclarationPrefix = swiftTypedDeclarationPrefix,
               let functionParameterPrefix = swiftFunctionParameterPrefix,
               let callOpener = swiftCallOpener else {
@@ -562,7 +570,9 @@ public actor DevelopmentRepositoryIndex {
                 !line.contains("=") && !line.contains("\"") && !line.contains("'")
             let fullLineRange = NSRange(line.startIndex..<line.endIndex, in: line)
             let isNominalType = safeNominalTypeDeclaration.firstMatch(in: line, range: fullLineRange) != nil
-            let isSafeAssignment = containsSafeSwiftExpression(in: line, grammar: safeAssignment, atom: safeExpressionAtom)
+            let isCaseDeclaration = safeCaseDeclaration.firstMatch(in: line, range: fullLineRange) != nil
+            let isSafeAssignment = containsSafeSwiftExpression(in: line, grammar: safeAssignment, atom: safeExpressionAtom) ||
+                containsSafeSwiftExpression(in: line, grammar: safeOptionalBinding, atom: safeExpressionAtom)
             // These forms contain only source identifiers/member references, never
             // a literal credential. The surrounding argument list prevents config
             // syntax from becoming an indexing exception.
@@ -573,7 +583,7 @@ public actor DevelopmentRepositoryIndex {
             let isCallLabel = !hasCurrentLineCommentOrQuote &&
                 hasOpenSwiftArgumentList(in: contents, openParenthesis: lexicalPosition.openParenthesis, callOpener: callOpener) &&
                 containsSafeSwiftExpression(in: assignmentSuffix, grammar: safeCallLabel, atom: safeExpressionAtom)
-            let isSafeSourceShape = isNominalType ||
+            let isSafeSourceShape = isNominalType || isCaseDeclaration ||
                 (!continuesOnNextLine && (isTypedDeclaration || isSafeAssignment || isCallLabel))
             return !isSafeSourceShape
         }
