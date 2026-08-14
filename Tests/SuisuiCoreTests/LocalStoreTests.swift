@@ -574,6 +574,22 @@ final class LocalStoreTests: XCTestCase {
         )
     }
 
+    func testKnowledgeCJKSearchPrefersCompleteWordBeforeOlderBigramMatches() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        for index in 0..<8 {
+            _ = try store.create(name: "リリース候補\(index)", body: "details")
+        }
+        let exact = try store.create(name: "リリース", body: "details")
+
+        let frames = try store.search(
+            matching: WorkspaceQuestionRetriever.matchTokens(for: "リリース"),
+            limit: 8
+        )
+
+        XCTAssertEqual(frames.first?.id, exact.id)
+    }
+
     func testKnowledgeSearchFindsCanonicalUnicodeSubstringAcrossNFCAndNFD() throws {
         let connection = try currentConnection()
         let store = SQLiteKnowledgeFrameStore(connection: connection)

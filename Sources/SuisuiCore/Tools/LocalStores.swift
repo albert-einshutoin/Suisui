@@ -2214,6 +2214,9 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         }
 
         let nonCJK = boundedTokens.filter { !SQLiteTaskStore.containsCJK($0) }
+        let completeCJK = boundedTokens.filter {
+            SQLiteTaskStore.containsCJK($0) && $0.unicodeScalars.count > 2
+        }
         var records: [KnowledgeFrameRecord] = []
         var seenIDs = Set<Int64>()
 
@@ -2234,6 +2237,33 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
             ).map(KnowledgeFrameRecord.init(row:))
             for record in ftsCandidates {
                 guard boundedTokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
+                      seenIDs.insert(record.id).inserted else {
+                    continue
+                }
+                records.append(record)
+            }
+        }
+
+        if records.count < limit, !completeCJK.isEmpty {
+            let match = completeCJK
+                .map { "\"\(SQL.escapeFTS($0))\"" }
+                .joined(separator: " OR ")
+            let ftsCandidates = try connection.queryRows(
+                """
+                SELECT knowledge_frames.*
+                FROM knowledge_frames_fts
+                JOIN knowledge_frames ON knowledge_frames_fts.rowid = knowledge_frames.id
+                WHERE knowledge_frames_fts MATCH ?
+                ORDER BY knowledge_frames.id ASC
+                LIMIT ?;
+                """,
+                parameters: [.text(match), .integer(Int64(limit - records.count))]
+            ).map(KnowledgeFrameRecord.init(row:))
+            // unicode61 keeps an unsegmented CJK word intact. Search that
+            // complete word before the two-character fallback can spend the
+            // bounded workspace candidate window on older partial matches.
+            for record in ftsCandidates {
+                guard completeCJK.contains(where: { Self.matchesLiteral(record, text: $0) }),
                       seenIDs.insert(record.id).inserted else {
                     continue
                 }

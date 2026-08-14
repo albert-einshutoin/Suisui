@@ -215,6 +215,19 @@ final class WorkspaceAnswerTests: XCTestCase {
         XCTAssertEqual(snippets.filter { $0.kind == "knowledge" }.map(\.title), ["請求書リリース手順"])
     }
 
+    func testRetrievePrefersCompleteCJKKnowledgeWordBeforeOlderBigramMatches() throws {
+        let stores = try makeStores()
+        for index in 0..<8 {
+            _ = try stores.frames.create(name: "リリース候補\(index)", body: "details")
+        }
+        _ = try stores.frames.create(name: "リリース", body: "details")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+        let snippets = try retriever.retrieve(question: "リリース", limit: 2)
+
+        XCTAssertTrue(snippets.contains { $0.kind == "knowledge" && $0.title == "リリース" })
+    }
+
     func testRetrieveUsesSingleJapaneseCharacterAsKnowledgeLiteralFallback() throws {
         let stores = try makeStores()
         _ = try stores.frames.create(name: "税務メモ", body: "税金の確認")
