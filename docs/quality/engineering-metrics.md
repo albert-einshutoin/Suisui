@@ -14,7 +14,7 @@ python3 script/quality_metrics_baseline.py \
 ## Schema v1
 
 - `runs.total` は論理run数、`completed` は最終statusが `completed` の数です。
-- `success`、`failure`、`cancelled`、`neutral` は既知の最終conclusionの分類です。`failure` は `failure` / `action_required` / `timed_out`、`cancelled` は `cancelled` / `stale`、`neutral` は `neutral` / `skipped` を含みます。
+- `success`、`failure`、`cancelled`、`neutral` は既知の最終conclusionの分類です。`failure` は `failure` / `action_required` / `startup_failure` / `timed_out`、`cancelled` は `cancelled` / `stale`、`neutral` は `neutral` / `skipped` を含みます。
 - `firstAttemptSuccessRate` は結論が取得できた初回attemptだけを分母にします。`rerunRate` は再実行された論理runの割合、`overallSuccessRate` は結論が既知の完了した最終runだけを分母にします。`averageAttempts` は論理runごとの最終 `run_attempt` の平均です。
 - 値が算出不能なら数値の `0` ではなく `null` と `<metric>Status: "unavailable"` を出します。一部だけ算出できる率は `"partial"` を明示します。初回attemptまたは最終conclusionが一部欠けるサンプルは `sampleStatus: "partial"`、runがなければ `"empty"` です。
 

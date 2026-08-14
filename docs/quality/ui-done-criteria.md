@@ -38,10 +38,7 @@ baseline を書き換えない。
 実行できない場合は、成功扱いにせず blocker として記録する。
 
 ```bash
-./ci/run-full.sh
-./scripts/ci.sh ui-runtime
-./scripts/ci.sh ui-visual
-./scripts/ci.sh ui-performance
+./ci/run-all.sh
 ```
 
 `docs/quality/selective-ci.md` の原則どおり、明示的な安全判定がある時だけ
