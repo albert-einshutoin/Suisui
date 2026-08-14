@@ -21,6 +21,7 @@ public actor DevelopmentRepositoryIndex {
     public static let maximumIndexedContentBytes = 512 * 1024 * 1024
     public static let maximumSelectedPaths = 64
     public static let maximumResults = 50
+    private static let maximumQueryUTF8Bytes = 4 * 1024
 
     private let database: SQLiteDatabaseWorker
     private let redactor: DeveloperSecretRedactor
@@ -392,7 +393,12 @@ public actor DevelopmentRepositoryIndex {
 
     private static func validatedQuery(_ rawQuery: String) throws -> String {
         let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty, query.count <= 512, !query.unicodeScalars.contains(where: { $0.value == 0 }) else {
+        // One Character may contain unbounded combining scalars.  Bound UTF-8
+        // first so tokenization cannot retain a multi-megabyte grapheme.
+        guard !query.isEmpty,
+              query.utf8.count <= maximumQueryUTF8Bytes,
+              query.count <= 512,
+              !query.unicodeScalars.contains(where: { $0.value == 0 }) else {
             throw DevelopmentRepositoryIndexError.invalidQuery
         }
         return query

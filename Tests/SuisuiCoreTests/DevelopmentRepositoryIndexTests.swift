@@ -1181,6 +1181,21 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         await XCTAssertThrowsErrorAsync(try await index.search(query: "***", workspace: workspace(fixture)))
     }
 
+    func testSearchRejectsByteOversizedSingleGraphemeBeforeDatabaseQuery() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let index = DevelopmentRepositoryIndex(connection: try SQLiteConnection(path: ":memory:"))
+        let oversizedQuery = "a" + String(repeating: "\u{0301}", count: 4_096)
+        XCTAssertEqual(oversizedQuery.count, 1)
+
+        do {
+            _ = try await index.search(query: oversizedQuery, workspace: workspace(fixture))
+            XCTFail("Expected byte-oversized query to be rejected")
+        } catch {
+            XCTAssertEqual(error as? DevelopmentRepositoryIndexError, .invalidQuery)
+        }
+    }
+
     private func migratedIndex(
         maximumRefreshReadBytes: Int = DevelopmentRepositoryIndex.maximumIndexedContentBytes
     ) throws -> DevelopmentRepositoryIndex {
