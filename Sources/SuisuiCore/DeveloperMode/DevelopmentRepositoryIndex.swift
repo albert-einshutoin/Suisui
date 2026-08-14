@@ -30,6 +30,7 @@ public actor DevelopmentRepositoryIndex {
     private let manifestExecutableURL: URL
     private let beforeRefreshCommit: (@Sendable () throws -> Void)?
     private let recordScanCheckpoint: (@Sendable (Int) -> Void)?
+    private let recordPublishCheckpoint: (@Sendable (Int) -> Void)?
 
     // Assignment-only redaction is deliberately broader for user-visible output.
     // For indexing, reject every such assignment unless it matches one of the
@@ -144,7 +145,8 @@ public actor DevelopmentRepositoryIndex {
         maximumRefreshReadBytes: Int = DevelopmentRepositoryIndex.maximumIndexedContentBytes,
         manifestExecutableURL: URL = GitManifestReader.defaultExecutableURL,
         beforeRefreshCommit: (@Sendable () throws -> Void)? = nil,
-        recordScanCheckpoint: (@Sendable (Int) -> Void)? = nil
+        recordScanCheckpoint: (@Sendable (Int) -> Void)? = nil,
+        recordPublishCheckpoint: (@Sendable (Int) -> Void)? = nil
     ) {
         database = SQLiteDatabaseWorker(connection: connection)
         self.redactor = redactor
@@ -152,6 +154,7 @@ public actor DevelopmentRepositoryIndex {
         self.manifestExecutableURL = manifestExecutableURL
         self.beforeRefreshCommit = beforeRefreshCommit
         self.recordScanCheckpoint = recordScanCheckpoint
+        self.recordPublishCheckpoint = recordPublishCheckpoint
     }
 
     public init(path: String, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) throws {
@@ -161,6 +164,7 @@ public actor DevelopmentRepositoryIndex {
         manifestExecutableURL = GitManifestReader.defaultExecutableURL
         beforeRefreshCommit = nil
         recordScanCheckpoint = nil
+        recordPublishCheckpoint = nil
     }
 
     public func refresh(workspace: CodebaseMemoryWorkspace) async throws {
@@ -178,6 +182,7 @@ public actor DevelopmentRepositoryIndex {
             recordScanCheckpoint: recordScanCheckpoint
         )
         let beforeRefreshCommit = self.beforeRefreshCommit
+        let recordPublishCheckpoint = self.recordPublishCheckpoint
 
         try Task.checkCancellation()
         try await database.transaction { connection in
@@ -186,7 +191,11 @@ public actor DevelopmentRepositoryIndex {
                 parameters: [.text(workspaceKey)]
             ).first?.int64("generation")) ?? 1
 
-            for record in records {
+            for (offset, record) in records.enumerated() {
+                recordPublishCheckpoint?(offset)
+                // Publishing is a synchronous SQLite loop, so every row must
+                // provide a cancellation point before mutating the transaction.
+                try Task.checkCancellation()
                 try connection.execute(
                     """
                     INSERT INTO codebase_index_files (workspace_key, relative_path, byte_count, sha256, contents, cjk_terms, generation)
@@ -209,6 +218,7 @@ public actor DevelopmentRepositoryIndex {
                     ]
                 )
             }
+            try Task.checkCancellation()
             try connection.execute(
                 "DELETE FROM codebase_index_files WHERE workspace_key = ? AND generation < ?;",
                 parameters: [.text(workspaceKey), .integer(generation)]
@@ -1928,6 +1938,7 @@ enum GitManifestReader {
         timeout: TimeInterval,
         limit: Int
     ) throws -> (output: ManifestData, terminationStatus: Int32) {
+        try Task.checkCancellation()
         let result = ProcessResult()
         let group = DispatchGroup()
         group.enter()
@@ -1946,7 +1957,8 @@ enum GitManifestReader {
             }
             group.leave()
         }
-        if group.wait(timeout: .now() + timeout) == .timedOut {
+
+        func terminateAndDrain() {
             if process.isRunning {
                 process.terminate()
             }
@@ -1955,8 +1967,28 @@ enum GitManifestReader {
             }
             try? standardOutput.fileHandleForReading.close()
             _ = group.wait(timeout: .now() + 1)
-            throw DevelopmentRepositoryIndexError.gitManifestUnavailable
         }
+
+        let deadline = DispatchTime.now() + timeout
+        while true {
+            do {
+                try Task.checkCancellation()
+            } catch {
+                terminateAndDrain()
+                throw error
+            }
+            let now = DispatchTime.now()
+            guard now < deadline else {
+                terminateAndDrain()
+                throw DevelopmentRepositoryIndexError.gitManifestUnavailable
+            }
+            // A short bounded wait keeps the synchronous Process API responsive
+            // without spinning while its output is drained on another queue.
+            if group.wait(timeout: min(deadline, now + 0.05)) == .success {
+                break
+            }
+        }
+        try Task.checkCancellation()
         return (result.output, process.terminationStatus)
     }
     #endif

@@ -1410,6 +1410,56 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(replacement.isEmpty)
     }
 
+    func testRefreshCancellationDuringPublishRollsBackPriorGeneration() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("preservedpublishmarker", to: "Notes.md")
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let index = DevelopmentRepositoryIndex(connection: connection)
+        try await index.refresh(workspace: workspace(fixture))
+        try fixture.write("replacementpublishmarker", to: "Notes.md")
+        try fixture.write("newpublishmarker", to: "Added.md")
+
+        let publishStarted = expectation(description: "record publish started")
+        let continuedAfterCancellation = expectation(description: "record publish stopped after cancellation")
+        continuedAfterCancellation.isInverted = true
+        let resumePublish = DispatchSemaphore(value: 0)
+        let cancellableIndex = DevelopmentRepositoryIndex(
+            connection: connection,
+            recordPublishCheckpoint: { offset in
+                if offset == 0 {
+                    publishStarted.fulfill()
+                    _ = resumePublish.wait(timeout: .now() + 5)
+                } else {
+                    continuedAfterCancellation.fulfill()
+                }
+            }
+        )
+        let targetWorkspace = workspace(fixture)
+        let refreshTask = Task {
+            try await cancellableIndex.refresh(workspace: targetWorkspace)
+        }
+
+        await fulfillment(of: [publishStarted], timeout: 5)
+        refreshTask.cancel()
+        resumePublish.signal()
+        await fulfillment(of: [continuedAfterCancellation], timeout: 0.2)
+
+        do {
+            try await refreshTask.value
+            XCTFail("Expected refresh cancellation")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+        let preserved = try await index.search(query: "preservedpublishmarker", workspace: workspace(fixture))
+        let replacement = try await index.search(query: "replacementpublishmarker", workspace: workspace(fixture))
+        let added = try await index.search(query: "newpublishmarker", workspace: workspace(fixture))
+        XCTAssertEqual(preserved.map(\.sourcePath), ["Notes.md"])
+        XCTAssertTrue(replacement.isEmpty)
+        XCTAssertTrue(added.isEmpty)
+    }
+
     func testWorkspaceRootIdentityRejectsSamePathReplacement() throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
@@ -1563,6 +1613,47 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let startedAt = Date()
         XCTAssertThrowsError(try GitManifestReader.paths(at: fixture.url, timeout: 0.01, executableURL: helper))
         XCTAssertLessThan(Date().timeIntervalSince(startedAt), 3)
+    }
+
+    func testManifestCancellationTerminatesHungProcessAndKeepsPriorGeneration() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("preservedmanifestcancelmarker", to: "Notes.md")
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let index = DevelopmentRepositoryIndex(connection: connection)
+        try await index.refresh(workspace: workspace(fixture))
+
+        let marker = fixture.url.appendingPathComponent("hung-manifest-started")
+        let helper = fixture.url.appendingPathComponent("hang-until-cancelled.sh")
+        try "#!/bin/sh\nif [ \"$1\" = \"config\" ]; then exit 1; fi\ntouch '\(marker.path)'\ntrap '' TERM\nwhile :; do :; done\n".write(
+            to: helper,
+            atomically: true,
+            encoding: .utf8
+        )
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
+        let hangingIndex = DevelopmentRepositoryIndex(connection: connection, manifestExecutableURL: helper)
+        let targetWorkspace = workspace(fixture)
+        let refreshTask = Task {
+            try await hangingIndex.refresh(workspace: targetWorkspace)
+        }
+        let markerDeadline = Date().addingTimeInterval(2)
+        while !FileManager.default.fileExists(atPath: marker.path), Date() < markerDeadline {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: marker.path))
+
+        let cancelledAt = Date()
+        refreshTask.cancel()
+        do {
+            try await refreshTask.value
+            XCTFail("Expected manifest cancellation")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(cancelledAt), 2)
+        let preserved = try await index.search(query: "preservedmanifestcancelmarker", workspace: workspace(fixture))
+        XCTAssertEqual(preserved.map(\.sourcePath), ["Notes.md"])
     }
 
     func testManifestRejectsMismatchedChildWorkingDirectoryIdentity() throws {
