@@ -512,6 +512,41 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(literal.isEmpty)
     }
 
+    func testRefreshIndexesSwiftExistentialCredentialTypesButRejectsLiterals() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write(
+            """
+            struct Tooling {
+                private let secretStore: any SecretStore
+
+                func use(secretStore: any SecretStore) {
+                    let existentialtypemarker = secretStore
+                }
+            }
+            """,
+            to: "Sources/Tooling.swift"
+        )
+        try fixture.write(
+            "private let secretStore: any SecretStore = \"existentialliteralsecretmarker\"",
+            to: "Sources/LiteralStore.swift"
+        )
+        try fixture.write(
+            "func use(secretStore: any SecretStore = 424242) {}",
+            to: "Sources/NumericStore.swift"
+        )
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let safe = try await index.search(query: "existentialtypemarker", workspace: workspace(fixture))
+        let literal = try await index.search(query: "existentialliteralsecretmarker", workspace: workspace(fixture))
+        let numeric = try await index.search(query: "424242", workspace: workspace(fixture))
+        XCTAssertEqual(safe.map(\.sourcePath), ["Sources/Tooling.swift"])
+        XCTAssertTrue(literal.isEmpty)
+        XCTAssertTrue(numeric.isEmpty)
+    }
+
     func testRefreshIndexesDenseSafeSwiftCredentialNames() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }

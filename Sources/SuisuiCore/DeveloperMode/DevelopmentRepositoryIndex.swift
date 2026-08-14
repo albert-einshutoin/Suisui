@@ -54,10 +54,10 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"^(?:try\s+)?(?:nil|true|false|\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*(?:\(\s*(?:(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*(?:\s*,\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*)*)?\s*\))?)$"#
     )
     private static let safeSourceTypedDeclaration = try? NSRegularExpression(
-        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z\[(][A-Za-z0-9_.<>\[\]():?,\s]*$"#
+        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*(?:any\s+)?[A-Z\[(][A-Za-z0-9_.<>\[\]():?,\s]*$"#
     )
     private static let safeSourceTypedFunctionParameter = try? NSRegularExpression(
-        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z\[(][A-Za-z0-9_.<>\[\]():?,\s]*(?:\s*=\s*nil)?(?=\s*(?:,|\)))"#
+        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*(?:any\s+)?[A-Z\[(][A-Za-z0-9_.<>\[\]():?,\s]*(?:\s*=\s*nil)?(?=\s*(?:,|\)))"#
     )
     private static let safeSwiftNominalTypeDeclaration = try? NSRegularExpression(
         pattern: #"^\s*(?:(?:private|public|internal|fileprivate|final)\s+)*(?:struct|class|enum|protocol|actor|extension)\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*(?:[A-Z][A-Za-z0-9_.<>?]*|@unchecked\s+Sendable)(?:\s*,\s*(?:[A-Z][A-Za-z0-9_.<>?]*|@unchecked\s+Sendable))*\s*(?:[{][}]?)?\s*$"#
