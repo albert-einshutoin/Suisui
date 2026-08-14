@@ -834,7 +834,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             return try searchOpenTasksByContainsLocked(text: trimmed, limit: limit)
         }
 
-        var matches = try connection.queryRows(
+        let ftsCandidates = try connection.queryRows(
             """
             SELECT tasks.* FROM tasks
             JOIN tasks_fts ON tasks_fts.rowid = tasks.id
@@ -847,6 +847,10 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             """,
             parameters: [.text("\"\(SQL.escapeFTS(trimmed))\""), .integer(Int64(limit))]
         ).map(TaskRecord.init(row:))
+        // FTS tokenization drops punctuation (for example, `%` in `50%`).
+        // Confirm the original literal against source fields before its rows
+        // consume the palette limit, then let the bounded fallback fill gaps.
+        var matches = ftsCandidates.filter { Self.matchesLiteral($0, text: trimmed) }
         if matches.count < limit {
             // FTS tokenizes "invoice", so it cannot return the historical
             // literal substring query "voice". Complete the bounded result in
@@ -1553,6 +1557,11 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         }
     }
 
+    private static func matchesLiteral(_ record: TaskRecord, text: String) -> Bool {
+        record.title.range(of: text, options: .caseInsensitive) != nil
+            || record.detail?.range(of: text, options: .caseInsensitive) != nil
+    }
+
     static func boundedSearchTokens(_ tokens: [String]) -> [String] {
         let maximumTokenCount = 32
         let maximumTokenLength = 128
@@ -1881,7 +1890,7 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         }
 
         let match = "\"\(SQL.escapeFTS(trimmed))\""
-        return try connection.queryRows(
+        let ftsCandidates = try connection.queryRows(
             """
             SELECT knowledge_frames.*
             FROM knowledge_frames_fts
@@ -1891,6 +1900,30 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
             """,
             parameters: [.text(match)]
         ).map(KnowledgeFrameRecord.init(row:))
+        // FTS strips punctuation, so an FTS phrase alone can widen a literal
+        // palette query. Keep only source-confirmed rows and recover any FTS
+        // false negatives with the same SQLite `instr` semantics.
+        var records = ftsCandidates.filter { Self.matchesLiteral($0, text: trimmed) }
+        let seenIDs = Set(records.map(\.id))
+        let exclusion = seenIDs.isEmpty
+            ? ""
+            : " AND id NOT IN (\(Array(repeating: "?", count: seenIDs.count).joined(separator: ", ")))"
+        let lowered = trimmed.lowercased()
+        var parameters: [SQLiteValue] = [.text(lowered), .text(lowered), .text(lowered)]
+        parameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
+        for record in try connection.queryRows(
+            """
+            SELECT * FROM knowledge_frames
+            WHERE (instr(lower(name), ?) > 0
+                   OR instr(lower(body), ?) > 0
+                   OR instr(lower(triggers_json), ?) > 0)\(exclusion)
+            ORDER BY id ASC;
+            """,
+            parameters: parameters
+        ).map(KnowledgeFrameRecord.init(row:)) {
+            records.append(record)
+        }
+        return records
     }
 
     func search(matching tokens: [String], limit: Int) throws -> [KnowledgeFrameRecord] {
@@ -1973,6 +2006,12 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
 
     private static func indexedKnowledgeBody(body: String, triggersJSON: String) -> String {
         body + "\n" + triggersJSON
+    }
+
+    private static func matchesLiteral(_ record: KnowledgeFrameRecord, text: String) -> Bool {
+        record.name.range(of: text, options: .caseInsensitive) != nil
+            || record.body.range(of: text, options: .caseInsensitive) != nil
+            || record.triggers.contains { $0.range(of: text, options: .caseInsensitive) != nil }
     }
 }
 

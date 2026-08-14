@@ -397,6 +397,18 @@ final class LocalStoreTests: XCTestCase {
         )
     }
 
+    func testKnowledgeSearchFiltersTokenizedFTSCandidatesToLiteralQuery() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let literalFrame = try store.create(
+            name: "Migration",
+            body: "Roughly 50% done as of Friday"
+        )
+        _ = try store.create(name: "Shortcut", body: "Roughly 50 done as of Friday")
+
+        XCTAssertEqual(try store.search(query: "50% done").map(\.id), [literalFrame.id])
+    }
+
     func testTaskStoreRejectsCorruptedProjectIDInsteadOfDetachingTask() throws {
         let connection = try migratedConnection()
         let projects = SQLiteProjectStore(connection: connection)

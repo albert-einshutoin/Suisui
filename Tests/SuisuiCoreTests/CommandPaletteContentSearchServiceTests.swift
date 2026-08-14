@@ -179,6 +179,25 @@ final class CommandPaletteContentSearchServiceTests: XCTestCase {
         XCTAssertTrue(service.search(query: "0_ done").isEmpty)
     }
 
+    func testTaskContentSearchFiltersTokenizedFTSCandidatesBeforeUsingItsLimit() throws {
+        let connection = try migratedConnection()
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let literalTask = try taskStore.create(
+            title: "Migration",
+            detail: "Roughly 50% done as of Friday"
+        )
+        _ = try taskStore.create(title: "Shortcut", detail: "Roughly 50 done as of Friday")
+        let service = CommandPaletteContentSearchService(
+            taskStore: taskStore,
+            knowledgeFrameStore: SQLiteKnowledgeFrameStore(connection: connection)
+        )
+
+        XCTAssertEqual(
+            service.search(query: "50% done", limit: 1).map(\.source),
+            [.task(id: literalTask.id, projectID: nil)]
+        )
+    }
+
     func testShortQueriesReturnNothing() throws {
         let connection = try migratedConnection()
         let taskStore = SQLiteTaskStore(connection: connection)
