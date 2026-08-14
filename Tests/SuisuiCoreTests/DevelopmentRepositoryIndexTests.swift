@@ -90,6 +90,8 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             "TokenExport.swift": "export token=long-secret-value",
             "TokenYAML.yml": "token: long-secret-value",
             "TokenTyped.swift": "token: String = \"long-secret-value\"",
+            "TokenMixed.swift": "func f(token: ApprovalToken, password: long-secret-value) {}\n{ token: ApprovalToken, password: long-secret-value }",
+            "TokenUppercase.yml": "TOKEN: ABCDEFGHIJK1234",
         ]
         for (path, contents) in credentials {
             try fixture.write(contents, to: path)
@@ -99,8 +101,10 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
 
         let sourceResults = try await index.search(query: "approve", workspace: workspace(fixture))
         let credentialResults = try await index.search(query: "long", workspace: workspace(fixture))
+        let uppercaseCredentialResults = try await index.search(query: "ABCDEFGHIJK1234", workspace: workspace(fixture))
         XCTAssertEqual(sourceResults.map(\.sourcePath), ["Sources/Approval.swift"])
         XCTAssertTrue(credentialResults.isEmpty)
+        XCTAssertTrue(uppercaseCredentialResults.isEmpty)
     }
 
     func testRepositoryDescriptorWalkRejectsIntermediateAndFinalSymlinks() throws {

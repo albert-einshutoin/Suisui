@@ -33,7 +33,7 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"^\s*(?:let|var)\s+[A-Za-z_][A-Za-z0-9_]*\s+=\s+[A-Za-z_][A-Za-z0-9_.]*\s*$"#
     )
     private static let safeSourceTypedAssignment = try? NSRegularExpression(
-        pattern: #"(?i:\b(?:api[_-]?key|token|password|secret))\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?=\s*(?:[,){]|$))"#
+        pattern: #"(?i:^(?:api[_-]?key|token|password|secret))\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?=\s*(?:[,){]|$))"#
     )
 
     public init(connection: SQLiteConnection, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) {
@@ -175,7 +175,7 @@ public actor DevelopmentRepositoryIndex {
             guard let data = try? boundedFileData(root: root, relativePath: relativePath),
                   let contents = String(data: data, encoding: .utf8),
                   (try? DevelopmentRepositoryFilePathPolicy.validateTextContent(contents)) != nil,
-                  !containsIndexCredential(contents, redactor: redactor) else {
+                  !containsIndexCredential(contents, relativePath: relativePath, redactor: redactor) else {
                 continue
             }
             totalBytes += data.count
@@ -305,7 +305,11 @@ public actor DevelopmentRepositoryIndex {
         return (start == contents.startIndex ? "" : "…") + String(contents[start..<end]) + (end == contents.endIndex ? "" : "…")
     }
 
-    private static func containsIndexCredential(_ contents: String, redactor: DeveloperSecretRedactor) -> Bool {
+    private static func containsIndexCredential(
+        _ contents: String,
+        relativePath: String,
+        redactor: DeveloperSecretRedactor
+    ) -> Bool {
         let report = redactor.redact(contents).report
         // Shared redaction intentionally treats every token assignment as risky for
         // user-visible output. Source indexing keeps that policy for specific
@@ -315,6 +319,11 @@ public actor DevelopmentRepositoryIndex {
         }
         guard report.matchedPatternNames.contains("assignment") else {
             return false
+        }
+        // Only Swift syntax has the typed declaration forms accepted below.
+        // Configuration and prose formats with the same tokens remain fail-closed.
+        guard relativePath.lowercased().hasSuffix(".swift") else {
+            return true
         }
         guard let assignments = indexAssignments,
               let safeEquals = safeSourceEqualsAssignment,
@@ -333,7 +342,9 @@ public actor DevelopmentRepositoryIndex {
             let lineRange = contents.lineRange(for: swiftRange)
             let line = String(contents[lineRange])
             let lineNSRange = NSRange(line.startIndex..<line.endIndex, in: line)
-            let typedMatch = safeTyped.firstMatch(in: line, range: lineNSRange) != nil
+            let assignmentSuffix = String(contents[swiftRange.lowerBound..<lineRange.upperBound])
+            let suffixRange = NSRange(assignmentSuffix.startIndex..<assignmentSuffix.endIndex, in: assignmentSuffix)
+            let typedMatch = safeTyped.firstMatch(in: assignmentSuffix, range: suffixRange) != nil
             let isTypedDeclaration = typedMatch && !line.contains("=") && !line.contains("\"") && !line.contains("'")
             let isEqualsDeclaration = safeEquals.firstMatch(in: line, range: lineNSRange) != nil
             return !(isTypedDeclaration || isEqualsDeclaration)
