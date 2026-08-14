@@ -28,7 +28,7 @@ public actor DevelopmentRepositoryIndex {
     // For indexing, reject every such assignment unless it matches one of the
     // narrow Swift grammars below; unknown syntax stays fail-closed.
     private static let credentialKeyAssignments = try? NSRegularExpression(
-        pattern: #"\b(?i:(?:[A-Za-z_][A-Za-z0-9_]*)?(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret))\s*\"?\s*[:=]"#
+        pattern: #"\b(?i:(?:[A-Za-z_][A-Za-z0-9_]*)?(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret))\b"#
     )
     private static let safeSwiftAssignment = try? NSRegularExpression(
         pattern: #"^\s*(?:(?:let|var)\s+)?(?:self\.)?[A-Za-z_][A-Za-z0-9_]*\s+=\s*(.+?)\s*$"#
@@ -77,6 +77,12 @@ public actor DevelopmentRepositoryIndex {
         var isMultiline: Bool
     }
 
+    private struct WorkspaceRootDescriptor {
+        let descriptor: Int32
+        let device: dev_t
+        let inode: ino_t
+    }
+
     public init(connection: SQLiteConnection, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) {
         database = SQLiteDatabaseWorker(connection: connection)
         self.redactor = redactor
@@ -89,8 +95,10 @@ public actor DevelopmentRepositoryIndex {
 
     public func refresh(workspace: CodebaseMemoryWorkspace) async throws {
         let root = try Self.workspaceRoot(workspace.rootPath)
-        let workspaceKey = Self.sha256(root.path)
-        let records = try Self.records(root: root, redactor: redactor)
+        let rootDescriptor = try Self.openWorkspaceRoot(root)
+        defer { Darwin.close(rootDescriptor.descriptor) }
+        let workspaceKey = Self.workspaceKey(root: root, descriptor: rootDescriptor)
+        let records = try Self.records(root: root, rootDescriptor: rootDescriptor, redactor: redactor)
 
         try await database.transaction { connection in
             let generation = (try connection.queryRows(
@@ -132,6 +140,8 @@ public actor DevelopmentRepositoryIndex {
         topK: Int = 10
     ) async throws -> [CodebaseMemorySnippet] {
         let root = try Self.workspaceRoot(workspace.rootPath)
+        let rootDescriptor = try Self.openWorkspaceRoot(root)
+        defer { Darwin.close(rootDescriptor.descriptor) }
         let query = try Self.validatedQuery(rawQuery)
         let terms = Self.searchTerms(query)
         guard !terms.isEmpty else {
@@ -139,9 +149,10 @@ public actor DevelopmentRepositoryIndex {
         }
         let selectedPaths = try Self.validatedSelectedPaths(workspace.selectedRelativePaths, root: root)
         let limit = max(1, min(topK, Self.maximumResults))
-        let workspaceKey = Self.sha256(root.path)
+        try Self.verifyWorkspaceRoot(root, matches: rootDescriptor)
+        let workspaceKey = Self.workspaceKey(root: root, descriptor: rootDescriptor)
 
-        return try await database.run { connection in
+        let snippets = try await database.run { connection in
             let rows = try Self.ftsRows(
                 connection: connection,
                 terms: terms,
@@ -197,10 +208,18 @@ public actor DevelopmentRepositoryIndex {
                 )
             }
         }
+        try Self.verifyWorkspaceRoot(root, matches: rootDescriptor)
+        return snippets
     }
 
-    private static func records(root: URL, redactor: DeveloperSecretRedactor) throws -> [IndexedFile] {
+    private static func records(
+        root: URL,
+        rootDescriptor: WorkspaceRootDescriptor,
+        redactor: DeveloperSecretRedactor
+    ) throws -> [IndexedFile] {
+        try verifyWorkspaceRoot(root, matches: rootDescriptor)
         let entries = try GitManifestReader.entries(at: root)
+        try verifyWorkspaceRoot(root, matches: rootDescriptor)
         var totalBytes = 0
         var records: [IndexedFile] = []
         for entry in entries {
@@ -211,6 +230,7 @@ public actor DevelopmentRepositoryIndex {
                 continue
             }
             let path = entry.path
+            try verifyWorkspaceRoot(root, matches: rootDescriptor)
             guard let relativePath = try? DevelopmentRepositoryFilePathPolicy.validatedRelativePath(path),
                   // The policy trims user-facing paths, but git names are byte-level
                   // identities.  Never let a trimmed manifest name reopen another file.
@@ -222,7 +242,7 @@ public actor DevelopmentRepositoryIndex {
             // swap and a final-component symlink before any bytes are indexed.
             let data: Data
             do {
-                data = try boundedFileData(root: root, relativePath: relativePath)
+                data = try boundedFileData(rootDescriptor: rootDescriptor.descriptor, relativePath: relativePath)
             } catch DevelopmentRepositoryFileError.symlinkNotAllowed,
                     DevelopmentRepositoryIndexError.indexedContentTooLarge {
                 continue
@@ -247,6 +267,7 @@ public actor DevelopmentRepositoryIndex {
                 contents: contents
             ))
         }
+        try verifyWorkspaceRoot(root, matches: rootDescriptor)
         return records
     }
 
@@ -262,6 +283,37 @@ public actor DevelopmentRepositoryIndex {
             throw DevelopmentRepositoryIndexError.invalidWorkspace
         }
         return root
+    }
+
+    private static func openWorkspaceRoot(_ root: URL) throws -> WorkspaceRootDescriptor {
+        let descriptor = Darwin.open(root.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard descriptor >= 0 else {
+            throw DevelopmentRepositoryIndexError.invalidWorkspace
+        }
+        var state = stat()
+        guard Darwin.fstat(descriptor, &state) == 0, (state.st_mode & S_IFMT) == S_IFDIR else {
+            Darwin.close(descriptor)
+            throw DevelopmentRepositoryIndexError.invalidWorkspace
+        }
+        return WorkspaceRootDescriptor(descriptor: descriptor, device: state.st_dev, inode: state.st_ino)
+    }
+
+    private static func verifyWorkspaceRoot(_ root: URL, matches descriptor: WorkspaceRootDescriptor) throws {
+        try verifyWorkspaceRootIdentity(root, device: descriptor.device, inode: descriptor.inode)
+    }
+
+    private static func workspaceKey(root: URL, descriptor: WorkspaceRootDescriptor) -> String {
+        sha256("\(root.path)\u{0}\(descriptor.device)\u{0}\(descriptor.inode)")
+    }
+
+    static func verifyWorkspaceRootIdentity(_ root: URL, device: dev_t, inode: ino_t) throws {
+        var state = stat()
+        guard Darwin.lstat(root.path, &state) == 0,
+              (state.st_mode & S_IFMT) == S_IFDIR,
+              state.st_dev == device,
+              state.st_ino == inode else {
+            throw DevelopmentRepositoryIndexError.fileReadUnavailable
+        }
     }
 
     private static func validatedQuery(_ rawQuery: String) throws -> String {
@@ -394,7 +446,12 @@ public actor DevelopmentRepositoryIndex {
               let callOpener = swiftCallOpener else {
             return true
         }
-        let matches = assignments.matches(in: contents, range: range)
+        let candidateMatches = assignments.matches(in: contents, range: range)
+        let candidateEnds = Set(candidateMatches.compactMap { Range($0.range, in: contents)?.upperBound })
+        let assignmentEnds = credentialAssignmentDelimiterEnds(in: contents, candidateEnds: candidateEnds)
+        let matches = candidateMatches.filter {
+            Range($0.range, in: contents).map { assignmentEnds.contains($0.upperBound) } == true
+        }
         guard !matches.isEmpty else {
             return report.matchedPatternNames.contains("assignment")
         }
@@ -459,6 +516,73 @@ public actor DevelopmentRepositoryIndex {
             return false
         }
         return isSafeSwiftExpression(String(value[expressionRange]), atom: atom)
+    }
+
+    // Resolve every candidate's next meaningful token during one walk. A
+    // per-candidate lookahead turns a long comment packed with token-like text
+    // into quadratic work, so pending candidates share the same delimiter.
+    private static func credentialAssignmentDelimiterEnds(
+        in source: String,
+        candidateEnds: Set<String.Index>
+    ) -> Set<String.Index> {
+        var lineComment = false
+        var blockCommentDepth = 0
+        var pendingEnds: [String.Index] = []
+        var quoteCanClose = true
+        var assignmentEnds: Set<String.Index> = []
+        var index = source.startIndex
+
+        func resolvePending(with character: Character) {
+            if character == ":" || character == "=" {
+                assignmentEnds.formUnion(pendingEnds)
+            }
+            pendingEnds.removeAll(keepingCapacity: true)
+            quoteCanClose = true
+        }
+
+        while index < source.endIndex {
+            if candidateEnds.contains(index) {
+                pendingEnds.append(index)
+            }
+            let character = source[index]
+            let nextIndex = source.index(after: index)
+            let nextCharacter = nextIndex < source.endIndex ? source[nextIndex] : nil
+
+            if lineComment {
+                if character == "\n" {
+                    lineComment = false
+                }
+            } else if blockCommentDepth > 0 {
+                if character == "/", nextCharacter == "*" {
+                    blockCommentDepth += 1
+                    index = source.index(after: nextIndex)
+                    continue
+                }
+                if character == "*", nextCharacter == "/" {
+                    blockCommentDepth -= 1
+                    index = source.index(after: nextIndex)
+                    continue
+                }
+            } else if !pendingEnds.isEmpty {
+                if character.isWhitespace {
+                    // Keep looking.
+                } else if quoteCanClose, character == "\"" || character == "'" || character == "`" {
+                    quoteCanClose = false
+                } else if character == "/", nextCharacter == "/" {
+                    lineComment = true
+                    index = source.index(after: nextIndex)
+                    continue
+                } else if character == "/", nextCharacter == "*" {
+                    blockCommentDepth = 1
+                    index = source.index(after: nextIndex)
+                    continue
+                } else {
+                    resolvePending(with: character)
+                }
+            }
+            index = nextIndex
+        }
+        return assignmentEnds
     }
 
     // Scan once and snapshot only credential-like positions: rescanning each
@@ -669,15 +793,23 @@ public actor DevelopmentRepositoryIndex {
     }
 
     static func boundedFileData(root: URL, relativePath: String) throws -> Data {
+        let rootDescriptor = Darwin.open(root.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard rootDescriptor >= 0 else {
+            throw DevelopmentRepositoryIndexError.fileReadUnavailable
+        }
+        defer { Darwin.close(rootDescriptor) }
+        return try boundedFileData(rootDescriptor: rootDescriptor, relativePath: relativePath)
+    }
+
+    private static func boundedFileData(rootDescriptor: Int32, relativePath: String) throws -> Data {
         let components = relativePath.split(separator: "/").map(String.init)
         guard !components.isEmpty else {
             throw DevelopmentRepositoryFileError.invalidRelativePath
         }
-        var directoryDescriptor = Darwin.open(root.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        var directoryDescriptor = Darwin.dup(rootDescriptor)
         guard directoryDescriptor >= 0 else {
-            // The root was trusted before manifest generation. A failure here means
-            // it may have been replaced, so publishing a partial empty generation
-            // would be less safe than retaining the previous snapshot.
+            // The root descriptor is fixed before manifest generation; without a
+            // duplicate we cannot guarantee every openat read stays in that inode.
             throw DevelopmentRepositoryIndexError.fileReadUnavailable
         }
         defer { Darwin.close(directoryDescriptor) }
@@ -785,60 +917,57 @@ enum GitManifestReader {
         timeout: TimeInterval = 15,
         executableURL: URL = URL(fileURLWithPath: "/usr/bin/git")
     ) throws -> [String] {
-        let output = try manifestData(
-            at: root,
-            arguments: ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-            timeout: timeout,
-            executableURL: executableURL
-        )
-        let paths = nullTerminatedStrings(from: output)
-        guard paths.count <= DevelopmentRepositoryIndex.maximumFiles else {
-            throw DevelopmentRepositoryIndexError.tooManyFiles
-        }
-        return paths
+        try manifestEntries(at: root, timeout: timeout, executableURL: executableURL).map(\.path)
     }
 
     static func entries(at root: URL) throws -> [Entry] {
-        // Capture Git's intentional-unavailability metadata before listing the
-        // names. A later filesystem change then remains a read failure instead
-        // of being mistaken for an intentional manifest exclusion.
-        let stages = try stagedModes(at: root)
-        let deleted = try deletedPaths(at: root)
-        let skipWorktree = try skipWorktreePaths(at: root)
-        let paths = try paths(at: root)
-        return paths.map { path in
-            Entry(
-                path: path,
-                isUnavailable: stages[path] == "160000" || deleted.contains(path) || skipWorktree.contains(path)
-            )
+        try manifestEntries(at: root)
+    }
+
+    private static func manifestEntries(
+        at root: URL,
+        timeout: TimeInterval = 15,
+        executableURL: URL = URL(fileURLWithPath: "/usr/bin/git")
+    ) throws -> [Entry] {
+        let output = try manifestData(
+            at: root,
+            arguments: ["ls-files", "--cached", "--others", "--deleted", "--stage", "-v", "-z", "--exclude-standard"],
+            timeout: timeout,
+            executableURL: executableURL
+        )
+        var orderedPaths: [String] = []
+        var unavailableByPath: [String: Bool] = [:]
+        for record in nullTerminatedStrings(from: output) {
+            guard let parsed = parseManifestRecord(record) else {
+                throw DevelopmentRepositoryIndexError.gitManifestUnavailable
+            }
+            if let existing = unavailableByPath[parsed.path] {
+                unavailableByPath[parsed.path] = existing || parsed.isUnavailable
+            } else {
+                orderedPaths.append(parsed.path)
+                unavailableByPath[parsed.path] = parsed.isUnavailable
+            }
         }
-    }
-
-    private static func stagedModes(at root: URL) throws -> [String: String] {
-        let output = try manifestData(at: root, arguments: ["ls-files", "--cached", "--stage", "-z"])
-        return nullTerminatedStrings(from: output).reduce(into: [:]) { modes, entry in
-            guard let separator = entry.firstIndex(of: "\t") else {
-                return
-            }
-            let fields = entry[..<separator].split(separator: " ", maxSplits: 1)
-            guard let mode = fields.first else {
-                return
-            }
-            modes[String(entry[entry.index(after: separator)...])] = String(mode)
+        guard orderedPaths.count <= DevelopmentRepositoryIndex.maximumFiles else {
+            throw DevelopmentRepositoryIndexError.tooManyFiles
         }
+        return orderedPaths.map { Entry(path: $0, isUnavailable: unavailableByPath[$0] == true) }
     }
 
-    private static func deletedPaths(at root: URL) throws -> Set<String> {
-        Set(nullTerminatedStrings(from: try manifestData(at: root, arguments: ["ls-files", "--deleted", "-z"])))
-    }
-
-    private static func skipWorktreePaths(at root: URL) throws -> Set<String> {
-        Set(nullTerminatedStrings(from: try manifestData(at: root, arguments: ["ls-files", "--cached", "-v", "-z"])).compactMap { entry in
-            guard entry.hasPrefix("S ") else {
-                return nil
-            }
-            return String(entry.dropFirst(2))
-        })
+    private static func parseManifestRecord(_ record: String) -> Entry? {
+        if record.hasPrefix("? ") {
+            return Entry(path: String(record.dropFirst(2)), isUnavailable: false)
+        }
+        guard let separator = record.firstIndex(of: "\t") else {
+            return nil
+        }
+        let fields = record[..<separator].split(separator: " ")
+        guard fields.count >= 2 else {
+            return nil
+        }
+        let tag = fields[0].uppercased()
+        let path = String(record[record.index(after: separator)...])
+        return Entry(path: path, isUnavailable: tag == "R" || tag == "S" || fields[1] == "160000")
     }
 
     private static func nullTerminatedStrings(from output: ManifestData) -> [String] {

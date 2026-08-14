@@ -153,6 +153,10 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             "PascalCredential.swift": "let ServiceAccessToken = \"long-secret-value\"",
             "PascalCredential.json": "{\"ServiceAccessToken\":\"long-secret-value\"}",
             "TypealiasCredential.swift": "typealias ServiceAccessToken: Codable",
+            "BacktickedCredential.swift": "let `accessToken` = \"long-secret-value\"",
+            "CommentedCredential.swift": "let accessToken /* nested /* note */ note */ = \"long-secret-value\"",
+            "LineCommentCredential.c": "const char *accessToken // note\n= \"long-secret-value\";",
+            "SingleQuotedCredential.yml": "'token': long-secret-value",
             "CommentOpen.swift": "// fake(\ntoken: ABCDEFGHIJK1234",
             "CommentInsideCall.swift": "request(\n// token: ABCDEFGHIJK1234\n)",
             "BlockCommentCall.swift": "request(\n/*\naccessToken: ABCDEFGHIJK1234\n*/\n)",
@@ -223,6 +227,78 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(results.map(\.sourcePath), ["Sources/Dense.swift"])
     }
 
+    func testRefreshIndexesHarmlessCredentialWords() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("OAuth token lifecycle harmlessmarker", to: "Docs/OAuth.md")
+        try fixture.write("let message = \"refresh token harmlessswiftmarker\"", to: "Sources/Message.swift")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let markdown = try await index.search(query: "harmlessmarker", workspace: workspace(fixture))
+        let swift = try await index.search(query: "harmlessswiftmarker", workspace: workspace(fixture))
+        XCTAssertEqual(markdown.map(\.sourcePath), ["Docs/OAuth.md"])
+        XCTAssertEqual(swift.map(\.sourcePath), ["Sources/Message.swift"])
+    }
+
+    func testRefreshIndexesDenseCredentialWordsInsideLineComment() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let contents = "token // " + String(repeating: "token ", count: 30_000) + "densecommentmarker"
+        try fixture.write(contents, to: "Docs/DenseComment.md")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let results = try await index.search(query: "densecommentmarker", workspace: workspace(fixture))
+        XCTAssertEqual(results.map(\.sourcePath), ["Docs/DenseComment.md"])
+    }
+
+    func testSearchDoesNotExposePriorRepositoryAfterSamePathReplacement() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("previousrepositorymarker", to: "Notes.md")
+        let index = try migratedIndex()
+        try await index.refresh(workspace: workspace(fixture))
+
+        let replacement = fixture.url.deletingLastPathComponent().appendingPathComponent("suisui-index-replacement-\(UUID().uuidString)")
+        try FileManager.default.moveItem(at: fixture.url, to: replacement)
+        defer {
+            try? FileManager.default.removeItem(at: fixture.url)
+            try? FileManager.default.moveItem(at: replacement, to: fixture.url)
+        }
+        try FileManager.default.createDirectory(at: fixture.url, withIntermediateDirectories: true)
+        try "replacement marker".write(to: fixture.url.appendingPathComponent("Notes.md"), atomically: true, encoding: .utf8)
+
+        let stale = try await index.search(query: "previousrepositorymarker", workspace: workspace(fixture))
+        XCTAssertTrue(stale.isEmpty)
+    }
+
+    func testWorkspaceRootIdentityRejectsSamePathReplacement() throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        var original = stat()
+        XCTAssertEqual(Darwin.lstat(fixture.url.path, &original), 0)
+        let replacement = fixture.url.deletingLastPathComponent().appendingPathComponent("suisui-index-identity-replacement-\(UUID().uuidString)")
+        try FileManager.default.moveItem(at: fixture.url, to: replacement)
+        defer {
+            try? FileManager.default.removeItem(at: fixture.url)
+            try? FileManager.default.moveItem(at: replacement, to: fixture.url)
+        }
+        try FileManager.default.createDirectory(at: fixture.url, withIntermediateDirectories: true)
+
+        XCTAssertThrowsError(
+            try DevelopmentRepositoryIndex.verifyWorkspaceRootIdentity(
+                fixture.url,
+                device: original.st_dev,
+                inode: original.st_ino
+            )
+        ) { error in
+            XCTAssertEqual(error as? DevelopmentRepositoryIndexError, .fileReadUnavailable)
+        }
+    }
+
     func testRefreshSkipsUnavailableManifestEntriesAndGitlinks() async throws {
         let fixture = try RepositoryFixture()
         let submodule = try RepositoryFixture()
@@ -234,6 +310,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         try submodule.runGit(["add", "Inner.md"])
         try submodule.runGit(["commit", "-m", "Initial submodule"])
         try fixture.write("stable manifest marker", to: "Notes.md")
+        try fixture.write("weirdpathmarker", to: "Notes/\tstrange.md")
         try fixture.write("retiredonlymarker", to: "Deleted.md")
         try fixture.write("skiponlymarker", to: "Skipped.md")
         try fixture.runGit(["add", "Deleted.md", "Skipped.md"])
@@ -247,9 +324,11 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         try await index.refresh(workspace: workspace(fixture))
 
         let stable = try await index.search(query: "stable manifest marker", workspace: workspace(fixture))
+        let weirdPath = try await index.search(query: "weirdpathmarker", workspace: workspace(fixture))
         let deleted = try await index.search(query: "retiredonlymarker", workspace: workspace(fixture))
         let skipped = try await index.search(query: "skiponlymarker", workspace: workspace(fixture))
         XCTAssertEqual(stable.map(\.sourcePath), ["Notes.md"])
+        XCTAssertEqual(weirdPath.map(\.sourcePath), ["Notes/\tstrange.md"])
         XCTAssertTrue(deleted.isEmpty)
         XCTAssertTrue(skipped.isEmpty)
     }
