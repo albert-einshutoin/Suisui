@@ -86,6 +86,23 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(serviceResults.isEmpty)
     }
 
+    func testRefreshDoesNotPersistStandaloneProviderCredentials() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let slackCredential = "xoxb-" + "slackindexmarker123"
+        let googleCredential = "AIza" + "googleindexmarker1234567890"
+        try fixture.write("Leaked sample: \(slackCredential)", to: "README.md")
+        try fixture.write("Copied value: \(googleCredential)", to: "Notes.md")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let slack = try await index.search(query: "slackindexmarker123", workspace: workspace(fixture))
+        let google = try await index.search(query: "googleindexmarker1234567890", workspace: workspace(fixture))
+        XCTAssertTrue(slack.isEmpty)
+        XCTAssertTrue(google.isEmpty)
+    }
+
     func testRefreshDoesNotPersistGenericCredentialKeys() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
@@ -429,6 +446,36 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(compoundCredentialResults.isEmpty)
         XCTAssertTrue(textCredentialResults.isEmpty)
         XCTAssertTrue(nonSwiftFunctionResults.isEmpty)
+    }
+
+    func testRefreshIndexesSwiftCollectionTypesButRejectsLiteralAssignment() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write(
+            """
+            struct CollectionState {
+                let tokens: [String]
+                let tokensByID: [String: String]
+                let tokenPair: (String, Date)
+            }
+            func use(tokens: [String], tokensByID: [String: String], tokenPair: (String, Date)) {
+                let collectiontypemarker = tokens.count
+            }
+            """,
+            to: "Sources/CollectionState.swift"
+        )
+        try fixture.write(
+            "let tokens: [String] = [\"collectionliteralsecretmarker\"]",
+            to: "Sources/CollectionLiteral.swift"
+        )
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let safe = try await index.search(query: "collectiontypemarker", workspace: workspace(fixture))
+        let literal = try await index.search(query: "collectionliteralsecretmarker", workspace: workspace(fixture))
+        XCTAssertEqual(safe.map(\.sourcePath), ["Sources/CollectionState.swift"])
+        XCTAssertTrue(literal.isEmpty)
     }
 
     func testRefreshIndexesDenseSafeSwiftCredentialNames() async throws {

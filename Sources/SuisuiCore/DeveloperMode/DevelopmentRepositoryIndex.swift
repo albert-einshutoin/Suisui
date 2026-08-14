@@ -37,6 +37,9 @@ public actor DevelopmentRepositoryIndex {
     private static let authorizationIdentifier = try? NSRegularExpression(
         pattern: #"\b(?i:authorization)\b"#
     )
+    private static let standaloneProviderCredential = try? NSRegularExpression(
+        pattern: #"(?<![A-Za-z0-9_-])(?:xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{20,})(?![A-Za-z0-9_-])"#
+    )
     private static let safeSwiftAssignment = try? NSRegularExpression(
         pattern: #"^\s*(?:(?:let|var)\s+)?(?:self\.)?[A-Za-z_][A-Za-z0-9_]*\s+=\s*(.+?)\s*$"#
     )
@@ -50,10 +53,10 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"^(?:try\s+)?(?:nil|true|false|\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*(?:\(\s*(?:(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*(?:\s*,\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*)*)?\s*\))?)$"#
     )
     private static let safeSourceTypedDeclaration = try? NSRegularExpression(
-        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.<>?]*\s*$"#
+        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z\[(][A-Za-z0-9_.<>\[\]():?,\s]*$"#
     )
     private static let safeSourceTypedFunctionParameter = try? NSRegularExpression(
-        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?:\s*=\s*nil)?(?=\s*(?:,|\)))"#
+        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z\[(][A-Za-z0-9_.<>\[\]():?,\s]*(?:\s*=\s*nil)?(?=\s*(?:,|\)))"#
     )
     private static let safeSwiftNominalTypeDeclaration = try? NSRegularExpression(
         pattern: #"^\s*(?:(?:private|public|internal|fileprivate|final)\s+)*(?:struct|class|enum|protocol|actor|extension)\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*(?:[A-Z][A-Za-z0-9_.<>?]*|@unchecked\s+Sendable)(?:\s*,\s*(?:[A-Z][A-Za-z0-9_.<>?]*|@unchecked\s+Sendable))*\s*(?:[{][}]?)?\s*$"#
@@ -544,7 +547,14 @@ public actor DevelopmentRepositoryIndex {
         if containsAmbiguousNonSwiftEscape(contents, relativePath: relativePath) {
             return true
         }
-        guard let serializedCredential, let yamlClientKeyData else {
+        guard let standaloneProviderCredential,
+              let serializedCredential,
+              let yamlClientKeyData else {
+            return true
+        }
+        // These opaque provider prefixes are secrets even in prose, without an
+        // assignment key; reject them before any repository text is persisted.
+        if standaloneProviderCredential.firstMatch(in: contents, range: range) != nil {
             return true
         }
         // A client-key-data token is secret material regardless of delimiter or
