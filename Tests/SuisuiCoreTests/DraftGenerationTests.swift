@@ -90,17 +90,21 @@ final class DraftGenerationTests: XCTestCase {
         let basic = "Basic basiccredentialmarker"
         let shortBearer = "Bearer abc"
         let shortBasic = "Basic dTpw"
+        let quotedBearer = "\"Bearer quotedbearermarker\""
+        let quotedBasic = "\"Basic quotedbasicmarker\""
         let jwt = "eyJheadersentinel.payloadsentinel.signaturesentinel"
         let unsignedJWT = "eyJhbGciOiJub25lIn0.e30."
         let trailingHyphenJWT = "eyJhbGciOiJub25lIn0.e30.signaturesentinel-"
         let redaction = DeveloperSecretRedactor().redact(
-            "Authorization: \(bearer)\nAuthorization: \(basic)\nAuthorization: \(shortBearer)\nAuthorization: \(shortBasic)\ncredential=\(jwt)\ncredential=\(unsignedJWT)\ncredential=\(trailingHyphenJWT)"
+            "Authorization: \(bearer)\nAuthorization: \(basic)\nAuthorization: \(shortBearer)\nAuthorization: \(shortBasic)\nAuthorization: \(quotedBearer)\n{\"Authorization\":\(quotedBasic)}\ncredential=\(jwt)\ncredential=\(unsignedJWT)\ncredential=\(trailingHyphenJWT)"
         )
 
         XCTAssertFalse(redaction.text.contains("bearercredentialmarker"))
         XCTAssertFalse(redaction.text.contains("basiccredentialmarker"))
         XCTAssertFalse(redaction.text.contains("Authorization: Bearer abc"))
         XCTAssertFalse(redaction.text.contains("Authorization: Basic dTpw"))
+        XCTAssertFalse(redaction.text.contains("quotedbearermarker"))
+        XCTAssertFalse(redaction.text.contains("quotedbasicmarker"))
         XCTAssertFalse(redaction.text.contains("signaturesentinel"))
         XCTAssertFalse(redaction.text.contains(unsignedJWT))
         XCTAssertFalse(redaction.text.contains(trailingHyphenJWT))
@@ -113,6 +117,7 @@ final class DraftGenerationTests: XCTestCase {
             #"{"to\u006ben":"long-secret-value"}"#,
             #"{"client_\u0073ecret":"long-secret-value"}"#,
             #"{"au\u0074h":"long-secret-value"}"#,
+            #"{"Authoriz\u0061tion":"Bearer escaped-authorization-marker"}"#,
             #"prefix " junk {"to\u006ben":"long-secret-value"}"#,
             #""to\u006ben" = "long-secret-value""#,
         ] {

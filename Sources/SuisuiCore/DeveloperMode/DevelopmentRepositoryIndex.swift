@@ -25,6 +25,7 @@ public actor DevelopmentRepositoryIndex {
     private let database: SQLiteDatabaseWorker
     private let redactor: DeveloperSecretRedactor
     private let maximumRefreshReadBytes: Int
+    private let manifestExecutableURL: URL
 
     // Assignment-only redaction is deliberately broader for user-visible output.
     // For indexing, reject every such assignment unless it matches one of the
@@ -48,7 +49,7 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?=\s*(?:,|\)))"#
     )
     private static let safeSwiftNominalTypeDeclaration = try? NSRegularExpression(
-        pattern: #"^\s*(?:(?:private|public|internal|fileprivate|final)\s+)*(?:struct|class|enum|protocol|actor)\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?:\s*,\s*[A-Z][A-Za-z0-9_.<>?]*)*\s*(?:[{][}]?)?\s*$"#
+        pattern: #"^\s*(?:(?:private|public|internal|fileprivate|final)\s+)*(?:struct|class|enum|protocol|actor|extension)\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?:\s*,\s*[A-Z][A-Za-z0-9_.<>?]*)*\s*(?:[{][}]?)?\s*$"#
     )
     private static let serializedCredential = try? NSRegularExpression(
         pattern: #"(?im)^\s*client[-_]key[-_]data\s*:\s*\S+|^\s*-----BEGIN (?:[A-Z0-9 ]*PRIVATE KEY)-----"#
@@ -89,24 +90,28 @@ public actor DevelopmentRepositoryIndex {
         self.init(
             connection: connection,
             redactor: redactor,
-            maximumRefreshReadBytes: DevelopmentRepositoryIndex.maximumIndexedContentBytes
+            maximumRefreshReadBytes: DevelopmentRepositoryIndex.maximumIndexedContentBytes,
+            manifestExecutableURL: GitManifestReader.defaultExecutableURL
         )
     }
 
     init(
         connection: SQLiteConnection,
         redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
-        maximumRefreshReadBytes: Int
+        maximumRefreshReadBytes: Int = DevelopmentRepositoryIndex.maximumIndexedContentBytes,
+        manifestExecutableURL: URL = GitManifestReader.defaultExecutableURL
     ) {
         database = SQLiteDatabaseWorker(connection: connection)
         self.redactor = redactor
         self.maximumRefreshReadBytes = maximumRefreshReadBytes
+        self.manifestExecutableURL = manifestExecutableURL
     }
 
     public init(path: String, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) throws {
         database = try SQLiteDatabaseWorker(path: path)
         self.redactor = redactor
         maximumRefreshReadBytes = DevelopmentRepositoryIndex.maximumIndexedContentBytes
+        manifestExecutableURL = GitManifestReader.defaultExecutableURL
     }
 
     public func refresh(workspace: CodebaseMemoryWorkspace) async throws {
@@ -118,7 +123,8 @@ public actor DevelopmentRepositoryIndex {
             root: root,
             rootDescriptor: rootDescriptor,
             redactor: redactor,
-            maximumRefreshReadBytes: maximumRefreshReadBytes
+            maximumRefreshReadBytes: maximumRefreshReadBytes,
+            manifestExecutableURL: manifestExecutableURL
         )
 
         try await database.transaction { connection in
@@ -248,10 +254,11 @@ public actor DevelopmentRepositoryIndex {
         root: URL,
         rootDescriptor: WorkspaceRootDescriptor,
         redactor: DeveloperSecretRedactor,
-        maximumRefreshReadBytes: Int
+        maximumRefreshReadBytes: Int,
+        manifestExecutableURL: URL
     ) throws -> [IndexedFile] {
         try verifyWorkspaceRoot(root, matches: rootDescriptor)
-        let entries = try GitManifestReader.entries(at: root)
+        let entries = try GitManifestReader.entries(at: root, executableURL: manifestExecutableURL)
         try verifyWorkspaceRoot(root, matches: rootDescriptor)
         var totalBytes = 0
         var records: [IndexedFile] = []
@@ -671,7 +678,7 @@ public actor DevelopmentRepositoryIndex {
 
     private static func isJSONCredentialKey(_ key: String) -> Bool {
         let normalized = String(key.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }).lowercased()
-        if ["auth", "auths", "identitytoken"].contains(normalized) {
+        if ["auth", "auths", "authorization", "identitytoken"].contains(normalized) {
             return true
         }
         return ["apikey", "accesskey", "privatekey", "token", "password", "secret"].contains {
@@ -1103,6 +1110,10 @@ private extension Array where Element == RepositorySelection {
 }
 
 enum GitManifestReader {
+    static let defaultExecutableURL = URL(fileURLWithPath: "/usr/bin/git")
+    private static let maximumGlobalExcludesOutputBytes = 4 * 1024
+    private static let globalExcludesLookupTimeout: TimeInterval = 1
+
     struct Entry {
         let path: String
         let isUnavailable: Bool
@@ -1111,19 +1122,23 @@ enum GitManifestReader {
     static func paths(
         at root: URL,
         timeout: TimeInterval = 15,
-        executableURL: URL = URL(fileURLWithPath: "/usr/bin/git")
+        executableURL: URL = defaultExecutableURL
     ) throws -> [String] {
         try manifestEntries(at: root, timeout: timeout, executableURL: executableURL).map(\.path)
     }
 
-    static func entries(at root: URL) throws -> [Entry] {
-        try manifestEntries(at: root)
+    static func entries(
+        at root: URL,
+        timeout: TimeInterval = 15,
+        executableURL: URL = defaultExecutableURL
+    ) throws -> [Entry] {
+        try manifestEntries(at: root, timeout: timeout, executableURL: executableURL)
     }
 
     private static func manifestEntries(
         at root: URL,
         timeout: TimeInterval = 15,
-        executableURL: URL = URL(fileURLWithPath: "/usr/bin/git")
+        executableURL: URL = defaultExecutableURL
     ) throws -> [Entry] {
         let output = try manifestData(
             at: root,
@@ -1174,7 +1189,7 @@ enum GitManifestReader {
         at root: URL,
         arguments: [String],
         timeout: TimeInterval = 15,
-        executableURL: URL = URL(fileURLWithPath: "/usr/bin/git")
+        executableURL: URL = defaultExecutableURL
     ) throws -> ManifestData {
         #if os(iOS) || targetEnvironment(macCatalyst)
         // Repository manifests require a local git subprocess, which mobile
@@ -1186,10 +1201,16 @@ enum GitManifestReader {
         process.executableURL = executableURL
         // This read-only manifest must not inherit repository or user hooks.
         // In particular, core.fsmonitor can execute a repo-configured command.
-        process.arguments = [
+        var options = [
             "-c", "core.fsmonitor=false",
             "-c", "core.hooksPath=/dev/null",
-        ] + arguments
+        ]
+        if let globalExcludesFile = try globalExcludesFile(executableURL: executableURL) {
+            // Read only this path from the user's global config; the manifest
+            // process itself remains isolated from global hooks and commands.
+            options += ["-c", "core.excludesFile=\(globalExcludesFile)"]
+        }
+        process.arguments = options + arguments
         process.currentDirectoryURL = root
         process.standardOutput = standardOutput
         process.standardError = FileHandle.nullDevice
@@ -1201,6 +1222,90 @@ enum GitManifestReader {
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_TERMINAL_PROMPT": "0",
         ]
+        let result = try boundedGitOutput(
+            process: process,
+            standardOutput: standardOutput,
+            timeout: timeout,
+            limit: DevelopmentRepositoryIndex.maximumManifestBytes
+        )
+        guard !result.output.exceeded else {
+            throw DevelopmentRepositoryIndexError.manifestTooLarge
+        }
+        guard result.terminationStatus == 0 else {
+            throw DevelopmentRepositoryIndexError.gitManifestUnavailable
+        }
+        return result.output
+        #endif
+    }
+
+    #if !(os(iOS) || targetEnvironment(macCatalyst))
+    private static func globalExcludesFile(executableURL: URL) throws -> String? {
+        let process = Process()
+        let standardOutput = Pipe()
+        process.executableURL = executableURL
+        process.arguments = ["config", "--global", "--path", "--get", "core.excludesFile"]
+        process.standardOutput = standardOutput
+        process.standardError = FileHandle.nullDevice
+        var environment = [
+            "PATH": "/usr/bin:/bin",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+        ]
+        let inherited = ProcessInfo.processInfo.environment
+        for key in ["HOME", "XDG_CONFIG_HOME"] {
+            if let value = inherited[key] {
+                environment[key] = value
+            }
+        }
+        process.environment = environment
+        let result = try boundedGitOutput(
+            process: process,
+            standardOutput: standardOutput,
+            timeout: globalExcludesLookupTimeout,
+            limit: maximumGlobalExcludesOutputBytes
+        )
+        if result.terminationStatus == 1, result.output.data.isEmpty {
+            return defaultGlobalExcludesFile(in: inherited)
+        }
+        guard result.terminationStatus == 0, !result.output.exceeded,
+              var path = String(data: result.output.data, encoding: .utf8) else {
+            throw DevelopmentRepositoryIndexError.gitManifestUnavailable
+        }
+        if path.last == "\n" {
+            path.removeLast()
+            if path.last == "\r" {
+                path.removeLast()
+            }
+        }
+        guard !path.isEmpty, !path.contains("\n"), !path.contains("\r") else {
+            throw DevelopmentRepositoryIndexError.gitManifestUnavailable
+        }
+        return path
+    }
+
+    private static func defaultGlobalExcludesFile(in environment: [String: String]) -> String? {
+        let path: String?
+        if let xdgConfigHome = environment["XDG_CONFIG_HOME"], !xdgConfigHome.isEmpty {
+            path = URL(fileURLWithPath: xdgConfigHome, isDirectory: true)
+                .appendingPathComponent("git/ignore").path
+        } else if let home = environment["HOME"], !home.isEmpty {
+            path = URL(fileURLWithPath: home, isDirectory: true)
+                .appendingPathComponent(".config/git/ignore").path
+        } else {
+            path = nil
+        }
+        guard let path, FileManager.default.fileExists(atPath: path) else {
+            return nil
+        }
+        return path
+    }
+
+    private static func boundedGitOutput(
+        process: Process,
+        standardOutput: Pipe,
+        timeout: TimeInterval,
+        limit: Int
+    ) throws -> (output: ManifestData, terminationStatus: Int32) {
         let result = ProcessResult()
         let group = DispatchGroup()
         group.enter()
@@ -1210,22 +1315,16 @@ enum GitManifestReader {
         } catch {
             throw DevelopmentRepositoryIndexError.gitManifestUnavailable
         }
-        // Drain before waiting: git can block forever when its manifest fills the pipe.
+        // Drain concurrently because either git command can fill a pipe before exit.
         group.enter()
         DispatchQueue.global().async {
-            result.output = boundedManifestData(
-                from: standardOutput.fileHandleForReading,
-                limit: DevelopmentRepositoryIndex.maximumManifestBytes
-            )
+            result.output = boundedManifestData(from: standardOutput.fileHandleForReading, limit: limit)
             if result.output.exceeded {
                 process.terminate()
             }
             group.leave()
         }
         if group.wait(timeout: .now() + timeout) == .timedOut {
-            // A stuck git process must not pin the refresh actor indefinitely.
-            // Close the read side after a bounded TERM grace period so the drain
-            // task also gets a deterministic upper bound before SIGKILL.
             if process.isRunning {
                 process.terminate()
             }
@@ -1236,15 +1335,9 @@ enum GitManifestReader {
             _ = group.wait(timeout: .now() + 1)
             throw DevelopmentRepositoryIndexError.gitManifestUnavailable
         }
-        guard !result.output.exceeded else {
-            throw DevelopmentRepositoryIndexError.manifestTooLarge
-        }
-        guard process.terminationStatus == 0 else {
-            throw DevelopmentRepositoryIndexError.gitManifestUnavailable
-        }
-        return result.output
-        #endif
+        return (result.output, process.terminationStatus)
     }
+    #endif
 }
 
 private final class ProcessResult: @unchecked Sendable {

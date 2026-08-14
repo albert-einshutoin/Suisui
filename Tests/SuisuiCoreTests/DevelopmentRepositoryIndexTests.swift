@@ -108,6 +108,8 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         try fixture.write("Authorization: Basic basicindexmarker", to: "Config/Basic.txt")
         try fixture.write("Authorization: Bearer abc", to: "Config/ShortBearer.txt")
         try fixture.write("Authorization: Basic dTpw", to: "Config/ShortBasic.txt")
+        try fixture.write("Authorization: \"Bearer quotedbearerindexmarker\"", to: "Config/QuotedBearer.txt")
+        try fixture.write("{\"Authorization\":\"Basic quotedbasicindexmarker\"}", to: "Config/QuotedBasic.json")
         try fixture.write("session eyJheadersentinel.payloadsentinel.signaturesentinel", to: "Config/Token.txt")
         try fixture.write("session eyJhbGciOiJub25lIn0.e30.", to: "Config/UnsignedToken.txt")
         try fixture.write("session eyJhbGciOiJub25lIn0.e30.trailinghyphen-", to: "Config/TrailingHyphenToken.txt")
@@ -120,6 +122,8 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let jwt = try await index.search(query: "signaturesentinel", workspace: workspace(fixture))
         let shortBearer = try await index.search(query: "abc", workspace: workspace(fixture))
         let shortBasic = try await index.search(query: "dTpw", workspace: workspace(fixture))
+        let quotedBearer = try await index.search(query: "quotedbearerindexmarker", workspace: workspace(fixture))
+        let quotedBasic = try await index.search(query: "quotedbasicindexmarker", workspace: workspace(fixture))
         let unsignedJWT = try await index.search(query: "e30", workspace: workspace(fixture))
         let trailingHyphenJWT = try await index.search(query: "trailinghyphen", workspace: workspace(fixture))
         XCTAssertTrue(bearer.isEmpty)
@@ -127,6 +131,8 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(jwt.isEmpty)
         XCTAssertTrue(shortBearer.isEmpty)
         XCTAssertTrue(shortBasic.isEmpty)
+        XCTAssertTrue(quotedBearer.isEmpty)
+        XCTAssertTrue(quotedBasic.isEmpty)
         XCTAssertTrue(unsignedJWT.isEmpty)
         XCTAssertTrue(trailingHyphenJWT.isEmpty)
     }
@@ -289,6 +295,96 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(results.map(\.sourcePath), ["Sources/Dense.swift"])
     }
 
+    func testRefreshIndexesCredentialNamedSwiftExtensions() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("extension AccessToken: Codable {}\nextension APIKey: Sendable {}", to: "Sources/CredentialExtensions.swift")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let accessToken = try await index.search(query: "AccessToken", workspace: workspace(fixture))
+        let apiKey = try await index.search(query: "APIKey", workspace: workspace(fixture))
+        XCTAssertEqual(accessToken.map(\.sourcePath), ["Sources/CredentialExtensions.swift"])
+        XCTAssertEqual(apiKey.map(\.sourcePath), ["Sources/CredentialExtensions.swift"])
+    }
+
+    func testRefreshHonorsGlobalExcludeForUntrackedFiles() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let home = fixture.url.appendingPathComponent("home", isDirectory: true)
+        let excludes = home.appendingPathComponent("global-ignore")
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        try "GloballyIgnored.md\n".write(to: excludes, atomically: true, encoding: .utf8)
+        try "[core]\n\texcludesFile = \(excludes.path)\n\tfsmonitor = /bin/false\n".write(
+            to: home.appendingPathComponent(".gitconfig"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try fixture.write("globalignoremarker", to: "GloballyIgnored.md")
+        try fixture.write("visibleglobalmarker", to: "Visible.md")
+
+        let previousHome = ProcessInfo.processInfo.environment["HOME"]
+        let previousXDGConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
+        setenv("HOME", home.path, 1)
+        unsetenv("XDG_CONFIG_HOME")
+        defer {
+            if let previousHome {
+                setenv("HOME", previousHome, 1)
+            } else {
+                unsetenv("HOME")
+            }
+            if let previousXDGConfigHome {
+                setenv("XDG_CONFIG_HOME", previousXDGConfigHome, 1)
+            }
+        }
+
+        let index = try migratedIndex()
+        try await index.refresh(workspace: workspace(fixture))
+
+        let ignored = try await index.search(query: "globalignoremarker", workspace: workspace(fixture))
+        let visible = try await index.search(query: "visibleglobalmarker", workspace: workspace(fixture))
+        XCTAssertTrue(ignored.isEmpty)
+        XCTAssertEqual(visible.map(\.sourcePath), ["Visible.md"])
+    }
+
+    func testRefreshHonorsDefaultGlobalExcludeForUntrackedFiles() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let configDirectory = fixture.url.appendingPathComponent("home/.config/git", isDirectory: true)
+        try FileManager.default.createDirectory(at: configDirectory, withIntermediateDirectories: true)
+        try "DefaultGloballyIgnored.md\n".write(
+            to: configDirectory.appendingPathComponent("ignore"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try fixture.write("defaultglobalignoremarker", to: "DefaultGloballyIgnored.md")
+        try fixture.write("defaultvisiblemarker", to: "Visible.md")
+
+        let previousHome = ProcessInfo.processInfo.environment["HOME"]
+        let previousXDGConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
+        setenv("HOME", fixture.url.appendingPathComponent("home").path, 1)
+        unsetenv("XDG_CONFIG_HOME")
+        defer {
+            if let previousHome {
+                setenv("HOME", previousHome, 1)
+            } else {
+                unsetenv("HOME")
+            }
+            if let previousXDGConfigHome {
+                setenv("XDG_CONFIG_HOME", previousXDGConfigHome, 1)
+            }
+        }
+
+        let index = try migratedIndex()
+        try await index.refresh(workspace: workspace(fixture))
+
+        let ignored = try await index.search(query: "defaultglobalignoremarker", workspace: workspace(fixture))
+        let visible = try await index.search(query: "defaultvisiblemarker", workspace: workspace(fixture))
+        XCTAssertTrue(ignored.isEmpty)
+        XCTAssertEqual(visible.map(\.sourcePath), ["Visible.md"])
+    }
+
     func testRefreshIndexesHarmlessCredentialWords() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
@@ -310,6 +406,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         try fixture.write(#"{"to\u006ben":"escapedtokenmarker"}"#, to: "Config/EscapedToken.json")
         try fixture.write(#"{"items":[{"client_\u0073ecret":"escapedsecretmarker"}]}"#, to: "Config/EscapedSecret.json")
         try fixture.write(#"{"auths":{"registry":{"au\u0074h":"escapedauthmarker"}}}"#, to: "Config/EscapedDocker.json")
+        try fixture.write(#"{"Authoriz\u0061tion":"Bearer escapedauthorizationmarker"}"#, to: "Config/EscapedAuthorization.json")
         try fixture.write(#"{"to\u006ben":"malformedjsonmarker""#, to: "Config/MalformedEscapedToken.json")
         try fixture.write(#""to\u006ben" = "escapedtomlmarker""#, to: "Config/EscapedToken.toml")
         try fixture.write(#""client_\u0073ecret" = "escapedtomlsecretmarker""#, to: "Config/EscapedSecret.toml")
@@ -321,6 +418,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let escapedToken = try await index.search(query: "escapedtokenmarker", workspace: workspace(fixture))
         let escapedSecret = try await index.search(query: "escapedsecretmarker", workspace: workspace(fixture))
         let escapedAuth = try await index.search(query: "escapedauthmarker", workspace: workspace(fixture))
+        let escapedAuthorization = try await index.search(query: "escapedauthorizationmarker", workspace: workspace(fixture))
         let malformed = try await index.search(query: "malformedjsonmarker", workspace: workspace(fixture))
         let escapedTOML = try await index.search(query: "escapedtomlmarker", workspace: workspace(fixture))
         let escapedTOMLSecret = try await index.search(query: "escapedtomlsecretmarker", workspace: workspace(fixture))
@@ -328,6 +426,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(escapedToken.isEmpty)
         XCTAssertTrue(escapedSecret.isEmpty)
         XCTAssertTrue(escapedAuth.isEmpty)
+        XCTAssertTrue(escapedAuthorization.isEmpty)
         XCTAssertTrue(malformed.isEmpty)
         XCTAssertTrue(escapedTOML.isEmpty)
         XCTAssertTrue(escapedTOMLSecret.isEmpty)
@@ -588,6 +687,53 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let startedAt = Date()
         XCTAssertThrowsError(try GitManifestReader.paths(at: fixture.url, timeout: 0.01, executableURL: helper))
         XCTAssertLessThan(Date().timeIntervalSince(startedAt), 3)
+    }
+
+    func testGlobalExcludeLookupTimeoutKeepsPriorGeneration() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("priorglobalignoremarker", to: "Notes.md")
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let index = DevelopmentRepositoryIndex(connection: connection)
+        try await index.refresh(workspace: workspace(fixture))
+
+        let helper = fixture.url.appendingPathComponent("hang-global-config.sh")
+        try "#!/bin/sh\nif [ \"$1\" = \"config\" ]; then\n  trap '' TERM\n  while :; do :; done\nfi\nprintf '? Added.md\\0'\n".write(to: helper, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
+        let hangingIndex = DevelopmentRepositoryIndex(connection: connection, manifestExecutableURL: helper)
+
+        let startedAt = Date()
+        await XCTAssertThrowsErrorAsync(try await hangingIndex.refresh(workspace: workspace(fixture)))
+        XCTAssertLessThan(Date().timeIntervalSince(startedAt), 3)
+        let retained = try connection.queryRows("SELECT contents FROM codebase_index_files;")
+        XCTAssertEqual(retained.count, 1)
+        XCTAssertEqual(try retained[0].string("contents"), "priorglobalignoremarker")
+    }
+
+    func testGlobalExcludeLookupRejectsMultiplePaths() throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let helper = fixture.url.appendingPathComponent("multiple-global-config.sh")
+        try "#!/bin/sh\nif [ \"$1\" = \"config\" ]; then\n  printf '/first\\n/second\\n'\n  exit 0\nfi\nprintf '? Visible.md\\0'\n".write(to: helper, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
+
+        XCTAssertThrowsError(try GitManifestReader.paths(at: fixture.url, executableURL: helper)) { error in
+            XCTAssertEqual(error as? DevelopmentRepositoryIndexError, .gitManifestUnavailable)
+        }
+    }
+
+    func testGlobalExcludeLookupRejectsOversizedPath() throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let helper = fixture.url.appendingPathComponent("oversized-global-config.sh")
+        let oversizedPath = String(repeating: "a", count: 5_000)
+        try "#!/bin/sh\nif [ \"$1\" = \"config\" ]; then\n  printf '\(oversizedPath)\\n'\n  exit 0\nfi\nprintf '? Visible.md\\0'\n".write(to: helper, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: helper.path)
+
+        XCTAssertThrowsError(try GitManifestReader.paths(at: fixture.url, executableURL: helper)) { error in
+            XCTAssertEqual(error as? DevelopmentRepositoryIndexError, .gitManifestUnavailable)
+        }
     }
 
     func testRefreshReplacesSnapshotAndKeepsPreviousGenerationAfterGitFailure() async throws {
