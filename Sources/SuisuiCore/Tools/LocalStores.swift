@@ -886,6 +886,9 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         var seenIDs = Set<Int64>()
 
         if !ftsTerms.isEmpty {
+            // unicode61 removes diacritics, so FTS can broaden a literal
+            // token. Confirm source fields before a false hit consumes a
+            // workspace slot; the existing fallback fills the remainder.
             for record in try connection.queryRows(
                 """
                 SELECT tasks.* FROM tasks
@@ -898,7 +901,11 @@ public final class SQLiteTaskStore: @unchecked Sendable {
                 LIMIT ?;
                 """,
                 parameters: [.text(ftsTerms.joined(separator: " OR ")), .integer(Int64(limit))]
-            ).map(TaskRecord.init(row:)) where seenIDs.insert(record.id).inserted {
+            ).map(TaskRecord.init(row:)) {
+                guard boundedTokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
+                      seenIDs.insert(record.id).inserted else {
+                    continue
+                }
                 records.append(record)
             }
         }

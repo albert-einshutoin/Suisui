@@ -427,6 +427,18 @@ final class LocalStoreTests: XCTestCase {
         )
     }
 
+    func testTaskTokenSearchFiltersDiacriticFTSFalseHitBeforeFillingLimit() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+        _ = try store.create(title: "résumé archive")
+        let literalTask = try store.create(title: "resume handoff")
+
+        XCTAssertEqual(
+            try store.searchOpenTasks(matching: ["resume"], limit: 1).map(\.id),
+            [literalTask.id]
+        )
+    }
+
     func testKnowledgeSearchFindsUnicodeCaseInsensitiveSubstringInsideFTSToken() throws {
         let connection = try currentConnection()
         let store = SQLiteKnowledgeFrameStore(connection: connection)
