@@ -133,7 +133,7 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn('if [[ "$CI_COMPLETE_RUNTIME" == "1" ]]', ci_contents)
         self.assertIn("require_fully_exercised_runtime", ci_contents)
         self.assertIn(
-            "SUISUI_CI_COMPLETE_RUNTIME: ${{ github.event_name == 'pull_request' && needs.test_strategy.outputs.strategy != 'full' && '0' || '1' }}",
+            "SUISUI_CI_COMPLETE_RUNTIME: 0",
             WORKFLOW.read_text(encoding="utf-8"),
         )
         self.assertIn("SUISUI_CI_COMPLETE_RUNTIME=1", RELEASE_PREFLIGHT.read_text(encoding="utf-8"))

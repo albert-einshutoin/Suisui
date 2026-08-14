@@ -243,7 +243,9 @@ jobs:
       - name: Verify production runtime
         env:
           SUISUI_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
-          SUISUI_CI_COMPLETE_RUNTIME: ${{ github.event_name == 'pull_request' && needs.test_strategy.outputs.strategy != 'full' && '0' || '1' }}
+          # GitHub's 1024x676 GUI cannot exercise the 1420x860 wide-layout gate.
+          # Complete UI evidence remains a release-machine/run-all requirement.
+          SUISUI_CI_COMPLETE_RUNTIME: 0
           SUISUI_RUNTIME_POLICY: public-alpha
         run: ./scripts/ci.sh ui-runtime
 

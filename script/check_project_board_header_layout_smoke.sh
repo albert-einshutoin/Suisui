@@ -749,7 +749,6 @@ exercise_toolbar_utilities() {
   exercise_file_utility "project-board-import-tasks" "Import Tasks"
   assert_google_calendar_utility_is_safely_disabled
   exercise_automation_utility
-  exercise_settings_utility
   exercise_terminal_utility
 }
 
@@ -1611,6 +1610,7 @@ capture_window "minimum-window"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
 exercise_sidebar_entrypoints
 exercise_keyboard_entrypoints
+exercise_settings_utility
 exercise_toolbar_utilities
 
 launch_header_layout_candidate "japanese"
@@ -1623,6 +1623,7 @@ assert_action_buttons_are_trailing "minimum-window-japanese"
 capture_window "minimum-window-japanese"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
 exercise_sidebar_entrypoints
+exercise_settings_utility
 exercise_toolbar_utilities
 
 exercise_runtime_crud_recovery_entrypoints

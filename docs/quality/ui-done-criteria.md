@@ -41,6 +41,8 @@ baseline を書き換えない。
 ./ci/run-all.sh
 ```
 
+GitHub-hosted macOSの1024x676 UI laneは短縮証跡であり、wide layoutを含む完全検証の代替にはしない。
+
 `docs/quality/selective-ci.md` の原則どおり、明示的な安全判定がある時だけ
 selective validation を使う。失敗・手動レビューの所見は
 `docs/quality/manual-to-automated-regression.md` に従い、次回を防ぐ source、
