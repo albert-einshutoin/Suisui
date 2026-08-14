@@ -1,0 +1,10 @@
+[package]
+name = "suisui-kokoro-helper"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+kokoro-en = "0.1.5"
+tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread"] }
