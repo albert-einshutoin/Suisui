@@ -2191,6 +2191,108 @@ public enum CoreMigrations {
                     """
                 )
             },
+            DatabaseMigration(
+                id: "0036_create_task_and_knowledge_content_search"
+            ) { connection in
+                try connection.execute(
+                    """
+                    CREATE VIRTUAL TABLE tasks_fts USING fts5(
+                        title,
+                        detail,
+                        content='tasks',
+                        content_rowid='id'
+                    );
+
+                    INSERT INTO tasks_fts(tasks_fts) VALUES ('rebuild');
+
+                    CREATE TRIGGER tasks_fts_after_insert
+                    AFTER INSERT ON tasks BEGIN
+                        INSERT INTO tasks_fts(rowid, title, detail)
+                        VALUES (new.id, new.title, new.detail);
+                    END;
+
+                    CREATE TRIGGER tasks_fts_after_delete
+                    AFTER DELETE ON tasks BEGIN
+                        INSERT INTO tasks_fts(tasks_fts, rowid, title, detail)
+                        VALUES ('delete', old.id, old.title, old.detail);
+                    END;
+
+                    CREATE TRIGGER tasks_fts_after_content_update
+                    AFTER UPDATE OF title, detail ON tasks BEGIN
+                        INSERT INTO tasks_fts(tasks_fts, rowid, title, detail)
+                        VALUES ('delete', old.id, old.title, old.detail);
+                        INSERT INTO tasks_fts(rowid, title, detail)
+                        VALUES (new.id, new.title, new.detail);
+                    END;
+
+                    DROP TABLE knowledge_frames_fts;
+
+                    CREATE VIRTUAL TABLE knowledge_frames_fts USING fts5(
+                        name,
+                        body,
+                        content='knowledge_frames',
+                        content_rowid='id'
+                    );
+
+                    -- Triggers are serialized in the base table. Index them with
+                    -- body text so the external-content table stays compatible
+                    -- with existing FTS reads while trigger terms become searchable.
+                    INSERT INTO knowledge_frames_fts(rowid, name, body)
+                    SELECT id, name, body || char(10) || triggers_json
+                    FROM knowledge_frames;
+                    """
+                )
+            },
+            DatabaseMigration(
+                id: "0037_create_codebase_repository_index"
+            ) { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS codebase_index_files (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        workspace_key TEXT NOT NULL,
+                        relative_path TEXT NOT NULL,
+                        byte_count INTEGER NOT NULL,
+                        sha256 TEXT NOT NULL,
+                        contents TEXT NOT NULL,
+                        -- Generation lets refresh atomically publish a complete replacement snapshot.
+                        generation INTEGER NOT NULL,
+                        UNIQUE(workspace_key, relative_path)
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_codebase_index_files_workspace_generation
+                    ON codebase_index_files(workspace_key, generation);
+
+                    CREATE VIRTUAL TABLE codebase_index_files_fts USING fts5(
+                        relative_path,
+                        contents,
+                        content='codebase_index_files',
+                        content_rowid='id'
+                    );
+
+                    CREATE TRIGGER codebase_index_files_fts_after_insert
+                    AFTER INSERT ON codebase_index_files BEGIN
+                        INSERT INTO codebase_index_files_fts(rowid, relative_path, contents)
+                        VALUES (new.id, new.relative_path, new.contents);
+                    END;
+
+                    CREATE TRIGGER codebase_index_files_fts_after_delete
+                    AFTER DELETE ON codebase_index_files BEGIN
+                        INSERT INTO codebase_index_files_fts(codebase_index_files_fts, rowid, relative_path, contents)
+                        VALUES ('delete', old.id, old.relative_path, old.contents);
+                    END;
+
+                    CREATE TRIGGER codebase_index_files_fts_after_content_update
+                    AFTER UPDATE OF relative_path, contents ON codebase_index_files
+                    WHEN old.relative_path != new.relative_path OR old.contents != new.contents BEGIN
+                        INSERT INTO codebase_index_files_fts(codebase_index_files_fts, rowid, relative_path, contents)
+                        VALUES ('delete', old.id, old.relative_path, old.contents);
+                        INSERT INTO codebase_index_files_fts(rowid, relative_path, contents)
+                        VALUES (new.id, new.relative_path, new.contents);
+                    END;
+                    """
+                )
+            },
         ]
     }
 }

@@ -49,6 +49,36 @@ final class CommandPaletteContentSearchServiceTests: XCTestCase {
         XCTAssertEqual(matches[0].content, "Renew passport before summer")
     }
 
+    func testJapaneseTaskContentSearchMatchesTextInTheMiddleOfATitle() throws {
+        let connection = try migratedConnection()
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let service = CommandPaletteContentSearchService(
+            taskStore: taskStore,
+            knowledgeFrameStore: SQLiteKnowledgeFrameStore(connection: connection)
+        )
+        let task = try taskStore.create(title: "請求書リリース確認")
+
+        XCTAssertEqual(
+            service.search(query: "リリース").map(\.source),
+            [.task(id: task.id, projectID: nil)]
+        )
+    }
+
+    func testTaskContentSearchKeepsLiteralSubstringSemanticsWhenFTSHasNoWordHit() throws {
+        let connection = try migratedConnection()
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let service = CommandPaletteContentSearchService(
+            taskStore: taskStore,
+            knowledgeFrameStore: SQLiteKnowledgeFrameStore(connection: connection)
+        )
+        let task = try taskStore.create(title: "Prepare invoice report")
+
+        XCTAssertEqual(
+            service.search(query: "voice").map(\.source),
+            [.task(id: task.id, projectID: nil)]
+        )
+    }
+
     func testCompletedTasksAreExcluded() throws {
         let connection = try migratedConnection()
         let taskStore = SQLiteTaskStore(connection: connection)

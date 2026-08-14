@@ -64,31 +64,17 @@ public final class WorkspaceQuestionRetriever: @unchecked Sendable {
 
         let tokens = Self.matchTokens(for: trimmedQuestion)
         if !tokens.isEmpty {
-            for task in try taskStore.listAll() where task.status != "completed" {
-                if Self.matches(tokens: tokens, in: [task.title, task.detail ?? ""]) {
-                    append(kind: "task", title: task.title, detail: task.detail.map(Self.bodyPreview))
-                }
+            for task in try taskStore.searchOpenTasks(matching: tokens, limit: limit) {
+                append(kind: "task", title: task.title, detail: task.detail.map(Self.bodyPreview))
             }
             for project in try projectStore.list() where Self.matches(tokens: tokens, in: [project.title]) {
                 append(kind: "project", title: project.title, detail: project.deadline.map { "deadline \($0)" })
             }
         }
 
-        // FTS syntax problems must degrade to "no knowledge context", never
-        // fail the whole question, so frame search errors are swallowed.
-        var frames = (try? knowledgeFrameStore.search(query: trimmedQuestion)) ?? []
-        if frames.isEmpty {
-            // The full question rarely matches as one FTS phrase, so fall back
-            // to individual word tokens (CJK 2-grams are skipped because the
-            // default FTS tokenizer cannot match CJK substrings).
-            var frameIDs = Set<Int64>()
-            for token in Self.wordTokens(for: trimmedQuestion) {
-                for frame in (try? knowledgeFrameStore.search(query: token)) ?? []
-                    where frameIDs.insert(frame.id).inserted {
-                    frames.append(frame)
-                }
-            }
-        }
+        // Search failures must degrade to no knowledge context, never fail the
+        // whole question. The store keeps FTS and CJK fallback in one query path.
+        let frames = (try? knowledgeFrameStore.search(matching: tokens, limit: limit)) ?? []
         for frame in frames {
             append(kind: "knowledge", title: frame.name, detail: Self.bodyPreview(frame.body))
         }

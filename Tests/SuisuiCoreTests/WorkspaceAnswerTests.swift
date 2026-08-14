@@ -106,6 +106,16 @@ final class WorkspaceAnswerTests: XCTestCase {
         XCTAssertEqual(snippets.map(\.title), ["リリース準備タスク"])
     }
 
+    func testRetrieveMatchesJapaneseTaskTitleWhenPhraseStartsAfterOtherText() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "請求書リリース確認")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+        let snippets = try retriever.retrieve(question: "リリースの進捗は？")
+
+        XCTAssertEqual(snippets.map(\.title), ["請求書リリース確認"])
+    }
+
     func testRetrieveIncludesKnowledgeFrameFTSHitsWithBodyPreview() throws {
         let stores = try makeStores()
         let longBody = "Verify signing certificates before every release upload. "
@@ -121,6 +131,19 @@ final class WorkspaceAnswerTests: XCTestCase {
         XCTAssertTrue(detail.hasPrefix("Verify signing certificates"))
         XCTAssertTrue(detail.hasSuffix("..."))
         XCTAssertLessThanOrEqual(detail.count, 163)
+    }
+
+    func testRetrieveMatchesJapaneseKnowledgeTextInTheMiddleOfATitle() throws {
+        let stores = try makeStores()
+        _ = try stores.frames.create(
+            name: "請求書リリース手順",
+            body: "承認後に公開する"
+        )
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+        let snippets = try retriever.retrieve(question: "リリースの手順は？")
+
+        XCTAssertEqual(snippets.filter { $0.kind == "knowledge" }.map(\.title), ["請求書リリース手順"])
     }
 
     func testRetrieveDedupesByKindAndTitleAndCapsAtLimit() throws {

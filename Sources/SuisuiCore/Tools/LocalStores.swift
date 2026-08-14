@@ -819,10 +819,8 @@ public final class SQLiteTaskStore: @unchecked Sendable {
     }
 
     /// Command-palette content search over open task titles and details.
-    /// Tasks have no FTS table (only knowledge frames do), so this is the
-    /// documented fallback: a LIKE scan with bound parameters. The user text
-    /// is escaped with `SQL.escapeLike` so `%`/`_` wildcards and backslashes
-    /// match literally instead of acting as pattern syntax.
+    /// The quoted FTS phrase keeps non-CJK input literal: FTS operators and
+    /// wildcards are never interpreted as part of a command-palette query.
     public func searchOpenTasksByContent(text: String, limit: Int) throws -> [TaskRecord] {
         lock.lock()
         defer { lock.unlock() }
@@ -832,19 +830,95 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             return []
         }
 
-        let pattern = "%\(SQL.escapeLike(trimmed))%"
-        return try connection.queryRows(
+        if Self.containsCJK(trimmed) {
+            return try searchOpenTasksByContainsLocked(text: trimmed, limit: limit)
+        }
+
+        let matches = try connection.queryRows(
             """
             SELECT tasks.* FROM tasks
+            JOIN tasks_fts ON tasks_fts.rowid = tasks.id
             LEFT JOIN projects ON projects.id = tasks.project_id
-            WHERE tasks.status != 'completed'
+            WHERE tasks_fts MATCH ?
+              AND tasks.status != 'completed'
               AND (tasks.project_id IS NULL OR projects.status != 'archived')
-              AND (tasks.title LIKE ? ESCAPE '\\' OR tasks.detail LIKE ? ESCAPE '\\')
             ORDER BY tasks.id DESC
             LIMIT ?;
             """,
-            parameters: [.text(pattern), .text(pattern), .integer(Int64(limit))]
+            parameters: [.text("\"\(SQL.escapeFTS(trimmed))\""), .integer(Int64(limit))]
         ).map(TaskRecord.init(row:))
+        return matches.isEmpty
+            ? try searchOpenTasksByContainsLocked(text: trimmed, limit: limit)
+            : matches
+    }
+
+    /// Workspace answers historically match any normalized token. Keep that
+    /// behavior in SQLite so a large task history is never materialized only
+    /// to discard most rows in Swift.
+    func searchOpenTasks(matching tokens: [String], limit: Int) throws -> [TaskRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard limit > 0 else {
+            return []
+        }
+        let boundedTokens = Self.boundedSearchTokens(tokens)
+        guard !boundedTokens.isEmpty else {
+            return []
+        }
+
+        let ftsTerms = boundedTokens
+            .filter { !Self.containsCJK($0) }
+            .map { "\"\(SQL.escapeFTS($0))\"" }
+        let cjkTokens = boundedTokens.filter(Self.containsCJK)
+        var recordsByID: [Int64: TaskRecord] = [:]
+
+        if !ftsTerms.isEmpty {
+            for record in try connection.queryRows(
+                """
+                SELECT tasks.* FROM tasks
+                JOIN tasks_fts ON tasks_fts.rowid = tasks.id
+                LEFT JOIN projects ON projects.id = tasks.project_id
+                WHERE tasks_fts MATCH ?
+                  AND tasks.status != 'completed'
+                  AND (tasks.project_id IS NULL OR projects.status != 'archived')
+                ORDER BY tasks.id ASC
+                LIMIT ?;
+                """,
+                parameters: [.text(ftsTerms.joined(separator: " OR ")), .integer(Int64(limit))]
+            ).map(TaskRecord.init(row:)) {
+                recordsByID[record.id] = record
+            }
+        }
+
+        if !cjkTokens.isEmpty {
+            // unicode61 cannot index an arbitrary CJK substring. This bounded
+            // SQLite fallback preserves the prior contains semantics without
+            // materializing the full task history in Swift.
+            let predicate = cjkTokens.map { _ in
+                "(instr(lower(tasks.title), ?) > 0 OR instr(lower(COALESCE(tasks.detail, '')), ?) > 0)"
+            }.joined(separator: " OR ")
+            let parameters: [SQLiteValue] = cjkTokens.flatMap { token in
+                let lowered = token.lowercased()
+                return [SQLiteValue.text(lowered), .text(lowered)]
+            } + [.integer(Int64(limit))]
+            for record in try connection.queryRows(
+                """
+                SELECT tasks.* FROM tasks
+                LEFT JOIN projects ON projects.id = tasks.project_id
+                WHERE (\(predicate))
+                  AND tasks.status != 'completed'
+                  AND (tasks.project_id IS NULL OR projects.status != 'archived')
+                ORDER BY tasks.id ASC
+                LIMIT ?;
+                """,
+                parameters: parameters
+            ).map(TaskRecord.init(row:)) {
+                recordsByID[record.id] = record
+            }
+        }
+
+        return Array(recordsByID.values.sorted { $0.id < $1.id }.prefix(limit))
     }
 
     public func createMany(_ drafts: [TaskCreateDraft]) throws -> [TaskRecord] {
@@ -1414,6 +1488,23 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             .map(TaskRecord.init(row:))
     }
 
+    private func searchOpenTasksByContainsLocked(text: String, limit: Int) throws -> [TaskRecord] {
+        let lowered = text.lowercased()
+        return try connection.queryRows(
+            """
+            SELECT tasks.* FROM tasks
+            LEFT JOIN projects ON projects.id = tasks.project_id
+            WHERE (instr(lower(tasks.title), ?) > 0
+                   OR instr(lower(COALESCE(tasks.detail, '')), ?) > 0)
+              AND tasks.status != 'completed'
+              AND (tasks.project_id IS NULL OR projects.status != 'archived')
+            ORDER BY tasks.id DESC
+            LIMIT ?;
+            """,
+            parameters: [.text(lowered), .text(lowered), .integer(Int64(limit))]
+        ).map(TaskRecord.init(row:))
+    }
+
     private static func sortForProjectBoard(_ lhs: TaskRecord, _ rhs: TaskRecord) -> Bool {
         switch (lhs.projectID, rhs.projectID) {
         case let (lhsProject?, rhsProject?):
@@ -1428,6 +1519,43 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             break
         }
         return lhs.id < rhs.id
+    }
+
+    static func containsCJK(_ text: String) -> Bool {
+        text.unicodeScalars.contains { scalar in
+            switch scalar.value {
+            case 0x3040...0x30FF,
+                 0x3400...0x4DBF,
+                 0x4E00...0x9FFF,
+                 0xF900...0xFAFF,
+                 0xFF66...0xFF9D:
+                return true
+            default:
+                return false
+            }
+        }
+    }
+
+    static func boundedSearchTokens(_ tokens: [String]) -> [String] {
+        let maximumTokenCount = 32
+        let maximumTokenLength = 128
+        var uniqueTokens: [String] = []
+        var seen = Set<String>()
+        for token in tokens {
+            let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                continue
+            }
+            let bounded = String(trimmed.prefix(maximumTokenLength))
+            guard seen.insert(bounded).inserted else {
+                continue
+            }
+            uniqueTokens.append(bounded)
+            if uniqueTokens.count == maximumTokenCount {
+                break
+            }
+        }
+        return uniqueTokens
     }
 }
 
@@ -1619,6 +1747,7 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         let normalizedName = try StoreFieldValidation.requiredTrimmed(name, argument: "name", tool: .frameCreate)
         let validatedBody = try StoreFieldValidation.requiredNonBlank(body, argument: "body", tool: .frameCreate)
         let triggersJSON = try SQL.jsonArray(triggers, column: "knowledge_frames.triggers_json")
+        let indexedBody = Self.indexedKnowledgeBody(body: validatedBody, triggersJSON: triggersJSON)
 
         return try connection.transaction {
             try connection.execute(
@@ -1634,7 +1763,7 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
                 INSERT INTO knowledge_frames_fts (rowid, name, body)
                 VALUES (?, ?, ?);
                 """,
-                parameters: [.integer(id), .text(normalizedName), .text(validatedBody)]
+                parameters: [.integer(id), .text(normalizedName), .text(indexedBody)]
             )
 
             return try getLocked(id: id)
@@ -1646,6 +1775,8 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         defer { lock.unlock() }
 
         let oldRecord = try getLocked(id: id)
+        let oldTriggersJSON = try SQL.jsonArray(oldRecord.triggers, column: "knowledge_frames.triggers_json")
+        let oldIndexedBody = Self.indexedKnowledgeBody(body: oldRecord.body, triggersJSON: oldTriggersJSON)
         var assignments: [String] = []
         var parameters: [SQLiteValue] = []
         if let name {
@@ -1671,19 +1802,21 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
                 INSERT INTO knowledge_frames_fts (knowledge_frames_fts, rowid, name, body)
                 VALUES ('delete', ?, ?, ?);
                 """,
-                parameters: [.integer(id), .text(oldRecord.name), .text(oldRecord.body)]
+                parameters: [.integer(id), .text(oldRecord.name), .text(oldIndexedBody)]
             )
             try connection.execute(
                 "UPDATE knowledge_frames SET \(assignments.joined(separator: ", ")) WHERE id = ?;",
                 parameters: parameters + [.integer(id)]
             )
             let record = try getLocked(id: id)
+            let recordTriggersJSON = try SQL.jsonArray(record.triggers, column: "knowledge_frames.triggers_json")
+            let recordIndexedBody = Self.indexedKnowledgeBody(body: record.body, triggersJSON: recordTriggersJSON)
             try connection.execute(
                 """
                 INSERT INTO knowledge_frames_fts (rowid, name, body)
                 VALUES (?, ?, ?);
                 """,
-                parameters: [.integer(id), .text(record.name), .text(record.body)]
+                parameters: [.integer(id), .text(record.name), .text(recordIndexedBody)]
             )
             return record
         }
@@ -1707,13 +1840,15 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         defer { lock.unlock() }
 
         let record = try getLocked(id: id)
+        let triggersJSON = try SQL.jsonArray(record.triggers, column: "knowledge_frames.triggers_json")
+        let indexedBody = Self.indexedKnowledgeBody(body: record.body, triggersJSON: triggersJSON)
         try connection.transaction {
             try connection.execute(
                 """
                 INSERT INTO knowledge_frames_fts (knowledge_frames_fts, rowid, name, body)
                 VALUES ('delete', ?, ?, ?);
                 """,
-                parameters: [.integer(id), .text(record.name), .text(record.body)]
+                parameters: [.integer(id), .text(record.name), .text(indexedBody)]
             )
             try connection.execute("DELETE FROM knowledge_frames WHERE id = ?;", parameters: [.integer(id)])
         }
@@ -1741,12 +1876,85 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         ).map(KnowledgeFrameRecord.init(row:))
     }
 
+    func search(matching tokens: [String], limit: Int) throws -> [KnowledgeFrameRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard limit > 0 else {
+            return []
+        }
+        let boundedTokens = SQLiteTaskStore.boundedSearchTokens(tokens)
+        guard !boundedTokens.isEmpty else {
+            return []
+        }
+
+        let nonCJK = boundedTokens.filter { !SQLiteTaskStore.containsCJK($0) }
+        var records: [KnowledgeFrameRecord] = []
+        var seenIDs = Set<Int64>()
+
+        if !nonCJK.isEmpty {
+            let match = nonCJK
+                .map { "\"\(SQL.escapeFTS($0))\"" }
+                .joined(separator: " OR ")
+            for record in try connection.queryRows(
+                """
+                SELECT knowledge_frames.*
+                FROM knowledge_frames_fts
+                JOIN knowledge_frames ON knowledge_frames_fts.rowid = knowledge_frames.id
+                WHERE knowledge_frames_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?;
+                """,
+                parameters: [.text(match), .integer(Int64(limit))]
+            ).map(KnowledgeFrameRecord.init(row:)) where seenIDs.insert(record.id).inserted {
+                records.append(record)
+            }
+        }
+
+        var containsTokens = boundedTokens.filter(SQLiteTaskStore.containsCJK)
+        if records.isEmpty {
+            containsTokens.append(contentsOf: nonCJK)
+        }
+        if !containsTokens.isEmpty, records.count < limit {
+            // unicode61 does not index arbitrary CJK or ASCII substrings. Keep
+            // the compatibility scan in SQLite and bound its dynamic predicate.
+            let predicate = containsTokens.map { _ in
+                "(instr(lower(name), ?) > 0 OR instr(lower(body), ?) > 0 OR instr(lower(triggers_json), ?) > 0)"
+            }.joined(separator: " OR ")
+            let parameters: [SQLiteValue] = containsTokens.flatMap { token in
+                let lowered = token.lowercased()
+                return [
+                    SQLiteValue.text(lowered),
+                    SQLiteValue.text(lowered),
+                    SQLiteValue.text(lowered),
+                ]
+            } + [.integer(Int64(limit - records.count))]
+            for record in try connection.queryRows(
+                """
+                SELECT * FROM knowledge_frames
+                WHERE \(predicate)
+                ORDER BY id ASC
+                LIMIT ?;
+                """,
+                parameters: parameters
+            ).map(KnowledgeFrameRecord.init(row:)) where seenIDs.insert(record.id).inserted {
+                records.append(record)
+            }
+        }
+
+        return records
+    }
+
     private func getLocked(id: Int64) throws -> KnowledgeFrameRecord {
         guard let row = try connection.queryRows("SELECT * FROM knowledge_frames WHERE id = ? LIMIT 1;", parameters: [.integer(id)]).first else {
             throw ToolExecutionError.executionFailed(.frameGet, "Knowledge frame \(id) was not found.")
         }
 
         return try KnowledgeFrameRecord(row: row)
+    }
+
+    private static func indexedKnowledgeBody(body: String, triggersJSON: String) -> String {
+        body + "\n" + triggersJSON
     }
 }
 
@@ -2084,12 +2292,4 @@ private enum SQL {
         value.replacingOccurrences(of: "\"", with: "\"\"")
     }
 
-    /// Escapes LIKE pattern metacharacters so user-entered search text matches
-    /// literally. Pair with `ESCAPE '\'` in the query.
-    static func escapeLike(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "%", with: "\\%")
-            .replacingOccurrences(of: "_", with: "\\_")
-    }
 }

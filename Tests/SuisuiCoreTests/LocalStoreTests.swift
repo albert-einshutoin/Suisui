@@ -303,6 +303,76 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(due.map(\.title), ["Soon"])
     }
 
+    func testTaskContentSearchFTSIndexTracksCreateUpdateAndDelete() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+
+        XCTAssertTrue(try connection.tableExists("tasks_fts"))
+
+        let task = try store.create(
+            title: "Release checklist",
+            detail: "Verify signing before upload"
+        )
+        XCTAssertEqual(
+            try store.searchOpenTasksByContent(text: "signing", limit: 10).map(\.id),
+            [task.id]
+        )
+
+        _ = try store.update(
+            id: task.id,
+            title: "Sprint checklist",
+            detail: "Run the deployment dry run"
+        )
+        XCTAssertTrue(try store.searchOpenTasksByContent(text: "release", limit: 10).isEmpty)
+        XCTAssertTrue(try store.searchOpenTasksByContent(text: "signing", limit: 10).isEmpty)
+        XCTAssertEqual(
+            try store.searchOpenTasksByContent(text: "sprint", limit: 10).map(\.id),
+            [task.id]
+        )
+        XCTAssertEqual(
+            try store.searchOpenTasksByContent(text: "dry run", limit: 10).map(\.id),
+            [task.id]
+        )
+
+        _ = try store.delete(id: task.id)
+        XCTAssertTrue(try store.searchOpenTasksByContent(text: "sprint", limit: 10).isEmpty)
+    }
+
+    func testContentSearchMigrationBackfillsExistingTasksAndKnowledgeTriggers() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeTaskSearch = CoreMigrations.current.filter {
+            $0.id != "0036_create_task_and_knowledge_content_search"
+        }
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: migrationsBeforeTaskSearch)
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let knowledgeStore = SQLiteKnowledgeFrameStore(connection: connection)
+        let task = try taskStore.create(title: "Restore search index")
+        let frame = try knowledgeStore.create(
+            name: "Release guide",
+            body: "Verify signing",
+            triggers: ["shiproom"]
+        )
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+
+        XCTAssertEqual(
+            try taskStore.searchOpenTasksByContent(text: "restore", limit: 10).map(\.id),
+            [task.id]
+        )
+        XCTAssertEqual(try knowledgeStore.search(query: "shiproom").map(\.id), [frame.id])
+    }
+
+    func testTaskContentSearchBoundsTokensBeforeBuildingQuery() {
+        let longToken = String(repeating: "a", count: 129)
+        let tokens = [" ", longToken] + (0..<40).map { "token-\($0)" }
+
+        let bounded = SQLiteTaskStore.boundedSearchTokens(tokens)
+
+        XCTAssertEqual(bounded.count, 32)
+        XCTAssertEqual(bounded.first, String(repeating: "a", count: 128))
+        XCTAssertTrue(bounded.allSatisfy { $0.count <= 128 })
+    }
+
     func testTaskStoreRejectsCorruptedProjectIDInsteadOfDetachingTask() throws {
         let connection = try migratedConnection()
         let projects = SQLiteProjectStore(connection: connection)
@@ -538,6 +608,23 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(results.map(\.name), ["QZT article"])
     }
 
+    func testKnowledgeFrameFTSIndexesTriggersAndTracksTheirUpdates() throws {
+        let connection = try migratedConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let frame = try store.create(
+            name: "Release checklist",
+            body: "Verify signing before upload",
+            triggers: ["shiproom"]
+        )
+
+        XCTAssertEqual(try store.search(query: "shiproom").map(\.id), [frame.id])
+
+        _ = try store.update(id: frame.id, triggers: ["launchpad"])
+
+        XCTAssertTrue(try store.search(query: "shiproom").isEmpty)
+        XCTAssertEqual(try store.search(query: "launchpad").map(\.id), [frame.id])
+    }
+
     func testKnowledgeFrameCreateRollsBackBaseRowWhenFTSWriteFails() throws {
         let connection = try migratedConnection()
         let store = SQLiteKnowledgeFrameStore(connection: connection)
@@ -599,6 +686,12 @@ final class LocalStoreTests: XCTestCase {
         let connection = try SQLiteConnection(path: ":memory:")
         let database = TestDatabaseClient(connection: connection)
         try database.migrate(CoreMigrations.phase2)
+        return connection
+    }
+
+    private func currentConnection() throws -> SQLiteConnection {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         return connection
     }
 
