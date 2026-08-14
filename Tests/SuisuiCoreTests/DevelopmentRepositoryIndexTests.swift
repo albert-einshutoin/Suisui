@@ -78,6 +78,22 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(serviceResults.isEmpty)
     }
 
+    func testRefreshIndexesTypedSwiftTokenButExcludesCredentialAssignment() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("func approve(token: ApprovalToken) {}\nlet apiKey = value\nlet password: Password\nlet token = value", to: "Sources/Approval.swift")
+        try fixture.write("API_KEY=live-placeholder\ntoken=\"long-secret-value\"", to: "Settings.env.swift")
+        let index = try migratedIndex()
+        try await index.refresh(workspace: workspace(fixture))
+
+        let sourceResults = try await index.search(query: "approve", workspace: workspace(fixture))
+        let credentialResults = try await index.search(query: "live", workspace: workspace(fixture))
+        let quotedCredentialResults = try await index.search(query: "long", workspace: workspace(fixture))
+        XCTAssertEqual(sourceResults.map(\.sourcePath), ["Sources/Approval.swift"])
+        XCTAssertTrue(credentialResults.isEmpty)
+        XCTAssertTrue(quotedCredentialResults.isEmpty)
+    }
+
     func testRepositoryDescriptorWalkRejectsIntermediateAndFinalSymlinks() throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
@@ -157,6 +173,24 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(preservedResults.map(\.sourcePath), ["Notes.md"])
     }
 
+    func testRefreshRejectsSymlinkWorkspaceAndPreservesPreviousGeneration() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("preserved marker", to: "Notes.md")
+        let index = try migratedIndex()
+        try await index.refresh(workspace: workspace(fixture))
+
+        let backing = fixture.url.deletingLastPathComponent().appendingPathComponent("suisui-index-backing-\(UUID().uuidString)")
+        try FileManager.default.moveItem(at: fixture.url, to: backing)
+        try FileManager.default.createSymbolicLink(at: fixture.url, withDestinationURL: backing)
+        await XCTAssertThrowsErrorAsync(try await index.refresh(workspace: workspace(fixture)))
+        try FileManager.default.removeItem(at: fixture.url)
+        try FileManager.default.moveItem(at: backing, to: fixture.url)
+
+        let preservedResults = try await index.search(query: "preserved", workspace: workspace(fixture))
+        XCTAssertEqual(preservedResults.map(\.sourcePath), ["Notes.md"])
+    }
+
     func testSearchIsolatesWorkspaceAndSelectedPathsAndFallsBackForCJK() async throws {
         let first = try RepositoryFixture()
         let second = try RepositoryFixture()
@@ -165,6 +199,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             second.remove()
         }
         try first.write("東京の設計", to: "Docs/Japanese.md")
+        try first.write("filename only", to: "Docs/設計ノート.md")
         try first.write("shared secret-free phrase", to: "Sources/Only.swift")
         try second.write("shared secret-free phrase", to: "Other.md")
         let index = try migratedIndex()
@@ -182,10 +217,12 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             workspace: CodebaseMemoryWorkspace(rootPath: first.url.path, selectedRelativePaths: ["Sources"])
         )
         let isolatedResults = try await index.search(query: "shared", workspace: workspace(second))
+        let filenameResults = try await index.search(query: "設計", workspace: workspace(first))
         XCTAssertEqual(cjkResults.map(\.sourcePath), ["Docs/Japanese.md"])
         XCTAssertEqual(selectedResults.map(\.sourcePath), ["Sources/Only.swift"])
         XCTAssertEqual(directoryResults.map(\.sourcePath), ["Sources/Only.swift"])
         XCTAssertEqual(isolatedResults.map(\.sourcePath), ["Other.md"])
+        XCTAssertEqual(Set(filenameResults.map(\.sourcePath)), ["Docs/Japanese.md", "Docs/設計ノート.md"])
     }
 
     func testSearchTokenizesNaturalLanguageAndReturnsMatchContextPreview() async throws {

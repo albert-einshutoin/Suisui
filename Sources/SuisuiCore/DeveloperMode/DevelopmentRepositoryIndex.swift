@@ -23,6 +23,18 @@ public actor DevelopmentRepositoryIndex {
     private let database: SQLiteDatabaseWorker
     private let redactor: DeveloperSecretRedactor
 
+    // Assignment-only redaction is deliberately broader for user-visible output.
+    // Indexing needs the narrower configuration forms below so source declarations
+    // such as `let token = value` remain searchable without persisting credentials.
+    private static let indexCredentialAssignments = [
+        try? NSRegularExpression(
+            pattern: #"(?m)^\s*(?:export\s+)?(?:API_KEY|TOKEN|PASSWORD|SECRET|CLIENT_SECRET|PRIVATE_KEY)\s*=\s*\S{8,}"#
+        ),
+        try? NSRegularExpression(
+            pattern: #"(?i)\b(?:api[_-]?key|apikey|token|password|secret|client[_-]?secret|clientsecret|private[_-]?key|privatekey)\s*[:=]\s*[\"'][^\"']{8,}[\"']"#
+        ),
+    ]
+
     public init(connection: SQLiteConnection, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) {
         database = SQLiteDatabaseWorker(connection: connection)
         self.redactor = redactor
@@ -157,7 +169,7 @@ public actor DevelopmentRepositoryIndex {
             guard let data = try? boundedFileData(root: root, relativePath: relativePath),
                   let contents = String(data: data, encoding: .utf8),
                   (try? DevelopmentRepositoryFilePathPolicy.validateTextContent(contents)) != nil,
-                  redactor.redact(contents).report.replacementCount == 0 else {
+                  !containsIndexCredential(contents, redactor: redactor) else {
                 continue
             }
             totalBytes += data.count
@@ -179,6 +191,9 @@ public actor DevelopmentRepositoryIndex {
             throw DevelopmentRepositoryIndexError.invalidWorkspace
         }
         let root = URL(fileURLWithPath: rawPath).standardizedFileURL
+        guard (try? root.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else {
+            throw DevelopmentRepositoryIndexError.invalidWorkspace
+        }
         guard (try? root.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
             throw DevelopmentRepositoryIndexError.invalidWorkspace
         }
@@ -244,10 +259,10 @@ public actor DevelopmentRepositoryIndex {
         limit: Int
     ) throws -> [SQLiteMaterializedRow] {
         let selection = selectedPaths.sqlClause(column: "relative_path")
-        let predicate = terms.map { _ in "instr(contents, ?) > 0" }.joined(separator: joiner)
+        let predicate = terms.map { _ in "(instr(relative_path, ?) > 0 OR instr(contents, ?) > 0)" }.joined(separator: joiner)
         return try connection.queryRows(
             "SELECT relative_path, contents FROM codebase_index_files WHERE workspace_key = ? AND (\(predicate))\(selection) ORDER BY relative_path LIMIT ?;",
-            parameters: [.text(workspaceKey)] + terms.map(SQLiteValue.text) + selectedPaths.sqlParameters + [.integer(Int64(limit))]
+            parameters: [.text(workspaceKey)] + terms.flatMap { [.text($0), .text($0)] } + selectedPaths.sqlParameters + [.integer(Int64(limit))]
         )
         .map { row in
             let contents = try row.string("contents")
@@ -278,6 +293,23 @@ public actor DevelopmentRepositoryIndex {
         let start = contents.index(match.lowerBound, offsetBy: -160, limitedBy: contents.startIndex) ?? contents.startIndex
         let end = contents.index(match.upperBound, offsetBy: 238, limitedBy: contents.endIndex) ?? contents.endIndex
         return (start == contents.startIndex ? "" : "…") + String(contents[start..<end]) + (end == contents.endIndex ? "" : "…")
+    }
+
+    private static func containsIndexCredential(_ contents: String, redactor: DeveloperSecretRedactor) -> Bool {
+        let report = redactor.redact(contents).report
+        // Shared redaction intentionally treats every token assignment as risky for
+        // user-visible output. Source indexing keeps that policy for specific
+        // patterns, while allowing typed Swift names such as `token: Type`.
+        if report.matchedPatternNames.contains(where: { $0 != "assignment" }) {
+            return true
+        }
+        guard !indexCredentialAssignments.contains(nil) else {
+            return true
+        }
+        let range = NSRange(contents.startIndex..<contents.endIndex, in: contents)
+        return indexCredentialAssignments.compactMap { $0 }.contains {
+            $0.firstMatch(in: contents, range: range) != nil
+        }
     }
 
     private static func containsCJK(_ value: String) -> Bool {
