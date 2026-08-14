@@ -34,10 +34,10 @@ public actor DevelopmentRepositoryIndex {
     // For indexing, reject every such assignment unless it matches one of the
     // narrow Swift grammars below; unknown syntax stays fail-closed.
     private static let credentialKeyAssignments = try? NSRegularExpression(
-        pattern: #"\b(?i:(?:[A-Za-z_][A-Za-z0-9_]*)?(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret|credentials?)[A-Za-z0-9_]*)\b"#
+        pattern: #"(?<![\p{L}\p{M}\p{N}_])(?i:(?:[\p{L}_][\p{L}\p{M}\p{N}_]*)?(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret|credentials?)[\p{L}\p{M}\p{N}_]*)(?![\p{L}\p{M}\p{N}_])"#
     )
     private static let ambiguousSwiftSubscriptAssignment = try? NSRegularExpression(
-        pattern: #"\[\s*\"[^\"\r\n]*\\[^\"\r\n]*\"\s*\](?:\s|/\*[\s\S]*?\*/|//[^\r\n]*(?:\r\n|\r|\n))*="#
+        pattern: #"\[\s*(?!\"[^\"\\\r\n]{0,512}\"\s*\])(?=[^\]\r\n]{0,512}\")[^\]\r\n]{1,512}\]\s*(?:\s|/\*[\s\S]*?\*/|//[^\r\n]*(?:\r\n|\r|\n))*=(?!=)"#
     )
     private static let authorizationIdentifier = try? NSRegularExpression(
         pattern: #"\b(?i:authorization)\b"#

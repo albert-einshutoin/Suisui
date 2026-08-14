@@ -75,6 +75,26 @@ final class DraftGenerationTests: XCTestCase {
         XCTAssertEqual(Set(redaction.report.matchedPatternNames), ["stripe", "private_key_block"])
     }
 
+    func testReleaseNoteDraftRedactsPrivateKeyBlockEmbeddedAfterPrefix() {
+        let marker = "embeddedprivatekeydraftmarker"
+        let embeddedKey = #"{"blob":"prefix -----BEGIN PRIVATE KEY-----"# +
+            "\n\(marker)\n-----END PRIVATE KEY----- suffix\"}"
+        let context = DraftGenerationContext(
+            repositoryName: "suisui",
+            currentBranch: "release/security",
+            gitStatusSummary: "clean",
+            commitSummaries: [embeddedKey],
+            taskSummaries: [],
+            generatedAt: Date(timeIntervalSince1970: 1_783_200_000)
+        )
+
+        let draft = DeveloperDraftGenerator().generateReleaseNoteDraft(from: context)
+
+        XCTAssertFalse(draft.body.contains(marker))
+        XCTAssertTrue(draft.body.contains("[REDACTED_SECRET]"))
+        XCTAssertTrue(draft.redactionReport.matchedPatternNames.contains("private_key_block"))
+    }
+
     func testAssignmentRedactionDoesNotConsumeFollowingAuditFields() {
         let apiKey = "secret-value"
         let summary = "apiKey=string(\"\(apiKey)\"),title=string(\"Secret task\")"

@@ -593,6 +593,57 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(try fileClient.read(relativePath: "Sources/SafeHeader.swift").contents, safeSource)
     }
 
+    func testRefreshAndFileReadRejectEmbeddedPEMComputedSubscriptAndUnicodeCredential() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let pemMarker = "embeddedprivatekeyindexmarker"
+        let pem = #"{"blob":"prefix -----BEGIN PRIVATE KEY-----"# +
+            "\n\(pemMarker)\n-----END PRIVATE KEY----- suffix\"}"
+        let computed = #"""
+        var headers: [String: String] = [:]
+        headers["to" + "ken"] = "computedsubscriptsecretmarker"
+        """#
+        let unicode = #"let 認証token = "unicodesecretmarker""#
+        let safe = #"""
+        public struct OAuthTokenResponse: Decodable {}
+        var headers: [String: String] = [:]
+        headers["content-type"] = "application/json"
+        let value = headers["accessToken"]
+        let boundarySafeMarker = OAuthTokenResponse.self
+        """#
+        try fixture.write(pem, to: "Docs/EmbeddedKey.txt")
+        try fixture.write(computed, to: "Sources/ComputedHeader.swift")
+        try fixture.write(unicode, to: "Sources/UnicodeCredential.swift")
+        try fixture.write(safe, to: "Sources/SafeBoundary.swift")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let pemResults = try await index.search(query: pemMarker, workspace: workspace(fixture))
+        let computedResults = try await index.search(query: "computedsubscriptsecretmarker", workspace: workspace(fixture))
+        let unicodeResults = try await index.search(query: "unicodesecretmarker", workspace: workspace(fixture))
+        let safeResults = try await index.search(query: "boundarySafeMarker", workspace: workspace(fixture))
+        XCTAssertTrue(pemResults.isEmpty)
+        XCTAssertTrue(computedResults.isEmpty)
+        XCTAssertTrue(unicodeResults.isEmpty)
+        XCTAssertEqual(safeResults.map(\.sourcePath), ["Sources/SafeBoundary.swift"])
+
+        let fileClient = DevelopmentRepositoryFileClient(project: ProjectRecord(
+            id: 42,
+            title: "Suisui",
+            status: "active",
+            workspacePath: fixture.url.path
+        ))
+        for path in ["Docs/EmbeddedKey.txt", "Sources/ComputedHeader.swift", "Sources/UnicodeCredential.swift"] {
+            XCTAssertThrowsError(try fileClient.read(relativePath: path)) { error in
+                guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                    return XCTFail("Expected secret-like content rejection, got \(error)")
+                }
+            }
+        }
+        XCTAssertEqual(try fileClient.read(relativePath: "Sources/SafeBoundary.swift").contents, safe)
+    }
+
     func testRefreshIndexesSwiftCollectionTypesButRejectsLiteralAssignment() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
