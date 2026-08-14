@@ -199,9 +199,11 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         try await index.refresh(workspace: workspace(fixture))
 
         let naturalLanguage = try await index.search(query: "sqlite natural language", workspace: workspace(fixture))
+        let partialLanguage = try await index.search(query: "sqlite absent-term", workspace: workspace(fixture))
         let operatorSyntax = try await index.search(query: "\" OR *", workspace: workspace(fixture))
 
         XCTAssertEqual(naturalLanguage.map(\.sourcePath), ["Docs/Search.md"])
+        XCTAssertEqual(partialLanguage.map(\.sourcePath), ["Docs/Search.md"])
         XCTAssertTrue(naturalLanguage[0].bodyPreview.contains("sqlite"))
         XCTAssertFalse(naturalLanguage[0].bodyPreview.hasPrefix("prefix"))
         XCTAssertTrue(operatorSyntax.isEmpty)
