@@ -749,9 +749,9 @@ fn write_atomically(output: &OutputTarget, bytes: &[u8]) -> AppResult<()> {
             drop(file);
             fs::hard_link(&temporary, &output.path).map_err(|_| HelperError::OUTPUT_FAILED)?;
             fs::remove_file(&temporary).map_err(|_| HelperError::OUTPUT_FAILED)?;
-            File::open(parent)
-                .and_then(|directory| directory.sync_all())
-                .map_err(|_| HelperError::OUTPUT_FAILED)
+            // Rust has no portable directory fsync for Windows. File fsync and
+            // no-replace publication still hold; Unix adds directory fsync.
+            Ok(())
         })();
         if result.is_err() {
             let _ = fs::remove_file(&temporary);
