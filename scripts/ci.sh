@@ -10,6 +10,7 @@ CI_VISUAL_GATES="${SUISUI_CI_VISUAL_GATES:-0}"
 CI_RELEASE_GATES="${SUISUI_CI_RELEASE_GATES:-0}"
 CI_PERFORMANCE_GATES="${SUISUI_CI_PERFORMANCE_GATES:-0}"
 CI_STRESS_GATES="${SUISUI_CI_STRESS_GATES:-0}"
+CI_COMPLETE_RUNTIME="${SUISUI_CI_COMPLETE_RUNTIME:-0}"
 CI_LANE="${1:-${SUISUI_CI_LANE:-swiftpm}}"
 CI_LANE_WAS_EXPLICIT=0
 CI_ARTIFACT_ROOT="${SUISUI_CI_ARTIFACT_ROOT:-$ROOT_DIR/.tmp/ci-artifacts}"
@@ -291,9 +292,14 @@ run_runtime_gates() {
   run_layout_stability_gate "$artifact_dir" "$visible_frame_width" "$visible_frame_height"
   SUISUI_RUNTIME_TODAY_PRODUCTION_ROUTE_ARTIFACT_DIR="$artifact_dir/today-production-route" \
     ./script/check_runtime_today_production_route_smoke.sh
-  SUISUI_HEADER_LAYOUT_ENTRYPOINTS_ONLY=1 \
+  if [[ "$CI_COMPLETE_RUNTIME" == "1" ]]; then
     SUISUI_HEADER_LAYOUT_SMOKE_OUTPUT_DIR="$artifact_dir/header-layout" \
-    ./script/check_project_board_header_layout_smoke.sh
+      ./script/check_project_board_header_layout_smoke.sh
+  else
+    SUISUI_HEADER_LAYOUT_ENTRYPOINTS_ONLY=1 \
+      SUISUI_HEADER_LAYOUT_SMOKE_OUTPUT_DIR="$artifact_dir/header-layout" \
+      ./script/check_project_board_header_layout_smoke.sh
+  fi
 }
 
 run_visual_gates() {
@@ -403,6 +409,7 @@ validate_ci_flag "SUISUI_CI_VISUAL_GATES" "$CI_VISUAL_GATES"
 validate_ci_flag "SUISUI_CI_RELEASE_GATES" "$CI_RELEASE_GATES"
 validate_ci_flag "SUISUI_CI_PERFORMANCE_GATES" "$CI_PERFORMANCE_GATES"
 validate_ci_flag "SUISUI_CI_STRESS_GATES" "$CI_STRESS_GATES"
+validate_ci_flag "SUISUI_CI_COMPLETE_RUNTIME" "$CI_COMPLETE_RUNTIME"
 validate_positive_integer "SUISUI_UI_GATE_LOCK_TIMEOUT_SECONDS" "$UI_GATE_LOCK_TIMEOUT_SECONDS"
 
 case "$CI_LANE" in

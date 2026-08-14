@@ -10,6 +10,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 SELECTED_RUNNER = REPOSITORY_ROOT / "ci" / "run-selected.py"
 FULL_RUNNER = REPOSITORY_ROOT / "ci" / "run-full.sh"
 ALL_RUNNER = REPOSITORY_ROOT / "ci" / "run-all.sh"
+CI_SCRIPT = REPOSITORY_ROOT / "scripts" / "ci.sh"
 ORCHESTRATOR = REPOSITORY_ROOT / "ci" / "run-pr-ci.sh"
 PLAN_EXPORTER = REPOSITORY_ROOT / "ci" / "export-plan.py"
 PLAN_ESCALATOR = REPOSITORY_ROOT / "ci" / "escalate-plan.py"
@@ -124,6 +125,8 @@ class ExecutionContractTests(unittest.TestCase):
         ):
             self.assertIn(f"-u {variable}", contents)
         self.assertIn("./scripts/ci.sh ui-runtime", contents)
+        self.assertIn("SUISUI_CI_COMPLETE_RUNTIME=1", contents)
+        self.assertIn('if [[ "$CI_COMPLETE_RUNTIME" == "1" ]]', CI_SCRIPT.read_text(encoding="utf-8"))
         self.assertIn('status=passed', contents)
         self.assertIn("BLOCKER: complete runtime validation was not fully exercised", contents)
         self.assertIn("-u SUISUI_CI_VISUAL_GATE_LOCALE", contents)

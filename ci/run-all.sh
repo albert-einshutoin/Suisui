@@ -34,6 +34,7 @@ env \
   -u SUISUI_RUNTIME_TODAY_MAX_TOOLBAR_LAYOUT_DEPTH \
   -u SUISUI_RUNTIME_TODAY_WINDOW_WIDTH \
   -u SUISUI_RUNTIME_TODAY_WINDOW_HEIGHT \
+  SUISUI_CI_COMPLETE_RUNTIME=1 \
   SUISUI_CI_ARTIFACT_ROOT="$CI_ARTIFACT_ROOT" \
   ./scripts/ci.sh ui-runtime
 if ! grep -Fxq 'status=passed' "$CI_ARTIFACT_ROOT/ui-runtime/gate-summary.txt"; then
