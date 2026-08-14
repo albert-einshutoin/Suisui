@@ -175,7 +175,7 @@ public actor DevelopmentRepositoryIndex {
                         .integer(Int64(record.byteCount)),
                         .text(record.sha256),
                         .text(record.contents),
-                        .text(Self.cjkIndexTerms(relativePath: record.relativePath, contents: record.contents)),
+                        .text(record.cjkTerms),
                         .integer(generation),
                     ]
                 )
@@ -347,11 +347,21 @@ public actor DevelopmentRepositoryIndex {
                   !containsRepositoryCredential(contents, relativePath: relativePath, redactor: redactor) else {
                 continue
             }
+            let cjkTerms = cjkIndexTerms(relativePath: relativePath, contents: contents)
+            let derivedBytes = cjkTerms.utf8.count
+            // Derived FTS material consumes durable storage too. Charge it to
+            // the same aggregate budget before publication so a CJK-heavy
+            // repository cannot expand a bounded refresh into a multi-GB DB.
+            guard derivedBytes <= maximumRefreshReadBytes - totalBytes else {
+                throw DevelopmentRepositoryIndexError.indexedContentTooLarge
+            }
+            totalBytes += derivedBytes
             records.append(IndexedFile(
                 relativePath: relativePath,
                 byteCount: data.count,
                 sha256: sha256(data),
-                contents: contents
+                contents: contents,
+                cjkTerms: cjkTerms
             ))
         }
         try verifyWorkspaceRoot(root, matches: rootDescriptor)
@@ -1342,6 +1352,7 @@ private struct IndexedFile: Sendable {
     let byteCount: Int
     let sha256: String
     let contents: String
+    let cjkTerms: String
 }
 
 private struct BoundedFileRead {

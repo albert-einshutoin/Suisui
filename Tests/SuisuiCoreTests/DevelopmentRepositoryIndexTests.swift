@@ -1342,6 +1342,22 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(preserved.map(\.sourcePath), ["Notes.md"])
     }
 
+    func testRefreshCountsDerivedCJKTermsAgainstAggregateBudget() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("previouscjkbudgetmarker", to: "Notes.md")
+        let index = try migratedIndex(maximumRefreshReadBytes: 80)
+        try await index.refresh(workspace: workspace(fixture))
+
+        try fixture.write("設定画面の保存処理", to: "Docs/Japanese.md")
+
+        await XCTAssertThrowsErrorAsync(try await index.refresh(workspace: workspace(fixture)))
+        let preserved = try await index.search(query: "previouscjkbudgetmarker", workspace: workspace(fixture))
+        let unpublished = try await index.search(query: "設定", workspace: workspace(fixture))
+        XCTAssertEqual(preserved.map(\.sourcePath), ["Notes.md"])
+        XCTAssertTrue(unpublished.isEmpty)
+    }
+
     func testRefreshFailsClosedWhenManifestFileBecomesFIFO() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
