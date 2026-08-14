@@ -67,7 +67,7 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"(?i)client[-_]key[-_]data"#
     )
     private static let swiftTypedDeclarationPrefix = try? NSRegularExpression(
-        pattern: #"^\s*(?:@[A-Za-z_][A-Za-z0-9_]*\s+)*(?:(?:private|public|internal|fileprivate|static|final|lazy)\s+)*(?:let|var)\s+$"#
+        pattern: #"^\s*(?:@[A-Za-z_][A-Za-z0-9_]*\s+)*(?:(?:(?:private|public|internal|fileprivate)(?:\(set\))?|static|final|lazy)\s+)*(?:let|var)\s+$"#
     )
     private static let swiftFunctionParameterPrefix = try? NSRegularExpression(
         pattern: #"\b(?:func\s+[A-Za-z_][A-Za-z0-9_]*\s*|init\s*)$"#

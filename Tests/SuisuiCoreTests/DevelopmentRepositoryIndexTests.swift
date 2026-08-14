@@ -192,6 +192,14 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             to: "Sources/Tooling.swift"
         )
         try fixture.write(
+            "@Published public private(set) var openAIAPIKeyInput: String\nlet setterAccessModifierMarker = openAIAPIKeyInput",
+            to: "Sources/SettingsAccess.swift"
+        )
+        try fixture.write(
+            "@Published public private(set) var openAIAPIKeyInput = \"setterliteralmarker\"",
+            to: "Sources/SettingsAccessLiteral.swift"
+        )
+        try fixture.write(
             """
             final class TokenState {
                 @Published private var rerunRequestToken: UUID?
@@ -347,6 +355,8 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let authorizationGrammarResults = try await index.search(query: "authorizationGrammarMarker", workspace: workspace(fixture))
         let appSettingsAuthorizationResults = try await index.search(query: "appSettingsAuthorizationMarker", workspace: workspace(fixture))
         let toolingAuthorizationResults = try await index.search(query: "toolingAuthorizationMarker", workspace: workspace(fixture))
+        let setterAccessModifierResults = try await index.search(query: "setterAccessModifierMarker", workspace: workspace(fixture))
+        let setterLiteralResults = try await index.search(query: "setterliteralmarker", workspace: workspace(fixture))
         let numericAuthorizationResults = try await index.search(query: "424242", workspace: workspace(fixture))
         let credentialResults = try await index.search(query: "long", workspace: workspace(fixture))
         let uppercaseCredentialResults = try await index.search(query: credentialMarker, workspace: workspace(fixture))
@@ -367,6 +377,8 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(authorizationGrammarResults.map(\.sourcePath), ["Sources/OptionalBindings.swift"])
         XCTAssertEqual(appSettingsAuthorizationResults.map(\.sourcePath), ["Sources/AppSettings.swift"])
         XCTAssertEqual(toolingAuthorizationResults.map(\.sourcePath), ["Sources/Tooling.swift"])
+        XCTAssertEqual(setterAccessModifierResults.map(\.sourcePath), ["Sources/SettingsAccess.swift"])
+        XCTAssertTrue(setterLiteralResults.isEmpty)
         XCTAssertTrue(numericAuthorizationResults.isEmpty)
         XCTAssertTrue(credentialResults.isEmpty)
         XCTAssertTrue(uppercaseCredentialResults.isEmpty)
