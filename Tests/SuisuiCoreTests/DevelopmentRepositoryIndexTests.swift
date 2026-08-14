@@ -164,10 +164,18 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         try fixture.write("func approve(token: ApprovalToken) {}\nprivate let clientSecret: String\nfunc use(authToken: Token) {}\nlet apiKey = value\nlet password: Password\nlet token = value", to: "Sources/Approval.swift")
         try fixture.write("public struct ServiceAccessToken: Codable {}", to: "Sources/ServiceAccessToken.swift")
         try fixture.write(
+            "AppleSpeechReadinessSnapshot(\n    authorization: .notDetermined,\n    isRecognizerAvailable: true\n)\nlet appSettingsAuthorizationMarker = settings",
+            to: "Sources/AppSettings.swift"
+        )
+        try fixture.write(
+            "func register(authorization: ToolActionAuthorization? = nil) {}\nlet toolingAuthorizationMarker = registration",
+            to: "Sources/Tooling.swift"
+        )
+        try fixture.write(
             """
             final class TokenState {
                 @Published private var rerunRequestToken: UUID?
-                private let authorization: ToolActionAuthorization?
+                private var authorization: ToolActionAuthorization?
 
                 func load(credentialStore: CredentialStore) {
                     guard let accessToken = try credentialStore.accessToken(for: account) else { return }
@@ -177,9 +185,13 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
                 }
 
                 func use(authorization: AuthorizationPolicy) {}
+                func useDefault(authorization: ToolActionAuthorization? = nil) {}
 
                 func send() {
+                    request(authorization: authorizationStatus())
                     request(authorization: authorization)
+                    request(authorization: .notDetermined)
+                    request(authorization: try ToolActionAuthorization(level: level))
                     let authorizationGrammarMarker = authorization
                 }
             }
@@ -246,6 +258,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             "OptionalBindingTrailingCredential.swift": "if let idToken = cachedToken { accessToken = \"long-secret-value\" }\nguard let refreshToken = cachedRefreshToken else { accessToken = \"long-secret-value\" }",
             "SameNameOptionalBindingTrailingCredential.swift": "if let accessToken = cachedToken { accessToken = \"long-secret-value\" }\nguard let accessToken = cachedToken else { accessToken = \"long-secret-value\" }",
             "AuthorizationLiteral.swift": "request(authorization: \"Token long-secret-value\")",
+            "AuthorizationNumericLiteral.swift": "request(authorization: 424242)",
             "PascalCredential.json": "{\"ServiceAccessToken\":\"long-secret-value\"}",
             "TypealiasCredential.swift": "typealias ServiceAccessToken: Codable",
             "BacktickedCredential.swift": "let `accessToken` = \"long-secret-value\"",
@@ -312,6 +325,9 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let nominalTypeResults = try await index.search(query: "ServiceAccessToken", workspace: workspace(fixture))
         let optionalBindingResults = try await index.search(query: "optionalBindingMarker", workspace: workspace(fixture))
         let authorizationGrammarResults = try await index.search(query: "authorizationGrammarMarker", workspace: workspace(fixture))
+        let appSettingsAuthorizationResults = try await index.search(query: "appSettingsAuthorizationMarker", workspace: workspace(fixture))
+        let toolingAuthorizationResults = try await index.search(query: "toolingAuthorizationMarker", workspace: workspace(fixture))
+        let numericAuthorizationResults = try await index.search(query: "424242", workspace: workspace(fixture))
         let credentialResults = try await index.search(query: "long", workspace: workspace(fixture))
         let uppercaseCredentialResults = try await index.search(query: credentialMarker, workspace: workspace(fixture))
         let compoundCredentialResults = try await index.search(query: "compound", workspace: workspace(fixture))
@@ -329,6 +345,9 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(nominalTypeResults.map(\.sourcePath), ["Sources/ServiceAccessToken.swift"])
         XCTAssertEqual(optionalBindingResults.map(\.sourcePath), ["Sources/OptionalBindings.swift"])
         XCTAssertEqual(authorizationGrammarResults.map(\.sourcePath), ["Sources/OptionalBindings.swift"])
+        XCTAssertEqual(appSettingsAuthorizationResults.map(\.sourcePath), ["Sources/AppSettings.swift"])
+        XCTAssertEqual(toolingAuthorizationResults.map(\.sourcePath), ["Sources/Tooling.swift"])
+        XCTAssertTrue(numericAuthorizationResults.isEmpty)
         XCTAssertTrue(credentialResults.isEmpty)
         XCTAssertTrue(uppercaseCredentialResults.isEmpty)
         XCTAssertTrue(compoundCredentialResults.isEmpty)

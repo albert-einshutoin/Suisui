@@ -46,13 +46,13 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*(.+?)\s*,?\s*\)*\s*$"#
     )
     private static let safeSwiftExpressionAtom = try? NSRegularExpression(
-        pattern: #"^(?:try\s+)?(?:nil|true|false|[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*(?:\(\s*(?:(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*(?:\s*,\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*)*)?\s*\))?)$"#
+        pattern: #"^(?:try\s+)?(?:nil|true|false|\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*(?:\(\s*(?:(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*(?:\s*,\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*)*)?\s*\))?)$"#
     )
     private static let safeSourceTypedDeclaration = try? NSRegularExpression(
         pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.<>?]*\s*$"#
     )
     private static let safeSourceTypedFunctionParameter = try? NSRegularExpression(
-        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?=\s*(?:,|\)))"#
+        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?:\s*=\s*nil)?(?=\s*(?:,|\)))"#
     )
     private static let safeSwiftNominalTypeDeclaration = try? NSRegularExpression(
         pattern: #"^\s*(?:(?:private|public|internal|fileprivate|final)\s+)*(?:struct|class|enum|protocol|actor|extension)\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?:\s*,\s*[A-Z][A-Za-z0-9_.<>?]*)*\s*(?:[{][}]?)?\s*$"#
@@ -574,8 +574,9 @@ public actor DevelopmentRepositoryIndex {
                 return functionParameterPrefix.firstMatch(in: prefix, range: range) != nil
             } == true &&
                 safeTypedFunctionParameter.firstMatch(in: assignmentSuffix, range: suffixRange) != nil
-            let isTypedDeclaration = (hasSafeTypedDeclaration || isTypedFunctionParameter) &&
-                !line.contains("=") && !line.contains("\"") && !line.contains("'")
+            let isTypedDeclaration = (hasSafeTypedDeclaration &&
+                !line.contains("=") && !line.contains("\"") && !line.contains("'")) ||
+                (isTypedFunctionParameter && !line.contains("\"") && !line.contains("'"))
             let fullLineRange = NSRange(line.startIndex..<line.endIndex, in: line)
             let isNominalType = safeNominalTypeDeclaration.firstMatch(in: line, range: fullLineRange) != nil
             let isCaseDeclaration = safeCaseDeclaration.firstMatch(in: line, range: fullLineRange) != nil
@@ -597,9 +598,11 @@ public actor DevelopmentRepositoryIndex {
                 assignmentPrefix.contains("/*") ||
                 assignmentPrefix.contains("\"") ||
                 assignmentPrefix.contains("'")
+            let isAuthorization = String(contents[swiftRange]).caseInsensitiveCompare("authorization") == .orderedSame
             let isCallLabel = !hasCurrentLineCommentOrQuote &&
                 hasOpenSwiftArgumentList(in: contents, openParenthesis: lexicalPosition.openParenthesis, callOpener: callOpener) &&
-                containsSafeSwiftExpression(in: assignmentSuffix, grammar: safeCallLabel, atom: safeExpressionAtom)
+                (containsSafeSwiftExpression(in: assignmentSuffix, grammar: safeCallLabel, atom: safeExpressionAtom) ||
+                    (isAuthorization && containsSafeSwiftAuthorizationCallLabel(in: assignmentSuffix, grammar: safeCallLabel, atom: safeExpressionAtom)))
             let isSafeSourceShape = isNominalType || isCaseDeclaration ||
                 (!continuesOnNextLine && (isTypedDeclaration || isSafeAssignment || isCallLabel))
             return !isSafeSourceShape
@@ -746,6 +749,22 @@ public actor DevelopmentRepositoryIndex {
             return false
         }
         return isSafeSwiftExpression(String(value[expressionRange]), atom: atom)
+    }
+
+    private static func containsSafeSwiftAuthorizationCallLabel(
+        in value: String,
+        grammar: NSRegularExpression,
+        atom: NSRegularExpression
+    ) -> Bool {
+        let range = NSRange(value.startIndex..<value.endIndex, in: value)
+        guard let match = grammar.firstMatch(in: value, range: range),
+              let expressionRange = Range(match.range(at: 1), in: value),
+              value.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("))") else {
+            return false
+        }
+        // The legacy label grammar consumes every trailing `)`. Restore one only
+        // for Authorization's nested source call; an unterminated call stays closed.
+        return isSafeSwiftExpression(String(value[expressionRange]) + ")", atom: atom)
     }
 
     // Resolve every candidate's next meaningful token during one walk. A
