@@ -216,6 +216,34 @@ final class WorkspaceAnswerTests: XCTestCase {
         XCTAssertEqual(all.filter { $0.kind == "task" && $0.title == "Launch review" }.count, 1)
     }
 
+    func testRetrieveOverfetchesTaskCandidatesBeforeDedupingTitles() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "Launch review")
+        _ = try stores.tasks.create(title: "Launch review")
+        _ = try stores.tasks.create(title: "Launch retrospective")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "launch", limit: 2).map(\.title),
+            ["Launch review", "Launch retrospective"]
+        )
+    }
+
+    func testRetrieveOverfetchesKnowledgeCandidatesBeforeDedupingTitles() throws {
+        let stores = try makeStores()
+        _ = try stores.frames.create(name: "Launch notes", body: "first")
+        _ = try stores.frames.create(name: "Launch notes", body: "second")
+        _ = try stores.frames.create(name: "Launch retrospective", body: "third")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "launch", limit: 2).map(\.title),
+            ["Launch notes", "Launch retrospective"]
+        )
+    }
+
     func testRetrieveUsesExactTaskMatchBeforeOlderSubstringAfterDeadlineConsumesSlot() throws {
         let stores = try makeStores()
         _ = try stores.tasks.create(title: "Send daily summary", dueAt: "2026-06-17T06:00:00Z")

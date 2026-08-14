@@ -1535,7 +1535,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         }
         var seenIDs = excludingIDs
         seenIDs.formUnion(records.map(\.id))
-        if let prefixMatch = Self.unicodePrefixMatch(for: tokens) {
+        if records.count < limit, let prefixMatch = Self.unicodePrefixMatch(for: tokens) {
             // unicode61 case-folds Unicode prefix terms. Keep this candidate
             // window bounded, excluding already-selected FTS rows so they
             // cannot consume the caller's remaining result slots before Swift
@@ -1569,7 +1569,38 @@ public final class SQLiteTaskStore: @unchecked Sendable {
                 records.append(record)
             }
         }
+        if records.count < limit, Self.needsUnicodeLiteralCandidateWindow(for: tokens) {
+            // FTS5 only supports token prefixes, while `lower()` cannot fold
+            // a Unicode character inside a token. Inspect a fixed SQLite
+            // window rather than restoring the old unbounded Swift scan.
+            let literalCandidates = try unicodeLiteralCandidateWindowLocked(excludingIDs: seenIDs)
+            for record in literalCandidates {
+                guard tokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
+                      seenIDs.insert(record.id).inserted else {
+                    continue
+                }
+                records.append(record)
+            }
+        }
         return Array(records.sorted { $0.id > $1.id }.prefix(limit))
+    }
+
+    private func unicodeLiteralCandidateWindowLocked(excludingIDs: Set<Int64>) throws -> [TaskRecord] {
+        let placeholders = Array(repeating: "?", count: excludingIDs.count).joined(separator: ", ")
+        let exclusion = placeholders.isEmpty ? "" : " AND tasks.id NOT IN (\(placeholders))"
+        var parameters = excludingIDs.sorted().map { SQLiteValue.integer($0) }
+        parameters.append(.integer(Int64(Self.maximumUnicodeLiteralCandidates)))
+        return try connection.queryRows(
+            """
+            SELECT tasks.* FROM tasks
+            LEFT JOIN projects ON projects.id = tasks.project_id
+            WHERE tasks.status != 'completed'
+              AND (tasks.project_id IS NULL OR projects.status != 'archived')\(exclusion)
+            ORDER BY tasks.id DESC
+            LIMIT ?;
+            """,
+            parameters: parameters
+        ).map(TaskRecord.init(row:))
     }
 
     private static func sortForProjectBoard(_ lhs: TaskRecord, _ rhs: TaskRecord) -> Bool {
@@ -1609,6 +1640,13 @@ public final class SQLiteTaskStore: @unchecked Sendable {
     }
 
     private static let maximumUnicodePrefixCandidates = 128
+    private static let maximumUnicodeLiteralCandidates = 128
+
+    private static func needsUnicodeLiteralCandidateWindow(for tokens: [String]) -> Bool {
+        tokens.contains { token in
+            token.unicodeScalars.contains { $0.value > 0x7F }
+        }
+    }
 
     private static func unicodePrefixMatch(for tokens: [String]) -> String? {
         let prefixes = tokens.compactMap { token -> String? in
@@ -2030,6 +2068,15 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
             }
             records.append(record)
         }
+        if limit.map({ records.count < $0 }) ?? true,
+           Self.needsUnicodeLiteralCandidateWindow(for: [trimmed]) {
+            for record in try unicodeLiteralCandidateWindowLocked(excludingIDs: seenIDs) {
+                guard Self.matchesLiteral(record, text: trimmed), seenIDs.insert(record.id).inserted else {
+                    continue
+                }
+                records.append(record)
+            }
+        }
         return limit.map { Array(records.prefix($0)) } ?? records
     }
 
@@ -2117,7 +2164,36 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
             }
         }
 
-        return records
+        if records.count < limit, Self.needsUnicodeLiteralCandidateWindow(for: boundedTokens) {
+            for record in try unicodeLiteralCandidateWindowLocked(excludingIDs: seenIDs) {
+                guard records.count < limit,
+                      boundedTokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
+                      seenIDs.insert(record.id).inserted else {
+                    continue
+                }
+                records.append(record)
+            }
+        }
+
+        return Array(records.prefix(limit))
+    }
+
+    private func unicodeLiteralCandidateWindowLocked(excludingIDs: Set<Int64>) throws -> [KnowledgeFrameRecord] {
+        let placeholders = Array(repeating: "?", count: excludingIDs.count).joined(separator: ", ")
+        let exclusion = placeholders.isEmpty ? "" : " WHERE id NOT IN (\(placeholders))"
+        var parameters = excludingIDs.sorted().map { SQLiteValue.integer($0) }
+        parameters.append(.integer(Int64(Self.maximumUnicodeLiteralCandidates)))
+        // SQLite's case-insensitive operators are ASCII-only. This fixed
+        // window is the narrow fallback for Unicode infix matches FTS cannot
+        // express, with decoded source fields checked by the caller.
+        return try connection.queryRows(
+            """
+            SELECT * FROM knowledge_frames\(exclusion)
+            ORDER BY id ASC
+            LIMIT ?;
+            """,
+            parameters: parameters
+        ).map(KnowledgeFrameRecord.init(row:))
     }
 
     private func getLocked(id: Int64) throws -> KnowledgeFrameRecord {
@@ -2133,6 +2209,13 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
     }
 
     private static let maximumBoundedSearchResults = 128
+    private static let maximumUnicodeLiteralCandidates = 128
+
+    private static func needsUnicodeLiteralCandidateWindow(for tokens: [String]) -> Bool {
+        tokens.contains { token in
+            token.unicodeScalars.contains { $0.value > 0x7F }
+        }
+    }
 
     private static func matchesLiteral(_ record: KnowledgeFrameRecord, text: String) -> Bool {
         record.name.range(of: text, options: .caseInsensitive) != nil

@@ -412,6 +412,36 @@ final class LocalStoreTests: XCTestCase {
         )
     }
 
+    func testTaskSearchFindsUnicodeCaseInsensitiveSubstringInsideFTSToken() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+        let task = try store.create(title: "VorÜbergabe handoff")
+
+        XCTAssertEqual(
+            try store.searchOpenTasksByContent(text: "übe", limit: 1).map(\.id),
+            [task.id]
+        )
+        XCTAssertEqual(
+            try store.searchOpenTasks(matching: ["übe"], limit: 1).map(\.id),
+            [task.id]
+        )
+    }
+
+    func testKnowledgeSearchFindsUnicodeCaseInsensitiveSubstringInsideFTSToken() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let frame = try store.create(name: "VorÜbergabe notes", body: "handoff details")
+
+        XCTAssertEqual(
+            try store.search(query: "übe", limit: 1).map(\.id),
+            [frame.id]
+        )
+        XCTAssertEqual(
+            try store.search(matching: ["übe"], limit: 1).map(\.id),
+            [frame.id]
+        )
+    }
+
     func testKnowledgeSearchCompletesLiteralSubstringsAlongsideFTSHits() throws {
         let connection = try currentConnection()
         let store = SQLiteKnowledgeFrameStore(connection: connection)

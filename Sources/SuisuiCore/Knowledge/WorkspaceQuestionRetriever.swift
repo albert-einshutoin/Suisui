@@ -63,8 +63,9 @@ public final class WorkspaceQuestionRetriever: @unchecked Sendable {
         }
 
         let tokens = Self.matchTokens(for: trimmedQuestion)
+        let candidateLimit = Self.candidateLimit(for: limit)
         if !tokens.isEmpty {
-            for task in try taskStore.searchOpenTasks(matching: tokens, limit: limit) {
+            for task in try taskStore.searchOpenTasks(matching: tokens, limit: candidateLimit) {
                 append(kind: "task", title: task.title, detail: task.detail.map(Self.bodyPreview))
             }
             for project in try projectStore.list() where Self.matches(tokens: tokens, in: [project.title]) {
@@ -78,7 +79,7 @@ public final class WorkspaceQuestionRetriever: @unchecked Sendable {
         // Search failures must degrade to no knowledge context, never fail the
         // whole question. One-character questions skip task/project scans, but
         // retain their literal in the bounded SQLite knowledge search path.
-        let frames = (try? knowledgeFrameStore.search(matching: knowledgeTokens, limit: limit)) ?? []
+        let frames = (try? knowledgeFrameStore.search(matching: knowledgeTokens, limit: candidateLimit)) ?? []
         for frame in frames {
             append(kind: "knowledge", title: frame.name, detail: Self.bodyPreview(frame.body))
         }
@@ -87,6 +88,18 @@ public final class WorkspaceQuestionRetriever: @unchecked Sendable {
     }
 
     // MARK: - Matching
+
+    private static let maximumDistinctCandidates = 128
+
+    private static func candidateLimit(for limit: Int) -> Int {
+        // Snippets dedupe by kind and title, unlike store rows. Overfetch a
+        // small fixed window so duplicate titles do not hide later distinct
+        // context, while keeping every SQLite search bounded.
+        guard limit <= maximumDistinctCandidates / 4 else {
+            return maximumDistinctCandidates
+        }
+        return min(maximumDistinctCandidates, limit * 4)
+    }
 
     static func matchTokens(for question: String) -> [String] {
         var tokens = wordTokens(for: question)
