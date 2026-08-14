@@ -256,7 +256,9 @@ fn open_regular_file(path: &Path, error: HelperError) -> AppResult<File> {
             .read(true)
             // Check the final path component at open time: metadata alone has
             // a gap in which an attacker can replace a checked file with a link.
-            .custom_flags(libc::O_NOFOLLOW)
+            // O_NONBLOCK keeps a raced FIFO/device replacement from blocking
+            // before the post-open fstat below rejects non-regular files.
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
             .open(path)
             .map_err(|_| error)?
     };
@@ -427,6 +429,9 @@ mod tests {
         process,
         sync::atomic::{AtomicU64, Ordering},
     };
+
+    #[cfg(unix)]
+    use std::{ffi::CString, os::unix::ffi::OsStrExt, sync::mpsc, thread, time::Duration};
 
     use super::{
         EmbeddingEngine, HelperError, MAX_TEXT_BYTES, parse_request, validate_embedding,
@@ -649,5 +654,48 @@ mod tests {
         ]);
 
         assert_eq!(result.err(), Some(HelperError::MODEL_INVALID));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_fifo_input_model_and_voice_paths_without_blocking() {
+        let scratch = Scratch::new("fifo");
+        for (name, error) in [
+            ("input.fifo", HelperError::INPUT_INVALID),
+            ("model.onnx", HelperError::MODEL_INVALID),
+            ("voice.fifo", HelperError::INPUT_INVALID),
+        ] {
+            let path = scratch.path().join(name);
+            create_fifo(&path);
+            assert_fifo_open_is_bounded(path, error);
+        }
+    }
+
+    #[cfg(unix)]
+    fn create_fifo(path: &Path) {
+        let path = CString::new(path.as_os_str().as_bytes()).expect("FIFO path");
+        // SAFETY: CString provides a NUL-terminated path that remains valid
+        // for this call; 0600 grants only the current user FIFO access.
+        assert_eq!(
+            unsafe { libc::mkfifo(path.as_ptr(), 0o600) },
+            0,
+            "create FIFO"
+        );
+    }
+
+    #[cfg(unix)]
+    fn assert_fifo_open_is_bounded(path: PathBuf, error: HelperError) {
+        let (sender, receiver) = mpsc::channel();
+        thread::spawn(move || {
+            sender
+                .send(super::open_regular_file(&path, error))
+                .expect("report FIFO result");
+        });
+
+        match receiver.recv_timeout(Duration::from_secs(1)) {
+            Ok(Err(actual)) => assert_eq!(actual, error),
+            Ok(Ok(_)) => panic!("FIFO open unexpectedly succeeded"),
+            Err(_) => panic!("FIFO open must fail before waiting for a writer"),
+        }
     }
 }
