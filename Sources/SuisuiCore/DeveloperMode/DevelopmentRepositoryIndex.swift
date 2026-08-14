@@ -55,7 +55,7 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?:\s*=\s*nil)?(?=\s*(?:,|\)))"#
     )
     private static let safeSwiftNominalTypeDeclaration = try? NSRegularExpression(
-        pattern: #"^\s*(?:(?:private|public|internal|fileprivate|final)\s+)*(?:struct|class|enum|protocol|actor|extension)\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?:\s*,\s*[A-Z][A-Za-z0-9_.<>?]*)*\s*(?:[{][}]?)?\s*$"#
+        pattern: #"^\s*(?:(?:private|public|internal|fileprivate|final)\s+)*(?:struct|class|enum|protocol|actor|extension)\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*(?:[A-Z][A-Za-z0-9_.<>?]*|@unchecked\s+Sendable)(?:\s*,\s*(?:[A-Z][A-Za-z0-9_.<>?]*|@unchecked\s+Sendable))*\s*(?:[{][}]?)?\s*$"#
     )
     private static let safeSwiftCaseDeclaration = try? NSRegularExpression(
         pattern: #"^\s*case\s+\.[A-Za-z_][A-Za-z0-9_]*\s*:\s*$"#
@@ -211,16 +211,21 @@ public actor DevelopmentRepositoryIndex {
                 selectedPaths: selectedPaths,
                 limit: limit
             )
-            let ftsRows = rows.isEmpty
-                ? try Self.ftsRows(
+            var ftsRows = rows
+            if ftsRows.count < limit {
+                // Keep all-term matches first, then use only the remaining
+                // capacity for partial matches without duplicating a path.
+                let partialRows = try Self.ftsRows(
                     connection: connection,
                     terms: terms,
                     joiner: " OR ",
                     workspaceKey: workspaceKey,
                     selectedPaths: selectedPaths,
-                    limit: limit
+                    excludedPaths: try ftsRows.map { try $0.string("relative_path") },
+                    limit: limit - ftsRows.count
                 )
-                : rows
+                ftsRows.append(contentsOf: partialRows)
+            }
             let cjkTerms = terms.filter(Self.containsCJK)
             var finalRows = ftsRows
             if !cjkTerms.isEmpty, finalRows.count < limit {
@@ -418,21 +423,25 @@ public actor DevelopmentRepositoryIndex {
         joiner: String,
         workspaceKey: String,
         selectedPaths: [RepositorySelection],
+        excludedPaths: [String] = [],
         limit: Int
     ) throws -> [SQLiteMaterializedRow] {
         let selection = selectedPaths.sqlClause(column: "i.relative_path")
+        let exclusion = excludedPaths.isEmpty
+            ? ""
+            : " AND i.relative_path NOT IN (\(Array(repeating: "?", count: excludedPaths.count).joined(separator: ", ")))"
         let sql = """
         SELECT i.relative_path,
                snippet(codebase_index_files_fts, 1, '', '', '…', 32) AS preview
         FROM codebase_index_files_fts
         INNER JOIN codebase_index_files i ON i.id = codebase_index_files_fts.rowid
-        WHERE codebase_index_files_fts MATCH ? AND i.workspace_key = ?\(selection)
+        WHERE codebase_index_files_fts MATCH ? AND i.workspace_key = ?\(selection)\(exclusion)
         ORDER BY bm25(codebase_index_files_fts), i.relative_path
         LIMIT ?;
         """
         return try connection.queryRows(
             sql,
-            parameters: [.text(ftsMatch(terms, joiner: joiner)), .text(workspaceKey)] + selectedPaths.sqlParameters + [.integer(Int64(limit))]
+            parameters: [.text(ftsMatch(terms, joiner: joiner)), .text(workspaceKey)] + selectedPaths.sqlParameters + excludedPaths.map(SQLiteValue.text) + [.integer(Int64(limit))]
         )
     }
 

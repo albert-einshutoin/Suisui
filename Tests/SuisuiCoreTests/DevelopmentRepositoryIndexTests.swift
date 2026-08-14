@@ -220,6 +220,10 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         try fixture.write("func approve(token: ApprovalToken) {}\nprivate let clientSecret: String\nfunc use(authToken: Token) {}\nlet apiKey = value\nlet password: Password\nlet token = value", to: "Sources/Approval.swift")
         try fixture.write("public struct ServiceAccessToken: Codable {}", to: "Sources/ServiceAccessToken.swift")
         try fixture.write(
+            "final class KeychainOAuthCredentialStore: OAuthCredentialStore, @unchecked Sendable {}\nfinal class OAuthCredentialStoreBox: @unchecked Sendable {}\nlet uncheckedNominalMarker = KeychainOAuthCredentialStore()\nlet uncheckedOnlyMarker = OAuthCredentialStoreBox()",
+            to: "Sources/KeychainOAuthCredentialStore.swift"
+        )
+        try fixture.write(
             "AppleSpeechReadinessSnapshot(\n    authorization: .notDetermined,\n    isRecognizerAvailable: true\n)\nlet appSettingsAuthorizationMarker = settings",
             to: "Sources/AppSettings.swift"
         )
@@ -387,6 +391,8 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let optionalExpressionResults = try await index.search(query: "hasRefreshToken", workspace: workspace(fixture))
         let enumShorthandResults = try await index.search(query: "normalizedToken", workspace: workspace(fixture))
         let nominalTypeResults = try await index.search(query: "ServiceAccessToken", workspace: workspace(fixture))
+        let uncheckedNominalResults = try await index.search(query: "uncheckedNominalMarker", workspace: workspace(fixture))
+        let uncheckedOnlyResults = try await index.search(query: "uncheckedOnlyMarker", workspace: workspace(fixture))
         let optionalBindingResults = try await index.search(query: "optionalBindingMarker", workspace: workspace(fixture))
         let authorizationGrammarResults = try await index.search(query: "authorizationGrammarMarker", workspace: workspace(fixture))
         let appSettingsAuthorizationResults = try await index.search(query: "appSettingsAuthorizationMarker", workspace: workspace(fixture))
@@ -409,6 +415,8 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(optionalExpressionResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
         XCTAssertEqual(enumShorthandResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
         XCTAssertEqual(nominalTypeResults.map(\.sourcePath), ["Sources/ServiceAccessToken.swift"])
+        XCTAssertEqual(uncheckedNominalResults.map(\.sourcePath), ["Sources/KeychainOAuthCredentialStore.swift"])
+        XCTAssertEqual(uncheckedOnlyResults.map(\.sourcePath), ["Sources/KeychainOAuthCredentialStore.swift"])
         XCTAssertEqual(optionalBindingResults.map(\.sourcePath), ["Sources/OptionalBindings.swift"])
         XCTAssertEqual(authorizationGrammarResults.map(\.sourcePath), ["Sources/OptionalBindings.swift"])
         XCTAssertEqual(appSettingsAuthorizationResults.map(\.sourcePath), ["Sources/AppSettings.swift"])
@@ -1122,6 +1130,19 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(naturalLanguage[0].bodyPreview.contains("sqlite"))
         XCTAssertFalse(naturalLanguage[0].bodyPreview.hasPrefix("prefix"))
         XCTAssertTrue(operatorSyntax.isEmpty)
+    }
+
+    func testSearchCompletesANDResultsWithORMatches() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("sqlite natural exactandmarker", to: "Docs/Exact.md")
+        try fixture.write("sqlite partialormarker", to: "Docs/Partial.md")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let results = try await index.search(query: "sqlite natural", workspace: workspace(fixture), topK: 2)
+        XCTAssertEqual(results.map(\.sourcePath), ["Docs/Exact.md", "Docs/Partial.md"])
     }
 
     func testSearchRejectsPunctuationOnlyQuery() async throws {
