@@ -31,6 +31,24 @@
 - 他者の未コミット変更や `outputs/` を revert・削除しない。担当外の差分は
   保持し、変更ファイルと実行コマンドを報告する。
 
+## CI コマンド契約
+
+| 目的 | コマンド |
+| --- | --- |
+| 完全検証（`ci`） | `./ci/run-full.sh` |
+| PR の変更影響検証（`ci-pr`） | `./ci/run-pr-ci.sh --base-revision origin/main --head-revision HEAD` |
+| impact planner の検証 | `python3 -m unittest discover -s ci/tests -v` |
+| セキュリティ | `./script/check_security_regressions.sh` |
+| UI・AX | `docs/quality/ui-done-criteria.md` の該当レーン |
+
+- `ci` は常に完全検証とし、変更範囲へ限定するのは `ci-pr` だけにする。
+- `ci-pr` は判定失敗、未知パス、対象 0 件、rename/delete、CI・依存・build、
+  security、DB・schema、public API・共有基盤の変更を完全検証へ昇格する。
+- 完全検証 runner は impact planner とその設定に依存させない。選択テストの
+  失敗はそのまま失敗とし、完全検証の成功で上書きしない。
+- `act` は Linux 互換 workflow のローカル確認に限る。macOS runner、署名、
+  notarization、Keychain、secret を含む完了判定は hosted CI を正とする。
+
 ## モデルとレビューの割り当て
 
 | 役割 | モデル・reasoning | 担当 |
