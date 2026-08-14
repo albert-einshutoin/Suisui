@@ -191,6 +191,32 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
+  kokoro-rust-poc:
+    name: Kokoro Rust inference PoC
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Checkout tested revision
+        uses: actions/checkout@v4
+
+      - name: Restore bounded Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            rust/kokoro-helper/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-kokoro-rust-${{ hashFiles('rust/kokoro-helper/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-kokoro-rust-
+
+      - name: Verify Rust Kokoro boundary
+        run: |
+          rustc --version
+          cargo fmt --manifest-path rust/kokoro-helper/Cargo.toml --check
+          cargo test --manifest-path rust/kokoro-helper/Cargo.toml --locked
+          cargo clippy --manifest-path rust/kokoro-helper/Cargo.toml --locked -- -D warnings
+
   ui-runtime:
     name: UI Runtime (production route)
     needs:

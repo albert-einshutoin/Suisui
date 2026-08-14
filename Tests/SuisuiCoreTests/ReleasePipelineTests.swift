@@ -12784,6 +12784,25 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(docs.contains("sets Hugging Face/Transformers offline flags"))
     }
 
+    func testRustKokoroInferencePoCIsIsolatedBehindParityGate() throws {
+        let manifest = try readPackageFile("rust/kokoro-helper/Cargo.toml")
+        let readme = try readPackageFile("rust/kokoro-helper/README.md")
+        let workflow = try readPackageFile(".github/workflows/ci.yml")
+        let gitignore = try readPackageFile(".gitignore")
+        let productionProvider = try readPackageFile("Sources/SuisuiCore/Voice/TTSProviders.swift")
+
+        XCTAssertTrue(manifest.contains("kokoro-en"))
+        XCTAssertTrue(readme.contains("PoC"))
+        XCTAssertTrue(readme.contains("日本語"))
+        XCTAssertTrue(readme.contains("本番"))
+        XCTAssertTrue(readme.contains("RUSTSEC-2025-0141"))
+        XCTAssertTrue(gitignore.contains("/rust/kokoro-helper/target/"))
+        XCTAssertFalse(productionProvider.contains("rust/kokoro-helper"))
+        XCTAssertTrue(workflow.contains("cargo fmt --manifest-path rust/kokoro-helper/Cargo.toml --check"))
+        XCTAssertTrue(workflow.contains("cargo test --manifest-path rust/kokoro-helper/Cargo.toml --locked"))
+        XCTAssertTrue(workflow.contains("cargo clippy --manifest-path rust/kokoro-helper/Cargo.toml --locked -- -D warnings"))
+    }
+
     func testKokoroRuntimeWrapperFailsClosedBeforeImportForUnsafeRuntimeInputs() throws {
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-kokoro-runtime-wrapper-input-boundaries", isDirectory: true)
