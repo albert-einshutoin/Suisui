@@ -92,6 +92,15 @@ public actor DevelopmentRepositoryIndex {
         var isInNormalCode: Bool
         var literalKind: SwiftLiteralKind?
         var openParenthesis: String.Index?
+        var openBrace: String.Index?
+    }
+
+    private struct SwiftBracketEntry {
+        let openParenthesis: String.Index?
+        let openBrace: String.Index?
+        var start: String.Index
+        var hasKeyDelimiter = false
+        var ternaryDepth = 0
     }
 
     private enum SwiftLiteralKind: Equatable {
@@ -696,9 +705,10 @@ public actor DevelopmentRepositoryIndex {
             return true
         }
         if relativePath.lowercased().hasSuffix(".swift"),
-           ambiguousSwiftSubscriptAssignment?.firstMatch(in: contents, range: range) != nil {
-            // Escapes and interpolation can synthesize a credential key after
-            // lexical analysis. Unknown computed subscript assignments stay closed.
+           ambiguousSwiftSubscriptAssignment?.firstMatch(in: contents, range: range) != nil ||
+            containsAmbiguousSwiftDictionaryKey(in: contents) {
+            // Escapes, interpolation, and expressions can synthesize a credential
+            // key. Only a single plain dictionary/subscript literal stays open.
             return true
         }
         guard let standaloneProviderCredential,
@@ -1009,6 +1019,86 @@ public actor DevelopmentRepositoryIndex {
         return isSafeSwiftExpression(String(value[expressionRange]) + ")", atom: atom)
     }
 
+    private static func containsAmbiguousSwiftDictionaryKey(in source: String) -> Bool {
+        let relevantCharacters: Set<Character> = ["[", "]", ",", ":", "?"]
+        let positions = Set(source.indices.filter { relevantCharacters.contains(source[$0]) })
+        let lexicalPositions = swiftLexicalPositions(in: source, at: positions)
+        var entries: [SwiftBracketEntry] = []
+
+        for index in source.indices {
+            guard let lexicalPosition = lexicalPositions[index], lexicalPosition.isInNormalCode else {
+                continue
+            }
+            let character = source[index]
+            let next = source.index(after: index)
+
+            switch character {
+            case "[":
+                entries.append(SwiftBracketEntry(
+                    openParenthesis: lexicalPosition.openParenthesis,
+                    openBrace: lexicalPosition.openBrace,
+                    start: next
+                ))
+            case "]":
+                _ = entries.popLast()
+            case ",":
+                if let last = entries.indices.last,
+                   entries[last].openParenthesis == lexicalPosition.openParenthesis,
+                   entries[last].openBrace == lexicalPosition.openBrace {
+                    entries[last].start = next
+                    entries[last].hasKeyDelimiter = false
+                    entries[last].ternaryDepth = 0
+                }
+            case "?":
+                guard let last = entries.indices.last,
+                      !entries[last].hasKeyDelimiter,
+                      entries[last].openParenthesis == lexicalPosition.openParenthesis,
+                      entries[last].openBrace == lexicalPosition.openBrace else {
+                    continue
+                }
+                let previous = index > source.startIndex ? source[source.index(before: index)] : nil
+                let following = next < source.endIndex ? source[next] : nil
+                // Swift's ternary `?` requires leading whitespace. This excludes
+                // `?.`, `?(`, `?[`, `try?`, and both characters of `??`.
+                if previous?.isWhitespace == true && following != "?" {
+                    entries[last].ternaryDepth += 1
+                }
+            case ":":
+                guard let last = entries.indices.last,
+                      !entries[last].hasKeyDelimiter,
+                      entries[last].openParenthesis == lexicalPosition.openParenthesis,
+                      entries[last].openBrace == lexicalPosition.openBrace else {
+                    continue
+                }
+                if entries[last].ternaryDepth > 0 {
+                    entries[last].ternaryDepth -= 1
+                    continue
+                }
+                let key = source[entries[last].start..<index]
+                // Each entry is visited once. String-related keys that are not
+                // one plain literal stay closed without parsing their expression.
+                if key.utf8.count > 512 ||
+                    (key.contains("\"") && !isPlainSwiftStringDictionaryKey(key)) {
+                    return true
+                }
+                entries[last].hasKeyDelimiter = true
+            default:
+                break
+            }
+        }
+        return false
+    }
+
+    private static func isPlainSwiftStringDictionaryKey(_ source: Substring) -> Bool {
+        let key = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard key.utf8.count <= 514, key.first == "\"", key.last == "\"" else {
+            return false
+        }
+        return !key.dropFirst().dropLast().contains { character in
+            character == "\"" || character == "\\" || character == "\n" || character == "\r"
+        }
+    }
+
     // Resolve every candidate's next meaningful token during one walk. A
     // per-candidate lookahead turns a long comment packed with token-like text
     // into quadratic work, so pending candidates share the same delimiter.
@@ -1161,6 +1251,7 @@ public actor DevelopmentRepositoryIndex {
         var blockCommentDepth = 0
         var literalDelimiter: SwiftLiteralDelimiter?
         var unmatchedOpenParentheses: [String.Index] = []
+        var unmatchedOpenBraces: [String.Index] = []
         var snapshots: [String.Index: SwiftLexicalPosition] = [:]
         var index = source.startIndex
 
@@ -1169,7 +1260,8 @@ public actor DevelopmentRepositoryIndex {
                 snapshots[index] = SwiftLexicalPosition(
                     isInNormalCode: !lineComment && blockCommentDepth == 0 && literalDelimiter == nil,
                     literalKind: literalDelimiter?.kind,
-                    openParenthesis: unmatchedOpenParentheses.last
+                    openParenthesis: unmatchedOpenParentheses.last,
+                    openBrace: unmatchedOpenBraces.last
                 )
             }
             let character = source[index]
@@ -1242,6 +1334,12 @@ public actor DevelopmentRepositoryIndex {
                 index = nextIndex
             } else if character == ")" {
                 _ = unmatchedOpenParentheses.popLast()
+                index = nextIndex
+            } else if character == "{" {
+                unmatchedOpenBraces.append(index)
+                index = nextIndex
+            } else if character == "}" {
+                _ = unmatchedOpenBraces.popLast()
                 index = nextIndex
             } else {
                 index = nextIndex

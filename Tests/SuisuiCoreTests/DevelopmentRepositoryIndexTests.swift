@@ -644,6 +644,87 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(try fileClient.read(relativePath: "Sources/SafeBoundary.swift").contents, safe)
     }
 
+    func testRefreshAndFileReadRejectComputedDictionaryCredentialKeys() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let computed = #"""
+        let headers = ["to" + "ken": "computedDictionarySecretMarker"]
+        """#
+        let laterComputed = #"""
+        let headers = [
+            "content-type": "application/json",
+            "to" + "ken": "laterComputedDictionarySecretMarker"
+        ]
+        """#
+        let escaped = #"""
+        let headers = ["to\u{6B}en": "escapedDictionarySecretMarker"]
+        """#
+        let interpolated = #"""
+        let suffix = "ken"
+        let headers = ["to\(suffix)": "interpolatedDictionarySecretMarker"]
+        """#
+        let optionalComputed = #"""
+        let candidate: String? = nil
+        let headers = [candidate?.lowercased() ?? "token": "optionalComputedDictionarySecretMarker"]
+        """#
+        let safe = #"""
+        func wrap(label: String, _ values: [String]) -> [String] { values }
+        let condition = true
+        let headers: [String: String] = [
+            "content-type": "application/json",
+            "accept": "application/json"
+        ]
+        let descriptions = ["scheme: value", wrap(label: "safe", ["array", "argument"]).first ?? ""]
+        let states = [condition ? "on" : "off"]
+        let value = headers["accessToken"]
+        let present = headers["accessToken"] == nil
+        let safeDictionaryMarker = value ?? descriptions.first ?? states.first ?? String(present)
+        """#
+        try fixture.write(computed, to: "Sources/ComputedDictionary.swift")
+        try fixture.write(laterComputed, to: "Sources/LaterComputedDictionary.swift")
+        try fixture.write(escaped, to: "Sources/EscapedDictionary.swift")
+        try fixture.write(interpolated, to: "Sources/InterpolatedDictionary.swift")
+        try fixture.write(optionalComputed, to: "Sources/OptionalComputedDictionary.swift")
+        try fixture.write(safe, to: "Sources/SafeDictionary.swift")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        for marker in [
+            "computedDictionarySecretMarker",
+            "laterComputedDictionarySecretMarker",
+            "escapedDictionarySecretMarker",
+            "interpolatedDictionarySecretMarker",
+            "optionalComputedDictionarySecretMarker"
+        ] {
+            let results = try await index.search(query: marker, workspace: workspace(fixture))
+            XCTAssertTrue(results.isEmpty)
+        }
+        let safeResults = try await index.search(query: "safeDictionaryMarker", workspace: workspace(fixture))
+        XCTAssertEqual(safeResults.map(\.sourcePath), ["Sources/SafeDictionary.swift"])
+
+        let fileClient = DevelopmentRepositoryFileClient(project: ProjectRecord(
+            id: 42,
+            title: "Suisui",
+            status: "active",
+            workspacePath: fixture.url.path
+        ))
+        for path in [
+            "Sources/ComputedDictionary.swift",
+            "Sources/LaterComputedDictionary.swift",
+            "Sources/EscapedDictionary.swift",
+            "Sources/InterpolatedDictionary.swift",
+            "Sources/OptionalComputedDictionary.swift"
+        ] {
+            XCTAssertThrowsError(try fileClient.read(relativePath: path)) { error in
+                guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                    return XCTFail("Expected secret-like content rejection, got \(error)")
+                }
+            }
+        }
+        XCTAssertEqual(try fileClient.read(relativePath: "Sources/SafeDictionary.swift").contents, safe)
+    }
+
     func testRefreshIndexesSwiftCollectionTypesButRejectsLiteralAssignment() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
