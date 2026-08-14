@@ -409,6 +409,36 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(try store.search(query: "50% done").map(\.id), [literalFrame.id])
     }
 
+    func testKnowledgeLiteralSearchUsesDecodedTriggersInsteadOfJSONSyntax() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        _ = try store.create(name: "Default", body: "No special syntax", triggers: ["release"])
+        let quoted = try store.create(name: "Quoted", body: "No special syntax", triggers: ["say \"yes\""])
+
+        XCTAssertTrue(try store.search(query: "[]").isEmpty)
+        XCTAssertEqual(try store.search(query: "\"").map(\.id), [quoted.id])
+        XCTAssertTrue(try store.search(query: "\\").isEmpty)
+
+        let escaped = try store.create(name: "Escaped", body: "No special syntax", triggers: ["path\\name"])
+        let bracketed = try store.create(name: "Bracketed", body: "No special syntax", triggers: ["[ship]"])
+
+        XCTAssertEqual(try store.search(query: "\\").map(\.id), [escaped.id])
+        XCTAssertEqual(try store.search(query: "[ship]").map(\.id), [bracketed.id])
+    }
+
+    func testKnowledgeTokenSearchKeepsFTSOrderWhileDecodedTriggerFallbackFillsLimit() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        _ = try store.create(name: "Default", body: "No special syntax")
+        let ftsFrame = try store.create(name: "Release", body: "Exact release guidance")
+        let triggerFrame = try store.create(name: "Ship", body: "No special syntax", triggers: ["[]"])
+
+        let results = try store.search(matching: ["release", "[]"], limit: 2)
+
+        XCTAssertEqual(results.map(\.id), [ftsFrame.id, triggerFrame.id])
+        XCTAssertEqual(Set(results.map(\.id)).count, results.count)
+    }
+
     func testTaskStoreRejectsCorruptedProjectIDInsteadOfDetachingTask() throws {
         let connection = try migratedConnection()
         let projects = SQLiteProjectStore(connection: connection)

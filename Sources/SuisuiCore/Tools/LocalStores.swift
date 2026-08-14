@@ -1904,23 +1904,30 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         // palette query. Keep only source-confirmed rows and recover any FTS
         // false negatives with the same SQLite `instr` semantics.
         var records = ftsCandidates.filter { Self.matchesLiteral($0, text: trimmed) }
-        let seenIDs = Set(records.map(\.id))
+        var seenIDs = Set(records.map(\.id))
         let exclusion = seenIDs.isEmpty
             ? ""
             : " AND id NOT IN (\(Array(repeating: "?", count: seenIDs.count).joined(separator: ", ")))"
         let lowered = trimmed.lowercased()
         var parameters: [SQLiteValue] = [.text(lowered), .text(lowered), .text(lowered)]
         parameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
-        for record in try connection.queryRows(
+        let fallbackCandidates = try connection.queryRows(
             """
             SELECT * FROM knowledge_frames
             WHERE (instr(lower(name), ?) > 0
                    OR instr(lower(body), ?) > 0
-                   OR instr(lower(triggers_json), ?) > 0)\(exclusion)
+                   OR EXISTS (
+                       SELECT 1 FROM json_each(knowledge_frames.triggers_json)
+                       WHERE instr(lower(json_each.value), ?) > 0
+                   ))\(exclusion)
             ORDER BY id ASC;
             """,
             parameters: parameters
-        ).map(KnowledgeFrameRecord.init(row:)) {
+        ).map(KnowledgeFrameRecord.init(row:))
+        for record in fallbackCandidates {
+            guard Self.matchesLiteral(record, text: trimmed), seenIDs.insert(record.id).inserted else {
+                continue
+            }
             records.append(record)
         }
         return records
@@ -1946,7 +1953,7 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
             let match = nonCJK
                 .map { "\"\(SQL.escapeFTS($0))\"" }
                 .joined(separator: " OR ")
-            for record in try connection.queryRows(
+            let ftsCandidates = try connection.queryRows(
                 """
                 SELECT knowledge_frames.*
                 FROM knowledge_frames_fts
@@ -1956,7 +1963,12 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
                 LIMIT ?;
                 """,
                 parameters: [.text(match), .integer(Int64(limit))]
-            ).map(KnowledgeFrameRecord.init(row:)) where seenIDs.insert(record.id).inserted {
+            ).map(KnowledgeFrameRecord.init(row:))
+            for record in ftsCandidates {
+                guard boundedTokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
+                      seenIDs.insert(record.id).inserted else {
+                    continue
+                }
                 records.append(record)
             }
         }
@@ -1966,7 +1978,14 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
             // unicode61 does not index arbitrary CJK or ASCII substrings. Run
             // this only for the remaining slots so exact FTS hits stay first.
             let predicate = containsTokens.map { _ in
-                "(instr(lower(name), ?) > 0 OR instr(lower(body), ?) > 0 OR instr(lower(triggers_json), ?) > 0)"
+                """
+                (instr(lower(name), ?) > 0
+                 OR instr(lower(body), ?) > 0
+                 OR EXISTS (
+                     SELECT 1 FROM json_each(knowledge_frames.triggers_json)
+                     WHERE instr(lower(json_each.value), ?) > 0
+                 ))
+                """
             }.joined(separator: " OR ")
             let exclusion = seenIDs.isEmpty
                 ? ""
@@ -1980,7 +1999,7 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
             }
             parameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
             parameters.append(.integer(Int64(limit - records.count)))
-            for record in try connection.queryRows(
+            let fallbackCandidates = try connection.queryRows(
                 """
                 SELECT * FROM knowledge_frames
                 WHERE (\(predicate))\(exclusion)
@@ -1988,7 +2007,12 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
                 LIMIT ?;
                 """,
                 parameters: parameters
-            ).map(KnowledgeFrameRecord.init(row:)) where seenIDs.insert(record.id).inserted {
+            ).map(KnowledgeFrameRecord.init(row:))
+            for record in fallbackCandidates {
+                guard boundedTokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
+                      seenIDs.insert(record.id).inserted else {
+                    continue
+                }
                 records.append(record)
             }
         }
