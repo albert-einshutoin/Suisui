@@ -161,7 +161,9 @@ public final class WorkspaceQuestionRetriever: @unchecked Sendable {
     }
 
     private static func literalKnowledgeFallbackTokens(for question: String) -> [String] {
-        let punctuation = CharacterSet(charactersIn: "?？!！。．、，,")
+        // Only trim surrounding sentence punctuation: the remaining literal is bound into
+        // SQLite, while punctuation inside a knowledge query stays meaningful.
+        let punctuation = CharacterSet(charactersIn: "?？!！。．、，,.:：;；…")
         let literal = question
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: punctuation)

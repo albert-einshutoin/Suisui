@@ -181,6 +181,41 @@ final class WorkspaceAnswerTests: XCTestCase {
         )
     }
 
+    func testRetrieveNormalizesSentenceTerminatorsForSingleCharacterKnowledgeFallback() throws {
+        let stores = try makeStores()
+        _ = try stores.frames.create(name: "C compiler notes", body: "Compile the local helper")
+        _ = try stores.frames.create(name: "税務メモ", body: "税金の確認")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "C.").map(\.title),
+            ["C compiler notes"]
+        )
+        XCTAssertEqual(
+            try retriever.retrieve(question: "税.").map(\.title),
+            ["税務メモ"]
+        )
+    }
+
+    func testRetrievePunctuatedSingleCharacterKnowledgeFallbackPreservesDeadlineLimit() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "Due today", dueAt: "2026-06-17T06:00:00Z")
+        _ = try stores.tasks.create(title: "C task should not be scanned")
+        _ = try stores.frames.create(name: "C compiler notes", body: "Compile the local helper")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "C.", limit: 2).map(\.title),
+            ["Due today", "C compiler notes"]
+        )
+        XCTAssertEqual(
+            try retriever.retrieve(question: "C.", limit: 1).map(\.title),
+            ["Due today"]
+        )
+    }
+
     func testRetrieveSingleCharacterKnowledgeFallbackPreservesDeadlineOrderAndLimit() throws {
         let stores = try makeStores()
         _ = try stores.tasks.create(title: "Due today", dueAt: "2026-06-17T06:00:00Z")
