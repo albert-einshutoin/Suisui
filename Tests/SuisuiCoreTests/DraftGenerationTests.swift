@@ -92,11 +92,13 @@ final class DraftGenerationTests: XCTestCase {
         let shortBasic = "Basic dTpw"
         let quotedBearer = "\"Bearer quotedbearermarker\""
         let quotedBasic = "\"Basic quotedbasicmarker\""
+        let equalsBearer = "\"Bearer equalsbearermarker\""
+        let equalsBasic = "Basic equalsbasicmarker"
         let jwt = "eyJheadersentinel.payloadsentinel.signaturesentinel"
         let unsignedJWT = "eyJhbGciOiJub25lIn0.e30."
         let trailingHyphenJWT = "eyJhbGciOiJub25lIn0.e30.signaturesentinel-"
         let redaction = DeveloperSecretRedactor().redact(
-            "Authorization: \(bearer)\nAuthorization: \(basic)\nAuthorization: \(shortBearer)\nAuthorization: \(shortBasic)\nAuthorization: \(quotedBearer)\n{\"Authorization\":\(quotedBasic)}\ncredential=\(jwt)\ncredential=\(unsignedJWT)\ncredential=\(trailingHyphenJWT)"
+            "Authorization: \(bearer)\nAuthorization: \(basic)\nAuthorization: \(shortBearer)\nAuthorization: \(shortBasic)\nAuthorization: \(quotedBearer)\n{\"Authorization\":\(quotedBasic)}\nAuthorization = \(equalsBearer)\nAUTHORIZATION=\(equalsBasic)\ncredential=\(jwt)\ncredential=\(unsignedJWT)\ncredential=\(trailingHyphenJWT)"
         )
 
         XCTAssertFalse(redaction.text.contains("bearercredentialmarker"))
@@ -105,6 +107,8 @@ final class DraftGenerationTests: XCTestCase {
         XCTAssertFalse(redaction.text.contains("Authorization: Basic dTpw"))
         XCTAssertFalse(redaction.text.contains("quotedbearermarker"))
         XCTAssertFalse(redaction.text.contains("quotedbasicmarker"))
+        XCTAssertFalse(redaction.text.contains("equalsbearermarker"))
+        XCTAssertFalse(redaction.text.contains("equalsbasicmarker"))
         XCTAssertFalse(redaction.text.contains("signaturesentinel"))
         XCTAssertFalse(redaction.text.contains(unsignedJWT))
         XCTAssertFalse(redaction.text.contains(trailingHyphenJWT))
