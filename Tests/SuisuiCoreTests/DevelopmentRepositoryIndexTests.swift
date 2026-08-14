@@ -107,6 +107,21 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(swift.map(\.sourcePath), ["Sources/Credentials.swift"])
     }
 
+    func testRefreshDoesNotPersistConnectionURIsWithEmptyUsername() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("redis://:redisindexmarker@cache.example/0", to: "Config/Redis.txt")
+        try fixture.write("amqp://:amqpindexmarker@queue.example/vhost", to: "Config/AMQP.txt")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let redis = try await index.search(query: "redisindexmarker", workspace: workspace(fixture))
+        let amqp = try await index.search(query: "amqpindexmarker", workspace: workspace(fixture))
+        XCTAssertTrue(redis.isEmpty)
+        XCTAssertTrue(amqp.isEmpty)
+    }
+
     func testRefreshDoesNotPersistKubernetesKeyDataOrPEM() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }

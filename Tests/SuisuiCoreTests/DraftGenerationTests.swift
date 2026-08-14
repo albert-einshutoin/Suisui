@@ -85,6 +85,19 @@ final class DraftGenerationTests: XCTestCase {
         XCTAssertTrue(redaction.report.matchedPatternNames.contains("credential_uri"))
     }
 
+    func testConnectionURIWithEmptyUsernameIsRedacted() {
+        let redisPassword = "redissecretmarker"
+        let amqpPassword = "amqpsecretmarker"
+        let redaction = DeveloperSecretRedactor().redact(
+            "redis://:\(redisPassword)@cache.example/0 amqp://:\(amqpPassword)@queue.example/vhost"
+        )
+
+        XCTAssertFalse(redaction.text.contains(redisPassword))
+        XCTAssertFalse(redaction.text.contains(amqpPassword))
+        XCTAssertTrue(redaction.report.matchedPatternNames.contains("credential_uri"))
+        XCTAssertEqual(DeveloperSecretRedactor().redact("redis://cache.example/0").text, "redis://cache.example/0")
+    }
+
     func testAuthorizationHeadersAndJWTsAreRedacted() {
         let bearer = "Bearer bearercredentialmarker"
         let basic = "Basic basiccredentialmarker"
