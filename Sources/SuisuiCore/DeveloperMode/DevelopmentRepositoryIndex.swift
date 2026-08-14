@@ -22,6 +22,7 @@ public actor DevelopmentRepositoryIndex {
     public static let maximumSelectedPaths = 64
     public static let maximumResults = 50
     private static let maximumQueryUTF8Bytes = 4 * 1024
+    private static let maximumSwiftCredentialCandidates = 256
 
     private let database: SQLiteDatabaseWorker
     private let redactor: DeveloperSecretRedactor
@@ -159,12 +160,13 @@ public actor DevelopmentRepositoryIndex {
             for record in records {
                 try connection.execute(
                     """
-                    INSERT INTO codebase_index_files (workspace_key, relative_path, byte_count, sha256, contents, generation)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO codebase_index_files (workspace_key, relative_path, byte_count, sha256, contents, cjk_terms, generation)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(workspace_key, relative_path) DO UPDATE SET
                         byte_count = excluded.byte_count,
                         sha256 = excluded.sha256,
                         contents = excluded.contents,
+                        cjk_terms = excluded.cjk_terms,
                         generation = excluded.generation;
                     """,
                     parameters: [
@@ -173,6 +175,7 @@ public actor DevelopmentRepositoryIndex {
                         .integer(Int64(record.byteCount)),
                         .text(record.sha256),
                         .text(record.contents),
+                        .text(Self.cjkIndexTerms(relativePath: record.relativePath, contents: record.contents)),
                         .integer(generation),
                     ]
                 )
@@ -232,7 +235,7 @@ public actor DevelopmentRepositoryIndex {
             let cjkTerms = terms.filter(Self.containsCJK)
             var finalRows = rows
             if !cjkTerms.isEmpty, finalRows.count < limit {
-                let exactFallback = try Self.fallbackRows(
+                let exactFallback = try Self.cjkRows(
                     connection: connection,
                     terms: terms,
                     joiner: " AND ",
@@ -258,7 +261,7 @@ public actor DevelopmentRepositoryIndex {
                 finalRows.append(contentsOf: partialRows)
             }
             if !cjkTerms.isEmpty, finalRows.count < limit {
-                let partialFallback = try Self.fallbackRows(
+                let partialFallback = try Self.cjkRows(
                     connection: connection,
                     terms: cjkTerms,
                     joiner: " OR ",
@@ -516,11 +519,11 @@ public actor DevelopmentRepositoryIndex {
         """
         return try connection.queryRows(
             sql,
-            parameters: [.text(ftsMatch(terms, joiner: joiner)), .text(workspaceKey)] + selectedPaths.sqlParameters + excludedPaths.map(SQLiteValue.text) + [.integer(Int64(limit))]
+            parameters: [.text("{relative_path contents} : (\(ftsMatch(terms, joiner: joiner)))"), .text(workspaceKey)] + selectedPaths.sqlParameters + excludedPaths.map(SQLiteValue.text) + [.integer(Int64(limit))]
         )
     }
 
-    private static func fallbackRows(
+    private static func cjkRows(
         connection: SQLiteConnection,
         terms: [String],
         joiner: String,
@@ -529,16 +532,28 @@ public actor DevelopmentRepositoryIndex {
         excludedPaths: [String],
         limit: Int
     ) throws -> [SQLiteMaterializedRow] {
-        let selection = selectedPaths.sqlClause(column: "relative_path")
-        // SQLite lower() gives the fallback its intended ASCII-insensitive
-        // behavior while preserving bound terms and CJK substring matching.
-        let predicate = terms.map { _ in "(instr(lower(relative_path), lower(?)) > 0 OR instr(lower(contents), lower(?)) > 0)" }.joined(separator: joiner)
+        let cjkTerms = terms.filter(containsCJK)
+        guard !cjkTerms.isEmpty else {
+            return []
+        }
+        let nonCJKTerms = terms.filter { !containsCJK($0) }
+        var matchClauses = ["cjk_terms : (\(ftsMatch(cjkTerms, joiner: joiner)))"]
+        if !nonCJKTerms.isEmpty {
+            matchClauses.append("{relative_path contents} : (\(ftsMatch(nonCJKTerms, joiner: joiner)))")
+        }
+        let selection = selectedPaths.sqlClause(column: "i.relative_path")
         let exclusion = excludedPaths.isEmpty
             ? ""
-            : " AND relative_path NOT IN (\(Array(repeating: "?", count: excludedPaths.count).joined(separator: ", ")))"
+            : " AND i.relative_path NOT IN (\(Array(repeating: "?", count: excludedPaths.count).joined(separator: ", ")))"
         return try connection.queryRows(
-            "SELECT relative_path, contents FROM codebase_index_files WHERE workspace_key = ? AND (\(predicate))\(selection)\(exclusion) ORDER BY relative_path LIMIT ?;",
-            parameters: [.text(workspaceKey)] + terms.flatMap { [.text($0), .text($0)] } + selectedPaths.sqlParameters + excludedPaths.map(SQLiteValue.text) + [.integer(Int64(limit))]
+            """
+            SELECT i.relative_path, i.contents
+            FROM codebase_index_files_fts
+            INNER JOIN codebase_index_files i ON i.id = codebase_index_files_fts.rowid
+            WHERE codebase_index_files_fts MATCH ? AND i.workspace_key = ?\(selection)\(exclusion)
+            ORDER BY i.relative_path LIMIT ?;
+            """,
+            parameters: [.text(matchClauses.joined(separator: " AND ")), .text(workspaceKey)] + selectedPaths.sqlParameters + excludedPaths.map(SQLiteValue.text) + [.integer(Int64(limit))]
         )
         .map { row in
             let contents = try row.string("contents")
@@ -547,6 +562,36 @@ public actor DevelopmentRepositoryIndex {
                 "preview": .text(contextualPreview(contents: contents, terms: terms)),
             ])
         }
+    }
+
+    private static func cjkIndexTerms(relativePath: String, contents: String) -> String {
+        var tokens: Set<String> = []
+        var run: [Character] = []
+
+        func flushRun() {
+            guard !run.isEmpty else {
+                return
+            }
+            for index in run.indices {
+                tokens.insert(String(run[index]))
+                if index < run.index(before: run.endIndex) {
+                    tokens.insert(String(run[index...run.index(after: index)]))
+                }
+            }
+            run.removeAll(keepingCapacity: true)
+        }
+
+        for character in relativePath + "\n" + contents {
+            if isCJKCharacter(character) {
+                run.append(character)
+            } else {
+                flushRun()
+            }
+        }
+        flushRun()
+        // FTS5 trigram cannot index one- or two-character literals. Storing
+        // those grams as ordinary tokens keeps short CJK lookup index-backed.
+        return tokens.sorted().joined(separator: " ")
     }
 
     private static func searchTerms(_ query: String) -> [String] {
@@ -695,6 +740,12 @@ public actor DevelopmentRepositoryIndex {
         // The source-shape exceptions below are meaningful only for Swift files.
         // A config or prose file using the same text remains fail-closed.
         guard relativePath.lowercased().hasSuffix(".swift") else {
+            return true
+        }
+        // Detailed source-shape validation slices the candidate's line. Cap
+        // adversarial generated Swift before those per-candidate slices can
+        // become quadratic; an omitted file is safer than persisting a secret.
+        guard matches.count <= maximumSwiftCredentialCandidates else {
             return true
         }
         let matchPositions = Set(matches.compactMap { Range($0.range, in: contents)?.lowerBound })

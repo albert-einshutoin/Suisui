@@ -2314,6 +2314,8 @@ public enum CoreMigrations {
                         byte_count INTEGER NOT NULL,
                         sha256 TEXT NOT NULL,
                         contents TEXT NOT NULL,
+                        -- CJK 1/2-gram tokens keep short substring queries on FTS.
+                        cjk_terms TEXT NOT NULL,
                         -- Generation lets refresh atomically publish a complete replacement snapshot.
                         generation INTEGER NOT NULL,
                         UNIQUE(workspace_key, relative_path)
@@ -2325,29 +2327,30 @@ public enum CoreMigrations {
                     CREATE VIRTUAL TABLE codebase_index_files_fts USING fts5(
                         relative_path,
                         contents,
+                        cjk_terms,
                         content='codebase_index_files',
                         content_rowid='id'
                     );
 
                     CREATE TRIGGER codebase_index_files_fts_after_insert
                     AFTER INSERT ON codebase_index_files BEGIN
-                        INSERT INTO codebase_index_files_fts(rowid, relative_path, contents)
-                        VALUES (new.id, new.relative_path, new.contents);
+                        INSERT INTO codebase_index_files_fts(rowid, relative_path, contents, cjk_terms)
+                        VALUES (new.id, new.relative_path, new.contents, new.cjk_terms);
                     END;
 
                     CREATE TRIGGER codebase_index_files_fts_after_delete
                     AFTER DELETE ON codebase_index_files BEGIN
-                        INSERT INTO codebase_index_files_fts(codebase_index_files_fts, rowid, relative_path, contents)
-                        VALUES ('delete', old.id, old.relative_path, old.contents);
+                        INSERT INTO codebase_index_files_fts(codebase_index_files_fts, rowid, relative_path, contents, cjk_terms)
+                        VALUES ('delete', old.id, old.relative_path, old.contents, old.cjk_terms);
                     END;
 
                     CREATE TRIGGER codebase_index_files_fts_after_content_update
-                    AFTER UPDATE OF relative_path, contents ON codebase_index_files
-                    WHEN old.relative_path != new.relative_path OR old.contents != new.contents BEGIN
-                        INSERT INTO codebase_index_files_fts(codebase_index_files_fts, rowid, relative_path, contents)
-                        VALUES ('delete', old.id, old.relative_path, old.contents);
-                        INSERT INTO codebase_index_files_fts(rowid, relative_path, contents)
-                        VALUES (new.id, new.relative_path, new.contents);
+                    AFTER UPDATE OF relative_path, contents, cjk_terms ON codebase_index_files
+                    WHEN old.relative_path != new.relative_path OR old.contents != new.contents OR old.cjk_terms != new.cjk_terms BEGIN
+                        INSERT INTO codebase_index_files_fts(codebase_index_files_fts, rowid, relative_path, contents, cjk_terms)
+                        VALUES ('delete', old.id, old.relative_path, old.contents, old.cjk_terms);
+                        INSERT INTO codebase_index_files_fts(rowid, relative_path, contents, cjk_terms)
+                        VALUES (new.id, new.relative_path, new.contents, new.cjk_terms);
                     END;
                     """
                 )

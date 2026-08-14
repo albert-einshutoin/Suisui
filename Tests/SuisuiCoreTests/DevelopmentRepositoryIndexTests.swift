@@ -564,16 +564,17 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(numeric.isEmpty)
     }
 
-    func testRefreshIndexesDenseSafeSwiftCredentialNames() async throws {
+    func testRefreshFailsClosedForDenseSwiftCredentialCandidates() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
-        try fixture.write(String(repeating: "let accessToken = denseSafeMarker\n", count: 6_000), to: "Sources/Dense.swift")
+        let parameters = (0..<6_000).map { "accessToken\($0): Token" }.joined(separator: ", ")
+        try fixture.write("func use(\(parameters)) { let denseSafeMarker = true }", to: "Sources/Dense.swift")
         let index = try migratedIndex()
 
         try await index.refresh(workspace: workspace(fixture))
 
         let results = try await index.search(query: "denseSafeMarker", workspace: workspace(fixture))
-        XCTAssertEqual(results.map(\.sourcePath), ["Sources/Dense.swift"])
+        XCTAssertTrue(results.isEmpty)
     }
 
     func testRefreshIndexesCredentialNamedSwiftExtensions() async throws {
@@ -1412,6 +1413,39 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(selectedResults.map(\.sourcePath), ["Sources/Only.swift"])
         XCTAssertEqual(directoryResults.map(\.sourcePath), ["Sources/Only.swift"])
         XCTAssertEqual(isolatedResults.map(\.sourcePath), ["Other.md"])
+    }
+
+    func testRefreshBuildsIndexedCJKTermsForTwoCharacterAndHalfWidthQueries() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("詳細設計と半角ｶﾀｶﾅ", to: "Docs/Indexed.md")
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let index = DevelopmentRepositoryIndex(connection: connection)
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let storedTerms = try connection.queryRows(
+            "SELECT cjk_terms FROM codebase_index_files WHERE relative_path = 'Docs/Indexed.md';"
+        ).first?.string("cjk_terms")
+        XCTAssertFalse(try XCTUnwrap(storedTerms).isEmpty)
+        let twoCharacter = try await index.search(query: "設計", workspace: workspace(fixture))
+        let halfWidth = try await index.search(query: "ｶﾀｶﾅ", workspace: workspace(fixture))
+        XCTAssertEqual(twoCharacter.map(\.sourcePath), ["Docs/Indexed.md"])
+        XCTAssertEqual(halfWidth.map(\.sourcePath), ["Docs/Indexed.md"])
+
+        try fixture.write("更新画面", to: "Docs/Indexed.md")
+        try await index.refresh(workspace: workspace(fixture))
+        let removedTerm = try await index.search(query: "設計", workspace: workspace(fixture))
+        let updatedTerm = try await index.search(query: "更新", workspace: workspace(fixture))
+        XCTAssertTrue(removedTerm.isEmpty)
+        XCTAssertEqual(updatedTerm.map(\.sourcePath), ["Docs/Indexed.md"])
+
+        try FileManager.default.removeItem(at: fixture.url.appendingPathComponent("Docs/Indexed.md"))
+        try await index.refresh(workspace: workspace(fixture))
+        let deletedTerm = try await index.search(query: "更新", workspace: workspace(fixture))
+        XCTAssertTrue(deletedTerm.isEmpty)
+        try connection.execute("INSERT INTO codebase_index_files_fts(codebase_index_files_fts) VALUES ('integrity-check');")
     }
 
     func testSearchTokenizesNaturalLanguageAndReturnsMatchContextPreview() async throws {
