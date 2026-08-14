@@ -1,11 +1,14 @@
 use std::{
     env,
-    fs::{self, File, OpenOptions},
+    fs::{File, OpenOptions},
     io::{Read, Write},
     path::{Component, Path, PathBuf},
     process,
     sync::atomic::{AtomicU64, Ordering},
 };
+
+#[cfg(not(unix))]
+use std::fs;
 
 use fastembed::{
     InitOptionsUserDefined, Pooling, TextEmbedding, TokenizerFiles, UserDefinedEmbeddingModel,
@@ -56,6 +59,12 @@ struct Request {
     model_files: ModelFiles,
     text: String,
     output: OutputTarget,
+}
+
+#[cfg(unix)]
+struct InputTarget {
+    parent: File,
+    name: String,
 }
 
 #[cfg(unix)]
@@ -276,13 +285,53 @@ fn validate_model_dir(path: &Path) -> AppResult<()> {
 }
 
 fn read_text(path: PathBuf) -> AppResult<String> {
-    validate_regular_file(&path, HelperError::INPUT_INVALID)?;
-    let bytes = read_bounded_file(
-        &path,
+    #[cfg(unix)]
+    {
+        let input = validate_input(&path)?;
+        read_text_from_target(&input)
+    }
+
+    #[cfg(not(unix))]
+    {
+        validate_regular_file(&path, HelperError::INPUT_INVALID)?;
+        parse_text_bytes(read_bounded_file(
+            &path,
+            MAX_TEXT_BYTES,
+            HelperError::INPUT_TOO_LARGE,
+            HelperError::INPUT_INVALID,
+        )?);
+    }
+}
+
+#[cfg(unix)]
+fn validate_input(path: &Path) -> AppResult<InputTarget> {
+    validate_absolute(path, HelperError::INPUT_INVALID)?;
+    let parent = path.parent().ok_or(HelperError::INPUT_INVALID)?;
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or(HelperError::INPUT_INVALID)?;
+
+    Ok(InputTarget {
+        parent: open_existing_directory(parent, HelperError::INPUT_INVALID)?,
+        name: name.to_owned(),
+    })
+}
+
+#[cfg(unix)]
+fn read_text_from_target(input: &InputTarget) -> AppResult<String> {
+    // Resolve the basename only below the held directory FD so swapping the
+    // pathname after validation cannot change the bytes this request embeds.
+    parse_text_bytes(read_bounded_file_from_directory(
+        &input.parent,
+        &input.name,
         MAX_TEXT_BYTES,
         HelperError::INPUT_TOO_LARGE,
         HelperError::INPUT_INVALID,
-    )?;
+    )?)
+}
+
+fn parse_text_bytes(bytes: Vec<u8>) -> AppResult<String> {
     let text = String::from_utf8(bytes).map_err(|_| HelperError::INPUT_INVALID)?;
     validate_text(&text)?;
     Ok(text)
@@ -298,6 +347,7 @@ fn validate_text(text: &str) -> AppResult<()> {
     Ok(())
 }
 
+#[cfg(not(unix))]
 fn read_bounded_file(
     path: &Path,
     maximum: u64,
@@ -329,6 +379,7 @@ fn read_bounded_open_file(
     Ok(bytes)
 }
 
+#[cfg(any(test, not(unix)))]
 fn open_regular_file(path: &Path, error: HelperError) -> AppResult<File> {
     #[cfg(unix)]
     let file = {
@@ -397,6 +448,7 @@ fn open_regular_file_at(directory: &File, name: &str, error: HelperError) -> App
     Ok(file)
 }
 
+#[cfg(not(unix))]
 fn validate_regular_file(path: &Path, error: HelperError) -> AppResult<fs::Metadata> {
     validate_absolute(path, error)?;
     let parent = path.parent().ok_or(error)?;
@@ -482,6 +534,7 @@ fn ensure_output_missing(parent: &File, name: &std::ffi::OsStr) -> AppResult<()>
     }
 }
 
+#[cfg(not(unix))]
 fn validate_existing_directory(path: &Path, error: HelperError) -> AppResult<()> {
     validate_absolute(path, error)?;
     let metadata = fs::symlink_metadata(path).map_err(|_| error)?;
@@ -942,6 +995,31 @@ mod tests {
                 super::load_model_files_from_directory(&model_directory).expect("load fixed model"),
             ),
             "original"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn input_parent_swap_does_not_replace_validated_text() {
+        use std::os::unix::fs::symlink;
+
+        let scratch = Scratch::new("input-parent-swap");
+        let parent = scratch.path().join("input-parent");
+        let retained_parent = scratch.path().join("validated-input-parent");
+        let replacement = scratch.path().join("replacement-input-parent");
+        fs::create_dir(&parent).expect("input parent");
+        fs::create_dir(&replacement).expect("replacement input parent");
+        let input = parent.join("input.txt");
+        fs::write(&input, "original input").expect("original input");
+        fs::write(replacement.join("input.txt"), "replacement input").expect("replacement input");
+
+        let input = super::validate_input(&input).expect("open original input parent");
+        fs::rename(&parent, &retained_parent).expect("retain input parent");
+        symlink(&replacement, &parent).expect("replace input parent with symlink");
+
+        assert_eq!(
+            super::read_text_from_target(&input).expect("read fixed input"),
+            "original input"
         );
     }
 
