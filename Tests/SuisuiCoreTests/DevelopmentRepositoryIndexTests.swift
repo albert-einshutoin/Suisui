@@ -167,12 +167,20 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             """
             final class TokenState {
                 @Published private var rerunRequestToken: UUID?
+                private let authorization: ToolActionAuthorization?
 
                 func load(credentialStore: CredentialStore) {
                     guard let accessToken = try credentialStore.accessToken(for: account) else { return }
                     if let idToken = cachedToken { consume(idToken) }
                     if let refreshToken = credentialStore.refreshToken { consume(refreshToken) }
                     let optionalBindingMarker = accessToken
+                }
+
+                func use(authorization: AuthorizationPolicy) {}
+
+                func send() {
+                    request(authorization: authorization)
+                    let authorizationGrammarMarker = authorization
                 }
             }
             """,
@@ -237,6 +245,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             "OptionalBindingLiteral.swift": "guard let accessToken = \"long-secret-value\" else { return }",
             "OptionalBindingTrailingCredential.swift": "if let idToken = cachedToken { accessToken = \"long-secret-value\" }\nguard let refreshToken = cachedRefreshToken else { accessToken = \"long-secret-value\" }",
             "SameNameOptionalBindingTrailingCredential.swift": "if let accessToken = cachedToken { accessToken = \"long-secret-value\" }\nguard let accessToken = cachedToken else { accessToken = \"long-secret-value\" }",
+            "AuthorizationLiteral.swift": "request(authorization: \"Token long-secret-value\")",
             "PascalCredential.json": "{\"ServiceAccessToken\":\"long-secret-value\"}",
             "TypealiasCredential.swift": "typealias ServiceAccessToken: Codable",
             "BacktickedCredential.swift": "let `accessToken` = \"long-secret-value\"",
@@ -302,6 +311,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let enumShorthandResults = try await index.search(query: "normalizedToken", workspace: workspace(fixture))
         let nominalTypeResults = try await index.search(query: "ServiceAccessToken", workspace: workspace(fixture))
         let optionalBindingResults = try await index.search(query: "optionalBindingMarker", workspace: workspace(fixture))
+        let authorizationGrammarResults = try await index.search(query: "authorizationGrammarMarker", workspace: workspace(fixture))
         let credentialResults = try await index.search(query: "long", workspace: workspace(fixture))
         let uppercaseCredentialResults = try await index.search(query: credentialMarker, workspace: workspace(fixture))
         let compoundCredentialResults = try await index.search(query: "compound", workspace: workspace(fixture))
@@ -318,6 +328,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(enumShorthandResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
         XCTAssertEqual(nominalTypeResults.map(\.sourcePath), ["Sources/ServiceAccessToken.swift"])
         XCTAssertEqual(optionalBindingResults.map(\.sourcePath), ["Sources/OptionalBindings.swift"])
+        XCTAssertEqual(authorizationGrammarResults.map(\.sourcePath), ["Sources/OptionalBindings.swift"])
         XCTAssertTrue(credentialResults.isEmpty)
         XCTAssertTrue(uppercaseCredentialResults.isEmpty)
         XCTAssertTrue(compoundCredentialResults.isEmpty)

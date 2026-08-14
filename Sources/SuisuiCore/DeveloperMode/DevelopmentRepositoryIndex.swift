@@ -33,6 +33,9 @@ public actor DevelopmentRepositoryIndex {
     private static let credentialKeyAssignments = try? NSRegularExpression(
         pattern: #"\b(?i:(?:[A-Za-z_][A-Za-z0-9_]*)?(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret)[A-Za-z0-9_]*)\b"#
     )
+    private static let authorizationIdentifier = try? NSRegularExpression(
+        pattern: #"\b(?i:authorization)\b"#
+    )
     private static let safeSwiftAssignment = try? NSRegularExpression(
         pattern: #"^\s*(?:(?:let|var)\s+)?(?:self\.)?[A-Za-z_][A-Za-z0-9_]*\s+=\s*(.+?)\s*$"#
     )
@@ -499,10 +502,13 @@ public actor DevelopmentRepositoryIndex {
         // Shared redaction intentionally treats every token assignment as risky for
         // user-visible output. Source indexing keeps that policy for specific
         // patterns, while allowing typed Swift names such as `token: Type`.
-        if report.matchedPatternNames.contains(where: { $0 != "assignment" }) {
+        // Drafts redact every Authorization value. Indexing can reopen only its
+        // typed Swift forms below, after correlating the actual identifier range.
+        if report.matchedPatternNames.contains(where: { $0 != "assignment" && $0 != "authorization_header" }) {
             return true
         }
         guard let assignments = credentialKeyAssignments,
+              let authorizationIdentifiers = authorizationIdentifier,
               let safeAssignment = safeSwiftAssignment,
               let safeOptionalBinding = safeSwiftOptionalBinding,
               let safeCallLabel = safeSwiftCallLabel,
@@ -516,7 +522,8 @@ public actor DevelopmentRepositoryIndex {
               let callOpener = swiftCallOpener else {
             return true
         }
-        let candidateMatches = assignments.matches(in: contents, range: range)
+        let candidateMatches = assignments.matches(in: contents, range: range) +
+            authorizationIdentifiers.matches(in: contents, range: range)
         // Only Swift has a narrow safe grammar. Non-prose formats are
         // fail-closed on credential-shaped identifiers; prose keeps the
         // delimiter check so ordinary documentation remains searchable.
@@ -529,7 +536,8 @@ public actor DevelopmentRepositoryIndex {
             Range($0.range, in: contents).map { assignmentEnds.contains($0.upperBound) } == true
         }
         guard !matches.isEmpty else {
-            return report.matchedPatternNames.contains("assignment")
+            return report.matchedPatternNames.contains("assignment") ||
+                report.matchedPatternNames.contains("authorization_header")
         }
         // The source-shape exceptions below are meaningful only for Swift files.
         // A config or prose file using the same text remains fail-closed.
