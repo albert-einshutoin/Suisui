@@ -54,7 +54,18 @@ trait EmbeddingEngine {
 struct Request {
     model_dir: PathBuf,
     text: String,
-    output: PathBuf,
+    output: OutputTarget,
+}
+
+#[cfg(unix)]
+struct OutputTarget {
+    parent: File,
+    name: std::ffi::OsString,
+}
+
+#[cfg(not(unix))]
+struct OutputTarget {
+    path: PathBuf,
 }
 
 fn run_from<I>(arguments: I) -> AppResult<()>
@@ -63,15 +74,24 @@ where
 {
     let request = parse_request(arguments)?;
     let mut engine = FastEmbedEngine::load(&request.model_dir)?;
-    write_embedding(&mut engine, &request.text, &request.output)
+    write_embedding_to_target(&mut engine, &request.text, &request.output)
 }
 
+#[cfg(test)]
 fn write_embedding<E: EmbeddingEngine>(engine: &mut E, text: &str, output: &Path) -> AppResult<()> {
+    let output = validate_output(output)?;
+    write_embedding_to_target(engine, text, &output)
+}
+
+fn write_embedding_to_target<E: EmbeddingEngine>(
+    engine: &mut E,
+    text: &str,
+    output: &OutputTarget,
+) -> AppResult<()> {
     validate_text(text)?;
-    let output = validate_output(output.to_path_buf())?;
     let values = engine.embed(text)?;
     validate_embedding(&values)?;
-    write_atomically(&output, embedding_json(&values).as_bytes())
+    write_atomically(output, embedding_json(&values).as_bytes())
 }
 
 fn parse_request<I>(arguments: I) -> AppResult<Request>
@@ -98,7 +118,7 @@ where
     let text = read_text(PathBuf::from(
         text_file.ok_or(HelperError::INVALID_REQUEST)?,
     ))?;
-    let output = validate_output(PathBuf::from(output.ok_or(HelperError::INVALID_REQUEST)?))?;
+    let output = validate_output(&PathBuf::from(output.ok_or(HelperError::INVALID_REQUEST)?))?;
 
     Ok(Request {
         model_dir,
@@ -282,13 +302,76 @@ fn validate_regular_file(path: &Path, error: HelperError) -> AppResult<fs::Metad
     Ok(metadata)
 }
 
-fn validate_output(path: PathBuf) -> AppResult<PathBuf> {
-    validate_absolute(&path, HelperError::OUTPUT_FAILED)?;
+fn validate_output(path: &Path) -> AppResult<OutputTarget> {
+    validate_absolute(path, HelperError::OUTPUT_FAILED)?;
     let parent = path.parent().ok_or(HelperError::OUTPUT_FAILED)?;
-    validate_existing_directory(parent, HelperError::OUTPUT_FAILED)?;
-    match fs::symlink_metadata(&path) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(path),
-        _ => Err(HelperError::OUTPUT_FAILED),
+    let name = path.file_name().ok_or(HelperError::OUTPUT_FAILED)?;
+
+    #[cfg(unix)]
+    {
+        let parent = open_output_directory(parent)?;
+        ensure_output_missing(&parent, name)?;
+        Ok(OutputTarget {
+            parent,
+            name: name.to_os_string(),
+        })
+    }
+
+    #[cfg(not(unix))]
+    {
+        validate_existing_directory(parent, HelperError::OUTPUT_FAILED)?;
+        match fs::symlink_metadata(path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(OutputTarget {
+                path: path.to_path_buf(),
+            }),
+            _ => Err(HelperError::OUTPUT_FAILED),
+        }
+    }
+}
+
+#[cfg(unix)]
+fn open_output_directory(path: &Path) -> AppResult<File> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let directory = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW)
+        .open(path)
+        .map_err(|_| HelperError::OUTPUT_FAILED)?;
+    if !directory
+        .metadata()
+        .map_err(|_| HelperError::OUTPUT_FAILED)?
+        .file_type()
+        .is_dir()
+    {
+        return Err(HelperError::OUTPUT_FAILED);
+    }
+    Ok(directory)
+}
+
+#[cfg(unix)]
+fn ensure_output_missing(parent: &File, name: &std::ffi::OsStr) -> AppResult<()> {
+    use std::{ffi::CString, mem::MaybeUninit, os::unix::ffi::OsStrExt, os::unix::io::AsRawFd};
+
+    let name = CString::new(name.as_bytes()).map_err(|_| HelperError::OUTPUT_FAILED)?;
+    let mut metadata = MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: the directory FD and NUL-terminated name remain valid throughout
+    // this fstatat call; AT_SYMLINK_NOFOLLOW rejects an existing link as output.
+    let result = unsafe {
+        libc::fstatat(
+            parent.as_raw_fd(),
+            name.as_ptr(),
+            metadata.as_mut_ptr(),
+            libc::AT_SYMLINK_NOFOLLOW,
+        )
+    };
+    if result == 0 {
+        return Err(HelperError::OUTPUT_FAILED);
+    }
+    if std::io::Error::last_os_error().kind() == std::io::ErrorKind::NotFound {
+        Ok(())
+    } else {
+        Err(HelperError::OUTPUT_FAILED)
     }
 }
 
@@ -334,63 +417,90 @@ fn embedding_json(values: &[f32]) -> String {
     output
 }
 
-fn write_atomically(output: &Path, bytes: &[u8]) -> AppResult<()> {
-    let parent = output.parent().ok_or(HelperError::OUTPUT_FAILED)?;
+#[cfg(unix)]
+fn write_atomically(output: &OutputTarget, bytes: &[u8]) -> AppResult<()> {
+    use std::{ffi::CString, os::unix::io::AsRawFd};
+
     let sequence = TEMPORARY_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     for attempt in 0..TEMPORARY_ATTEMPTS {
-        let temporary = parent.join(format!(
+        let temporary = CString::new(format!(
             ".suisui-embedding-{}-{sequence}-{attempt}.tmp",
             process::id()
-        ));
-        let mut options = OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let file = match options.open(&temporary) {
+        ))
+        .map_err(|_| HelperError::OUTPUT_FAILED)?;
+        let file = match create_output_temporary(output.parent.as_raw_fd(), &temporary) {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(_) => return Err(HelperError::OUTPUT_FAILED),
         };
+        let mut published = false;
         let result = (|| {
             let mut file = file;
             file.write_all(bytes)
                 .map_err(|_| HelperError::OUTPUT_FAILED)?;
             file.sync_all().map_err(|_| HelperError::OUTPUT_FAILED)?;
             drop(file);
-            publish_no_replace(&temporary, output)?;
-            File::open(parent)
-                .and_then(|directory| directory.sync_all())
+            publish_no_replace(output.parent.as_raw_fd(), &temporary, &output.name)?;
+            published = true;
+            output
+                .parent
+                .sync_all()
                 .map_err(|_| HelperError::OUTPUT_FAILED)
         })();
-        if result.is_err() {
-            let _ = fs::remove_file(&temporary);
+        if result.is_err() && !published {
+            // A post-publish fsync failure must not remove a name another
+            // writer creates after rename has moved our temporary away.
+            let _ = unsafe { libc::unlinkat(output.parent.as_raw_fd(), temporary.as_ptr(), 0) };
         }
         return result;
     }
     Err(HelperError::OUTPUT_FAILED)
 }
 
+#[cfg(unix)]
+fn create_output_temporary(
+    directory: libc::c_int,
+    name: &std::ffi::CString,
+) -> std::io::Result<File> {
+    use std::os::unix::io::FromRawFd;
+
+    // SAFETY: directory is owned by OutputTarget, and name is a valid
+    // NUL-terminated basename. O_EXCL ensures collided temporaries are untouched.
+    let descriptor = unsafe {
+        libc::openat(
+            directory,
+            name.as_ptr(),
+            libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            0o600,
+        )
+    };
+    if descriptor < 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        // SAFETY: openat returned a new owned descriptor on success.
+        Ok(unsafe { File::from_raw_fd(descriptor) })
+    }
+}
+
 #[cfg(target_os = "macos")]
-fn publish_no_replace(temporary: &Path, output: &Path) -> AppResult<()> {
+fn publish_no_replace(
+    directory: libc::c_int,
+    temporary: &std::ffi::CString,
+    output: &std::ffi::OsStr,
+) -> AppResult<()> {
     use std::{ffi::CString, os::unix::ffi::OsStrExt};
 
-    let temporary =
-        CString::new(temporary.as_os_str().as_bytes()).map_err(|_| HelperError::OUTPUT_FAILED)?;
-    let output =
-        CString::new(output.as_os_str().as_bytes()).map_err(|_| HelperError::OUTPUT_FAILED)?;
+    let output = CString::new(output.as_bytes()).map_err(|_| HelperError::OUTPUT_FAILED)?;
     // macOS RENAME_EXCL preserves a racing output while atomically renaming
-    // the fsynced same-directory temporary into the requested output path.
+    // the fsynced temporary into the requested entry of the same fixed directory.
     // SAFETY: CString guarantees NUL termination without interior NUL bytes;
-    // both pointers remain valid for this call, and AT_FDCWD/RENAME_EXCL are
-    // the documented macOS renameatx_np constants on this target.
+    // both pointers remain valid for this call, and the owned directory FD
+    // plus RENAME_EXCL are the documented macOS renameatx_np constants.
     let result = unsafe {
         libc::renameatx_np(
-            libc::AT_FDCWD,
+            directory,
             temporary.as_ptr(),
-            libc::AT_FDCWD,
+            directory,
             output.as_ptr(),
             libc::RENAME_EXCL,
         )
@@ -402,10 +512,93 @@ fn publish_no_replace(temporary: &Path, output: &Path) -> AppResult<()> {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
-fn publish_no_replace(temporary: &Path, output: &Path) -> AppResult<()> {
-    fs::hard_link(temporary, output).map_err(|_| HelperError::OUTPUT_FAILED)?;
-    fs::remove_file(temporary).map_err(|_| HelperError::OUTPUT_FAILED)
+#[cfg(target_os = "linux")]
+fn publish_no_replace(
+    directory: libc::c_int,
+    temporary: &std::ffi::CString,
+    output: &std::ffi::OsStr,
+) -> AppResult<()> {
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+
+    let output = CString::new(output.as_bytes()).map_err(|_| HelperError::OUTPUT_FAILED)?;
+    // SAFETY: both names are NUL-terminated basenames resolved only below the
+    // owned directory FD; RENAME_NOREPLACE prevents an existing output overwrite.
+    let result = unsafe {
+        libc::renameat2(
+            directory,
+            temporary.as_ptr(),
+            directory,
+            output.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(HelperError::OUTPUT_FAILED)
+    }
+}
+
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "linux"))))]
+fn publish_no_replace(
+    directory: libc::c_int,
+    temporary: &std::ffi::CString,
+    output: &std::ffi::OsStr,
+) -> AppResult<()> {
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+
+    let output = CString::new(output.as_bytes()).map_err(|_| HelperError::OUTPUT_FAILED)?;
+    // SAFETY: linkat atomically creates the destination name below the fixed
+    // directory FD, then the source temporary is unlinked from that same FD.
+    let linked =
+        unsafe { libc::linkat(directory, temporary.as_ptr(), directory, output.as_ptr(), 0) };
+    if linked != 0 {
+        return Err(HelperError::OUTPUT_FAILED);
+    }
+    // SAFETY: temporary is the just-linked basename below the owned directory FD.
+    if unsafe { libc::unlinkat(directory, temporary.as_ptr(), 0) } == 0 {
+        Ok(())
+    } else {
+        Err(HelperError::OUTPUT_FAILED)
+    }
+}
+
+#[cfg(not(unix))]
+fn write_atomically(output: &OutputTarget, bytes: &[u8]) -> AppResult<()> {
+    let parent = output.path.parent().ok_or(HelperError::OUTPUT_FAILED)?;
+    let sequence = TEMPORARY_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    for attempt in 0..TEMPORARY_ATTEMPTS {
+        let temporary = parent.join(format!(
+            ".suisui-embedding-{}-{sequence}-{attempt}.tmp",
+            process::id()
+        ));
+        let file = match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return Err(HelperError::OUTPUT_FAILED),
+        };
+        let result = (|| {
+            let mut file = file;
+            file.write_all(bytes)
+                .map_err(|_| HelperError::OUTPUT_FAILED)?;
+            file.sync_all().map_err(|_| HelperError::OUTPUT_FAILED)?;
+            drop(file);
+            fs::hard_link(&temporary, &output.path).map_err(|_| HelperError::OUTPUT_FAILED)?;
+            fs::remove_file(&temporary).map_err(|_| HelperError::OUTPUT_FAILED)?;
+            File::open(parent)
+                .and_then(|directory| directory.sync_all())
+                .map_err(|_| HelperError::OUTPUT_FAILED)
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        return result;
+    }
+    Err(HelperError::OUTPUT_FAILED)
 }
 
 pub fn main_entry() {
@@ -576,6 +769,48 @@ mod tests {
             fs::read_to_string(output).expect("racing output"),
             "racing output"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn output_parent_swap_does_not_redirect_a_validated_write() {
+        use std::os::unix::fs::symlink;
+
+        struct ParentSwappingEngine {
+            parent: PathBuf,
+            retained_parent: PathBuf,
+            replacement: PathBuf,
+        }
+
+        impl EmbeddingEngine for ParentSwappingEngine {
+            fn embed(&mut self, _text: &str) -> Result<Vec<f32>, HelperError> {
+                fs::rename(&self.parent, &self.retained_parent).expect("retain validated parent");
+                symlink(&self.replacement, &self.parent).expect("replace parent with symlink");
+                Ok(vec![0.0; super::EXPECTED_DIMENSIONS])
+            }
+        }
+
+        let scratch = Scratch::new("output-parent-swap");
+        let parent = scratch.path().join("output-parent");
+        let retained_parent = scratch.path().join("validated-parent");
+        let replacement = scratch.path().join("replacement-parent");
+        fs::create_dir(&parent).expect("output parent");
+        fs::create_dir(&replacement).expect("replacement parent");
+        let output = parent.join("embedding.json");
+
+        write_embedding(
+            &mut ParentSwappingEngine {
+                parent,
+                retained_parent: retained_parent.clone(),
+                replacement: replacement.clone(),
+            },
+            "private input",
+            &output,
+        )
+        .expect("output remains in validated parent");
+
+        assert!(retained_parent.join("embedding.json").is_file());
+        assert!(!replacement.join("embedding.json").exists());
     }
 
     #[test]
