@@ -834,7 +834,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             return try searchOpenTasksByContainsLocked(text: trimmed, limit: limit)
         }
 
-        let matches = try connection.queryRows(
+        var matches = try connection.queryRows(
             """
             SELECT tasks.* FROM tasks
             JOIN tasks_fts ON tasks_fts.rowid = tasks.id
@@ -847,9 +847,17 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             """,
             parameters: [.text("\"\(SQL.escapeFTS(trimmed))\""), .integer(Int64(limit))]
         ).map(TaskRecord.init(row:))
-        return matches.isEmpty
-            ? try searchOpenTasksByContainsLocked(text: trimmed, limit: limit)
-            : matches
+        if matches.count < limit {
+            // FTS tokenizes "invoice", so it cannot return the historical
+            // literal substring query "voice". Complete the bounded result in
+            // SQLite even when FTS already found whole-word matches.
+            matches += try searchOpenTasksByContainsLocked(
+                tokens: [trimmed],
+                excludingIDs: Set(matches.map(\.id)),
+                limit: limit - matches.count
+            )
+        }
+        return matches
     }
 
     /// Workspace answers historically match any normalized token. Keep that
@@ -870,7 +878,6 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         let ftsTerms = boundedTokens
             .filter { !Self.containsCJK($0) }
             .map { "\"\(SQL.escapeFTS($0))\"" }
-        let cjkTokens = boundedTokens.filter(Self.containsCJK)
         var recordsByID: [Int64: TaskRecord] = [:]
 
         if !ftsTerms.isEmpty {
@@ -891,29 +898,15 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             }
         }
 
-        if !cjkTokens.isEmpty {
-            // unicode61 cannot index an arbitrary CJK substring. This bounded
-            // SQLite fallback preserves the prior contains semantics without
-            // materializing the full task history in Swift.
-            let predicate = cjkTokens.map { _ in
-                "(instr(lower(tasks.title), ?) > 0 OR instr(lower(COALESCE(tasks.detail, '')), ?) > 0)"
-            }.joined(separator: " OR ")
-            let parameters: [SQLiteValue] = cjkTokens.flatMap { token in
-                let lowered = token.lowercased()
-                return [SQLiteValue.text(lowered), .text(lowered)]
-            } + [.integer(Int64(limit))]
-            for record in try connection.queryRows(
-                """
-                SELECT tasks.* FROM tasks
-                LEFT JOIN projects ON projects.id = tasks.project_id
-                WHERE (\(predicate))
-                  AND tasks.status != 'completed'
-                  AND (tasks.project_id IS NULL OR projects.status != 'archived')
-                ORDER BY tasks.id ASC
-                LIMIT ?;
-                """,
-                parameters: parameters
-            ).map(TaskRecord.init(row:)) {
+        if recordsByID.count < limit {
+            // unicode61 cannot index arbitrary CJK or ASCII substrings. Keep
+            // the previous contains contract inside bounded SQLite queries;
+            // never materialize the task history in Swift just to filter it.
+            for record in try searchOpenTasksByContainsLocked(
+                tokens: boundedTokens,
+                excludingIDs: Set(recordsByID.keys),
+                limit: limit - recordsByID.count
+            ) {
                 recordsByID[record.id] = record
             }
         }
@@ -1489,19 +1482,42 @@ public final class SQLiteTaskStore: @unchecked Sendable {
     }
 
     private func searchOpenTasksByContainsLocked(text: String, limit: Int) throws -> [TaskRecord] {
-        let lowered = text.lowercased()
+        try searchOpenTasksByContainsLocked(tokens: [text], excludingIDs: [], limit: limit)
+    }
+
+    private func searchOpenTasksByContainsLocked(
+        tokens: [String],
+        excludingIDs: Set<Int64>,
+        limit: Int
+    ) throws -> [TaskRecord] {
+        guard limit > 0 else {
+            return []
+        }
+        let predicate = tokens.map { _ in
+            "(instr(lower(tasks.title), ?) > 0 OR instr(lower(COALESCE(tasks.detail, '')), ?) > 0)"
+        }.joined(separator: " OR ")
+        let exclusion = excludingIDs.isEmpty
+            ? ""
+            : " AND tasks.id NOT IN (\(Array(repeating: "?", count: excludingIDs.count).joined(separator: ", ")))"
+        var parameters: [SQLiteValue] = []
+        for token in tokens {
+            let lowered = token.lowercased()
+            parameters.append(.text(lowered))
+            parameters.append(.text(lowered))
+        }
+        parameters.append(contentsOf: excludingIDs.sorted().map { .integer($0) })
+        parameters.append(.integer(Int64(limit)))
         return try connection.queryRows(
             """
             SELECT tasks.* FROM tasks
             LEFT JOIN projects ON projects.id = tasks.project_id
-            WHERE (instr(lower(tasks.title), ?) > 0
-                   OR instr(lower(COALESCE(tasks.detail, '')), ?) > 0)
+            WHERE (\(predicate))
               AND tasks.status != 'completed'
-              AND (tasks.project_id IS NULL OR projects.status != 'archived')
+              AND (tasks.project_id IS NULL OR projects.status != 'archived')\(exclusion)
             ORDER BY tasks.id DESC
             LIMIT ?;
             """,
-            parameters: [.text(lowered), .text(lowered), .integer(Int64(limit))]
+            parameters: parameters
         ).map(TaskRecord.init(row:))
     }
 
@@ -1911,28 +1927,29 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
             }
         }
 
-        var containsTokens = boundedTokens.filter(SQLiteTaskStore.containsCJK)
-        if records.isEmpty {
-            containsTokens.append(contentsOf: nonCJK)
-        }
+        let containsTokens = boundedTokens
         if !containsTokens.isEmpty, records.count < limit {
-            // unicode61 does not index arbitrary CJK or ASCII substrings. Keep
-            // the compatibility scan in SQLite and bound its dynamic predicate.
+            // unicode61 does not index arbitrary CJK or ASCII substrings. Run
+            // this only for the remaining slots so exact FTS hits stay first.
             let predicate = containsTokens.map { _ in
                 "(instr(lower(name), ?) > 0 OR instr(lower(body), ?) > 0 OR instr(lower(triggers_json), ?) > 0)"
             }.joined(separator: " OR ")
-            let parameters: [SQLiteValue] = containsTokens.flatMap { token in
+            let exclusion = seenIDs.isEmpty
+                ? ""
+                : " AND id NOT IN (\(Array(repeating: "?", count: seenIDs.count).joined(separator: ", ")))"
+            var parameters: [SQLiteValue] = []
+            for token in containsTokens {
                 let lowered = token.lowercased()
-                return [
-                    SQLiteValue.text(lowered),
-                    SQLiteValue.text(lowered),
-                    SQLiteValue.text(lowered),
-                ]
-            } + [.integer(Int64(limit - records.count))]
+                parameters.append(.text(lowered))
+                parameters.append(.text(lowered))
+                parameters.append(.text(lowered))
+            }
+            parameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
+            parameters.append(.integer(Int64(limit - records.count)))
             for record in try connection.queryRows(
                 """
                 SELECT * FROM knowledge_frames
-                WHERE \(predicate)
+                WHERE \(predicate)\(exclusion)
                 ORDER BY id ASC
                 LIMIT ?;
                 """,

@@ -373,6 +373,18 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertTrue(bounded.allSatisfy { $0.count <= 128 })
     }
 
+    func testKnowledgeSearchCompletesLiteralSubstringsAlongsideFTSHits() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let substringFrame = try store.create(name: "Billing", body: "Prepare invoice report")
+        let ftsFrame = try store.create(name: "Notes", body: "Record voice memo")
+
+        XCTAssertEqual(
+            try store.search(matching: ["voice"], limit: 2).map(\.id),
+            [ftsFrame.id, substringFrame.id]
+        )
+    }
+
     func testTaskStoreRejectsCorruptedProjectIDInsteadOfDetachingTask() throws {
         let connection = try migratedConnection()
         let projects = SQLiteProjectStore(connection: connection)

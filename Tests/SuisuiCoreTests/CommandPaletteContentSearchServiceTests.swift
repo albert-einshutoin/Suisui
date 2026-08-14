@@ -79,6 +79,25 @@ final class CommandPaletteContentSearchServiceTests: XCTestCase {
         )
     }
 
+    func testTaskContentSearchCompletesLiteralSubstringsAlongsideFTSHits() throws {
+        let connection = try migratedConnection()
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let service = CommandPaletteContentSearchService(
+            taskStore: taskStore,
+            knowledgeFrameStore: SQLiteKnowledgeFrameStore(connection: connection)
+        )
+        let substringTask = try taskStore.create(title: "Prepare invoice report")
+        let ftsTask = try taskStore.create(title: "Record voice memo")
+
+        XCTAssertEqual(
+            service.search(query: "voice", limit: 2).map(\.source),
+            [
+                .task(id: ftsTask.id, projectID: nil),
+                .task(id: substringTask.id, projectID: nil),
+            ]
+        )
+    }
+
     func testCompletedTasksAreExcluded() throws {
         let connection = try migratedConnection()
         let taskStore = SQLiteTaskStore(connection: connection)

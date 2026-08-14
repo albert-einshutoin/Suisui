@@ -95,6 +95,17 @@ final class WorkspaceAnswerTests: XCTestCase {
         XCTAssertEqual(snippets.first?.detail, "Ask the printing vendor about quotes")
     }
 
+    func testRetrieveCompletesLiteralTaskSubstringsAlongsideFTSHits() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "Prepare invoice report")
+        _ = try stores.tasks.create(title: "Record voice memo")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+        let snippets = try retriever.retrieve(question: "What about voice?", limit: 2)
+
+        XCTAssertEqual(Set(snippets.filter { $0.kind == "task" }.map(\.title)), ["Prepare invoice report", "Record voice memo"])
+    }
+
     func testRetrieveMatchesJapaneseTaskTitleWithoutSpaceSeparation() throws {
         let stores = try makeStores()
         _ = try stores.tasks.create(title: "リリース準備タスク")
