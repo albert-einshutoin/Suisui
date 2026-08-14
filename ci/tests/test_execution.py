@@ -111,11 +111,19 @@ class ExecutionContractTests(unittest.TestCase):
             "SUISUI_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY",
             "SUISUI_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX",
             "SUISUI_LAYOUT_STABILITY_CLIPPING_TOLERANCE_PX",
+            "SUISUI_LAYOUT_STABILITY_WINDOW_MIN_WIDTH",
+            "SUISUI_LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH",
+            "SUISUI_LAYOUT_STABILITY_WINDOW_WIDE_WIDTH",
             "SUISUI_RUNTIME_TODAY_MAX_TOOLBAR_LAYOUT_DEPTH",
+            "SUISUI_RUNTIME_TODAY_WINDOW_WIDTH",
+            "SUISUI_RUNTIME_TODAY_WINDOW_HEIGHT",
         ):
             self.assertIn(f"-u {variable}", contents)
         self.assertIn("./scripts/ci.sh ui-runtime", contents)
-        self.assertIn("env -u SUISUI_CI_VISUAL_GATE_LOCALE ./scripts/ci.sh ui-visual", contents)
+        self.assertIn('status=passed', contents)
+        self.assertIn("BLOCKER: complete runtime validation was not fully exercised", contents)
+        self.assertIn("-u SUISUI_CI_VISUAL_GATE_LOCALE", contents)
+        self.assertIn("./scripts/ci.sh ui-visual", contents)
         for variable in (
             "SUISUI_PERFORMANCE_PROFILE",
             "SUISUI_PERFORMANCE_BUILD_CONFIGURATION",
