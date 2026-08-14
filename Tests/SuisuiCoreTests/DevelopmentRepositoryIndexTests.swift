@@ -1991,6 +1991,19 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(results.map(\.sourcePath), ["Docs/FTSExact.md", "Docs/Fallback.md"])
     }
 
+    func testSearchUsesORBetweenCJKAndNonCJKFallbackGroups() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("Swift 設定画面 exactmixedmarker", to: "Docs/Exact.md")
+        try fixture.write("設定画面 cjkpartialmarker", to: "Docs/CJKOnly.md")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let results = try await index.search(query: "Swift 設定", workspace: workspace(fixture), topK: 2)
+        XCTAssertEqual(results.map(\.sourcePath), ["Docs/Exact.md", "Docs/CJKOnly.md"])
+    }
+
     func testSearchUsesCJKBigramsForUnspacedNaturalLanguage() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }

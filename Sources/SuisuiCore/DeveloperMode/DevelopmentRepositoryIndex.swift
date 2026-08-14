@@ -302,7 +302,7 @@ public actor DevelopmentRepositoryIndex {
             if !cjkTerms.isEmpty, finalRows.count < limit {
                 let partialFallback = try Self.cjkRows(
                     connection: connection,
-                    terms: cjkTerms,
+                    terms: terms,
                     joiner: " OR ",
                     workspaceKey: workspaceKey,
                     selectedPaths: selectedPaths,
@@ -598,6 +598,9 @@ public actor DevelopmentRepositoryIndex {
         if !nonCJKTerms.isEmpty {
             matchClauses.append("{relative_path contents} : (\(ftsMatch(nonCJKTerms, joiner: joiner)))")
         }
+        // The fallback stage's joiner applies between language groups too:
+        // exact search requires both, while partial search accepts either.
+        let matchExpression = "(\(matchClauses.joined(separator: joiner)))"
         let selection = selectedPaths.sqlClause(column: "i.relative_path")
         let exclusion = excludedPaths.isEmpty
             ? ""
@@ -610,7 +613,7 @@ public actor DevelopmentRepositoryIndex {
             WHERE codebase_index_files_fts MATCH ? AND i.workspace_key = ?\(selection)\(exclusion)
             ORDER BY i.relative_path LIMIT ?;
             """,
-            parameters: [.text(matchClauses.joined(separator: " AND ")), .text(workspaceKey)] + selectedPaths.sqlParameters + excludedPaths.map(SQLiteValue.text) + [.integer(Int64(limit))]
+            parameters: [.text(matchExpression), .text(workspaceKey)] + selectedPaths.sqlParameters + excludedPaths.map(SQLiteValue.text) + [.integer(Int64(limit))]
         )
         .map { row in
             let contents = try row.string("contents")
