@@ -12797,11 +12797,13 @@ final class ReleasePipelineTests: XCTestCase {
             "script/verify_release_architecture.sh"
         ].map(readPackageFile).joined(separator: "\n")
 
-        XCTAssertTrue(manifest.contains("kokoro-en"))
+        XCTAssertTrue(manifest.contains("ort ="))
+        XCTAssertFalse(manifest.contains("kokoro-en"))
+        XCTAssertTrue(readme.contains("tokens-file"))
         XCTAssertTrue(readme.contains("PoC"))
         XCTAssertTrue(readme.contains("日本語"))
         XCTAssertTrue(readme.contains("本番"))
-        XCTAssertTrue(readme.contains("RUSTSEC-2025-0141"))
+        XCTAssertTrue(readme.contains("G2P実装や辞書を依存グラフへ含めず"))
         XCTAssertTrue(gitignore.contains("/rust/kokoro-helper/target/"))
         XCTAssertFalse(productionEntrypoints.contains("rust/kokoro-helper"))
         XCTAssertTrue(workflow.contains("cargo fmt --manifest-path rust/kokoro-helper/Cargo.toml --check"))

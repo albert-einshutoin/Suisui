@@ -17,8 +17,8 @@ fn japanese_language_is_rejected_before_model_loading() {
             "/missing/model.onnx",
             "--voices",
             "/missing/voices",
-            "--text-file",
-            "/missing/prompt.txt",
+            "--tokens-file",
+            "/missing/tokens.txt",
             "--language",
             "ja",
             "--voice",
@@ -38,16 +38,16 @@ fn japanese_language_is_rejected_before_model_loading() {
 }
 
 #[test]
-fn rejected_prompt_is_not_written_to_standard_streams() {
+fn rejected_tokens_are_not_written_to_standard_streams() {
     let directory = unique_test_directory();
     fs::create_dir_all(&directory).unwrap();
     let model = directory.join("model.onnx");
     let voice = directory.join("af_heart.bin");
-    let prompt = directory.join("prompt.txt");
+    let tokens = directory.join("tokens.txt");
     fs::write(&model, b"model").unwrap();
     fs::write(&voice, b"voice").unwrap();
-    let secret_prompt = "PROMPT_MUST_NOT_APPEAR".repeat(20);
-    fs::write(&prompt, &secret_prompt).unwrap();
+    let secret_tokens = "TOKENS_MUST_NOT_APPEAR".repeat(20);
+    fs::write(&tokens, &secret_tokens).unwrap();
 
     let output = Command::new(HELPER)
         .args([
@@ -55,8 +55,8 @@ fn rejected_prompt_is_not_written_to_standard_streams() {
             model.to_str().unwrap(),
             "--voices",
             voice.to_str().unwrap(),
-            "--text-file",
-            prompt.to_str().unwrap(),
+            "--tokens-file",
+            tokens.to_str().unwrap(),
             "--language",
             "en",
             "--voice",
@@ -73,7 +73,7 @@ fn rejected_prompt_is_not_written_to_standard_streams() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    assert!(!output.status.success() && !streams.contains(&secret_prompt));
+    assert!(!output.status.success() && !streams.contains(&secret_tokens));
 }
 
 fn unique_test_directory() -> PathBuf {

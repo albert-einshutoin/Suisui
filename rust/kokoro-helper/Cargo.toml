@@ -2,16 +2,8 @@
 name = "suisui-kokoro-helper"
 version = "0.1.0"
 edition = "2024"
-license = "Apache-2.0"
+license = "MIT"
 publish = false
 
 [dependencies]
-kokoro-en = { version = "0.1.5", default-features = false, features = ["misaki-lean"] }
-tokio = { version = "1.49.0", features = ["rt-multi-thread"] }
-
-# kokoro-en logs the complete prompt when its own debug assertions are enabled.
-[profile.dev.package.kokoro-en]
-debug-assertions = false
-
-[profile.test.package.kokoro-en]
-debug-assertions = false
+ort = { version = "=2.0.0-rc.11", default-features = false, features = ["copy-dylibs", "download-binaries", "std", "tls-rustls"] }

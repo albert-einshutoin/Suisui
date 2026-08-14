@@ -2,27 +2,31 @@ use std::{
     env,
     fs::{self, File, OpenOptions},
     io::{self, BufWriter, Read, Write},
+    mem::size_of,
     path::{Path, PathBuf},
     process,
 };
 
-use kokoro_en::KokoroTts;
+use ort::{inputs, session::Session, value::Tensor};
 
 const SAMPLE_RATE: u32 = 24_000;
-const MAX_PROMPT_CHARACTERS: usize = 280;
-const MAX_PROMPT_BYTES: u64 = (MAX_PROMPT_CHARACTERS * 4) as u64;
+const MAX_TOKEN_BYTES: u64 = 4 * 1024;
+// Kokoro v1.0 voice packs contain one 256-value style row per supported
+// sequence length, and its published vocabulary uses token ids 0...177.
+const MAX_TOKENS: usize = 510;
+const MAX_TOKEN_ID: i64 = 177;
 const MAX_MODEL_BYTES: u64 = 400 * 1024 * 1024;
 const MAX_VOICE_BYTES: u64 = 2 * 1024 * 1024;
+const STYLE_VALUES: usize = 256;
 const JAPANESE_PARITY_ERROR: &str = "日本語パリティ未達なので本番利用不可";
-const USAGE: &str = "usage: suisui-kokoro-helper --model <absolute .onnx> --voices <absolute dir or .bin> --text-file <absolute UTF-8> --language en --voice <safe a|b id> --output <absolute .wav>";
+const USAGE: &str = "usage: suisui-kokoro-helper --model <absolute .onnx> --voices <absolute dir or .bin> --tokens-file <absolute token ids> --language en --voice <safe a|b id> --output <absolute .wav>";
 
 type AppResult<T> = Result<T, String>;
 
 struct Request {
     model: PathBuf,
     voices: PathBuf,
-    text: String,
-    voice: String,
+    tokens: Vec<i64>,
     output: PathBuf,
 }
 
@@ -35,45 +39,36 @@ fn main() {
 
 fn run() -> AppResult<()> {
     let request = parse_request(env::args().skip(1))?;
-    configure_dependency_environment(&request.voice);
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .build()
-        .map_err(|_| "Kokoro async runtime could not be started".to_owned())?;
-    runtime.block_on(synthesize(request))
+    synthesize(request)
 }
 
-async fn synthesize(request: Request) -> AppResult<()> {
-    let tts = KokoroTts::new(&request.model, &request.voices)
-        .await
-        .map_err(|_| "Kokoro model or voice pack could not be loaded".to_owned())?;
-    let (audio, _) = tts
-        .synth(&request.text, &request.voice)
-        .await
-        .map_err(|_| "Kokoro synthesis failed".to_owned())?;
+fn synthesize(request: Request) -> AppResult<()> {
+    let style = read_voice_style(&request.voices, request.tokens.len())?;
+    let token_count = request.tokens.len();
+    let token_tensor = Tensor::from_array(([1, token_count], request.tokens))
+        .map_err(|_| "Kokoro token tensor could not be created".to_owned())?;
+    let style_tensor = Tensor::from_array(([1, STYLE_VALUES], style))
+        .map_err(|_| "Kokoro style tensor could not be created".to_owned())?;
+    let speed_tensor = Tensor::from_array(([1], vec![1.0_f32]))
+        .map_err(|_| "Kokoro speed tensor could not be created".to_owned())?;
+    let mut session = Session::builder()
+        .and_then(|builder| builder.commit_from_file(&request.model))
+        .map_err(|_| "Kokoro model could not be loaded".to_owned())?;
+    let outputs = session
+        .run(inputs![
+            "input_ids" => token_tensor,
+            "style" => style_tensor,
+            "speed" => speed_tensor,
+        ])
+        .map_err(|_| "Kokoro inference failed".to_owned())?;
+    let waveform = outputs
+        .get("waveform")
+        .ok_or_else(|| "Kokoro model has no waveform output".to_owned())?;
+    let (_, audio) = waveform
+        .try_extract_tensor::<f32>()
+        .map_err(|_| "Kokoro waveform output is invalid".to_owned())?;
 
-    write_pcm16_wav(&request.output, &audio)
-}
-
-fn configure_dependency_environment(voice: &str) {
-    // The process is still single-threaded here, before Tokio exists. Pinning these
-    // variables keeps G2P offline and prevents inherited trace or executable hooks.
-    unsafe {
-        env::set_var("KOKORO_ESPEAK_NG", "0");
-        env::set_var("KOKORO_G2P_SEGMENT_ESPEAK", "0");
-        env::set_var(
-            "KOKORO_G2P_LANG",
-            if voice.starts_with('b') { "b" } else { "a" },
-        );
-        for key in [
-            "KOKORO_ESPEAK_NG_BIN",
-            "KOKORO_G2P_LEXICON",
-            "KOKORO_G2P_TRACE",
-            "KOKORO_G2P_LEGACY",
-            "KOKORO_G2P_REQUIRE_ESPEAK",
-        ] {
-            env::remove_var(key);
-        }
-    }
+    write_pcm16_wav(&request.output, audio)
 }
 
 fn parse_request<I>(arguments: I) -> AppResult<Request>
@@ -83,7 +78,7 @@ where
     let mut arguments = arguments.into_iter();
     let mut model = None;
     let mut voices = None;
-    let mut text_file = None;
+    let mut tokens_file = None;
     let mut language = None;
     let mut voice = None;
     let mut output = None;
@@ -95,7 +90,7 @@ where
         match flag.as_str() {
             "--model" => set_once(&mut model, value, "--model")?,
             "--voices" => set_once(&mut voices, value, "--voices")?,
-            "--text-file" => set_once(&mut text_file, value, "--text-file")?,
+            "--tokens-file" => set_once(&mut tokens_file, value, "--tokens-file")?,
             "--language" => set_once(&mut language, value, "--language")?,
             "--voice" => set_once(&mut voice, value, "--voice")?,
             "--output" => set_once(&mut output, value, "--output")?,
@@ -115,14 +110,13 @@ where
         MAX_MODEL_BYTES,
     )?;
     let voices = validate_voices(PathBuf::from(required(voices, "--voices")?), &voice)?;
-    let text = read_prompt(PathBuf::from(required(text_file, "--text-file")?))?;
+    let tokens = read_tokens(PathBuf::from(required(tokens_file, "--tokens-file")?))?;
     let output = validate_output(PathBuf::from(required(output, "--output")?))?;
 
     Ok(Request {
         model,
         voices,
-        text,
-        voice,
+        tokens,
         output,
     })
 }
@@ -168,30 +162,69 @@ fn validate_voice(value: &str) -> AppResult<()> {
     Ok(())
 }
 
-fn read_prompt(path: PathBuf) -> AppResult<String> {
-    let path = validate_file(path, "Kokoro text file", None, MAX_PROMPT_BYTES)?;
-    let mut bytes = Vec::with_capacity(MAX_PROMPT_BYTES as usize + 1);
+fn read_tokens(path: PathBuf) -> AppResult<Vec<i64>> {
+    let path = validate_file(path, "Kokoro tokens file", None, MAX_TOKEN_BYTES)?;
+    let bytes = read_bounded(&path, MAX_TOKEN_BYTES, "Kokoro tokens file")?;
+    let text = String::from_utf8(bytes)
+        .map_err(|_| "Kokoro tokens file must be valid UTF-8".to_owned())?;
+    let tokens = text
+        .split_ascii_whitespace()
+        .map(|value| {
+            value
+                .parse::<i64>()
+                .map_err(|_| "Kokoro tokens must be decimal integers".to_owned())
+        })
+        .collect::<AppResult<Vec<_>>>()?;
+    if !(3..=MAX_TOKENS).contains(&tokens.len()) {
+        return Err(format!(
+            "Kokoro token count must be between 3 and {MAX_TOKENS}"
+        ));
+    }
+    if tokens.first() != Some(&0) || tokens.last() != Some(&0) {
+        return Err("Kokoro tokens must start and end with 0".to_owned());
+    }
+    if tokens[1..tokens.len() - 1]
+        .iter()
+        .any(|token| !(1..=MAX_TOKEN_ID).contains(token))
+    {
+        return Err(format!(
+            "Kokoro inner token ids must be between 1 and {MAX_TOKEN_ID}"
+        ));
+    }
+    Ok(tokens)
+}
+
+fn read_voice_style(path: &Path, token_count: usize) -> AppResult<Vec<f32>> {
+    let bytes = read_bounded(path, MAX_VOICE_BYTES, "Kokoro voice file")?;
+    let frame_bytes = STYLE_VALUES * size_of::<f32>();
+    if bytes.len() % frame_bytes != 0 || token_count == 0 {
+        return Err("Kokoro voice file has an invalid raw f32 shape".to_owned());
+    }
+    let offset = (token_count - 1)
+        .checked_mul(frame_bytes)
+        .filter(|offset| offset + frame_bytes <= bytes.len())
+        .ok_or_else(|| "Kokoro voice file has no style for this token count".to_owned())?;
+    let style = bytes[offset..offset + frame_bytes]
+        .chunks_exact(size_of::<f32>())
+        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .collect::<Vec<_>>();
+    if style.iter().any(|value| !value.is_finite()) {
+        return Err("Kokoro voice style contains a non-finite value".to_owned());
+    }
+    Ok(style)
+}
+
+fn read_bounded(path: &Path, maximum_bytes: u64, label: &str) -> AppResult<Vec<u8>> {
+    let mut bytes = Vec::with_capacity(maximum_bytes.min(64 * 1024) as usize);
     File::open(path)
-        .map_err(|_| "Kokoro text file could not be opened".to_owned())?
-        .take(MAX_PROMPT_BYTES + 1)
+        .map_err(|_| format!("{label} could not be opened"))?
+        .take(maximum_bytes + 1)
         .read_to_end(&mut bytes)
-        .map_err(|_| "Kokoro text file could not be read".to_owned())?;
-    if bytes.len() as u64 > MAX_PROMPT_BYTES {
-        return Err(format!(
-            "Kokoro prompts are limited to {MAX_PROMPT_CHARACTERS} characters"
-        ));
+        .map_err(|_| format!("{label} could not be read"))?;
+    if bytes.len() as u64 > maximum_bytes {
+        return Err(format!("{label} exceeds the size limit"));
     }
-    let text =
-        String::from_utf8(bytes).map_err(|_| "Kokoro text file must be valid UTF-8".to_owned())?;
-    if text.trim().is_empty() {
-        return Err("Kokoro prompt is missing or empty".to_owned());
-    }
-    if text.chars().count() > MAX_PROMPT_CHARACTERS {
-        return Err(format!(
-            "Kokoro prompts are limited to {MAX_PROMPT_CHARACTERS} characters"
-        ));
-    }
-    Ok(text)
+    Ok(bytes)
 }
 
 fn validate_file(
@@ -279,6 +312,9 @@ fn write_pcm16_wav(path: &Path, audio: &[f32]) -> AppResult<()> {
     if audio.is_empty() {
         return Err("Kokoro synthesis produced no audio".to_owned());
     }
+    if audio.iter().any(|sample| !sample.is_finite()) {
+        return Err("Kokoro synthesis produced non-finite audio".to_owned());
+    }
     let sample_bytes = audio
         .len()
         .checked_mul(2)
@@ -355,12 +391,57 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static NEXT_TEST_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+    const CONTRACT_MODEL: &[u8] = &[
+        0x08, 0x08, 0x12, 0x0c, 0x53, 0x75, 0x69, 0x73, 0x75, 0x69, 0x20, 0x74, 0x65, 0x73, 0x74,
+        0x73, 0x3a, 0xa4, 0x01, 0x0a, 0x1b, 0x0a, 0x05, 0x73, 0x74, 0x79, 0x6c, 0x65, 0x12, 0x08,
+        0x77, 0x61, 0x76, 0x65, 0x66, 0x6f, 0x72, 0x6d, 0x22, 0x08, 0x49, 0x64, 0x65, 0x6e, 0x74,
+        0x69, 0x74, 0x79, 0x12, 0x16, 0x73, 0x75, 0x69, 0x73, 0x75, 0x69, 0x2d, 0x6b, 0x6f, 0x6b,
+        0x6f, 0x72, 0x6f, 0x2d, 0x63, 0x6f, 0x6e, 0x74, 0x72, 0x61, 0x63, 0x74, 0x5a, 0x21, 0x0a,
+        0x09, 0x69, 0x6e, 0x70, 0x75, 0x74, 0x5f, 0x69, 0x64, 0x73, 0x12, 0x14, 0x0a, 0x12, 0x08,
+        0x07, 0x12, 0x0e, 0x0a, 0x02, 0x08, 0x01, 0x0a, 0x08, 0x12, 0x06, 0x74, 0x6f, 0x6b, 0x65,
+        0x6e, 0x73, 0x5a, 0x18, 0x0a, 0x05, 0x73, 0x74, 0x79, 0x6c, 0x65, 0x12, 0x0f, 0x0a, 0x0d,
+        0x08, 0x01, 0x12, 0x09, 0x0a, 0x02, 0x08, 0x01, 0x0a, 0x03, 0x08, 0x80, 0x02, 0x5a, 0x13,
+        0x0a, 0x05, 0x73, 0x70, 0x65, 0x65, 0x64, 0x12, 0x0a, 0x0a, 0x08, 0x08, 0x01, 0x12, 0x04,
+        0x0a, 0x02, 0x08, 0x01, 0x62, 0x1b, 0x0a, 0x08, 0x77, 0x61, 0x76, 0x65, 0x66, 0x6f, 0x72,
+        0x6d, 0x12, 0x0f, 0x0a, 0x0d, 0x08, 0x01, 0x12, 0x09, 0x0a, 0x02, 0x08, 0x01, 0x0a, 0x03,
+        0x08, 0x80, 0x02, 0x42, 0x04, 0x0a, 0x00, 0x10, 0x12,
+    ];
 
     #[test]
     fn validate_language_should_reject_japanese_until_parity_exists() {
         let error = validate_language("ja").unwrap_err();
 
         assert_eq!(error, JAPANESE_PARITY_ERROR);
+    }
+
+    #[test]
+    fn synthesize_should_preserve_the_kokoro_onnx_io_contract() {
+        let directory = unique_test_directory();
+        fs::create_dir_all(&directory).unwrap();
+        let model = directory.join("contract.onnx");
+        let voice = directory.join("af_heart.bin");
+        let output = directory.join("speech.wav");
+        fs::write(&model, CONTRACT_MODEL).unwrap();
+        let mut voice_bytes = vec![0_u8; STYLE_VALUES * size_of::<f32>() * 3];
+        let selected_frame = STYLE_VALUES * size_of::<f32>() * 2;
+        for sample in voice_bytes[selected_frame..].chunks_exact_mut(size_of::<f32>()) {
+            sample.copy_from_slice(&0.25_f32.to_le_bytes());
+        }
+        fs::write(&voice, voice_bytes).unwrap();
+
+        synthesize(Request {
+            model,
+            voices: voice,
+            tokens: vec![0, 1, 0],
+            output: output.clone(),
+        })
+        .unwrap();
+        let wav = fs::read(&output).unwrap();
+        let _ = fs::remove_dir_all(&directory);
+
+        assert_eq!(&wav[..4], b"RIFF");
+        assert_eq!(&wav[40..44], &(STYLE_VALUES as u32 * 2).to_le_bytes());
+        assert!(wav[44..].iter().any(|byte| *byte != 0));
     }
 
     #[test]
@@ -392,16 +473,46 @@ mod tests {
     }
 
     #[test]
-    fn read_prompt_should_reject_files_larger_than_the_utf8_limit() {
+    fn read_tokens_should_accept_bounded_v10_ids() {
         let directory = unique_test_directory();
         fs::create_dir_all(&directory).unwrap();
-        let prompt = directory.join("prompt.txt");
-        fs::write(&prompt, vec![b'a'; MAX_PROMPT_BYTES as usize + 1]).unwrap();
+        let tokens = directory.join("tokens.txt");
+        fs::write(&tokens, b"0 50 83 54 156 57 135 0").unwrap();
 
-        let error = read_prompt(prompt).unwrap_err();
+        let result = read_tokens(tokens).unwrap();
         let _ = fs::remove_dir_all(&directory);
 
-        assert_eq!(error, "Kokoro text file exceeds the size limit");
+        assert_eq!(result, [0, 50, 83, 54, 156, 57, 135, 0]);
+    }
+
+    #[test]
+    fn read_tokens_should_reject_files_larger_than_the_input_limit() {
+        let directory = unique_test_directory();
+        fs::create_dir_all(&directory).unwrap();
+        let tokens = directory.join("tokens.txt");
+        fs::write(&tokens, vec![b'1'; MAX_TOKEN_BYTES as usize + 1]).unwrap();
+
+        let error = read_tokens(tokens).unwrap_err();
+        let _ = fs::remove_dir_all(&directory);
+
+        assert_eq!(error, "Kokoro tokens file exceeds the size limit");
+    }
+
+    #[test]
+    fn read_voice_style_should_select_the_token_count_frame() {
+        let directory = unique_test_directory();
+        fs::create_dir_all(&directory).unwrap();
+        let voice = directory.join("af_heart.bin");
+        let mut bytes = vec![0_u8; STYLE_VALUES * size_of::<f32>() * 3];
+        let offset = STYLE_VALUES * size_of::<f32>() * 2;
+        bytes[offset..offset + 4].copy_from_slice(&0.5_f32.to_le_bytes());
+        fs::write(&voice, bytes).unwrap();
+
+        let style = read_voice_style(&voice, 3).unwrap();
+        let _ = fs::remove_dir_all(&directory);
+
+        assert_eq!(style.len(), STYLE_VALUES);
+        assert_eq!(style[0], 0.5);
     }
 
     #[test]
@@ -429,10 +540,23 @@ mod tests {
         let output = directory.join("speech.wav");
 
         let error = write_pcm16_wav(&output, &[]).unwrap_err();
-        let _ = fs::remove_dir_all(&directory);
 
         assert_eq!(error, "Kokoro synthesis produced no audio");
         assert!(!output.exists());
+        let _ = fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn write_pcm16_wav_should_reject_non_finite_audio() {
+        let directory = unique_test_directory();
+        fs::create_dir_all(&directory).unwrap();
+        let output = directory.join("speech.wav");
+
+        let error = write_pcm16_wav(&output, &[f32::NAN]).unwrap_err();
+
+        assert_eq!(error, "Kokoro synthesis produced non-finite audio");
+        assert!(!output.exists());
+        let _ = fs::remove_dir_all(&directory);
     }
 
     #[test]
