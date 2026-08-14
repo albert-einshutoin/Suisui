@@ -58,6 +58,11 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"^\s*(?:try\s+)?[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\s*$"#
     )
 
+    private struct SwiftLexicalContext {
+        var isInNormalCode: Bool
+        var unmatchedOpenParentheses: [String.Index]
+    }
+
     public init(connection: SQLiteConnection, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) {
         database = SQLiteDatabaseWorker(connection: connection)
         self.redactor = redactor
@@ -383,6 +388,10 @@ public actor DevelopmentRepositoryIndex {
             let lineRange = contents.lineRange(for: swiftRange)
             let line = String(contents[lineRange])
             let sourcePrefix = String(contents[..<swiftRange.lowerBound])
+            let lexicalContext = swiftLexicalContext(in: sourcePrefix)
+            guard lexicalContext.isInNormalCode else {
+                return true
+            }
             let sourcePrefixRange = NSRange(sourcePrefix.startIndex..<sourcePrefix.endIndex, in: sourcePrefix)
             let assignmentPrefix = String(contents[lineRange.lowerBound..<swiftRange.lowerBound])
             let prefixRange = NSRange(assignmentPrefix.startIndex..<assignmentPrefix.endIndex, in: assignmentPrefix)
@@ -403,7 +412,7 @@ public actor DevelopmentRepositoryIndex {
                 assignmentPrefix.contains("\"") ||
                 assignmentPrefix.contains("'")
             let isCallLabel = !hasCurrentLineCommentOrQuote &&
-                hasOpenSwiftArgumentList(in: sourcePrefix, callOpener: callOpener) &&
+                hasOpenSwiftArgumentList(in: sourcePrefix, context: lexicalContext, callOpener: callOpener) &&
                 containsSafeSwiftExpression(in: assignmentSuffix, grammar: safeCallLabel, atom: safeExpressionAtom)
             return !(isTypedDeclaration || isSafeAssignment || isCallLabel)
         }
@@ -422,35 +431,103 @@ public actor DevelopmentRepositoryIndex {
         return isSafeSwiftExpression(String(value[expressionRange]), atom: atom)
     }
 
-    // Walking nesting from the end survives nested calls, but only a real call
-    // opener is trusted: comments and strings must never create a safe exception.
-    private static func hasOpenSwiftArgumentList(
-        in sourcePrefix: String,
-        callOpener: NSRegularExpression
-    ) -> Bool {
-        var closedParentheses = 0
-        for index in sourcePrefix.indices.reversed() {
-            let character = sourcePrefix[index]
-            switch character {
-            case ")":
-                closedParentheses += 1
-            case "(":
-                if closedParentheses == 0 {
-                    let lineRange = sourcePrefix.lineRange(for: index..<sourcePrefix.index(after: index))
-                    let openerPrefix = String(sourcePrefix[lineRange.lowerBound..<index])
-                    let range = NSRange(openerPrefix.startIndex..<openerPrefix.endIndex, in: openerPrefix)
-                    return !openerPrefix.contains("//") &&
-                        !openerPrefix.contains("/*") &&
-                        !openerPrefix.contains("\"") &&
-                        !openerPrefix.contains("'") &&
-                        callOpener.firstMatch(in: openerPrefix, range: range) != nil
-                }
-                closedParentheses -= 1
-            default:
+    // Build lexical state before each match so comment/string text cannot create
+    // an indexing exception or contribute a misleading unmatched parenthesis.
+    // ponytail: this intentionally recognizes only the lexical states needed by
+    // the credential exceptions; use SwiftSyntax if those exceptions grow.
+    private static func swiftLexicalContext(in source: String) -> SwiftLexicalContext {
+        var lineComment = false
+        var blockCommentDepth = 0
+        var singleString = false
+        var multilineString = false
+        var unmatchedOpenParentheses: [String.Index] = []
+        var index = source.startIndex
+
+        while index < source.endIndex {
+            let character = source[index]
+            let nextIndex = source.index(after: index)
+            let nextCharacter = nextIndex < source.endIndex ? source[nextIndex] : nil
+            let hasTripleQuote = source[index...].hasPrefix("\"\"\"")
+
+            if lineComment {
+                lineComment = character != "\n"
+                index = nextIndex
                 continue
             }
+            if blockCommentDepth > 0 {
+                if character == "/", nextCharacter == "*" {
+                    blockCommentDepth += 1
+                    index = source.index(after: nextIndex)
+                } else if character == "*", nextCharacter == "/" {
+                    blockCommentDepth -= 1
+                    index = source.index(after: nextIndex)
+                } else {
+                    index = nextIndex
+                }
+                continue
+            }
+            if multilineString {
+                if character == "\\", nextIndex < source.endIndex {
+                    index = source.index(after: nextIndex)
+                } else if hasTripleQuote {
+                    multilineString = false
+                    index = source.index(index, offsetBy: 3)
+                } else {
+                    index = nextIndex
+                }
+                continue
+            }
+            if singleString {
+                if character == "\\", nextIndex < source.endIndex {
+                    index = source.index(after: nextIndex)
+                } else {
+                    singleString = character != "\""
+                    index = nextIndex
+                }
+                continue
+            }
+
+            if character == "/", nextCharacter == "/" {
+                lineComment = true
+                index = source.index(after: nextIndex)
+            } else if character == "/", nextCharacter == "*" {
+                blockCommentDepth = 1
+                index = source.index(after: nextIndex)
+            } else if hasTripleQuote {
+                multilineString = true
+                index = source.index(index, offsetBy: 3)
+            } else if character == "\"" {
+                singleString = true
+                index = nextIndex
+            } else if character == "(" {
+                unmatchedOpenParentheses.append(index)
+                index = nextIndex
+            } else if character == ")" {
+                _ = unmatchedOpenParentheses.popLast()
+                index = nextIndex
+            } else {
+                index = nextIndex
+            }
         }
-        return false
+
+        return SwiftLexicalContext(
+            isInNormalCode: !lineComment && blockCommentDepth == 0 && !singleString && !multilineString,
+            unmatchedOpenParentheses: unmatchedOpenParentheses
+        )
+    }
+
+    private static func hasOpenSwiftArgumentList(
+        in sourcePrefix: String,
+        context: SwiftLexicalContext,
+        callOpener: NSRegularExpression
+    ) -> Bool {
+        guard context.isInNormalCode, let openParenthesis = context.unmatchedOpenParentheses.last else {
+            return false
+        }
+        let lineRange = sourcePrefix.lineRange(for: openParenthesis..<sourcePrefix.index(after: openParenthesis))
+        let openerPrefix = String(sourcePrefix[lineRange.lowerBound..<openParenthesis])
+        let range = NSRange(openerPrefix.startIndex..<openerPrefix.endIndex, in: openerPrefix)
+        return callOpener.firstMatch(in: openerPrefix, range: range) != nil
     }
 
     private static func isSafeSwiftExpression(_ expression: String, atom: NSRegularExpression) -> Bool {
