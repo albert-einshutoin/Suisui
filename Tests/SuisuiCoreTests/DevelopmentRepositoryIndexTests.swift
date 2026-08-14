@@ -89,12 +89,13 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
     func testRefreshDoesNotPersistKubernetesKeyDataOrPEM() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
-        try fixture.write("client-key-data: QUJDREVGR0hJSktMTU4=", to: "Kube.yml")
+        let encodedKeyData = "QUJDREVG" + "R0hJSktMTU4="
+        try fixture.write("client-key-data: \(encodedKeyData)", to: "Kube.yml")
         try fixture.write("  -----BEGIN PRIVATE KEY-----\n  placeholder\n  -----END PRIVATE KEY-----", to: "KeyMaterial.txt")
         let index = try migratedIndex()
         try await index.refresh(workspace: workspace(fixture))
 
-        let kubernetesResults = try await index.search(query: "QUJDREVGR0hJSktMTU4", workspace: workspace(fixture))
+        let kubernetesResults = try await index.search(query: encodedKeyData, workspace: workspace(fixture))
         let pemResults = try await index.search(query: "PRIVATE", workspace: workspace(fixture))
         XCTAssertTrue(kubernetesResults.isEmpty)
         XCTAssertTrue(pemResults.isEmpty)
@@ -165,6 +166,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             """,
             to: "Sources/SaaSConnectors.swift"
         )
+        let credentialMarker = "ABCDEFGH" + "IJK1234"
         let credentials = [
             "Settings.env.swift": "API_KEY=long-secret-value",
             "TokenQuoted.swift": "token=\"long-secret-value\"",
@@ -174,7 +176,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             "TokenYAML.yml": "token: long-secret-value",
             "TokenTyped.swift": "token: String = \"long-secret-value\"",
             "TokenMixed.swift": "func f(token: ApprovalToken, password: long-secret-value) {}\n{ token: ApprovalToken, password: long-secret-value }",
-            "TokenUppercase.yml": "TOKEN: ABCDEFGHIJK1234",
+            "TokenUppercase.yml": "TOKEN: \(credentialMarker)",
             "ClientSecret.env.swift": "CLIENT_SECRET=compound-secret-value",
             "PrivateKey.env.swift": "PRIVATE_KEY=compound-secret-value",
             "AWSSecret.env.swift": "AWS_SECRET_ACCESS_KEY=compound-secret-value",
@@ -217,23 +219,23 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             "Gemfile": "accessToken = \"long-secret-value\"",
             "Data.csv": "accessToken,long-secret-value",
             "SingleQuotedCredential.yml": "'token': long-secret-value",
-            "CommentOpen.swift": "// fake(\ntoken: ABCDEFGHIJK1234",
-            "CommentInsideCall.swift": "request(\n// token: ABCDEFGHIJK1234\n)",
-            "BlockCommentCall.swift": "request(\n/*\naccessToken: ABCDEFGHIJK1234\n*/\n)",
-            "BlockCommentAssignment.swift": "/*\nlet googleClientSecret = ABCDEFGHIJK1234\n*/",
-            "MultilineStringCall.swift": "request(\n\"\"\"\naccessToken: ABCDEFGHIJK1234\n\"\"\"\n)",
-            "MultilineStringAssignment.swift": "let template = \"\"\"\nlet googleClientSecret = ABCDEFGHIJK1234\n\"\"\"",
-            "RawStringAssignment.swift": "let template = #\"let googleClientSecret = ABCDEFGHIJK1234\"#",
-            "RawMultilineAssignment.swift": "#\"\"\"\nliteral \"\"\"\nlet googleClientSecret = ABCDEFGHIJK1234\n\"\"\"#",
-            "RawMultilineCall.swift": "request(\n#\"\"\"\naccessToken: ABCDEFGHIJK1234\n\"\"\"#\n)",
-            "RawEscapedDelimiter.swift": "#\"\"\"\n\\#\"\"\"#\nlet googleClientSecret = ABCDEFGHIJK1234\n\"\"\"#",
-            "RawRegexAssignment.swift": "let pattern = #/\nliteral \\/\nlet googleClientSecret = ABCDEFGHIJK1234\n/#",
-            "RawRegexDoubleHashAssignment.swift": "##/\nliteral /#\nlet googleClientSecret = ABCDEFGHIJK1234\n/##",
-            "RawRegexCall.swift": "request(\n#/\naccessToken: ABCDEFGHIJK1234\n/#\n)",
-            "RawRegexEscapedDelimiter.swift": "let pattern = #/\n\\/#\nlet googleClientSecret = ABCDEFGHIJK1234\n/#",
-            "RawRegexDoubleHashEscapedDelimiter.swift": "let pattern = ##/\n\\/##\nlet googleClientSecret = ABCDEFGHIJK1234\n/##",
-            "RawRegexEscapedDelimiterCall.swift": "request(\n##/\n\\/##\naccessToken: ABCDEFGHIJK1234\n/##\n)",
-            "TokenStandalone.swift": "TOKEN: ABCDEFGHIJK1234",
+            "CommentOpen.swift": "// fake(\ntoken: \(credentialMarker)",
+            "CommentInsideCall.swift": "request(\n// token: \(credentialMarker)\n)",
+            "BlockCommentCall.swift": "request(\n/*\naccessToken: \(credentialMarker)\n*/\n)",
+            "BlockCommentAssignment.swift": "/*\nlet googleClientSecret = \(credentialMarker)\n*/",
+            "MultilineStringCall.swift": "request(\n\"\"\"\naccessToken: \(credentialMarker)\n\"\"\"\n)",
+            "MultilineStringAssignment.swift": "let template = \"\"\"\nlet googleClientSecret = \(credentialMarker)\n\"\"\"",
+            "RawStringAssignment.swift": "let template = #\"let googleClientSecret = \(credentialMarker)\"#",
+            "RawMultilineAssignment.swift": "#\"\"\"\nliteral \"\"\"\nlet googleClientSecret = \(credentialMarker)\n\"\"\"#",
+            "RawMultilineCall.swift": "request(\n#\"\"\"\naccessToken: \(credentialMarker)\n\"\"\"#\n)",
+            "RawEscapedDelimiter.swift": "#\"\"\"\n\\#\"\"\"#\nlet googleClientSecret = \(credentialMarker)\n\"\"\"#",
+            "RawRegexAssignment.swift": "let pattern = #/\nliteral \\/\nlet googleClientSecret = \(credentialMarker)\n/#",
+            "RawRegexDoubleHashAssignment.swift": "##/\nliteral /#\nlet googleClientSecret = \(credentialMarker)\n/##",
+            "RawRegexCall.swift": "request(\n#/\naccessToken: \(credentialMarker)\n/#\n)",
+            "RawRegexEscapedDelimiter.swift": "let pattern = #/\n\\/#\nlet googleClientSecret = \(credentialMarker)\n/#",
+            "RawRegexDoubleHashEscapedDelimiter.swift": "let pattern = ##/\n\\/##\nlet googleClientSecret = \(credentialMarker)\n/##",
+            "RawRegexEscapedDelimiterCall.swift": "request(\n##/\n\\/##\naccessToken: \(credentialMarker)\n/##\n)",
+            "TokenStandalone.swift": "TOKEN: \(credentialMarker)",
             "TokenSource.txt": "let token = textonlymarker",
             "TokenFunction.yml": "func f(token: NonSwiftMarker)",
         ]
@@ -254,7 +256,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let enumShorthandResults = try await index.search(query: "normalizedToken", workspace: workspace(fixture))
         let nominalTypeResults = try await index.search(query: "ServiceAccessToken", workspace: workspace(fixture))
         let credentialResults = try await index.search(query: "long", workspace: workspace(fixture))
-        let uppercaseCredentialResults = try await index.search(query: "ABCDEFGHIJK1234", workspace: workspace(fixture))
+        let uppercaseCredentialResults = try await index.search(query: credentialMarker, workspace: workspace(fixture))
         let compoundCredentialResults = try await index.search(query: "compound", workspace: workspace(fixture))
         let textCredentialResults = try await index.search(query: "textonlymarker", workspace: workspace(fixture))
         let nonSwiftFunctionResults = try await index.search(query: "NonSwiftMarker", workspace: workspace(fixture))
