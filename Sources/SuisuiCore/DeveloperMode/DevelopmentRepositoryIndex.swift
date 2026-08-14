@@ -477,7 +477,36 @@ public actor DevelopmentRepositoryIndex {
         let separators = CharacterSet.whitespacesAndNewlines
             .union(.punctuationCharacters)
             .union(.symbols)
-        return SQLiteTaskStore.boundedSearchTokens(query.components(separatedBy: separators))
+        let words = query.components(separatedBy: separators)
+        let terms = words.flatMap(cjkBigramsOrWord)
+        return SQLiteTaskStore.boundedSearchTokens(terms)
+    }
+
+    private static func cjkBigramsOrWord(_ word: String) -> [String] {
+        let characters = Array(word)
+        guard characters.count > 1,
+              characters.allSatisfy(isCJKCharacter) else {
+            return [word]
+        }
+        // CJK natural-language queries have no word boundaries.  Use bounded
+        // 2-grams so the existing AND-first, OR-completion search can retrieve
+        // relevant fragments without requiring the whole sentence in one file.
+        return (0..<(characters.count - 1)).map { index in
+            String(characters[index...(index + 1)])
+        }
+    }
+
+    private static func isCJKCharacter(_ character: Character) -> Bool {
+        !character.unicodeScalars.isEmpty && character.unicodeScalars.allSatisfy(isCJK)
+    }
+
+    private static func isCJK(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x3040...0x30FF, 0x3400...0x9FFF, 0xAC00...0xD7AF, 0xFF66...0xFF9F:
+            true
+        default:
+            false
+        }
     }
 
     private static func ftsMatch(_ terms: [String], joiner: String) -> String {
@@ -1062,14 +1091,7 @@ public actor DevelopmentRepositoryIndex {
     }
 
     private static func containsCJK(_ value: String) -> Bool {
-        value.unicodeScalars.contains { scalar in
-            switch scalar.value {
-            case 0x3040...0x30FF, 0x3400...0x9FFF, 0xAC00...0xD7AF, 0xFF66...0xFF9F:
-                true
-            default:
-                false
-            }
-        }
+        value.unicodeScalars.contains(where: isCJK)
     }
 
     private static func sha256(_ value: String) -> String {

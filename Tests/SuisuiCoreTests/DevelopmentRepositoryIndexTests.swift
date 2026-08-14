@@ -1159,6 +1159,20 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(results.map(\.sourcePath), ["Docs/FTSExact.md", "Docs/Fallback.md"])
     }
 
+    func testSearchUsesCJKBigramsForUnspacedNaturalLanguage() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("設定画面の説明 settingsmarker", to: "Docs/Settings.md")
+        try fixture.write("保存処理の説明 savemarker", to: "Docs/Save.md")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let results = try await index.search(query: "設定画面の保存処理を直して", workspace: workspace(fixture), topK: 2)
+
+        XCTAssertEqual(results.map(\.sourcePath), ["Docs/Save.md", "Docs/Settings.md"])
+    }
+
     func testSearchRejectsPunctuationOnlyQuery() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
