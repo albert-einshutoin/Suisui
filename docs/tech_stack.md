@@ -618,6 +618,8 @@ MVP では入れない。
 
 Developer Modeのrepository索引は、Gitのignore済みmanifest（tracked + untracked）を入力にし、秘密らしいpath/content、binary、symlink、巨大fileを除外してSQLite FTS5へ世代単位で反映する。完全scanが成功するまで旧世代を残すため、失敗した再索引で検索結果を失わない。watcher、独自vector DB、repository chunk embeddingは実測で必要になるまで追加しない。
 
+このPRではindex / refresh / search connectorのlibrary境界までとし、アプリのproduction compositionには未接続とする。既存の承認付き`CodebaseMemoryPlanningIntegration`への接続は、workspace選択とrefresh契約を確定する別PRで行う。
+
 Rust化の対象はembedding推論境界だけとする。STT、SQLite DB、承認、同期、UIはSwift / OS nativeのまま維持する。
 
 ---
