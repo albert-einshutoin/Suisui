@@ -39,7 +39,7 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"\b(?i:authorization)\b"#
     )
     private static let standaloneProviderCredential = try? NSRegularExpression(
-        pattern: #"(?<![A-Za-z0-9_-])(?:xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{20,}|glpat-[A-Za-z0-9_-]{8,}|sk_live_[A-Za-z0-9_-]{8,})(?![A-Za-z0-9_-])"#
+        pattern: #"(?<![A-Za-z0-9_-])(?:xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{20,}|glpat-[A-Za-z0-9_-]{8,})(?![A-Za-z0-9_-])"#
     )
     private static let safeSwiftAssignment = try? NSRegularExpression(
         pattern: #"^\s*(?:(?:let|var)\s+)?(?:self\.)?[A-Za-z_][A-Za-z0-9_]*\s+=\s*(.+?)\s*$"#
@@ -66,7 +66,7 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"^\s*case\s+\.[A-Za-z_][A-Za-z0-9_]*\s*:\s*$"#
     )
     private static let serializedCredential = try? NSRegularExpression(
-        pattern: #"(?im)^\s*[\"']?client[-_]key[-_]data[\"']?\s*:\s*\S+|^\s*-----BEGIN (?:[A-Z0-9 ]*PRIVATE KEY)-----"#
+        pattern: #"(?im)^\s*[\"']?client[-_]key[-_]data[\"']?\s*:\s*\S+"#
     )
     private static let yamlClientKeyData = try? NSRegularExpression(
         pattern: #"(?i)client[-_]?key[-_]?data"#

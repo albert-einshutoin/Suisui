@@ -57,6 +57,24 @@ final class DraftGenerationTests: XCTestCase {
         XCTAssertEqual(redaction.report.matchedPatternNames, ["ghp"])
     }
 
+    func testStripeSecretVariantsAndPrivateKeyBlocksAreRedacted() {
+        let stripeTokens = ["sk_live", "sk_test", "rk_live", "rk_test"].map {
+            $0 + "_" + "stripedraftsecretmarker"
+        }
+        let privateKeyMarker = "pgpdraftsecretmarker"
+        let harmless = "Stripe modes sk_test and rk_live; PGP PRIVATE KEY BLOCK documentation harmlessstripemarker"
+        let redaction = DeveloperSecretRedactor().redact(
+            stripeTokens.joined(separator: "\n") + "\n" +
+                "-----BEGIN PGP PRIVATE KEY BLOCK-----\n\(privateKeyMarker)\n-----END PGP PRIVATE KEY BLOCK-----\n" +
+                harmless
+        )
+
+        XCTAssertTrue(stripeTokens.allSatisfy { !redaction.text.contains($0) })
+        XCTAssertFalse(redaction.text.contains(privateKeyMarker))
+        XCTAssertTrue(redaction.text.contains(harmless))
+        XCTAssertEqual(Set(redaction.report.matchedPatternNames), ["stripe", "private_key_block"])
+    }
+
     func testAssignmentRedactionDoesNotConsumeFollowingAuditFields() {
         let apiKey = "secret-value"
         let summary = "apiKey=string(\"\(apiKey)\"),title=string(\"Secret task\")"

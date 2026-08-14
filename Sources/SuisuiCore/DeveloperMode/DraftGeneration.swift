@@ -44,7 +44,11 @@ public struct DeveloperSecretRedactor: Sendable {
         // token-prefix family; classic ghp fixtures retain their old threshold.
         SecretRedactionPatternDefinition(name: "ghp", expression: #"gh(?:p_[A-Za-z0-9_]{6,}|[ousr]_[A-Za-z0-9_]{8,})"#),
         SecretRedactionPatternDefinition(name: "openai", expression: #"sk-(?:proj-)?[A-Za-z0-9_-]{8,}"#),
+        SecretRedactionPatternDefinition(name: "stripe", expression: #"(?<![A-Za-z0-9_-])(?:sk|rk)_(?:live|test)_[A-Za-z0-9_-]{8,}(?![A-Za-z0-9_-])"#),
         SecretRedactionPatternDefinition(name: "aws_access_key", expression: #"AKIA[0-9A-Z]{16}"#),
+        // Consume the entire key block, not only its header, so draft/log output
+        // cannot retain secret body lines. An unterminated block fails closed.
+        SecretRedactionPatternDefinition(name: "private_key_block", expression: #"(?ims)^\s*-----BEGIN ([A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?)-----.*?(?:^\s*-----END \1-----\s*|\z)"#),
         // Repository indexes must reject Docker credential JSON before it can be
         // persisted; matching field names catches encoded values too.
         SecretRedactionPatternDefinition(name: "docker_auth_json", expression: #"(?i)\"(?:auths|auth|identitytoken)\"\s*:\s*(?:\{|\"(?:\\.|[^\"\\])*\")"#),

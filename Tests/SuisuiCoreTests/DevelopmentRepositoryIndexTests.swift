@@ -92,14 +92,19 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let slackCredential = "xoxb-" + "slackindexmarker123"
         let googleCredential = "AIza" + "googleindexmarker1234567890"
         let gitLabCredential = "glpat-" + "gitlabindexmarker123"
-        let stripeCredential = "sk_live_" + "stripeindexmarker123"
+        let stripeCredentials = ["sk_live", "sk_test", "rk_live", "rk_test"].enumerated().map { index, prefix in
+            ("Stripe\(index).md", prefix + "_" + "stripevariantsecret\(index)")
+        }
         let githubCredentials = ["gho", "ghu", "ghs", "ghr"].enumerated().map { index, prefix in
             ("GitHub\(index).md", prefix + "_" + "githubfamilymarker\(index)")
         }
         try fixture.write("Leaked sample: \(slackCredential)", to: "Slack.md")
         try fixture.write("Copied value: \(googleCredential)", to: "Notes.md")
         try fixture.write("Leaked sample: \(gitLabCredential)", to: "README.md")
-        try fixture.write("Captured output: \(stripeCredential)", to: "BuildLog.txt")
+        for (path, credential) in stripeCredentials {
+            try fixture.write("Captured stripevariantmarker: \(credential)", to: path)
+        }
+        try fixture.write("Stripe modes sk_test and rk_live harmlessstripeindexmarker", to: "StripeDocs.md")
         for (path, credential) in githubCredentials {
             try fixture.write("Leaked sample: \(credential)", to: path)
         }
@@ -110,12 +115,14 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let slack = try await index.search(query: "slackindexmarker123", workspace: workspace(fixture))
         let google = try await index.search(query: "googleindexmarker1234567890", workspace: workspace(fixture))
         let gitLab = try await index.search(query: "gitlabindexmarker123", workspace: workspace(fixture))
-        let stripe = try await index.search(query: "stripeindexmarker123", workspace: workspace(fixture))
+        let stripe = try await index.search(query: "stripevariantmarker", workspace: workspace(fixture))
+        let harmlessStripe = try await index.search(query: "harmlessstripeindexmarker", workspace: workspace(fixture))
         let github = try await index.search(query: "githubfamilymarker", workspace: workspace(fixture))
         XCTAssertTrue(slack.isEmpty)
         XCTAssertTrue(google.isEmpty)
         XCTAssertTrue(gitLab.isEmpty)
         XCTAssertTrue(stripe.isEmpty)
+        XCTAssertEqual(harmlessStripe.map(\.sourcePath), ["StripeDocs.md"])
         XCTAssertTrue(github.isEmpty)
 
         let fileClient = DevelopmentRepositoryFileClient(project: ProjectRecord(
@@ -179,6 +186,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let aliasYAMLKeyData = "aliaskubesentinel"
         let camelCaseKeyData = "camelkubesentinel"
         let jsonKeyData = "jsonkubesentinel"
+        let pgpPrivateKey = "pgpprivatekeymarker"
         try fixture.write("client-key-data: \(encodedKeyData)", to: "Kube.yml")
         try fixture.write("\"client-key-data\": \"\(quotedYAMLKeyData)\"", to: "QuotedKube.yml")
         try fixture.write("users: [{name: prod, user: {\"client_key_data\": \"\(flowYAMLKeyData)\"}}]", to: "FlowKube.yaml")
@@ -187,6 +195,11 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         try fixture.write("clientKeyData: \(camelCaseKeyData)", to: "CamelKube.yaml")
         try fixture.write("{\"client-key-data\":\"\(jsonKeyData)\"}", to: "Kube.json")
         try fixture.write("  -----BEGIN PRIVATE KEY-----\n  placeholder\n  -----END PRIVATE KEY-----", to: "KeyMaterial.txt")
+        try fixture.write(
+            "-----BEGIN PGP PRIVATE KEY BLOCK-----\n\(pgpPrivateKey)\n-----END PGP PRIVATE KEY BLOCK-----",
+            to: "PGPKeyMaterial.txt"
+        )
+        try fixture.write("PGP PRIVATE KEY BLOCK documentation harmlesspgpmarker", to: "PGPDocumentation.md")
         let index = try migratedIndex()
         try await index.refresh(workspace: workspace(fixture))
 
@@ -197,7 +210,9 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let extensionlessFlowResults = try await index.search(query: extensionlessFlowKeyData, workspace: workspace(fixture))
         let camelCaseResults = try await index.search(query: camelCaseKeyData, workspace: workspace(fixture))
         let jsonResults = try await index.search(query: jsonKeyData, workspace: workspace(fixture))
-        let pemResults = try await index.search(query: "PRIVATE", workspace: workspace(fixture))
+        let pemResults = try await index.search(query: "placeholder", workspace: workspace(fixture))
+        let pgpResults = try await index.search(query: pgpPrivateKey, workspace: workspace(fixture))
+        let harmlessPGPResults = try await index.search(query: "harmlesspgpmarker", workspace: workspace(fixture))
         XCTAssertTrue(kubernetesResults.isEmpty)
         XCTAssertTrue(quotedYAMLResults.isEmpty)
         XCTAssertTrue(flowYAMLResults.isEmpty)
@@ -206,6 +221,8 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(camelCaseResults.isEmpty)
         XCTAssertTrue(jsonResults.isEmpty)
         XCTAssertTrue(pemResults.isEmpty)
+        XCTAssertTrue(pgpResults.isEmpty)
+        XCTAssertEqual(harmlessPGPResults.map(\.sourcePath), ["PGPDocumentation.md"])
     }
 
     func testRefreshDoesNotPersistAuthorizationHeadersOrJWTs() async throws {
