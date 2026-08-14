@@ -74,6 +74,17 @@ final class DraftGenerationTests: XCTestCase {
         }
     }
 
+    func testConnectionURIUserInfoIsRedacted() {
+        let fixtureCredential = ["fixture", "credential"].joined(separator: "-")
+        let redaction = DeveloperSecretRedactor().redact(
+            "dsn=postgres://alice:\(fixtureCredential)@db.example/app"
+        )
+
+        XCTAssertFalse(redaction.text.contains(fixtureCredential))
+        XCTAssertTrue(redaction.text.contains("[REDACTED_SECRET]"))
+        XCTAssertTrue(redaction.report.matchedPatternNames.contains("credential_uri"))
+    }
+
     func testInvalidRedactionPatternFailsClosedWithoutLeakingInput() {
         let redactor = DeveloperSecretRedactor(patternDefinitions: [
             SecretRedactionPatternDefinition(name: "broken", expression: "[")
