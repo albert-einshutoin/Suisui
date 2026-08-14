@@ -402,11 +402,12 @@ jobs:
       - name: Upload immutable release performance app
         uses: actions/upload-artifact@v4
         with:
-          name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ui-performance-app-${{ github.run_id }}
           path: .tmp/ui-performance-app
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 1
+          overwrite: true
 
   ui-performance:
     name: UI Performance (production route)
@@ -427,7 +428,7 @@ jobs:
       - name: Download immutable release performance app
         uses: actions/download-artifact@v4
         with:
-          name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ui-performance-app-${{ github.run_id }}
           path: .tmp/ui-performance-app
 
       - name: Measure production runtime
