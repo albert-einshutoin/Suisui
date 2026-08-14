@@ -31,7 +31,7 @@ public actor DevelopmentRepositoryIndex {
     // For indexing, reject every such assignment unless it matches one of the
     // narrow Swift grammars below; unknown syntax stays fail-closed.
     private static let credentialKeyAssignments = try? NSRegularExpression(
-        pattern: #"\b(?i:(?:[A-Za-z_][A-Za-z0-9_]*)?(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret)[A-Za-z0-9_]*)\b"#
+        pattern: #"\b(?i:(?:[A-Za-z_][A-Za-z0-9_]*)?(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret|credentials?)[A-Za-z0-9_]*)\b"#
     )
     private static let authorizationIdentifier = try? NSRegularExpression(
         pattern: #"\b(?i:authorization)\b"#
@@ -727,7 +727,7 @@ public actor DevelopmentRepositoryIndex {
         if ["auth", "auths", "authorization", "identitytoken"].contains(normalized) {
             return true
         }
-        return ["apikey", "accesskey", "privatekey", "clientkeydata", "token", "password", "secret"].contains {
+        return ["apikey", "accesskey", "privatekey", "clientkeydata", "token", "password", "secret", "credential", "credentials"].contains {
             normalized.hasSuffix($0)
         }
     }
@@ -1306,14 +1306,16 @@ enum GitManifestReader {
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         // This read-only manifest must not inherit repository or user hooks.
         // In particular, core.fsmonitor can execute a repo-configured command.
-        var options = [
+        let options = [
             "-c", "core.fsmonitor=false",
             "-c", "core.hooksPath=/dev/null",
         ]
+        var manifestArguments = arguments
         if let globalExcludesFile = try globalExcludesFile(executableURL: executableURL) {
-            // Read only this path from the user's global config; the manifest
-            // process itself remains isolated from global hooks and commands.
-            options += ["-c", "core.excludesFile=\(globalExcludesFile)"]
+            // `-c core.excludesFile` would replace the repository-local setting.
+            // Add the global patterns as an ls-files input instead, retaining both
+            // ignore sources while global hooks and commands remain isolated.
+            manifestArguments.append("--exclude-from=\(globalExcludesFile)")
         }
         // Process holds `.` as its cwd across exec. Verify that inode inside the
         // child before invoking git so an ABA path replacement cannot redirect a
@@ -1324,7 +1326,7 @@ enum GitManifestReader {
             "repository-manifest",
             "\(rootIdentity.device):\(rootIdentity.inode)",
             executableURL.path,
-        ] + options + arguments
+        ] + options + manifestArguments
         process.currentDirectoryURL = root
         process.standardOutput = standardOutput
         process.standardError = FileHandle.nullDevice

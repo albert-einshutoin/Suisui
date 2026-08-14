@@ -86,6 +86,27 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(serviceResults.isEmpty)
     }
 
+    func testRefreshDoesNotPersistGenericCredentialKeys() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("credentials = \"tomlcredentialmarker\"", to: "Settings.toml")
+        try fixture.write("credential: yamlcredentialmarker", to: "Settings.yaml")
+        try fixture.write("{\"credentials\":\"jsoncredentialmarker\"}", to: "Settings.json")
+        try fixture.write("let credentials: CredentialStore\nlet credentialSourceMarker = credentials", to: "Sources/Credentials.swift")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let toml = try await index.search(query: "tomlcredentialmarker", workspace: workspace(fixture))
+        let yaml = try await index.search(query: "yamlcredentialmarker", workspace: workspace(fixture))
+        let json = try await index.search(query: "jsoncredentialmarker", workspace: workspace(fixture))
+        let swift = try await index.search(query: "credentialSourceMarker", workspace: workspace(fixture))
+        XCTAssertTrue(toml.isEmpty)
+        XCTAssertTrue(yaml.isEmpty)
+        XCTAssertTrue(json.isEmpty)
+        XCTAssertEqual(swift.map(\.sourcePath), ["Sources/Credentials.swift"])
+    }
+
     func testRefreshDoesNotPersistKubernetesKeyDataOrPEM() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
@@ -450,6 +471,56 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let visible = try await index.search(query: "visibleglobalmarker", workspace: workspace(fixture))
         XCTAssertTrue(ignored.isEmpty)
         XCTAssertEqual(visible.map(\.sourcePath), ["Visible.md"])
+    }
+
+    func testRefreshHonorsRepositoryAndGlobalExcludesWithoutLoadingGlobalHooks() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let home = fixture.url.appendingPathComponent("home", isDirectory: true)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        let repositoryExcludes = fixture.url.appendingPathComponent("repository-ignore")
+        let globalExcludes = home.appendingPathComponent("global-ignore")
+        let hookMarker = fixture.url.appendingPathComponent("global-fsmonitor-ran")
+        let hook = fixture.url.appendingPathComponent("global-fsmonitor.sh")
+        try "RepositoryIgnored.md\n".write(to: repositoryExcludes, atomically: true, encoding: .utf8)
+        try "GlobalIgnored.md\n".write(to: globalExcludes, atomically: true, encoding: .utf8)
+        try "#!/bin/sh\ntouch '\(hookMarker.path)'\n".write(to: hook, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: hook.path)
+        try "[core]\n\texcludesFile = \(globalExcludes.path)\n\tfsmonitor = \(hook.path)\n".write(
+            to: home.appendingPathComponent(".gitconfig"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try fixture.runGit(["config", "core.excludesFile", repositoryExcludes.path])
+        try fixture.write("repositoryignoremarker", to: "RepositoryIgnored.md")
+        try fixture.write("globalignoremarker", to: "GlobalIgnored.md")
+        try fixture.write("visiblebothignoresmarker", to: "Visible.md")
+
+        let previousHome = ProcessInfo.processInfo.environment["HOME"]
+        let previousXDGConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
+        setenv("HOME", home.path, 1)
+        unsetenv("XDG_CONFIG_HOME")
+        defer {
+            if let previousHome {
+                setenv("HOME", previousHome, 1)
+            } else {
+                unsetenv("HOME")
+            }
+            if let previousXDGConfigHome {
+                setenv("XDG_CONFIG_HOME", previousXDGConfigHome, 1)
+            }
+        }
+
+        let index = try migratedIndex()
+        try await index.refresh(workspace: workspace(fixture))
+
+        let repositoryIgnored = try await index.search(query: "repositoryignoremarker", workspace: workspace(fixture))
+        let globalIgnored = try await index.search(query: "globalignoremarker", workspace: workspace(fixture))
+        let visible = try await index.search(query: "visiblebothignoresmarker", workspace: workspace(fixture))
+        XCTAssertTrue(repositoryIgnored.isEmpty)
+        XCTAssertTrue(globalIgnored.isEmpty)
+        XCTAssertEqual(visible.map(\.sourcePath), ["Visible.md"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: hookMarker.path))
     }
 
     func testRefreshHonorsDefaultGlobalExcludeForUntrackedFiles() async throws {
