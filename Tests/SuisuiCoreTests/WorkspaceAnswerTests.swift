@@ -244,6 +244,36 @@ final class WorkspaceAnswerTests: XCTestCase {
         )
     }
 
+    func testRetrievePagesPastEightDuplicateTaskTitlesBeforeDeduping() throws {
+        let stores = try makeStores()
+        for _ in 0..<8 {
+            _ = try stores.tasks.create(title: "Launch review")
+        }
+        _ = try stores.tasks.create(title: "Prelaunch retrospective")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "launch review", limit: 2).map(\.title),
+            ["Launch review", "Prelaunch retrospective"]
+        )
+    }
+
+    func testRetrievePagesPastEightDuplicateKnowledgeTitlesBeforeDeduping() throws {
+        let stores = try makeStores()
+        for index in 0..<8 {
+            _ = try stores.frames.create(name: "Launch review notes", body: "duplicate \(index)")
+        }
+        _ = try stores.frames.create(name: "Prelaunch retrospective", body: "unique")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "launch review", limit: 2).map(\.title),
+            ["Launch review notes", "Prelaunch retrospective"]
+        )
+    }
+
     func testRetrieveUsesExactTaskMatchBeforeOlderSubstringAfterDeadlineConsumesSlot() throws {
         let stores = try makeStores()
         _ = try stores.tasks.create(title: "Send daily summary", dueAt: "2026-06-17T06:00:00Z")

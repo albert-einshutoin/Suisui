@@ -63,10 +63,22 @@ public final class WorkspaceQuestionRetriever: @unchecked Sendable {
         }
 
         let tokens = Self.matchTokens(for: trimmedQuestion)
-        let candidateLimit = Self.candidateLimit(for: limit)
         if !tokens.isEmpty {
-            for task in try taskStore.searchOpenTasks(matching: tokens, limit: candidateLimit) {
-                append(kind: "task", title: task.title, detail: task.detail.map(Self.bodyPreview))
+            var candidateLimit = Self.candidateLimit(for: limit)
+            while snippets.count < limit {
+                let tasks = try taskStore.searchOpenTasks(matching: tokens, limit: candidateLimit)
+                for task in tasks {
+                    append(kind: "task", title: task.title, detail: task.detail.map(Self.bodyPreview))
+                }
+                guard tasks.count == candidateLimit,
+                      candidateLimit < Self.maximumDistinctCandidates,
+                      snippets.count < limit else {
+                    break
+                }
+                // Stores return a stable prefix. Grow the bounded prefix only
+                // when duplicate titles exhausted it, so a later distinct row
+                // can still fill the workspace limit without scanning history.
+                candidateLimit = min(Self.maximumDistinctCandidates, candidateLimit * 2)
             }
             for project in try projectStore.list() where Self.matches(tokens: tokens, in: [project.title]) {
                 append(kind: "project", title: project.title, detail: project.deadline.map { "deadline \($0)" })
@@ -79,9 +91,24 @@ public final class WorkspaceQuestionRetriever: @unchecked Sendable {
         // Search failures must degrade to no knowledge context, never fail the
         // whole question. One-character questions skip task/project scans, but
         // retain their literal in the bounded SQLite knowledge search path.
-        let frames = (try? knowledgeFrameStore.search(matching: knowledgeTokens, limit: candidateLimit)) ?? []
-        for frame in frames {
-            append(kind: "knowledge", title: frame.name, detail: Self.bodyPreview(frame.body))
+        var knowledgeCandidateLimit = Self.candidateLimit(for: limit)
+        while snippets.count < limit {
+            let frames = (try? knowledgeFrameStore.search(
+                matching: knowledgeTokens,
+                limit: knowledgeCandidateLimit
+            )) ?? []
+            for frame in frames {
+                append(kind: "knowledge", title: frame.name, detail: Self.bodyPreview(frame.body))
+            }
+            guard frames.count == knowledgeCandidateLimit,
+                  knowledgeCandidateLimit < Self.maximumDistinctCandidates,
+                  snippets.count < limit else {
+                break
+            }
+            knowledgeCandidateLimit = min(
+                Self.maximumDistinctCandidates,
+                knowledgeCandidateLimit * 2
+            )
         }
 
         return snippets
