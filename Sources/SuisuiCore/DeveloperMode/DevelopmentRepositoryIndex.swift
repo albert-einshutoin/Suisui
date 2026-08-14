@@ -29,6 +29,7 @@ public actor DevelopmentRepositoryIndex {
     private let maximumRefreshReadBytes: Int
     private let manifestExecutableURL: URL
     private let beforeRefreshCommit: (@Sendable () throws -> Void)?
+    private let recordScanCheckpoint: (@Sendable (Int) -> Void)?
 
     // Assignment-only redaction is deliberately broader for user-visible output.
     // For indexing, reject every such assignment unless it matches one of the
@@ -136,13 +137,15 @@ public actor DevelopmentRepositoryIndex {
         redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
         maximumRefreshReadBytes: Int = DevelopmentRepositoryIndex.maximumIndexedContentBytes,
         manifestExecutableURL: URL = GitManifestReader.defaultExecutableURL,
-        beforeRefreshCommit: (@Sendable () throws -> Void)? = nil
+        beforeRefreshCommit: (@Sendable () throws -> Void)? = nil,
+        recordScanCheckpoint: (@Sendable (Int) -> Void)? = nil
     ) {
         database = SQLiteDatabaseWorker(connection: connection)
         self.redactor = redactor
         self.maximumRefreshReadBytes = maximumRefreshReadBytes
         self.manifestExecutableURL = manifestExecutableURL
         self.beforeRefreshCommit = beforeRefreshCommit
+        self.recordScanCheckpoint = recordScanCheckpoint
     }
 
     public init(path: String, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) throws {
@@ -151,9 +154,11 @@ public actor DevelopmentRepositoryIndex {
         maximumRefreshReadBytes = DevelopmentRepositoryIndex.maximumIndexedContentBytes
         manifestExecutableURL = GitManifestReader.defaultExecutableURL
         beforeRefreshCommit = nil
+        recordScanCheckpoint = nil
     }
 
     public func refresh(workspace: CodebaseMemoryWorkspace) async throws {
+        try Task.checkCancellation()
         let root = try Self.workspaceRoot(workspace.rootPath)
         let rootDescriptor = try Self.openWorkspaceRoot(root)
         defer { Darwin.close(rootDescriptor.descriptor) }
@@ -163,10 +168,12 @@ public actor DevelopmentRepositoryIndex {
             rootDescriptor: rootDescriptor,
             redactor: redactor,
             maximumRefreshReadBytes: maximumRefreshReadBytes,
-            manifestExecutableURL: manifestExecutableURL
+            manifestExecutableURL: manifestExecutableURL,
+            recordScanCheckpoint: recordScanCheckpoint
         )
         let beforeRefreshCommit = self.beforeRefreshCommit
 
+        try Task.checkCancellation()
         try await database.transaction { connection in
             let generation = (try connection.queryRows(
                 "SELECT COALESCE(MAX(generation), 0) + 1 AS generation FROM codebase_index_files WHERE workspace_key = ?;",
@@ -308,18 +315,25 @@ public actor DevelopmentRepositoryIndex {
         rootDescriptor: WorkspaceRootDescriptor,
         redactor: DeveloperSecretRedactor,
         maximumRefreshReadBytes: Int,
-        manifestExecutableURL: URL
+        manifestExecutableURL: URL,
+        recordScanCheckpoint: (@Sendable (Int) -> Void)?
     ) throws -> [IndexedFile] {
         try verifyWorkspaceRoot(root, matches: rootDescriptor)
+        try Task.checkCancellation()
         let entries = try GitManifestReader.entries(
             at: root,
             executableURL: manifestExecutableURL,
             expectedRootIdentity: .init(device: rootDescriptor.device, inode: rootDescriptor.inode)
         )
+        try Task.checkCancellation()
         try verifyWorkspaceRoot(root, matches: rootDescriptor)
         var totalBytes = 0
         var records: [IndexedFile] = []
-        for entry in entries {
+        for (offset, entry) in entries.enumerated() {
+            recordScanCheckpoint?(offset)
+            // This loop can consume the entire repository without suspending;
+            // check every entry before doing any file I/O.
+            try Task.checkCancellation()
             // Git itself marks these entries as absent from this checkout. They
             // are intentional manifest exclusions, unlike a post-manifest
             // file-to-directory replacement which must abort the refresh.

@@ -1322,6 +1322,53 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(try rows[0].string("contents"), "preservedgenerationmarker")
     }
 
+    func testRefreshCancellationDuringRecordScanPreservesPriorGeneration() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("preservedcancellationmarker", to: "Notes.md")
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let index = DevelopmentRepositoryIndex(connection: connection)
+        try await index.refresh(workspace: workspace(fixture))
+        try fixture.write("replacementcancellationmarker", to: "Notes.md")
+
+        let scanStarted = expectation(description: "record scan started")
+        let continuedAfterCancellation = expectation(description: "record scan stopped after cancellation")
+        continuedAfterCancellation.isInverted = true
+        let resumeScan = DispatchSemaphore(value: 0)
+        let cancellableIndex = DevelopmentRepositoryIndex(
+            connection: connection,
+            recordScanCheckpoint: { offset in
+                if offset == 0 {
+                    scanStarted.fulfill()
+                    _ = resumeScan.wait(timeout: .now() + 5)
+                } else {
+                    continuedAfterCancellation.fulfill()
+                }
+            }
+        )
+        let targetWorkspace = workspace(fixture)
+        let refreshTask = Task {
+            try await cancellableIndex.refresh(workspace: targetWorkspace)
+        }
+
+        await fulfillment(of: [scanStarted], timeout: 5)
+        refreshTask.cancel()
+        resumeScan.signal()
+        await fulfillment(of: [continuedAfterCancellation], timeout: 0.2)
+
+        do {
+            try await refreshTask.value
+            XCTFail("Expected refresh cancellation")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+        let preserved = try await index.search(query: "preservedcancellationmarker", workspace: workspace(fixture))
+        let replacement = try await index.search(query: "replacementcancellationmarker", workspace: workspace(fixture))
+        XCTAssertEqual(preserved.map(\.sourcePath), ["Notes.md"])
+        XCTAssertTrue(replacement.isEmpty)
+    }
+
     func testWorkspaceRootIdentityRejectsSamePathReplacement() throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
