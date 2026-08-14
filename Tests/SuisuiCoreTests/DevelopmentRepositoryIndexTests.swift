@@ -147,12 +147,14 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let flowYAMLKeyData = "flowkubesentinel"
         let extensionlessFlowKeyData = "extensionlesskubesentinel"
         let aliasYAMLKeyData = "aliaskubesentinel"
+        let camelCaseKeyData = "camelkubesentinel"
         let jsonKeyData = "jsonkubesentinel"
         try fixture.write("client-key-data: \(encodedKeyData)", to: "Kube.yml")
         try fixture.write("\"client-key-data\": \"\(quotedYAMLKeyData)\"", to: "QuotedKube.yml")
         try fixture.write("users: [{name: prod, user: {\"client_key_data\": \"\(flowYAMLKeyData)\"}}]", to: "FlowKube.yaml")
         try fixture.write("key_name: &k client-key-data\nusers: [{user: {*k: \(aliasYAMLKeyData)}}]", to: "AliasKube.yaml")
         try fixture.write("users: [{name: prod, user: {\"client-key-data\": \"\(extensionlessFlowKeyData)\"}}]", to: "Dockerfile")
+        try fixture.write("clientKeyData: \(camelCaseKeyData)", to: "CamelKube.yaml")
         try fixture.write("{\"client-key-data\":\"\(jsonKeyData)\"}", to: "Kube.json")
         try fixture.write("  -----BEGIN PRIVATE KEY-----\n  placeholder\n  -----END PRIVATE KEY-----", to: "KeyMaterial.txt")
         let index = try migratedIndex()
@@ -163,6 +165,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let flowYAMLResults = try await index.search(query: flowYAMLKeyData, workspace: workspace(fixture))
         let aliasYAMLResults = try await index.search(query: aliasYAMLKeyData, workspace: workspace(fixture))
         let extensionlessFlowResults = try await index.search(query: extensionlessFlowKeyData, workspace: workspace(fixture))
+        let camelCaseResults = try await index.search(query: camelCaseKeyData, workspace: workspace(fixture))
         let jsonResults = try await index.search(query: jsonKeyData, workspace: workspace(fixture))
         let pemResults = try await index.search(query: "PRIVATE", workspace: workspace(fixture))
         XCTAssertTrue(kubernetesResults.isEmpty)
@@ -170,6 +173,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(flowYAMLResults.isEmpty)
         XCTAssertTrue(aliasYAMLResults.isEmpty)
         XCTAssertTrue(extensionlessFlowResults.isEmpty)
+        XCTAssertTrue(camelCaseResults.isEmpty)
         XCTAssertTrue(jsonResults.isEmpty)
         XCTAssertTrue(pemResults.isEmpty)
     }

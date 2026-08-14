@@ -68,7 +68,7 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"(?im)^\s*[\"']?client[-_]key[-_]data[\"']?\s*:\s*\S+|^\s*-----BEGIN (?:[A-Z0-9 ]*PRIVATE KEY)-----"#
     )
     private static let yamlClientKeyData = try? NSRegularExpression(
-        pattern: #"(?i)client[-_]key[-_]data"#
+        pattern: #"(?i)client[-_]?key[-_]?data"#
     )
     private static let swiftTypedDeclarationPrefix = try? NSRegularExpression(
         pattern: #"^\s*(?:@[A-Za-z_][A-Za-z0-9_]*\s+)*(?:(?:(?:private|public|internal|fileprivate)(?:\(set\))?|static|final|lazy)\s+)*(?:let|var)\s+$"#
