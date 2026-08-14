@@ -342,11 +342,14 @@ fn write_atomically(output: &Path, bytes: &[u8]) -> AppResult<()> {
             ".suisui-embedding-{}-{sequence}-{attempt}.tmp",
             process::id()
         ));
-        let file = match OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
         {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let file = match options.open(&temporary) {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(_) => return Err(HelperError::OUTPUT_FAILED),
@@ -431,7 +434,10 @@ mod tests {
     };
 
     #[cfg(unix)]
-    use std::{ffi::CString, os::unix::ffi::OsStrExt, sync::mpsc, thread, time::Duration};
+    use std::{
+        ffi::CString, os::unix::ffi::OsStrExt, os::unix::fs::PermissionsExt, sync::mpsc, thread,
+        time::Duration,
+    };
 
     use super::{
         EmbeddingEngine, HelperError, MAX_TEXT_BYTES, parse_request, validate_embedding,
@@ -501,6 +507,15 @@ mod tests {
                     .file_name()
                     .to_string_lossy()
                     .contains(".tmp"))
+        );
+        #[cfg(unix)]
+        assert_eq!(
+            fs::metadata(&output)
+                .expect("output metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
         );
     }
 
