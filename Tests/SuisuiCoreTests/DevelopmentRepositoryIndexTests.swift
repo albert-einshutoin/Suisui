@@ -156,6 +156,14 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             "BacktickedCredential.swift": "let `accessToken` = \"long-secret-value\"",
             "CommentedCredential.swift": "let accessToken /* nested /* note */ note */ = \"long-secret-value\"",
             "LineCommentCredential.c": "const char *accessToken // note\n= \"long-secret-value\";",
+            "SQLLineCommentCredential.sql": "UPDATE config SET token -- note\n= 'long-secret-value';",
+            "PythonLineCommentCredential.py": "(token # note\n := \"long-secret-value\")",
+            "PythonContinuationCredential.py": "token \\\n= \"long-secret-value\"",
+            "MultilineTypedCredential.swift": "struct C { let accessToken: String\n = \"long-secret-value\" }",
+            "MultilineAssignmentCredential.swift": "let accessToken = safe\n + \"long-secret-value\"",
+            "MultilineCallCredential.swift": "request(\naccessToken: safe\n + \"long-secret-value\"\n)",
+            "MultilineCustomOperatorCredential.swift": "infix operator <>\nfunc <>(lhs: String, rhs: String) -> String { lhs + rhs }\nlet safe = \"x\"\nlet accessToken = safe\n <> \"long-secret-value\"",
+            "MultilineCastCredential.swift": "let safe: Any = \"x\"\nlet accessToken = safe\n as! String + \"long-secret-value\"",
             "SingleQuotedCredential.yml": "'token': long-secret-value",
             "CommentOpen.swift": "// fake(\ntoken: ABCDEFGHIJK1234",
             "CommentInsideCall.swift": "request(\n// token: ABCDEFGHIJK1234\n)",
@@ -240,6 +248,30 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let swift = try await index.search(query: "harmlessswiftmarker", workspace: workspace(fixture))
         XCTAssertEqual(markdown.map(\.sourcePath), ["Docs/OAuth.md"])
         XCTAssertEqual(swift.map(\.sourcePath), ["Sources/Message.swift"])
+    }
+
+    func testRefreshExcludesJSONCredentialsWithEscapedKeys() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write(#"{"to\u006ben":"escapedtokenmarker"}"#, to: "Config/EscapedToken.json")
+        try fixture.write(#"{"items":[{"client_\u0073ecret":"escapedsecretmarker"}]}"#, to: "Config/EscapedSecret.json")
+        try fixture.write(#"{"auths":{"registry":{"au\u0074h":"escapedauthmarker"}}}"#, to: "Config/EscapedDocker.json")
+        try fixture.write(#"{"to\u006ben":"malformedjsonmarker""#, to: "Config/MalformedEscapedToken.json")
+        try fixture.write(#"{"message":"OAuth token lifecycle harmlessjsonmarker","items":[{"label":"normal"}]}"#, to: "Config/Harmless.json")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let escapedToken = try await index.search(query: "escapedtokenmarker", workspace: workspace(fixture))
+        let escapedSecret = try await index.search(query: "escapedsecretmarker", workspace: workspace(fixture))
+        let escapedAuth = try await index.search(query: "escapedauthmarker", workspace: workspace(fixture))
+        let malformed = try await index.search(query: "malformedjsonmarker", workspace: workspace(fixture))
+        let harmless = try await index.search(query: "harmlessjsonmarker", workspace: workspace(fixture))
+        XCTAssertTrue(escapedToken.isEmpty)
+        XCTAssertTrue(escapedSecret.isEmpty)
+        XCTAssertTrue(escapedAuth.isEmpty)
+        XCTAssertTrue(malformed.isEmpty)
+        XCTAssertEqual(harmless.map(\.sourcePath), ["Config/Harmless.json"])
     }
 
     func testRefreshIndexesDenseCredentialWordsInsideLineComment() async throws {

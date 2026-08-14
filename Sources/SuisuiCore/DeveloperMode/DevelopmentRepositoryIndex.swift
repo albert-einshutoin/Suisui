@@ -251,14 +251,17 @@ public actor DevelopmentRepositoryIndex {
                 // prior generation until all manifest files can be read again.
                 throw DevelopmentRepositoryIndexError.fileReadUnavailable
             }
+            // Every opened byte consumes the refresh budget, even when later
+            // rejected as binary or secret. Otherwise a manifest full of
+            // excluded files could bypass the aggregate work limit.
+            totalBytes += data.count
+            guard totalBytes <= maximumIndexedContentBytes else {
+                throw DevelopmentRepositoryIndexError.indexedContentTooLarge
+            }
             guard let contents = String(data: data, encoding: .utf8),
                   (try? DevelopmentRepositoryFilePathPolicy.validateTextContent(contents)) != nil,
                   !containsIndexCredential(contents, relativePath: relativePath, redactor: redactor) else {
                 continue
-            }
-            totalBytes += data.count
-            guard totalBytes <= maximumIndexedContentBytes else {
-                throw DevelopmentRepositoryIndexError.indexedContentTooLarge
             }
             records.append(IndexedFile(
                 relativePath: relativePath,
@@ -421,6 +424,11 @@ public actor DevelopmentRepositoryIndex {
         redactor: DeveloperSecretRedactor
     ) -> Bool {
         let range = NSRange(contents.startIndex..<contents.endIndex, in: contents)
+        // JSON object keys may spell credential names with Unicode escapes.  The
+        // parser decodes those escapes before this boundary decides persistence.
+        if relativePath.lowercased().hasSuffix(".json"), containsJSONCredentialKey(contents) {
+            return true
+        }
         guard let serializedCredential else {
             return true
         }
@@ -468,6 +476,10 @@ public actor DevelopmentRepositoryIndex {
             }
             let lineRange = contents.lineRange(for: swiftRange)
             let line = String(contents[lineRange])
+            // A source-shaped exception must end on this line.  Swift permits
+            // operators and assignments to continue onto the next one, where a
+            // literal credential could otherwise be appended after a safe name.
+            let continuesOnNextLine = hasSwiftContinuation(after: lineRange.upperBound, in: contents)
             guard let lexicalPosition = lexicalPositions[swiftRange.lowerBound], lexicalPosition.isInNormalCode else {
                 return true
             }
@@ -501,7 +513,63 @@ public actor DevelopmentRepositoryIndex {
             let isCallLabel = !hasCurrentLineCommentOrQuote &&
                 hasOpenSwiftArgumentList(in: contents, openParenthesis: lexicalPosition.openParenthesis, callOpener: callOpener) &&
                 containsSafeSwiftExpression(in: assignmentSuffix, grammar: safeCallLabel, atom: safeExpressionAtom)
-            return !(isTypedDeclaration || isNominalType || isSafeAssignment || isCallLabel)
+            let isSafeSourceShape = isNominalType ||
+                (!continuesOnNextLine && (isTypedDeclaration || isSafeAssignment || isCallLabel))
+            return !isSafeSourceShape
+        }
+    }
+
+    private static func hasSwiftContinuation(after lineEnd: String.Index, in source: String) -> Bool {
+        var index = lineEnd
+        while index < source.endIndex, source[index].isWhitespace {
+            index = source.index(after: index)
+        }
+        guard index < source.endIndex else {
+            return false
+        }
+        let character = source[index]
+        if !character.isLetter && !character.isNumber && character != "_" &&
+            !["}", ")", "]"].contains(character) {
+            // Operators include user-defined Unicode forms, so a fixed operator
+            // list would reopen the multiline literal bypass.
+            return true
+        }
+        let remaining = source[index...]
+        return remaining.hasPrefix("as ") || remaining.hasPrefix("as!") ||
+            remaining.hasPrefix("as?") || remaining.hasPrefix("is ")
+    }
+
+    private static func containsJSONCredentialKey(_ contents: String) -> Bool {
+        guard let object = try? JSONSerialization.jsonObject(with: Data(contents.utf8), options: [.fragmentsAllowed]) else {
+            // Escaped keys are undecidable without a valid parse. A malformed
+            // JSON config therefore cannot receive the raw-regex fallback.
+            return true
+        }
+        return containsJSONCredentialKey(in: object)
+    }
+
+    private static func containsJSONCredentialKey(in object: Any) -> Bool {
+        if let dictionary = object as? [String: Any] {
+            for (key, value) in dictionary {
+                if isJSONCredentialKey(key) || containsJSONCredentialKey(in: value) {
+                    return true
+                }
+            }
+            return false
+        }
+        if let array = object as? [Any] {
+            return array.contains { containsJSONCredentialKey(in: $0) }
+        }
+        return false
+    }
+
+    private static func isJSONCredentialKey(_ key: String) -> Bool {
+        let normalized = String(key.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }).lowercased()
+        if ["auth", "auths", "identitytoken"].contains(normalized) {
+            return true
+        }
+        return ["apikey", "accesskey", "privatekey", "token", "password", "secret"].contains {
+            normalized.hasSuffix($0)
         }
     }
 
@@ -564,13 +632,26 @@ public actor DevelopmentRepositoryIndex {
                     continue
                 }
             } else if !pendingEnds.isEmpty {
+                let beginsLineComment =
+                    (character == "/" && nextCharacter == "/") ||
+                    (character == "-" && nextCharacter == "-") ||
+                    character == "#"
+                let isExplicitLineContinuation = character == "\\" &&
+                    (nextCharacter == "\n" || nextCharacter == "\r")
                 if character.isWhitespace {
                     // Keep looking.
                 } else if quoteCanClose, character == "\"" || character == "'" || character == "`" {
                     quoteCanClose = false
-                } else if character == "/", nextCharacter == "/" {
-                    lineComment = true
+                } else if isExplicitLineContinuation {
+                    // Python-style explicit continuations make the following
+                    // line part of this assignment expression.
                     index = source.index(after: nextIndex)
+                    continue
+                } else if beginsLineComment {
+                    // C-family, SQL, and Python line comments are all legal in
+                    // supported source types, so wait for the next line token.
+                    lineComment = true
+                    index = character == "#" ? nextIndex : source.index(after: nextIndex)
                     continue
                 } else if character == "/", nextCharacter == "*" {
                     blockCommentDepth = 1
