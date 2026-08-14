@@ -101,6 +101,8 @@ public actor DevelopmentRepositoryIndex {
         let descriptor: Int32
         let device: dev_t
         let inode: ino_t
+        let birthTimeSeconds: Int64
+        let birthTimeNanoseconds: Int64
     }
 
     public init(connection: SQLiteConnection, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) {
@@ -374,15 +376,51 @@ public actor DevelopmentRepositoryIndex {
             Darwin.close(descriptor)
             throw DevelopmentRepositoryIndexError.invalidWorkspace
         }
-        return WorkspaceRootDescriptor(descriptor: descriptor, device: state.st_dev, inode: state.st_ino)
+        let birthTimeSeconds = Int64(state.st_birthtimespec.tv_sec)
+        let birthTimeNanoseconds = Int64(state.st_birthtimespec.tv_nsec)
+        // Darwin zeroes birth time when a filesystem cannot provide it. Using
+        // that value would silently reduce identity back to reusable dev+inode.
+        guard isUsableBirthTime(seconds: birthTimeSeconds, nanoseconds: birthTimeNanoseconds) else {
+            Darwin.close(descriptor)
+            throw DevelopmentRepositoryIndexError.invalidWorkspace
+        }
+        return WorkspaceRootDescriptor(
+            descriptor: descriptor,
+            device: state.st_dev,
+            inode: state.st_ino,
+            birthTimeSeconds: birthTimeSeconds,
+            birthTimeNanoseconds: birthTimeNanoseconds
+        )
     }
 
     private static func verifyWorkspaceRoot(_ root: URL, matches descriptor: WorkspaceRootDescriptor) throws {
-        try verifyWorkspaceRootIdentity(root, device: descriptor.device, inode: descriptor.inode)
+        try verifyWorkspaceRootIdentity(
+            root,
+            device: descriptor.device,
+            inode: descriptor.inode,
+            birthTimeSeconds: descriptor.birthTimeSeconds,
+            birthTimeNanoseconds: descriptor.birthTimeNanoseconds
+        )
     }
 
     private static func workspaceKey(root: URL, descriptor: WorkspaceRootDescriptor) -> String {
-        "\(workspaceKeyPrefix(root: root))\(descriptor.device):\(descriptor.inode)"
+        workspaceKey(
+            root: root,
+            device: descriptor.device,
+            inode: descriptor.inode,
+            birthTimeSeconds: descriptor.birthTimeSeconds,
+            birthTimeNanoseconds: descriptor.birthTimeNanoseconds
+        )
+    }
+
+    static func workspaceKey(
+        root: URL,
+        device: dev_t,
+        inode: ino_t,
+        birthTimeSeconds: Int64,
+        birthTimeNanoseconds: Int64
+    ) -> String {
+        "\(workspaceKeyPrefix(root: root))\(device):\(inode):\(birthTimeSeconds):\(birthTimeNanoseconds)"
     }
 
     private static func workspaceKeyPrefix(root: URL) -> String {
@@ -393,7 +431,13 @@ public actor DevelopmentRepositoryIndex {
         sha256(root.path)
     }
 
-    static func verifyWorkspaceRootIdentity(_ root: URL, device: dev_t, inode: ino_t) throws {
+    static func verifyWorkspaceRootIdentity(
+        _ root: URL,
+        device: dev_t,
+        inode: ino_t,
+        birthTimeSeconds: Int64,
+        birthTimeNanoseconds: Int64
+    ) throws {
         var state = stat()
         guard Darwin.lstat(root.path, &state) == 0,
               (state.st_mode & S_IFMT) == S_IFDIR,
@@ -401,6 +445,17 @@ public actor DevelopmentRepositoryIndex {
               state.st_ino == inode else {
             throw DevelopmentRepositoryIndexError.fileReadUnavailable
         }
+        let actualBirthTimeSeconds = Int64(state.st_birthtimespec.tv_sec)
+        let actualBirthTimeNanoseconds = Int64(state.st_birthtimespec.tv_nsec)
+        guard isUsableBirthTime(seconds: actualBirthTimeSeconds, nanoseconds: actualBirthTimeNanoseconds),
+              actualBirthTimeSeconds == birthTimeSeconds,
+              actualBirthTimeNanoseconds == birthTimeNanoseconds else {
+            throw DevelopmentRepositoryIndexError.fileReadUnavailable
+        }
+    }
+
+    private static func isUsableBirthTime(seconds: Int64, nanoseconds: Int64) -> Bool {
+        (seconds != 0 || nanoseconds != 0) && (0..<1_000_000_000).contains(nanoseconds)
     }
 
     private static func validatedQuery(_ rawQuery: String) throws -> String {

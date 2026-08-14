@@ -893,7 +893,46 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             try DevelopmentRepositoryIndex.verifyWorkspaceRootIdentity(
                 fixture.url,
                 device: original.st_dev,
-                inode: original.st_ino
+                inode: original.st_ino,
+                birthTimeSeconds: Int64(original.st_birthtimespec.tv_sec),
+                birthTimeNanoseconds: Int64(original.st_birthtimespec.tv_nsec)
+            )
+        ) { error in
+            XCTAssertEqual(error as? DevelopmentRepositoryIndexError, .fileReadUnavailable)
+        }
+    }
+
+    func testWorkspaceRootIdentityAndKeyIncludeBirthTime() throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        var state = stat()
+        XCTAssertEqual(Darwin.lstat(fixture.url.path, &state), 0)
+        let birthTimeSeconds = Int64(state.st_birthtimespec.tv_sec)
+        let birthTimeNanoseconds = Int64(state.st_birthtimespec.tv_nsec)
+
+        let originalKey = DevelopmentRepositoryIndex.workspaceKey(
+            root: fixture.url,
+            device: state.st_dev,
+            inode: state.st_ino,
+            birthTimeSeconds: birthTimeSeconds,
+            birthTimeNanoseconds: birthTimeNanoseconds
+        )
+        let reusedInodeKey = DevelopmentRepositoryIndex.workspaceKey(
+            root: fixture.url,
+            device: state.st_dev,
+            inode: state.st_ino,
+            birthTimeSeconds: birthTimeSeconds + 1,
+            birthTimeNanoseconds: birthTimeNanoseconds
+        )
+
+        XCTAssertNotEqual(originalKey, reusedInodeKey)
+        XCTAssertThrowsError(
+            try DevelopmentRepositoryIndex.verifyWorkspaceRootIdentity(
+                fixture.url,
+                device: state.st_dev,
+                inode: state.st_ino,
+                birthTimeSeconds: birthTimeSeconds + 1,
+                birthTimeNanoseconds: birthTimeNanoseconds
             )
         ) { error in
             XCTAssertEqual(error as? DevelopmentRepositoryIndexError, .fileReadUnavailable)
