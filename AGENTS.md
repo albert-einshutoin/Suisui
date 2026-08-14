@@ -35,38 +35,20 @@
 
 | 目的 | コマンド |
 | --- | --- |
-| 完全検証（`ci`） | `./ci/run-full.sh` |
+| 完全検証（`ci`） | `./ci/run-all.sh` |
+| 非 UI の完全検証 | `./ci/run-full.sh` |
 | PR の変更影響検証（`ci-pr`） | `./ci/run-pr-ci.sh --base-revision origin/main --head-revision HEAD` |
+| 計画確認（`ci-plan`） | `python3 ci/impact/analyze.py --repo . --base-revision origin/main --head-revision HEAD --config ci/config/impact.json --output .tmp/ci-impact/test-plan.json` |
 | impact planner の検証 | `python3 -m unittest discover -s ci/tests -v` |
+| Actions ローカル確認（`ci-act`） | 非対応。macOS hosted runner 固有のため GitHub Actions を正とする |
 | セキュリティ | `./script/check_security_regressions.sh` |
 | UI・AX | `docs/quality/ui-done-criteria.md` の該当レーン |
 
 - `ci` は常に完全検証とし、変更範囲へ限定するのは `ci-pr` だけにする。
-- `ci-pr` は判定失敗、未知パス、対象 0 件、rename/delete、CI・依存・build、
-  security、DB・schema、public API・共有基盤の変更を完全検証へ昇格する。
+- `ci-pr` は判定失敗、未知パス、対象 0 件、delete、旧新 path を安全に解析
+  できない rename/copy、CI・依存・build、security、DB・schema、public API・
+  共有基盤の変更を完全検証へ昇格する。
 - 完全検証 runner は impact planner とその設定に依存させない。選択テストの
   失敗はそのまま失敗とし、完全検証の成功で上書きしない。
 - `act` は Linux 互換 workflow のローカル確認に限る。macOS runner、署名、
   notarization、Keychain、secret を含む完了判定は hosted CI を正とする。
-
-## モデルとレビューの割り当て
-
-| 役割 | モデル・reasoning | 担当 |
-| --- | --- | --- |
-| Sol | xhigh / max | 設計、難バグ、セキュリティ、DB、最終レビュー |
-| Terra | high / xhigh | 通常実装、リファクタリング |
-| Luna | high / max | 探索、定型修正、テスト、docs、並列調査 |
-
-依頼されたモデルまたは reasoning が利用不能なら、黙って別モデル・別強度へ
-代替しない。利用不能な役割、止まる作業、利用可能な選択肢を依頼者へ報告し、
-明示的な指示を待つ。並列作業はファイル所有範囲を分け、各担当は他者の変更を
-revert せず、実行した検証を返す。
-
-## 完了と GitHub Flow
-
-- 小さくレビュー可能なコミットにし、PR には変更理由、変更前後の振る舞い、
-  検証結果、残る制約を記載する。
-- PR 完了はローカル成功だけではない。要求された hosted CI、未解決 review、
-  merge、配布確認まで live に確認する。
-- merge 後に不要になった作業ブランチは、他者の利用を確認してから local と
-  remote の両方を整理する。削除は明示的な対象確認後に行う。

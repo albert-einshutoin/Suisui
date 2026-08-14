@@ -65,11 +65,14 @@ plannerのfixture:
 python3 -m unittest discover -s ci/tests -v
 ```
 
-完全検証:
+UI・Rust境界を含むローカル完全検証:
 
 ```bash
-./ci/run-full.sh
+./ci/run-all.sh
 ```
+
+UIを必要としない完全SwiftPM・source contract・securityの確認だけを行う場合は
+`./ci/run-full.sh` を使う。これは `ci` 完了の代替ではない。
 
 手動GitHub Actionsは常に完全検証になる。ローカルで明示的に完全検証へ固定する場合:
 

@@ -9,6 +9,7 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 SELECTED_RUNNER = REPOSITORY_ROOT / "ci" / "run-selected.py"
 FULL_RUNNER = REPOSITORY_ROOT / "ci" / "run-full.sh"
+ALL_RUNNER = REPOSITORY_ROOT / "ci" / "run-all.sh"
 ORCHESTRATOR = REPOSITORY_ROOT / "ci" / "run-pr-ci.sh"
 PLAN_EXPORTER = REPOSITORY_ROOT / "ci" / "export-plan.py"
 PLAN_ESCALATOR = REPOSITORY_ROOT / "ci" / "escalate-plan.py"
@@ -97,6 +98,19 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertNotIn("impact/analyze", contents)
         self.assertNotIn("ci/config", contents)
         self.assertNotIn("ci/tests", contents)
+
+    def test_all_runner_adds_rust_and_every_ui_lane_to_full_validation(self) -> None:
+        self.assertTrue(ALL_RUNNER.exists(), "complete local CI runner must exist")
+        contents = ALL_RUNNER.read_text(encoding="utf-8")
+
+        self.assertIn("./ci/run-full.sh", contents)
+        self.assertIn("cargo fmt --manifest-path", contents)
+        self.assertIn("cargo test --manifest-path", contents)
+        self.assertIn("cargo clippy --manifest-path", contents)
+        self.assertIn("./scripts/ci.sh ui-runtime", contents)
+        self.assertIn("./scripts/ci.sh ui-visual", contents)
+        self.assertIn("./scripts/ci.sh ui-performance", contents)
+        self.assertNotIn("impact/analyze", contents)
 
     def test_orchestrator_self_test_proves_fail_closed_state_transitions(self) -> None:
         self.assertTrue(ORCHESTRATOR.exists(), "PR orchestrator must exist")
