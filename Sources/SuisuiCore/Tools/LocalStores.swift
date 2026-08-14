@@ -1742,23 +1742,33 @@ public final class SQLiteTaskStore: @unchecked Sendable {
     static func boundedSearchTokens(_ tokens: [String]) -> [String] {
         let maximumTokenCount = 32
         let maximumTokenLength = 128
-        var uniqueTokens: [String] = []
-        var seen = Set<String>()
+        let half = maximumTokenCount / 2
+        var prefixTokens: [String] = []
+        var suffixTokens: [String] = []
         for token in tokens {
             let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else {
                 continue
             }
             let bounded = String(trimmed.prefix(maximumTokenLength))
-            guard seen.insert(bounded).inserted else {
+            if prefixTokens.count < half {
+                guard !prefixTokens.contains(bounded) else {
+                    continue
+                }
+                prefixTokens.append(bounded)
                 continue
             }
-            uniqueTokens.append(bounded)
-            if uniqueTokens.count == maximumTokenCount {
-                break
+            guard !prefixTokens.contains(bounded), !suffixTokens.contains(bounded) else {
+                continue
             }
+            if suffixTokens.count == half {
+                suffixTokens.removeFirst()
+            }
+            suffixTokens.append(bounded)
         }
-        return uniqueTokens
+        // Natural-language questions often place their subject at either end.
+        // Keep a stable half from each side without widening SQLite bind sets.
+        return prefixTokens + suffixTokens
     }
 }
 

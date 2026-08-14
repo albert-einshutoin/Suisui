@@ -406,6 +406,27 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertTrue(bounded.allSatisfy { $0.count <= 128 })
     }
 
+    func testBoundedSearchTokensRetainsBothEndsOfLongQuestions() {
+        let tokens = (0..<33).map { "filler\($0)" } + ["tailneedle"]
+
+        XCTAssertEqual(
+            SQLiteTaskStore.boundedSearchTokens(tokens),
+            Array(tokens.prefix(16)) + Array(tokens.suffix(16))
+        )
+    }
+
+    func testTaskAndKnowledgeSearchRetainTrailingLongQuestionToken() throws {
+        let connection = try currentConnection()
+        let tasks = SQLiteTaskStore(connection: connection)
+        let frames = SQLiteKnowledgeFrameStore(connection: connection)
+        let task = try tasks.create(title: "Task tailneedle")
+        let frame = try frames.create(name: "Knowledge tailneedle", body: "details")
+        let tokens = (0..<33).map { "filler\($0)" } + ["tailneedle"]
+
+        XCTAssertEqual(try tasks.searchOpenTasks(matching: tokens, limit: 1).map(\.id), [task.id])
+        XCTAssertEqual(try frames.search(matching: tokens, limit: 1).map(\.id), [frame.id])
+    }
+
     func testTaskSQLiteFallbackPreservesNonASCIICaseInsensitiveSubstrings() throws {
         let connection = try currentConnection()
         let store = SQLiteTaskStore(connection: connection)

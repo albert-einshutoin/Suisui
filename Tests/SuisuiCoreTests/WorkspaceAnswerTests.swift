@@ -122,6 +122,22 @@ final class WorkspaceAnswerTests: XCTestCase {
         )
     }
 
+    func testRetrieveRetainsTrailingTokenFromLongQuestion() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "Task tailneedle")
+        _ = try stores.frames.create(name: "Knowledge tailneedle", body: "details")
+        let question = ((0..<33).map { "filler\($0)" } + ["tailneedle"])
+            .joined(separator: " ")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+        let snippets = try retriever.retrieve(question: question, limit: 2)
+
+        XCTAssertEqual(
+            Set(snippets.map { "\($0.kind):\($0.title)" }),
+            ["task:Task tailneedle", "knowledge:Knowledge tailneedle"]
+        )
+    }
+
     func testRetrievePagesShortUnicodeInternalTaskSubstringBeyondNewerRows() throws {
         let stores = try makeStores()
         _ = try stores.tasks.create(title: "VorÜbergabe handoff")
