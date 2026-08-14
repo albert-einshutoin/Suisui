@@ -10,7 +10,12 @@ cd "$ROOT_DIR"
 cargo fmt --manifest-path "$RUST_MANIFEST" --check
 cargo test --manifest-path "$RUST_MANIFEST" --locked --all-targets --all-features
 cargo clippy --manifest-path "$RUST_MANIFEST" --locked --all-targets --all-features -- -D warnings
-env -u SUISUI_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY ./scripts/ci.sh ui-runtime
+env \
+  -u SUISUI_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY \
+  -u SUISUI_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX \
+  -u SUISUI_LAYOUT_STABILITY_CLIPPING_TOLERANCE_PX \
+  -u SUISUI_RUNTIME_TODAY_MAX_TOOLBAR_LAYOUT_DEPTH \
+  ./scripts/ci.sh ui-runtime
 env -u SUISUI_CI_VISUAL_GATE_LOCALE ./scripts/ci.sh ui-visual
 env \
   -u SUISUI_PERFORMANCE_PROFILE \

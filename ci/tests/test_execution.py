@@ -107,10 +107,14 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn("cargo fmt --manifest-path", contents)
         self.assertIn("cargo test --manifest-path", contents)
         self.assertIn("cargo clippy --manifest-path", contents)
-        self.assertIn(
-            "env -u SUISUI_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY ./scripts/ci.sh ui-runtime",
-            contents,
-        )
+        for variable in (
+            "SUISUI_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY",
+            "SUISUI_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX",
+            "SUISUI_LAYOUT_STABILITY_CLIPPING_TOLERANCE_PX",
+            "SUISUI_RUNTIME_TODAY_MAX_TOOLBAR_LAYOUT_DEPTH",
+        ):
+            self.assertIn(f"-u {variable}", contents)
+        self.assertIn("./scripts/ci.sh ui-runtime", contents)
         self.assertIn("env -u SUISUI_CI_VISUAL_GATE_LOCALE ./scripts/ci.sh ui-visual", contents)
         for variable in (
             "SUISUI_PERFORMANCE_PROFILE",

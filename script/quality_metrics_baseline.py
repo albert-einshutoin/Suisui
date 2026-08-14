@@ -130,9 +130,12 @@ def _rate(numerator: int, denominator: int) -> Optional[float]:
 
 
 def _gh_api(path: str) -> Optional[dict[str, Any]]:
-    result = subprocess.run(
-        ["gh", "api", "--method", "GET", path], text=True, capture_output=True, check=False
-    )
+    try:
+        result = subprocess.run(
+            ["gh", "api", "--method", "GET", path], text=True, capture_output=True, check=False
+        )
+    except OSError:
+        return None
     if result.returncode:
         return None
     try:

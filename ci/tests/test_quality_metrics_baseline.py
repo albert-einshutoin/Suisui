@@ -154,6 +154,10 @@ class QualityMetricsBaselineTests(unittest.TestCase):
             "/repos/owner/repo/actions/workflows/ci%20file.yml/runs?branch=feature%2Fa+b&per_page=10"
         )
 
+    def test_gh_api_treats_a_missing_cli_as_unavailable(self) -> None:
+        with patch.object(METRICS.subprocess, "run", side_effect=FileNotFoundError):
+            self.assertIsNone(METRICS._gh_api("/repos/owner/repo/actions/runs"))
+
     def test_write_output_rejects_symbolic_links(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
