@@ -70,6 +70,12 @@ public actor DevelopmentRepositoryIndex {
     private static let safeSwiftNominalTypeDeclaration = try? NSRegularExpression(
         pattern: #"^\s*(?:(?:private|public|internal|fileprivate|package|open|final)\s+)*(?:struct|class|enum|protocol|actor|extension)\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*(?:[A-Z][A-Za-z0-9_.<>?]*|@unchecked\s+Sendable)(?:\s*,\s*(?:[A-Z][A-Za-z0-9_.<>?]*|@unchecked\s+Sendable))*\s*(?:[{][}]?)?\s*$"#
     )
+    private static let safeSwiftTypealiasDeclaration = try? NSRegularExpression(
+        pattern: #"^\s*typealias\s+[A-Za-z_][A-Za-z0-9_]*\s*=\s*[A-Z][A-Za-z0-9_.]*\s*$"#
+    )
+    private static let safeSwiftGenericConstraint = try? NSRegularExpression(
+        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.]*\s*\{(?:\})?\s*$"#
+    )
     private static let safeSwiftCaseDeclaration = try? NSRegularExpression(
         pattern: #"^\s*case\s+\.[A-Za-z_][A-Za-z0-9_]*\s*:\s*$"#
     )
@@ -763,6 +769,8 @@ public actor DevelopmentRepositoryIndex {
               let safeTypedDeclaration = safeSourceTypedDeclaration,
               let safeTypedFunctionParameter = safeSourceTypedFunctionParameter,
               let safeNominalTypeDeclaration = safeSwiftNominalTypeDeclaration,
+              let safeTypealiasDeclaration = safeSwiftTypealiasDeclaration,
+              let safeGenericConstraint = safeSwiftGenericConstraint,
               let safeCaseDeclaration = safeSwiftCaseDeclaration,
               let typedDeclarationPrefix = swiftTypedDeclarationPrefix,
               let functionParameterPrefix = swiftFunctionParameterPrefix,
@@ -837,11 +845,19 @@ public actor DevelopmentRepositoryIndex {
                 return functionParameterPrefix.firstMatch(in: prefix, range: range) != nil
             } == true &&
                 safeTypedFunctionParameter.firstMatch(in: assignmentSuffix, range: suffixRange) != nil
+            let isTypedClosureParameter = openerPrefix?.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("{") == true &&
+                safeTypedFunctionParameter.firstMatch(in: assignmentSuffix, range: suffixRange) != nil
+            // These exceptions accept type syntax only; keeping literals outside
+            // the grammar preserves fail-closed handling for credential values.
             let isTypedDeclaration = (hasSafeTypedDeclaration &&
                 !line.contains("=") && !line.contains("\"") && !line.contains("'")) ||
-                (isTypedFunctionParameter && !line.contains("\"") && !line.contains("'"))
+                ((isTypedFunctionParameter || isTypedClosureParameter) && !line.contains("\"") && !line.contains("'"))
+            let trimmedPrefix = assignmentPrefix.trimmingCharacters(in: .whitespacesAndNewlines)
+            let isGenericConstraint = (trimmedPrefix == "where" || trimmedPrefix.hasSuffix(" where")) &&
+                safeGenericConstraint.firstMatch(in: assignmentSuffix, range: suffixRange) != nil
             let fullLineRange = NSRange(line.startIndex..<line.endIndex, in: line)
             let isNominalType = safeNominalTypeDeclaration.firstMatch(in: line, range: fullLineRange) != nil
+            let isTypealiasDeclaration = safeTypealiasDeclaration.firstMatch(in: line, range: fullLineRange) != nil
             let isCaseDeclaration = safeCaseDeclaration.firstMatch(in: line, range: fullLineRange) != nil
             let isSafeAssignment = containsSafeSwiftExpression(in: line, grammar: safeAssignment, atom: safeExpressionAtom) ||
                 // The binding's name must be this candidate. Otherwise a later
@@ -867,7 +883,8 @@ public actor DevelopmentRepositoryIndex {
                 (containsSafeSwiftExpression(in: assignmentSuffix, grammar: safeCallLabel, atom: safeExpressionAtom) ||
                     (isAuthorization && containsSafeSwiftAuthorizationCallLabel(in: assignmentSuffix, grammar: safeCallLabel, atom: safeExpressionAtom)))
             let isSafeSourceShape = isNominalType || isCaseDeclaration ||
-                (!continuesOnNextLine && (isTypedDeclaration || isSafeAssignment || isCallLabel))
+                (!continuesOnNextLine && (isTypedDeclaration || isTypealiasDeclaration ||
+                    isGenericConstraint || isSafeAssignment || isCallLabel))
             return !isSafeSourceShape
         }
     }

@@ -798,6 +798,47 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(numeric.isEmpty)
     }
 
+    func testRefreshAndFileReadIndexSafeSwiftAliasGenericAndClosureTypes() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let safe = """
+        typealias AccessToken = String
+        func forward<Token>(_ value: Token) where Token: Sendable {
+            _ = value
+        }
+        let transform = { (accessToken: AccessToken) in
+            String(describing: accessToken)
+        }
+        let safeGrammarMarker = transform
+        """
+        try fixture.write(safe, to: "Sources/SafeGrammar.swift")
+        try fixture.write(
+            "let accessToken = \"safegrammarsecretmarker\"",
+            to: "Sources/LiteralCredential.swift"
+        )
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let safeResults = try await index.search(query: "safeGrammarMarker", workspace: workspace(fixture))
+        let secretResults = try await index.search(query: "safegrammarsecretmarker", workspace: workspace(fixture))
+        XCTAssertEqual(safeResults.map(\.sourcePath), ["Sources/SafeGrammar.swift"])
+        XCTAssertTrue(secretResults.isEmpty)
+
+        let fileClient = DevelopmentRepositoryFileClient(project: ProjectRecord(
+            id: 42,
+            title: "Suisui",
+            status: "active",
+            workspacePath: fixture.url.path
+        ))
+        XCTAssertEqual(try fileClient.read(relativePath: "Sources/SafeGrammar.swift").contents, safe)
+        XCTAssertThrowsError(try fileClient.read(relativePath: "Sources/LiteralCredential.swift")) { error in
+            guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                return XCTFail("Expected secret-like content rejection, got \(error)")
+            }
+        }
+    }
+
     func testRefreshFailsClosedForDenseSwiftCredentialCandidates() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
