@@ -92,10 +92,12 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let encodedKeyData = "QUJDREVG" + "R0hJSktMTU4="
         let quotedYAMLKeyData = "quotedkubesentinel"
         let flowYAMLKeyData = "flowkubesentinel"
+        let extensionlessFlowKeyData = "extensionlesskubesentinel"
         let jsonKeyData = "jsonkubesentinel"
         try fixture.write("client-key-data: \(encodedKeyData)", to: "Kube.yml")
         try fixture.write("\"client-key-data\": \"\(quotedYAMLKeyData)\"", to: "QuotedKube.yml")
         try fixture.write("users: [{name: prod, user: {\"client_key_data\": \"\(flowYAMLKeyData)\"}}]", to: "FlowKube.yaml")
+        try fixture.write("users: [{name: prod, user: {\"client-key-data\": \"\(extensionlessFlowKeyData)\"}}]", to: "Dockerfile")
         try fixture.write("{\"client-key-data\":\"\(jsonKeyData)\"}", to: "Kube.json")
         try fixture.write("  -----BEGIN PRIVATE KEY-----\n  placeholder\n  -----END PRIVATE KEY-----", to: "KeyMaterial.txt")
         let index = try migratedIndex()
@@ -104,11 +106,13 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let kubernetesResults = try await index.search(query: encodedKeyData, workspace: workspace(fixture))
         let quotedYAMLResults = try await index.search(query: quotedYAMLKeyData, workspace: workspace(fixture))
         let flowYAMLResults = try await index.search(query: flowYAMLKeyData, workspace: workspace(fixture))
+        let extensionlessFlowResults = try await index.search(query: extensionlessFlowKeyData, workspace: workspace(fixture))
         let jsonResults = try await index.search(query: jsonKeyData, workspace: workspace(fixture))
         let pemResults = try await index.search(query: "PRIVATE", workspace: workspace(fixture))
         XCTAssertTrue(kubernetesResults.isEmpty)
         XCTAssertTrue(quotedYAMLResults.isEmpty)
         XCTAssertTrue(flowYAMLResults.isEmpty)
+        XCTAssertTrue(extensionlessFlowResults.isEmpty)
         XCTAssertTrue(jsonResults.isEmpty)
         XCTAssertTrue(pemResults.isEmpty)
     }

@@ -498,11 +498,9 @@ public actor DevelopmentRepositoryIndex {
         guard let serializedCredential, let yamlClientKeyData else {
             return true
         }
-        let extensionName = URL(fileURLWithPath: relativePath).pathExtension.lowercased()
-        // YAML permits flow mappings, so a line-start matcher would miss a
-        // credential nested in an otherwise ordinary list or object.
-        if ["yml", "yaml"].contains(extensionName),
-           yamlClientKeyData.firstMatch(in: contents, range: range) != nil {
+        // A client-key-data key is itself secret material regardless of the
+        // surrounding format; flow mappings are not limited to YAML extensions.
+        if yamlClientKeyData.firstMatch(in: contents, range: range) != nil {
             return true
         }
         if serializedCredential.firstMatch(in: contents, range: range) != nil {
