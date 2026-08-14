@@ -132,6 +132,7 @@ class ExecutionContractTests(unittest.TestCase):
         ci_contents = CI_SCRIPT.read_text(encoding="utf-8")
         self.assertIn('if [[ "$CI_COMPLETE_RUNTIME" == "1" ]]', ci_contents)
         self.assertIn("require_fully_exercised_runtime", ci_contents)
+        self.assertIn("accessible_crud_recoverable_only=0", ci_contents)
         self.assertIn(
             "SUISUI_CI_COMPLETE_RUNTIME: 0",
             WORKFLOW.read_text(encoding="utf-8"),
@@ -140,6 +141,7 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn("SUISUI_RUNTIME_POLICY=public-alpha", contents)
         self.assertIn("-u SUISUI_CI_VISUAL_GATE_LOCALE", contents)
         self.assertIn("-u SUISUI_VISUAL_SOURCE_REF", contents)
+        self.assertIn("SUISUI_CI_VISUAL_BASELINE_PROFILE=local-display", contents)
         self.assertIn("./scripts/ci.sh ui-visual", contents)
         for variable in (
             "SUISUI_PERFORMANCE_PROFILE",

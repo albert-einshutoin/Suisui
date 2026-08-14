@@ -42,6 +42,7 @@ env \
 env \
   -u SUISUI_CI_VISUAL_GATE_LOCALE \
   -u SUISUI_VISUAL_SOURCE_REF \
+  SUISUI_CI_VISUAL_BASELINE_PROFILE=local-display \
   SUISUI_RUNTIME_POLICY=public-alpha \
   SUISUI_CI_ARTIFACT_ROOT="$CI_ARTIFACT_ROOT" \
   ./scripts/ci.sh ui-visual

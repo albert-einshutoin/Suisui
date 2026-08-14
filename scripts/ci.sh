@@ -278,9 +278,13 @@ run_layout_stability_gate() {
 run_runtime_gates() {
   local artifact_dir="$CI_ARTIFACT_ROOT/ui-runtime"
   local capability_summary="$artifact_dir/runner-capability/ui-runner-capability-summary.env"
+  local accessible_crud_recoverable_only="${SUISUI_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY:-0}"
   local visible_frame_dimensions
   local visible_frame_width
   local visible_frame_height
+  if [[ "$CI_COMPLETE_RUNTIME" == "1" ]]; then
+    accessible_crud_recoverable_only=0
+  fi
   SUISUI_UI_RUNNER_CAPABILITY_ARTIFACT_DIR="$artifact_dir/runner-capability" \
     ./script/check_macos_ui_runner_capabilities.sh runtime
   if ! visible_frame_dimensions="$(read_layout_visible_frame_dimensions "$capability_summary")"; then
@@ -288,7 +292,8 @@ run_runtime_gates() {
   fi
   read -r visible_frame_width visible_frame_height <<<"$visible_frame_dimensions"
   run_build_and_run_verify "$artifact_dir"
-  SUISUI_RUNTIME_ACCESSIBLE_CRUD_ARTIFACT_DIR="$artifact_dir/runtime-accessible-crud" \
+  SUISUI_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY="$accessible_crud_recoverable_only" \
+    SUISUI_RUNTIME_ACCESSIBLE_CRUD_ARTIFACT_DIR="$artifact_dir/runtime-accessible-crud" \
     ./script/check_runtime_accessible_crud_smoke.sh
   run_layout_stability_gate "$artifact_dir" "$visible_frame_width" "$visible_frame_height"
   SUISUI_RUNTIME_TODAY_PRODUCTION_ROUTE_ARTIFACT_DIR="$artifact_dir/today-production-route" \
