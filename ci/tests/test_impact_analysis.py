@@ -138,6 +138,22 @@ class ImpactAnalysisTests(unittest.TestCase):
         self.assertEqual(plan["strategy"], "full")
         self.assertTrue(plan["fallback"])
 
+    def test_rust_dependency_files_force_full_for_mixed_swift_changes(self) -> None:
+        for dependency_path in (
+            "rust/embedding-helper/Cargo.toml",
+            "rust/embedding-helper/Cargo.lock",
+        ):
+            with self.subTest(dependency_path=dependency_path):
+                plan = self._analyze(
+                    [
+                        {"status": "M", "path": "Sources/SuisuiCore/App/Widget.swift"},
+                        {"status": "M", "path": dependency_path},
+                    ]
+                )
+
+                self.assertEqual(plan["strategy"], "full")
+                self.assertTrue(plan["fallback"])
+
     def test_visual_baseline_change_routes_to_ui_visual(self) -> None:
         plan = self._analyze(
             [{"status": "M", "path": "docs/quality/visual-baseline-manifest-ja.json"}]
