@@ -84,6 +84,19 @@ public struct DeveloperSecretRedactor: Sendable {
             )
         }
 
+        // JSON permits escaped key names (for example `to\u006ben`). Decode
+        // those keys before regex redaction so the spelling cannot hide a
+        // credential field from logs or repository-index checks.
+        if Self.containsEscapedCredentialJSONKey(text) {
+            return SecretRedactionResult(
+                text: text.isEmpty ? "" : "[REDACTED_SECRET]",
+                report: SecretRedactionReport(
+                    replacementCount: text.isEmpty ? 0 : 1,
+                    matchedPatternNames: ["credential_json"]
+                )
+            )
+        }
+
         var redacted = text
         var replacementCount = 0
         var matchedPatternNames: [String] = []
@@ -128,6 +141,59 @@ public struct DeveloperSecretRedactor: Sendable {
             name: name,
             regex: NSRegularExpression(pattern: expression)
         )
+    }
+
+    private static func containsEscapedCredentialJSONKey(_ text: String) -> Bool {
+        var index = text.startIndex
+        while index < text.endIndex {
+            guard text[index] == "\"" else {
+                index = text.index(after: index)
+                continue
+            }
+            let start = index
+            var cursor = text.index(after: index)
+            var escaped = false
+            var sawEscape = false
+            while cursor < text.endIndex {
+                let character = text[cursor]
+                if escaped {
+                    escaped = false
+                } else if character == "\\" {
+                    escaped = true
+                    sawEscape = true
+                } else if character == "\"" {
+                    break
+                }
+                cursor = text.index(after: cursor)
+            }
+            guard cursor < text.endIndex else {
+                return false
+            }
+            let end = text.index(after: cursor)
+            var delimiter = end
+            while delimiter < text.endIndex, text[delimiter].isWhitespace {
+                delimiter = text.index(after: delimiter)
+            }
+            if sawEscape, delimiter < text.endIndex, text[delimiter] == ":" {
+                let literal = String(text[start..<end])
+                guard let data = literal.data(using: .utf8),
+                      let key = try? JSONDecoder().decode(String.self, from: data) else {
+                    return true
+                }
+                if isCredentialJSONKey(key) {
+                    return true
+                }
+            }
+            index = end
+        }
+        return false
+    }
+
+    private static func isCredentialJSONKey(_ key: String) -> Bool {
+        let normalized = key.lowercased().filter { $0.isLetter || $0.isNumber }
+        return ["auth", "auths", "identitytoken"].contains(normalized)
+            || ["apikey", "accesskey", "privatekey", "token", "password", "secret"]
+                .contains(where: normalized.hasSuffix)
     }
 }
 

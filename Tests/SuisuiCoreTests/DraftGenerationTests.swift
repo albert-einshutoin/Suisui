@@ -85,6 +85,19 @@ final class DraftGenerationTests: XCTestCase {
         XCTAssertTrue(redaction.report.matchedPatternNames.contains("credential_uri"))
     }
 
+    func testEscapedJSONCredentialKeysFailClosed() {
+        for fixture in [
+            #"{"to\u006ben":"long-secret-value"}"#,
+            #"{"client_\u0073ecret":"long-secret-value"}"#,
+            #"{"au\u0074h":"long-secret-value"}"#,
+        ] {
+            let redaction = DeveloperSecretRedactor().redact(fixture)
+
+            XCTAssertEqual(redaction.text, "[REDACTED_SECRET]")
+            XCTAssertEqual(redaction.report.matchedPatternNames, ["credential_json"])
+        }
+    }
+
     func testInvalidRedactionPatternFailsClosedWithoutLeakingInput() {
         let redactor = DeveloperSecretRedactor(patternDefinitions: [
             SecretRedactionPatternDefinition(name: "broken", expression: "[")
