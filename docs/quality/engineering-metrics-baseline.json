@@ -1,21 +1,21 @@
 {
   "metrics": {
-    "averageAttempts": 1.0309278350515463,
+    "averageAttempts": 1.1,
     "averageAttemptsStatus": "available",
-    "firstAttemptSuccessRate": 0.7291666666666666,
+    "firstAttemptSuccessRate": 0.71,
     "firstAttemptSuccessRateStatus": "available",
     "overallSuccessRate": 0.75,
     "overallSuccessRateStatus": "available",
-    "rerunRate": 0.020618556701030927,
+    "rerunRate": 0.05,
     "rerunRateStatus": "available"
   },
   "runs": {
     "cancelled": 0,
-    "completed": 96,
-    "failure": 24,
+    "completed": 100,
+    "failure": 25,
     "neutral": 0,
-    "success": 72,
-    "total": 97
+    "success": 75,
+    "total": 100
   },
   "sample": {
     "branch": "main",

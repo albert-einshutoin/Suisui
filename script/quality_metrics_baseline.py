@@ -76,10 +76,7 @@ def build_baseline(runs: Iterable[dict[str, Any]], sample: dict[str, Any]) -> di
     failure = sum(conclusion in FAILURE_CONCLUSIONS for conclusion in known_conclusions)
     cancelled = sum(conclusion in CANCELLED_CONCLUSIONS for conclusion in known_conclusions)
     neutral = sum(conclusion in NEUTRAL_CONCLUSIONS for conclusion in known_conclusions)
-    eligible_first_runs = [
-        first for first, final in zip(first_runs, final_runs)
-        if final.get("status") == "completed"
-    ]
+    eligible_first_runs = first_runs
     first_completed = [
         run for run in eligible_first_runs
         if run is not None
@@ -93,7 +90,7 @@ def build_baseline(runs: Iterable[dict[str, Any]], sample: dict[str, Any]) -> di
     )
     overall_success_rate = _rate(success, len(known_conclusions))
     missing_first = len(first_completed) != len(eligible_first_runs)
-    missing_final = len(known_conclusions) != len(completed)
+    missing_final = len(known_conclusions) != len(final_runs)
     first_status = "unavailable" if not first_completed else "partial" if missing_first else "available"
     overall_status = "unavailable" if not known_conclusions else "partial" if missing_final else "available"
     sample_status = "empty" if not final_runs else "partial" if missing_first or missing_final else "complete"

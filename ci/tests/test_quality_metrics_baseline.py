@@ -61,7 +61,7 @@ class QualityMetricsBaselineTests(unittest.TestCase):
         self.assertEqual(baseline["schemaVersion"], 1)
         self.assertEqual(baseline["runs"], {"total": 4, "completed": 3, "success": 1, "failure": 0, "cancelled": 1, "neutral": 1})
         self.assertEqual(baseline["metrics"]["firstAttemptSuccessRate"], 0.0)
-        self.assertEqual(baseline["metrics"]["firstAttemptSuccessRateStatus"], "available")
+        self.assertEqual(baseline["metrics"]["firstAttemptSuccessRateStatus"], "partial")
         self.assertEqual(baseline["metrics"]["rerunRate"], 0.25)
         self.assertEqual(baseline["metrics"]["overallSuccessRate"], 1 / 3)
         self.assertEqual(baseline["metrics"]["averageAttempts"], 1.25)
@@ -87,6 +87,20 @@ class QualityMetricsBaselineTests(unittest.TestCase):
 
         self.assertEqual(baseline["metrics"]["firstAttemptSuccessRate"], 1.0)
         self.assertEqual(baseline["metrics"]["firstAttemptSuccessRateStatus"], "partial")
+
+    def test_build_baseline_keeps_known_first_attempt_while_rerun_is_in_progress(self) -> None:
+        baseline = METRICS.build_baseline(
+            [
+                {"id": 80, "run_attempt": 1, "status": "completed", "conclusion": "failure"},
+                {"id": 80, "run_attempt": 2, "status": "in_progress", "conclusion": None},
+            ],
+            {"repository": "owner/repo", "limit": 1},
+        )
+
+        self.assertEqual(baseline["metrics"]["firstAttemptSuccessRate"], 0.0)
+        self.assertEqual(baseline["metrics"]["firstAttemptSuccessRateStatus"], "available")
+        self.assertEqual(baseline["metrics"]["overallSuccessRateStatus"], "unavailable")
+        self.assertEqual(baseline["sampleStatus"], "partial")
 
     def test_build_baseline_has_an_explicit_empty_status(self) -> None:
         baseline = METRICS.build_baseline([], {"repository": "owner/repo", "limit": 10})
