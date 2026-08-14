@@ -110,6 +110,18 @@ final class WorkspaceAnswerTests: XCTestCase {
         )
     }
 
+    func testRetrieveFindsCanonicalUnicodeTaskSubstringAcrossNFCAndNFD() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "VorU\u{0308}bergabe handoff")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "über", limit: 1).map(\.title),
+            ["VorU\u{0308}bergabe handoff"]
+        )
+    }
+
     func testRetrievePagesShortUnicodeInternalTaskSubstringBeyondNewerRows() throws {
         let stores = try makeStores()
         _ = try stores.tasks.create(title: "VorÜbergabe handoff")

@@ -464,6 +464,21 @@ final class LocalStoreTests: XCTestCase {
         )
     }
 
+    func testTaskSearchFindsCanonicalUnicodeSubstringAcrossNFCAndNFD() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+        let task = try store.create(title: "VorU\u{0308}bergabe handoff")
+
+        XCTAssertEqual(
+            try store.searchOpenTasksByContent(text: "über", limit: 1).map(\.id),
+            [task.id]
+        )
+        XCTAssertEqual(
+            try store.searchOpenTasks(matching: ["über"], limit: 1).map(\.id),
+            [task.id]
+        )
+    }
+
     func testTaskContentSearchFindsQuotedUnicodePunctuationInsideFTSToken() throws {
         let connection = try currentConnection()
         let store = SQLiteTaskStore(connection: connection)
@@ -534,6 +549,21 @@ final class LocalStoreTests: XCTestCase {
         )
         XCTAssertEqual(
             try store.search(query: "übe", limit: 1).map(\.id),
+            [frame.id]
+        )
+    }
+
+    func testKnowledgeSearchFindsCanonicalUnicodeSubstringAcrossNFCAndNFD() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let frame = try store.create(name: "VorU\u{0308}bergabe notes", body: "handoff details")
+
+        XCTAssertEqual(
+            try store.search(query: "über", limit: 1).map(\.id),
+            [frame.id]
+        )
+        XCTAssertEqual(
+            try store.search(matching: ["über"], limit: 1).map(\.id),
             [frame.id]
         )
     }

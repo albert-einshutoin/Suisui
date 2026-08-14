@@ -1683,8 +1683,12 @@ public final class SQLiteTaskStore: @unchecked Sendable {
     }
 
     private static func matchesLiteral(_ record: TaskRecord, text: String) -> Bool {
-        record.title.range(of: text, options: .caseInsensitive) != nil
-            || record.detail?.range(of: text, options: .caseInsensitive) != nil
+        // Normalize canonical equivalents before folding case: SQLite FTS and
+        // lower() cannot bridge NFC/NFD Unicode literals. This preserves the
+        // former Swift literal contract without making accents equivalent.
+        let normalizedText = text.precomposedStringWithCanonicalMapping
+        return record.title.precomposedStringWithCanonicalMapping.range(of: normalizedText, options: .caseInsensitive) != nil
+            || record.detail?.precomposedStringWithCanonicalMapping.range(of: normalizedText, options: .caseInsensitive) != nil
     }
 
     private static let maximumUnicodePrefixCandidates = 128
@@ -1692,8 +1696,14 @@ public final class SQLiteTaskStore: @unchecked Sendable {
 
     private static func needsUnicodeLiteralPaging(for tokens: [String]) -> Bool {
         tokens.contains { token in
-            token.unicodeScalars.count < 3
-                && token.unicodeScalars.contains { $0.value > 0x7F }
+            guard token.unicodeScalars.contains(where: { $0.value > 0x7F }) else {
+                return false
+            }
+            // Trigrams compare scalar sequences, so NFC/NFD equivalents need
+            // the same bounded keyset path as literals below three scalars.
+            return token.unicodeScalars.count < 3
+                || Array(token.precomposedStringWithCanonicalMapping.unicodeScalars)
+                    != Array(token.decomposedStringWithCanonicalMapping.unicodeScalars)
         }
     }
 
@@ -2350,8 +2360,14 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
 
     private static func needsUnicodeLiteralPaging(for tokens: [String]) -> Bool {
         tokens.contains { token in
-            token.unicodeScalars.count < 3
-                && token.unicodeScalars.contains { $0.value > 0x7F }
+            guard token.unicodeScalars.contains(where: { $0.value > 0x7F }) else {
+                return false
+            }
+            // Trigrams compare scalar sequences, so NFC/NFD equivalents need
+            // the same bounded keyset path as literals below three scalars.
+            return token.unicodeScalars.count < 3
+                || Array(token.precomposedStringWithCanonicalMapping.unicodeScalars)
+                    != Array(token.decomposedStringWithCanonicalMapping.unicodeScalars)
         }
     }
 
@@ -2372,9 +2388,14 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
     }
 
     private static func matchesLiteral(_ record: KnowledgeFrameRecord, text: String) -> Bool {
-        record.name.range(of: text, options: .caseInsensitive) != nil
-            || record.body.range(of: text, options: .caseInsensitive) != nil
-            || record.triggers.contains { $0.range(of: text, options: .caseInsensitive) != nil }
+        // See the task matcher: this is literal, NFC-normalized comparison;
+        // it deliberately does not use diacritic-insensitive matching.
+        let normalizedText = text.precomposedStringWithCanonicalMapping
+        return record.name.precomposedStringWithCanonicalMapping.range(of: normalizedText, options: .caseInsensitive) != nil
+            || record.body.precomposedStringWithCanonicalMapping.range(of: normalizedText, options: .caseInsensitive) != nil
+            || record.triggers.contains {
+                $0.precomposedStringWithCanonicalMapping.range(of: normalizedText, options: .caseInsensitive) != nil
+            }
     }
 }
 
