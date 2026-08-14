@@ -39,7 +39,7 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"\b(?i:authorization)\b"#
     )
     private static let standaloneProviderCredential = try? NSRegularExpression(
-        pattern: #"(?<![A-Za-z0-9_-])(?:xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{20,})(?![A-Za-z0-9_-])"#
+        pattern: #"(?<![A-Za-z0-9_-])(?:xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{20,}|glpat-[A-Za-z0-9_-]{8,}|sk_live_[A-Za-z0-9_-]{8,})(?![A-Za-z0-9_-])"#
     )
     private static let safeSwiftAssignment = try? NSRegularExpression(
         pattern: #"^\s*(?:(?:let|var)\s+)?(?:self\.)?[A-Za-z_][A-Za-z0-9_]*\s+=\s*(.+?)\s*$"#
@@ -633,8 +633,8 @@ public actor DevelopmentRepositoryIndex {
               let yamlClientKeyData else {
             return true
         }
-        // These opaque provider prefixes are secrets even in prose, without an
-        // assignment key; reject them before any repository text is persisted.
+        // CI sanitizer taxonomy treats these opaque provider prefixes as secrets
+        // even in prose; reject them before any repository text is persisted.
         if standaloneProviderCredential.firstMatch(in: contents, range: range) != nil {
             return true
         }

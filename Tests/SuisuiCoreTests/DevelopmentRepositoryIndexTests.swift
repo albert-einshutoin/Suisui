@@ -91,16 +91,24 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         defer { fixture.remove() }
         let slackCredential = "xoxb-" + "slackindexmarker123"
         let googleCredential = "AIza" + "googleindexmarker1234567890"
-        try fixture.write("Leaked sample: \(slackCredential)", to: "README.md")
+        let gitLabCredential = "glpat-" + "gitlabindexmarker123"
+        let stripeCredential = "sk_live_" + "stripeindexmarker123"
+        try fixture.write("Leaked sample: \(slackCredential)", to: "Slack.md")
         try fixture.write("Copied value: \(googleCredential)", to: "Notes.md")
+        try fixture.write("Leaked sample: \(gitLabCredential)", to: "README.md")
+        try fixture.write("Captured output: \(stripeCredential)", to: "BuildLog.txt")
         let index = try migratedIndex()
 
         try await index.refresh(workspace: workspace(fixture))
 
         let slack = try await index.search(query: "slackindexmarker123", workspace: workspace(fixture))
         let google = try await index.search(query: "googleindexmarker1234567890", workspace: workspace(fixture))
+        let gitLab = try await index.search(query: "gitlabindexmarker123", workspace: workspace(fixture))
+        let stripe = try await index.search(query: "stripeindexmarker123", workspace: workspace(fixture))
         XCTAssertTrue(slack.isEmpty)
         XCTAssertTrue(google.isEmpty)
+        XCTAssertTrue(gitLab.isEmpty)
+        XCTAssertTrue(stripe.isEmpty)
     }
 
     func testRefreshDoesNotPersistGenericCredentialKeys() async throws {
