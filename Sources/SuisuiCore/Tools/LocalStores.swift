@@ -1716,10 +1716,11 @@ public final class SQLiteTaskStore: @unchecked Sendable {
     private static func unicodeTrigramMatch(for tokens: [String]) -> String? {
         let terms = tokens.compactMap { token -> String? in
             guard token.unicodeScalars.count >= 3,
-                  token.unicodeScalars.contains(where: { $0.value > 0x7F }),
-                  token.allSatisfy({ $0.isLetter || $0.isNumber }) else {
+                  token.unicodeScalars.contains(where: { $0.value > 0x7F }) else {
                 return nil
             }
+            // The quoted phrase keeps punctuation literal, while source
+            // revalidation prevents FTS tokenization from widening a match.
             return "\"\(SQL.escapeFTS(token))\""
         }
         guard !terms.isEmpty else {
@@ -2368,10 +2369,11 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
     private static func unicodeTrigramMatch(for tokens: [String]) -> String? {
         let terms = tokens.compactMap { token -> String? in
             guard token.unicodeScalars.count >= 3,
-                  token.unicodeScalars.contains(where: { $0.value > 0x7F }),
-                  token.allSatisfy({ $0.isLetter || $0.isNumber }) else {
+                  token.unicodeScalars.contains(where: { $0.value > 0x7F }) else {
                 return nil
             }
+            // The quoted phrase keeps punctuation literal, while source
+            // revalidation prevents FTS tokenization from widening a match.
             return "\"\(SQL.escapeFTS(token))\""
         }
         guard !terms.isEmpty else {
