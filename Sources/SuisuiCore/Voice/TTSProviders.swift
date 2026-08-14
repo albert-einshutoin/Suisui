@@ -254,8 +254,9 @@ public struct KokoroLocalTTSProvider: TextToSpeechProvider {
     private func normalizedVoiceID(_ value: String, languageCode: String) throws -> String {
         let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
         let voiceID = normalized.isEmpty ? configuration.voiceID : normalized
-        let allowedPrefix = languageCode == "ja" ? "j" : "a"
-        guard voiceID.hasPrefix(allowedPrefix), voiceID.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
+        // Kokoro uses a/b for American/British English and j for Japanese voices.
+        let allowedPrefixes = languageCode == "ja" ? ["j"] : ["a", "b"]
+        guard allowedPrefixes.contains(where: voiceID.hasPrefix), voiceID.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
             throw TTSProviderError.unavailable("Kokoro voice does not match the selected language.")
         }
         return voiceID
