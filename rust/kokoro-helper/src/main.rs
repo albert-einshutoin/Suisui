@@ -11,9 +11,10 @@ use ort::{inputs, session::Session, value::Tensor};
 
 const SAMPLE_RATE: u32 = 24_000;
 const MAX_TOKEN_BYTES: u64 = 4 * 1024;
-// Kokoro v1.0 voice packs contain one 256-value style row per supported
-// sequence length, and its published vocabulary uses token ids 0...177.
-const MAX_TOKENS: usize = 510;
+// Kokoro v1.0 supports 510 content tokens; this CLI receives the model-ready
+// sequence with the required leading and trailing padding ids already present.
+const MAX_PADDED_TOKENS: usize = 512;
+// The published v1.0 vocabulary uses ids 0...177, with 0 reserved for padding.
 const MAX_TOKEN_ID: i64 = 177;
 const MAX_MODEL_BYTES: u64 = 400 * 1024 * 1024;
 const MAX_VOICE_BYTES: u64 = 2 * 1024 * 1024;
@@ -175,9 +176,9 @@ fn read_tokens(path: PathBuf) -> AppResult<Vec<i64>> {
                 .map_err(|_| "Kokoro tokens must be decimal integers".to_owned())
         })
         .collect::<AppResult<Vec<_>>>()?;
-    if !(3..=MAX_TOKENS).contains(&tokens.len()) {
+    if !(3..=MAX_PADDED_TOKENS).contains(&tokens.len()) {
         return Err(format!(
-            "Kokoro token count must be between 3 and {MAX_TOKENS}"
+            "Kokoro token count must be between 3 and {MAX_PADDED_TOKENS}"
         ));
     }
     if tokens.first() != Some(&0) || tokens.last() != Some(&0) {
@@ -485,6 +486,24 @@ mod tests {
         let _ = fs::remove_dir_all(&directory);
 
         assert_eq!(result, [0, 50, 83, 54, 156, 57, 135, 0]);
+    }
+
+    #[test]
+    fn read_tokens_should_accept_510_content_tokens_plus_padding() {
+        let directory = unique_test_directory();
+        fs::create_dir_all(&directory).unwrap();
+        let tokens = directory.join("tokens.txt");
+        let padded = std::iter::once("0")
+            .chain(std::iter::repeat_n("1", 510))
+            .chain(std::iter::once("0"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        fs::write(&tokens, padded).unwrap();
+
+        let result = read_tokens(tokens).unwrap();
+        let _ = fs::remove_dir_all(&directory);
+
+        assert_eq!(result.len(), 512);
     }
 
     #[test]
