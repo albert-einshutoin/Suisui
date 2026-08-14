@@ -36,6 +36,9 @@ public actor DevelopmentRepositoryIndex {
     private static let credentialKeyAssignments = try? NSRegularExpression(
         pattern: #"\b(?i:(?:[A-Za-z_][A-Za-z0-9_]*)?(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret|credentials?)[A-Za-z0-9_]*)\b"#
     )
+    private static let ambiguousSwiftSubscriptAssignment = try? NSRegularExpression(
+        pattern: #"\[\s*\"[^\"\r\n]*\\[^\"\r\n]*\"\s*\](?:\s|/\*[\s\S]*?\*/|//[^\r\n]*(?:\r\n|\r|\n))*="#
+    )
     private static let authorizationIdentifier = try? NSRegularExpression(
         pattern: #"\b(?i:authorization)\b"#
     )
@@ -692,6 +695,12 @@ public actor DevelopmentRepositoryIndex {
         if containsAmbiguousNonSwiftEscape(contents, relativePath: relativePath) {
             return true
         }
+        if relativePath.lowercased().hasSuffix(".swift"),
+           ambiguousSwiftSubscriptAssignment?.firstMatch(in: contents, range: range) != nil {
+            // Escapes and interpolation can synthesize a credential key after
+            // lexical analysis. Unknown computed subscript assignments stay closed.
+            return true
+        }
         guard let standaloneProviderCredential,
               let serializedCredential,
               let yamlClientKeyData else {
@@ -1055,7 +1064,13 @@ public actor DevelopmentRepositoryIndex {
                 if character.isWhitespace {
                     // Keep looking.
                 } else if quoteCanClose, character == "\"" || character == "'" || character == "`" {
-                    quoteCanClose = false
+                    if hasSubscriptAssignment(afterClosingQuoteAt: index, in: source) {
+                        assignmentEnds.formUnion(pendingEnds)
+                        pendingEnds.removeAll(keepingCapacity: true)
+                        quoteCanClose = true
+                    } else {
+                        quoteCanClose = false
+                    }
                 } else if isExplicitLineContinuation {
                     // Python-style explicit continuations make the following
                     // line part of this assignment expression.
@@ -1078,6 +1093,58 @@ public actor DevelopmentRepositoryIndex {
             index = nextIndex
         }
         return assignmentEnds
+    }
+
+    private static func hasSubscriptAssignment(
+        afterClosingQuoteAt quote: String.Index,
+        in source: String
+    ) -> Bool {
+        var index = source.index(after: quote)
+        while index < source.endIndex, source[index].isWhitespace {
+            index = source.index(after: index)
+        }
+        guard index < source.endIndex, source[index] == "]" else {
+            return false
+        }
+        index = source.index(after: index)
+
+        var blockCommentDepth = 0
+        var lineComment = false
+        while index < source.endIndex {
+            let character = source[index]
+            let next = source.index(after: index)
+            let nextCharacter = next < source.endIndex ? source[next] : nil
+            if lineComment {
+                if character == "\n" || character == "\r" {
+                    lineComment = false
+                }
+            } else if blockCommentDepth > 0 {
+                if character == "/", nextCharacter == "*" {
+                    blockCommentDepth += 1
+                    index = source.index(after: next)
+                    continue
+                }
+                if character == "*", nextCharacter == "/" {
+                    blockCommentDepth -= 1
+                    index = source.index(after: next)
+                    continue
+                }
+            } else if character.isWhitespace {
+                // Keep scanning trivia.
+            } else if character == "/", nextCharacter == "*" {
+                blockCommentDepth = 1
+                index = source.index(after: next)
+                continue
+            } else if character == "/", nextCharacter == "/" {
+                lineComment = true
+                index = source.index(after: next)
+                continue
+            } else {
+                return character == "=" && nextCharacter != "="
+            }
+            index = next
+        }
+        return false
     }
 
     // Scan once and snapshot only credential-like positions: rescanning each

@@ -545,6 +545,54 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         }
     }
 
+    func testRefreshAndFileReadRejectCredentialSubscriptAssignmentsOnly() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let credentialSource = #"""
+        var headers: [String: String] = [:]
+        headers["api-key"] /* request credential */ = "subscriptsecretmarker"
+        """#
+        let escapedCredentialSource = #"""
+        var headers: [String: String] = [:]
+        headers["api\u{2D}key"] = "escapedsubscriptsecretmarker"
+        """#
+        let safeSource = #"""
+        var headers: [String: String] = [:]
+        headers["content-type"] = "application/json"
+        let value = headers["accessToken"]
+        let present = headers["accessToken"] == nil
+        let subscriptSafeMarker = value ?? String(present)
+        """#
+        try fixture.write(credentialSource, to: "Sources/CredentialHeader.swift")
+        try fixture.write(escapedCredentialSource, to: "Sources/EscapedCredentialHeader.swift")
+        try fixture.write(safeSource, to: "Sources/SafeHeader.swift")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let credential = try await index.search(query: "subscriptsecretmarker", workspace: workspace(fixture))
+        let escaped = try await index.search(query: "escapedsubscriptsecretmarker", workspace: workspace(fixture))
+        let safe = try await index.search(query: "subscriptSafeMarker", workspace: workspace(fixture))
+        XCTAssertTrue(credential.isEmpty)
+        XCTAssertTrue(escaped.isEmpty)
+        XCTAssertEqual(safe.map(\.sourcePath), ["Sources/SafeHeader.swift"])
+
+        let fileClient = DevelopmentRepositoryFileClient(project: ProjectRecord(
+            id: 42,
+            title: "Suisui",
+            status: "active",
+            workspacePath: fixture.url.path
+        ))
+        for path in ["Sources/CredentialHeader.swift", "Sources/EscapedCredentialHeader.swift"] {
+            XCTAssertThrowsError(try fileClient.read(relativePath: path)) { error in
+                guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                    return XCTFail("Expected secret-like content rejection, got \(error)")
+                }
+            }
+        }
+        XCTAssertEqual(try fileClient.read(relativePath: "Sources/SafeHeader.swift").contents, safeSource)
+    }
+
     func testRefreshIndexesSwiftCollectionTypesButRejectsLiteralAssignment() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
