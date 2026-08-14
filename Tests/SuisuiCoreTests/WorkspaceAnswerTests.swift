@@ -157,6 +157,48 @@ final class WorkspaceAnswerTests: XCTestCase {
         XCTAssertEqual(snippets.filter { $0.kind == "knowledge" }.map(\.title), ["請求書リリース手順"])
     }
 
+    func testRetrieveUsesSingleJapaneseCharacterAsKnowledgeLiteralFallback() throws {
+        let stores = try makeStores()
+        _ = try stores.frames.create(name: "税務メモ", body: "税金の確認")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "税?").map(\.title),
+            ["税務メモ"]
+        )
+    }
+
+    func testRetrieveUsesSingleASCIICharacterAsKnowledgeLiteralFallback() throws {
+        let stores = try makeStores()
+        _ = try stores.frames.create(name: "C compiler notes", body: "Compile the local helper")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "C?").map(\.title),
+            ["C compiler notes"]
+        )
+    }
+
+    func testRetrieveSingleCharacterKnowledgeFallbackPreservesDeadlineOrderAndLimit() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "Due today", dueAt: "2026-06-17T06:00:00Z")
+        _ = try stores.tasks.create(title: "税 task should not be scanned")
+        _ = try stores.frames.create(name: "税務メモ", body: "税金の確認")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "税?", limit: 2).map(\.title),
+            ["Due today", "税務メモ"]
+        )
+        XCTAssertEqual(
+            try retriever.retrieve(question: "税?", limit: 1).map(\.title),
+            ["Due today"]
+        )
+    }
+
     func testRetrieveDedupesByKindAndTitleAndCapsAtLimit() throws {
         let stores = try makeStores()
         // Overdue AND keyword-matched: must appear exactly once.

@@ -72,9 +72,13 @@ public final class WorkspaceQuestionRetriever: @unchecked Sendable {
             }
         }
 
+        let knowledgeTokens = tokens.isEmpty
+            ? Self.literalKnowledgeFallbackTokens(for: trimmedQuestion)
+            : tokens
         // Search failures must degrade to no knowledge context, never fail the
-        // whole question. The store keeps FTS and CJK fallback in one query path.
-        let frames = (try? knowledgeFrameStore.search(matching: tokens, limit: limit)) ?? []
+        // whole question. One-character questions skip task/project scans, but
+        // retain their literal in the bounded SQLite knowledge search path.
+        let frames = (try? knowledgeFrameStore.search(matching: knowledgeTokens, limit: limit)) ?? []
         for frame in frames {
             append(kind: "knowledge", title: frame.name, detail: Self.bodyPreview(frame.body))
         }
@@ -114,6 +118,15 @@ public final class WorkspaceQuestionRetriever: @unchecked Sendable {
             .split { !$0.isLetter && !$0.isNumber }
             .map(String.init)
             .filter { $0.count >= 2 }
+    }
+
+    private static func literalKnowledgeFallbackTokens(for question: String) -> [String] {
+        let punctuation = CharacterSet(charactersIn: "?？!！。．、，,")
+        let literal = question
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: punctuation)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return SQLiteTaskStore.boundedSearchTokens([literal])
     }
 
     private static func matches(tokens: [String], in fields: [String]) -> Bool {
