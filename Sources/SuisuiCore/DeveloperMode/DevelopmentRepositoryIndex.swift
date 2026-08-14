@@ -37,7 +37,7 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"^\s*(?:(?:let|var)\s+)?(?:self\.)?[A-Za-z_][A-Za-z0-9_]*\s+=\s*(.+?)\s*$"#
     )
     private static let safeSwiftOptionalBinding = try? NSRegularExpression(
-        pattern: #"^\s*(?:guard|if)\s+let\s+(?:self\.)?[A-Za-z_][A-Za-z0-9_]*\s+=\s*(.+?)(?:\s+else)?\s*\{"#
+        pattern: #"^\s*(?:guard|if)\s+let\s+(?:self\.)?([A-Za-z_][A-Za-z0-9_]*)\s+=\s*(.+?)(?:\s+else)?\s*\{"#
     )
     private static let safeSwiftCallLabel = try? NSRegularExpression(
         pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*(.+?)\s*,?\s*\)*\s*$"#
@@ -572,7 +572,14 @@ public actor DevelopmentRepositoryIndex {
             let isNominalType = safeNominalTypeDeclaration.firstMatch(in: line, range: fullLineRange) != nil
             let isCaseDeclaration = safeCaseDeclaration.firstMatch(in: line, range: fullLineRange) != nil
             let isSafeAssignment = containsSafeSwiftExpression(in: line, grammar: safeAssignment, atom: safeExpressionAtom) ||
-                containsSafeSwiftExpression(in: line, grammar: safeOptionalBinding, atom: safeExpressionAtom)
+                // The binding's name must be this candidate. Otherwise a later
+                // assignment in the same body could inherit the binding's safety.
+                containsSafeSwiftOptionalBinding(
+                    in: line,
+                    candidate: String(contents[swiftRange]),
+                    grammar: safeOptionalBinding,
+                    atom: safeExpressionAtom
+                )
             // These forms contain only source identifiers/member references, never
             // a literal credential. The surrounding argument list prevents config
             // syntax from becoming an indexing exception.
@@ -704,6 +711,22 @@ public actor DevelopmentRepositoryIndex {
         let range = NSRange(value.startIndex..<value.endIndex, in: value)
         guard let match = grammar.firstMatch(in: value, range: range),
               let expressionRange = Range(match.range(at: 1), in: value) else {
+            return false
+        }
+        return isSafeSwiftExpression(String(value[expressionRange]), atom: atom)
+    }
+
+    private static func containsSafeSwiftOptionalBinding(
+        in value: String,
+        candidate: String,
+        grammar: NSRegularExpression,
+        atom: NSRegularExpression
+    ) -> Bool {
+        let range = NSRange(value.startIndex..<value.endIndex, in: value)
+        guard let match = grammar.firstMatch(in: value, range: range),
+              let nameRange = Range(match.range(at: 1), in: value),
+              String(value[nameRange]) == candidate,
+              let expressionRange = Range(match.range(at: 2), in: value) else {
             return false
         }
         return isSafeSwiftExpression(String(value[expressionRange]), atom: atom)

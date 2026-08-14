@@ -220,6 +220,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             "PascalCredential.swift": "let ServiceAccessToken = \"long-secret-value\"",
             "CredentialValueSuffix.swift": "let accessTokenValue = \"long-secret-value\"\nlet apiKeyString = \"long-secret-value\"",
             "OptionalBindingLiteral.swift": "guard let accessToken = \"long-secret-value\" else { return }",
+            "OptionalBindingTrailingCredential.swift": "if let idToken = cachedToken { accessToken = \"long-secret-value\" }\nguard let refreshToken = cachedRefreshToken else { accessToken = \"long-secret-value\" }",
             "PascalCredential.json": "{\"ServiceAccessToken\":\"long-secret-value\"}",
             "TypealiasCredential.swift": "typealias ServiceAccessToken: Codable",
             "BacktickedCredential.swift": "let `accessToken` = \"long-secret-value\"",
