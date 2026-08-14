@@ -578,6 +578,11 @@ public actor DevelopmentRepositoryIndex {
             return nil
         }
         var cursor = source.index(after: index)
+        if delimiter.kind == .regex {
+            // Swift regex literals escape a potential `/<hashes>` terminator as
+            // `\/<hashes>`; raw strings instead put the hashes before the quote.
+            return literalDelimiterEnd(at: cursor, in: source, delimiter: delimiter)
+        }
         for _ in 0..<delimiter.hashCount {
             guard cursor < source.endIndex, source[cursor] == "#" else {
                 return nil
