@@ -23,6 +23,7 @@ public actor DevelopmentRepositoryIndex {
 
     private let database: SQLiteDatabaseWorker
     private let redactor: DeveloperSecretRedactor
+    private let maximumScannedContentBytes: Int
 
     // Assignment-only redaction is deliberately broader for user-visible output.
     // For indexing, reject every such assignment unless it matches one of the
@@ -84,13 +85,27 @@ public actor DevelopmentRepositoryIndex {
     }
 
     public init(connection: SQLiteConnection, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) {
+        self.init(
+            connection: connection,
+            redactor: redactor,
+            maximumScannedContentBytes: DevelopmentRepositoryIndex.maximumIndexedContentBytes
+        )
+    }
+
+    init(
+        connection: SQLiteConnection,
+        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
+        maximumScannedContentBytes: Int
+    ) {
         database = SQLiteDatabaseWorker(connection: connection)
         self.redactor = redactor
+        self.maximumScannedContentBytes = maximumScannedContentBytes
     }
 
     public init(path: String, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) throws {
         database = try SQLiteDatabaseWorker(path: path)
         self.redactor = redactor
+        maximumScannedContentBytes = DevelopmentRepositoryIndex.maximumIndexedContentBytes
     }
 
     public func refresh(workspace: CodebaseMemoryWorkspace) async throws {
@@ -98,7 +113,12 @@ public actor DevelopmentRepositoryIndex {
         let rootDescriptor = try Self.openWorkspaceRoot(root)
         defer { Darwin.close(rootDescriptor.descriptor) }
         let workspaceKey = Self.workspaceKey(root: root, descriptor: rootDescriptor)
-        let records = try Self.records(root: root, rootDescriptor: rootDescriptor, redactor: redactor)
+        let records = try Self.records(
+            root: root,
+            rootDescriptor: rootDescriptor,
+            redactor: redactor,
+            maximumScannedContentBytes: maximumScannedContentBytes
+        )
 
         try await database.transaction { connection in
             let generation = (try connection.queryRows(
@@ -226,7 +246,8 @@ public actor DevelopmentRepositoryIndex {
     private static func records(
         root: URL,
         rootDescriptor: WorkspaceRootDescriptor,
-        redactor: DeveloperSecretRedactor
+        redactor: DeveloperSecretRedactor,
+        maximumScannedContentBytes: Int
     ) throws -> [IndexedFile] {
         try verifyWorkspaceRoot(root, matches: rootDescriptor)
         let entries = try GitManifestReader.entries(at: root)
@@ -251,11 +272,10 @@ public actor DevelopmentRepositoryIndex {
             // The manifest name is untrusted filesystem input.  Descending from
             // the approved root with openat/O_NOFOLLOW rejects both an ancestor
             // swap and a final-component symlink before any bytes are indexed.
-            let data: Data
+            let read: BoundedFileRead
             do {
-                data = try boundedFileData(rootDescriptor: rootDescriptor.descriptor, relativePath: relativePath)
-            } catch DevelopmentRepositoryFileError.symlinkNotAllowed,
-                    DevelopmentRepositoryIndexError.indexedContentTooLarge {
+                read = try boundedFileRead(rootDescriptor: rootDescriptor.descriptor, relativePath: relativePath)
+            } catch DevelopmentRepositoryFileError.symlinkNotAllowed {
                 continue
             } catch {
                 // A partial snapshot is worse than a failed refresh: preserve the
@@ -265,10 +285,14 @@ public actor DevelopmentRepositoryIndex {
             // Every opened byte consumes the refresh budget, even when later
             // rejected as binary or secret. Otherwise a manifest full of
             // excluded files could bypass the aggregate work limit.
-            totalBytes += data.count
-            guard totalBytes <= maximumIndexedContentBytes else {
+            totalBytes += read.data.count
+            guard totalBytes <= maximumScannedContentBytes else {
                 throw DevelopmentRepositoryIndexError.indexedContentTooLarge
             }
+            guard !read.isOversized else {
+                continue
+            }
+            let data = read.data
             guard let contents = String(data: data, encoding: .utf8),
                   (try? DevelopmentRepositoryFilePathPolicy.validateTextContent(contents)) != nil,
                   !containsIndexCredential(contents, relativePath: relativePath, redactor: redactor) else {
@@ -477,10 +501,10 @@ public actor DevelopmentRepositoryIndex {
             return true
         }
         let candidateMatches = assignments.matches(in: contents, range: range)
-        // Non-Swift source languages do not have a narrow, shared safe grammar.
-        // A credential-shaped identifier is enough to exclude that whole file;
-        // prose/config extensions still require an assignment delimiter below.
-        if isNonSwiftSourceFile(relativePath), !candidateMatches.isEmpty {
+        // Only Swift has a narrow safe grammar. Non-prose formats are
+        // fail-closed on credential-shaped identifiers; prose keeps the
+        // delimiter check so ordinary documentation remains searchable.
+        if isNonSwiftNonProseFile(relativePath), !candidateMatches.isEmpty {
             return true
         }
         let candidateEnds = Set(candidateMatches.compactMap { Range($0.range, in: contents)?.upperBound })
@@ -600,10 +624,10 @@ public actor DevelopmentRepositoryIndex {
         return token == "as" || token == "is"
     }
 
-    private static func isNonSwiftSourceFile(_ relativePath: String) -> Bool {
-        ["c", "cc", "cpp", "cxx", "h", "hpp", "m", "mm", "go", "js", "jsx", "ts", "tsx", "py", "rb", "java", "kt", "kts", "rs", "cs", "fs", "fsx", "scala", "sh", "bash", "zsh", "fish", "lua", "pl", "php", "sql"].contains(
-            URL(fileURLWithPath: relativePath).pathExtension.lowercased()
-        )
+    private static func isNonSwiftNonProseFile(_ relativePath: String) -> Bool {
+        let extensionName = URL(fileURLWithPath: relativePath).pathExtension.lowercased()
+        return extensionName != "swift" && extensionName != "json" &&
+            !["md", "markdown", "txt", "rst", "adoc"].contains(extensionName)
     }
 
     private static func containsJSONCredentialKey(_ contents: String) -> Bool {
@@ -960,10 +984,14 @@ public actor DevelopmentRepositoryIndex {
             throw DevelopmentRepositoryIndexError.fileReadUnavailable
         }
         defer { Darwin.close(rootDescriptor) }
-        return try boundedFileData(rootDescriptor: rootDescriptor, relativePath: relativePath)
+        let read = try boundedFileRead(rootDescriptor: rootDescriptor, relativePath: relativePath)
+        guard !read.isOversized else {
+            throw DevelopmentRepositoryIndexError.indexedContentTooLarge
+        }
+        return read.data
     }
 
-    private static func boundedFileData(rootDescriptor: Int32, relativePath: String) throws -> Data {
+    private static func boundedFileRead(rootDescriptor: Int32, relativePath: String) throws -> BoundedFileRead {
         let components = relativePath.split(separator: "/").map(String.init)
         guard !components.isEmpty else {
             throw DevelopmentRepositoryFileError.invalidRelativePath
@@ -1013,10 +1041,10 @@ public actor DevelopmentRepositoryIndex {
             throw DevelopmentRepositoryIndexError.fileReadUnavailable
         }
         let data = try handle.read(upToCount: DevelopmentRepositoryFilePathPolicy.maximumContentBytes + 1) ?? Data()
-        guard data.count <= DevelopmentRepositoryFilePathPolicy.maximumContentBytes else {
-            throw DevelopmentRepositoryIndexError.indexedContentTooLarge
-        }
-        return data
+        return BoundedFileRead(
+            data: data,
+            isOversized: data.count > DevelopmentRepositoryFilePathPolicy.maximumContentBytes
+        )
     }
 }
 
@@ -1037,6 +1065,11 @@ private struct IndexedFile: Sendable {
     let byteCount: Int
     let sha256: String
     let contents: String
+}
+
+private struct BoundedFileRead {
+    let data: Data
+    let isOversized: Bool
 }
 
 private struct RepositorySelection: Sendable {

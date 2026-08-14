@@ -174,6 +174,10 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             "TypeScriptDefiniteCredential.ts": "class C { accessToken!: string = \"long-secret-value\" }",
             "CppBraceCredential.cpp": "std::string accessToken{\"long-secret-value\"};",
             "CppParenCredential.cpp": "std::string refreshToken(\"long-secret-value\");",
+            "Dockerfile": "ENV ACCESS_TOKEN long-secret-value",
+            "Makefile": "ACCESS_TOKEN := long-secret-value",
+            "Gemfile": "accessToken = \"long-secret-value\"",
+            "Data.csv": "accessToken,long-secret-value",
             "SingleQuotedCredential.yml": "'token': long-secret-value",
             "CommentOpen.swift": "// fake(\ntoken: ABCDEFGHIJK1234",
             "CommentInsideCall.swift": "request(\n// token: ABCDEFGHIJK1234\n)",
@@ -594,6 +598,24 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(preservedResults.map(\.sourcePath), ["Notes.md"])
     }
 
+    func testRefreshCountsOversizedSkippedFilesAgainstAggregateBudget() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("previousbudgetmarker", to: "Notes.md")
+        let perFileReadBytes = DevelopmentRepositoryFilePathPolicy.maximumContentBytes + 1
+        let index = try migratedIndex(maximumScannedContentBytes: perFileReadBytes * 2)
+        try await index.refresh(workspace: workspace(fixture))
+
+        let oversized = Data(repeating: 0x61, count: perFileReadBytes)
+        try fixture.write(oversized, to: "Large/One.md")
+        try fixture.write(oversized, to: "Large/Two.md")
+        try fixture.write(oversized, to: "Large/Three.md")
+
+        await XCTAssertThrowsErrorAsync(try await index.refresh(workspace: workspace(fixture)))
+        let preserved = try await index.search(query: "previousbudgetmarker", workspace: workspace(fixture))
+        XCTAssertEqual(preserved.map(\.sourcePath), ["Notes.md"])
+    }
+
     func testRefreshFailsClosedWhenManifestFileBecomesFIFO() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
@@ -696,10 +718,12 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         await XCTAssertThrowsErrorAsync(try await index.search(query: "***", workspace: workspace(fixture)))
     }
 
-    private func migratedIndex() throws -> DevelopmentRepositoryIndex {
+    private func migratedIndex(
+        maximumScannedContentBytes: Int = DevelopmentRepositoryIndex.maximumIndexedContentBytes
+    ) throws -> DevelopmentRepositoryIndex {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
-        return DevelopmentRepositoryIndex(connection: connection)
+        return DevelopmentRepositoryIndex(connection: connection, maximumScannedContentBytes: maximumScannedContentBytes)
     }
 
     private func workspace(_ fixture: RepositoryFixture) -> CodebaseMemoryWorkspace {
