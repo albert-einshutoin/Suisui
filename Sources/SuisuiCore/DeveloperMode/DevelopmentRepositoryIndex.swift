@@ -412,9 +412,10 @@ public actor DevelopmentRepositoryIndex {
         }
         var directoryDescriptor = Darwin.open(root.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
         guard directoryDescriptor >= 0 else {
-            throw errno == ELOOP
-                ? DevelopmentRepositoryFileError.symlinkNotAllowed
-                : DevelopmentRepositoryIndexError.fileReadUnavailable
+            // The root was trusted before manifest generation. A failure here means
+            // it may have been replaced, so publishing a partial empty generation
+            // would be less safe than retaining the previous snapshot.
+            throw DevelopmentRepositoryIndexError.fileReadUnavailable
         }
         defer { Darwin.close(directoryDescriptor) }
 
@@ -425,9 +426,9 @@ public actor DevelopmentRepositoryIndex {
                 O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW
             )
             guard nextDescriptor >= 0 else {
-                throw errno == ELOOP
-                    ? DevelopmentRepositoryFileError.symlinkNotAllowed
-                    : DevelopmentRepositoryIndexError.fileReadUnavailable
+                // A manifest cannot stably name a symlinked ancestor. Treat this
+                // as a post-manifest race rather than an intentional file exclusion.
+                throw DevelopmentRepositoryIndexError.fileReadUnavailable
             }
             Darwin.close(directoryDescriptor)
             directoryDescriptor = nextDescriptor

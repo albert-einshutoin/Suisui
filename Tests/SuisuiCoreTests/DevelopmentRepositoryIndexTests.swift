@@ -155,9 +155,19 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             at: fixture.url.appendingPathComponent("Race.md"),
             withDestinationURL: outside.appendingPathComponent("Outside.md")
         )
+        let rootLink = fixture.url.deletingLastPathComponent().appendingPathComponent("suisui-index-root-link-\(UUID().uuidString)")
+        try FileManager.default.createSymbolicLink(at: rootLink, withDestinationURL: fixture.url)
+        defer { try? FileManager.default.removeItem(at: rootLink) }
 
-        XCTAssertThrowsError(try DevelopmentRepositoryIndex.boundedFileData(root: fixture.url, relativePath: "Docs/Outside.md"))
-        XCTAssertThrowsError(try DevelopmentRepositoryIndex.boundedFileData(root: fixture.url, relativePath: "Race.md"))
+        XCTAssertThrowsError(try DevelopmentRepositoryIndex.boundedFileData(root: rootLink, relativePath: "Race.md")) { error in
+            XCTAssertEqual(error as? DevelopmentRepositoryIndexError, .fileReadUnavailable)
+        }
+        XCTAssertThrowsError(try DevelopmentRepositoryIndex.boundedFileData(root: fixture.url, relativePath: "Docs/Outside.md")) { error in
+            XCTAssertEqual(error as? DevelopmentRepositoryIndexError, .fileReadUnavailable)
+        }
+        XCTAssertThrowsError(try DevelopmentRepositoryIndex.boundedFileData(root: fixture.url, relativePath: "Race.md")) { error in
+            XCTAssertEqual(error as? DevelopmentRepositoryFileError, .symlinkNotAllowed)
+        }
     }
 
     func testRefreshDoesNotRunRepositoryConfiguredFsmonitor() async throws {
