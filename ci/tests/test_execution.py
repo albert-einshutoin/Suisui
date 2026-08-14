@@ -113,6 +113,8 @@ class ExecutionContractTests(unittest.TestCase):
             "SUISUI_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY",
             "SUISUI_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX",
             "SUISUI_LAYOUT_STABILITY_CLIPPING_TOLERANCE_PX",
+            "SUISUI_LAYOUT_STABILITY_DATABASE_PATH",
+            "SUISUI_HEADER_LAYOUT_DATABASE_PATH",
             "SUISUI_LAYOUT_STABILITY_WINDOW_MIN_WIDTH",
             "SUISUI_LAYOUT_STABILITY_WINDOW_STANDARD_WIDTH",
             "SUISUI_LAYOUT_STABILITY_WINDOW_WIDE_WIDTH",
@@ -132,6 +134,7 @@ class ExecutionContractTests(unittest.TestCase):
             "SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS",
             "SUISUI_PERFORMANCE_MAX_DESTINATION_SWITCH_MS",
             "SUISUI_PERFORMANCE_USE_PREBUILT_APP",
+            "SUISUI_PERFORMANCE_DATABASE_PATH",
         ):
             self.assertIn(f"-u {variable}", contents)
         self.assertIn("./scripts/ci.sh ui-performance", contents)
