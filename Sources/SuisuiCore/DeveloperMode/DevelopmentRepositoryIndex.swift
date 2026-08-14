@@ -67,7 +67,7 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*(?:any\s+)?[A-Z\[(][A-Za-z0-9_.<>\[\]():?,\s]*(?:\s*=\s*nil)?(?=\s*(?:,|\)))"#
     )
     private static let safeSwiftNominalTypeDeclaration = try? NSRegularExpression(
-        pattern: #"^\s*(?:(?:private|public|internal|fileprivate|final)\s+)*(?:struct|class|enum|protocol|actor|extension)\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*(?:[A-Z][A-Za-z0-9_.<>?]*|@unchecked\s+Sendable)(?:\s*,\s*(?:[A-Z][A-Za-z0-9_.<>?]*|@unchecked\s+Sendable))*\s*(?:[{][}]?)?\s*$"#
+        pattern: #"^\s*(?:(?:private|public|internal|fileprivate|package|open|final)\s+)*(?:struct|class|enum|protocol|actor|extension)\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*(?:[A-Z][A-Za-z0-9_.<>?]*|@unchecked\s+Sendable)(?:\s*,\s*(?:[A-Z][A-Za-z0-9_.<>?]*|@unchecked\s+Sendable))*\s*(?:[{][}]?)?\s*$"#
     )
     private static let safeSwiftCaseDeclaration = try? NSRegularExpression(
         pattern: #"^\s*case\s+\.[A-Za-z_][A-Za-z0-9_]*\s*:\s*$"#
@@ -231,7 +231,7 @@ public actor DevelopmentRepositoryIndex {
         guard !terms.isEmpty else {
             throw DevelopmentRepositoryIndexError.invalidQuery
         }
-        let selectedPaths = try Self.validatedSelectedPaths(workspace.selectedRelativePaths, root: root)
+        let selectedPaths = try Self.validatedSelectedPaths(workspace.selectedRelativePaths)
         guard topK > 0 else {
             return []
         }
@@ -503,7 +503,7 @@ public actor DevelopmentRepositoryIndex {
         return query
     }
 
-    private static func validatedSelectedPaths(_ rawPaths: [String], root: URL) throws -> [RepositorySelection] {
+    private static func validatedSelectedPaths(_ rawPaths: [String]) throws -> [RepositorySelection] {
         guard rawPaths.count <= maximumSelectedPaths else {
             throw DevelopmentRepositoryIndexError.tooManySelectedPaths
         }
@@ -513,8 +513,9 @@ public actor DevelopmentRepositoryIndex {
                 guard let path else {
                     throw DevelopmentRepositoryIndexError.invalidSelectedPath
                 }
-                let isDirectory = (try? root.appendingPathComponent(path).resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
-                return RepositorySelection(path: path, includesDescendants: isDirectory)
+                // Selection is an indexed path boundary, not a live filesystem
+                // query: a failed refresh must keep its prior directory snapshot.
+                return RepositorySelection(path: path, includesDescendants: true)
             }
         } catch {
             throw DevelopmentRepositoryIndexError.invalidSelectedPath

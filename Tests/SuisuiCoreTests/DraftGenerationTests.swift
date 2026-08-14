@@ -57,6 +57,20 @@ final class DraftGenerationTests: XCTestCase {
         XCTAssertEqual(redaction.report.matchedPatternNames, ["ghp"])
     }
 
+    func testSlackBotAndAppTokensAreRedactedWithoutMatchingShortDocumentation() {
+        let tokens = [
+            "xoxb-" + "slackdraftsecretmarker",
+            "xapp-" + "slackappdraftsecretmarker"
+        ]
+        let harmless = "Slack prefix xapp-short harmlessslackdraftmarker"
+        let redaction = DeveloperSecretRedactor().redact(tokens.joined(separator: "\n") + "\n" + harmless)
+
+        XCTAssertTrue(tokens.allSatisfy { !redaction.text.contains($0) })
+        XCTAssertTrue(redaction.text.contains(harmless))
+        XCTAssertEqual(redaction.report.replacementCount, tokens.count)
+        XCTAssertEqual(redaction.report.matchedPatternNames, ["slack"])
+    }
+
     func testStripeSecretVariantsAndPrivateKeyBlocksAreRedacted() {
         let stripeTokens = ["sk_live", "sk_test", "rk_live", "rk_test"].map {
             $0 + "_" + "stripedraftsecretmarker"

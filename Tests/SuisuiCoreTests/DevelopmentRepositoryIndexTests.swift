@@ -90,6 +90,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
         let slackCredential = "xoxb-" + "slackindexmarker123"
+        let slackAppCredential = "xapp-" + "slackappindexmarker123"
         let googleCredential = "AIza" + "googleindexmarker1234567890"
         let gitLabCredential = "glpat-" + "gitlabindexmarker123"
         let stripeCredentials = ["sk_live", "sk_test", "rk_live", "rk_test"].enumerated().map { index, prefix in
@@ -99,6 +100,8 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             ("GitHub\(index).md", prefix + "_" + "githubfamilymarker\(index)")
         }
         try fixture.write("Leaked sample: \(slackCredential)", to: "Slack.md")
+        try fixture.write("Leaked sample: \(slackAppCredential)", to: "SlackApp.md")
+        try fixture.write("Slack prefix xapp-short harmlessslackindexmarker", to: "SlackDocs.md")
         try fixture.write("Copied value: \(googleCredential)", to: "Notes.md")
         try fixture.write("Leaked sample: \(gitLabCredential)", to: "README.md")
         for (path, credential) in stripeCredentials {
@@ -113,12 +116,16 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         try await index.refresh(workspace: workspace(fixture))
 
         let slack = try await index.search(query: "slackindexmarker123", workspace: workspace(fixture))
+        let slackApp = try await index.search(query: "slackappindexmarker123", workspace: workspace(fixture))
+        let harmlessSlack = try await index.search(query: "harmlessslackindexmarker", workspace: workspace(fixture))
         let google = try await index.search(query: "googleindexmarker1234567890", workspace: workspace(fixture))
         let gitLab = try await index.search(query: "gitlabindexmarker123", workspace: workspace(fixture))
         let stripe = try await index.search(query: "stripevariantmarker", workspace: workspace(fixture))
         let harmlessStripe = try await index.search(query: "harmlessstripeindexmarker", workspace: workspace(fixture))
         let github = try await index.search(query: "githubfamilymarker", workspace: workspace(fixture))
         XCTAssertTrue(slack.isEmpty)
+        XCTAssertTrue(slackApp.isEmpty)
+        XCTAssertEqual(harmlessSlack.map(\.sourcePath), ["SlackDocs.md"])
         XCTAssertTrue(google.isEmpty)
         XCTAssertTrue(gitLab.isEmpty)
         XCTAssertTrue(stripe.isEmpty)
@@ -131,13 +138,14 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             status: "active",
             workspacePath: fixture.url.path
         ))
-        for (path, _) in githubCredentials {
+        for path in ["Slack.md", "SlackApp.md"] + githubCredentials.map(\.0) {
             XCTAssertThrowsError(try fileClient.read(relativePath: path)) { error in
                 guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
                     return XCTFail("Expected secret-like content rejection, got \(error)")
                 }
             }
         }
+        XCTAssertEqual(try fileClient.read(relativePath: "SlackDocs.md").contents, "Slack prefix xapp-short harmlessslackindexmarker")
     }
 
     func testRefreshDoesNotPersistGenericCredentialKeys() async throws {
@@ -815,6 +823,40 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let apiKey = try await index.search(query: "APIKey", workspace: workspace(fixture))
         XCTAssertEqual(accessToken.map(\.sourcePath), ["Sources/CredentialExtensions.swift"])
         XCTAssertEqual(apiKey.map(\.sourcePath), ["Sources/CredentialExtensions.swift"])
+    }
+
+    func testRefreshAndFileReadIndexOpenAndPackageCredentialTypes() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let safe = #"""
+        import Foundation
+        open class OAuthToken: NSObject {}
+        package struct AccessToken: Sendable {}
+        let nominalModifierMarker = (OAuthToken.self, AccessToken.self)
+        """#
+        try fixture.write(safe, to: "Sources/NominalModifiers.swift")
+        try fixture.write("let accessToken = \"nominalmodifiersecretmarker\"", to: "Sources/NominalLiteral.swift")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let safeResults = try await index.search(query: "nominalModifierMarker", workspace: workspace(fixture))
+        let literalResults = try await index.search(query: "nominalmodifiersecretmarker", workspace: workspace(fixture))
+        XCTAssertEqual(safeResults.map(\.sourcePath), ["Sources/NominalModifiers.swift"])
+        XCTAssertTrue(literalResults.isEmpty)
+
+        let fileClient = DevelopmentRepositoryFileClient(project: ProjectRecord(
+            id: 42,
+            title: "Suisui",
+            status: "active",
+            workspacePath: fixture.url.path
+        ))
+        XCTAssertEqual(try fileClient.read(relativePath: "Sources/NominalModifiers.swift").contents, safe)
+        XCTAssertThrowsError(try fileClient.read(relativePath: "Sources/NominalLiteral.swift")) { error in
+            guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                return XCTFail("Expected secret-like content rejection, got \(error)")
+            }
+        }
     }
 
     func testRefreshHonorsGlobalExcludeForUntrackedFiles() async throws {
@@ -1655,6 +1697,38 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(selectedResults.map(\.sourcePath), ["Sources/Only.swift"])
         XCTAssertEqual(directoryResults.map(\.sourcePath), ["Sources/Only.swift"])
         XCTAssertEqual(isolatedResults.map(\.sourcePath), ["Other.md"])
+    }
+
+    func testSearchUsesIndexedSelectionAfterDirectoryDisappearsAndRefreshFails() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("retained directory selection marker", to: "Sources/Nested/Only.swift")
+        try fixture.write("retained sibling selection marker", to: "Sources/Nested/Only.swift.md")
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let index = DevelopmentRepositoryIndex(connection: connection)
+        try await index.refresh(workspace: workspace(fixture))
+
+        try FileManager.default.removeItem(at: fixture.url.appendingPathComponent("Sources"))
+        let failingIndex = DevelopmentRepositoryIndex(
+            connection: connection,
+            manifestExecutableURL: fixture.url.appendingPathComponent("missing-git")
+        )
+        await XCTAssertThrowsErrorAsync(try await failingIndex.refresh(workspace: workspace(fixture)))
+
+        let directoryResults = try await index.search(
+            query: "retained",
+            workspace: CodebaseMemoryWorkspace(rootPath: fixture.url.path, selectedRelativePaths: ["Sources"])
+        )
+        let fileResults = try await index.search(
+            query: "retained",
+            workspace: CodebaseMemoryWorkspace(rootPath: fixture.url.path, selectedRelativePaths: ["Sources/Nested/Only.swift"])
+        )
+        XCTAssertEqual(
+            directoryResults.map(\.sourcePath),
+            ["Sources/Nested/Only.swift", "Sources/Nested/Only.swift.md"]
+        )
+        XCTAssertEqual(fileResults.map(\.sourcePath), ["Sources/Nested/Only.swift"])
     }
 
     func testRefreshBuildsIndexedCJKTermsForTwoCharacterAndHalfWidthQueries() async throws {

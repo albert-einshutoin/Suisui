@@ -43,6 +43,7 @@ public struct DeveloperSecretRedactor: Sendable {
         // Keep the historical report name while covering GitHub's complete
         // token-prefix family; classic ghp values retain their compatibility threshold.
         SecretRedactionPatternDefinition(name: "ghp", expression: #"gh(?:p_[A-Za-z0-9_]{6,}|[ousr]_[A-Za-z0-9_]{8,})"#),
+        SecretRedactionPatternDefinition(name: "slack", expression: #"(?<![A-Za-z0-9_-])(?:xox[baprs]|xapp)-[A-Za-z0-9-]{10,}(?![A-Za-z0-9_-])"#),
         SecretRedactionPatternDefinition(name: "openai", expression: #"sk-(?:proj-)?[A-Za-z0-9_-]{8,}"#),
         SecretRedactionPatternDefinition(name: "stripe", expression: #"(?<![A-Za-z0-9_-])(?:sk|rk)_(?:live|test)_[A-Za-z0-9_-]{8,}(?![A-Za-z0-9_-])"#),
         SecretRedactionPatternDefinition(name: "aws_access_key", expression: #"AKIA[0-9A-Z]{16}"#),
