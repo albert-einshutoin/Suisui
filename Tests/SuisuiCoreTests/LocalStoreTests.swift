@@ -929,6 +929,30 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(try store.search(query: "launchpad").map(\.id), [frame.id])
     }
 
+    func testKnowledgeExternalFTSRebuildKeepsTriggerSearchAndIntegrity() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let frame = try store.create(
+            name: "Release checklist",
+            body: "Verify signing",
+            triggers: ["shiproom"]
+        )
+
+        try connection.execute("INSERT INTO knowledge_frames_fts(knowledge_frames_fts) VALUES ('integrity-check');")
+        try connection.execute("INSERT INTO knowledge_frames_fts(knowledge_frames_fts) VALUES ('rebuild');")
+        XCTAssertEqual(try store.search(query: "shiproom").map(\.id), [frame.id])
+
+        _ = try store.update(id: frame.id, triggers: ["launchpad"])
+        try connection.execute("INSERT INTO knowledge_frames_fts(knowledge_frames_fts) VALUES ('integrity-check');")
+        try connection.execute("INSERT INTO knowledge_frames_fts(knowledge_frames_fts) VALUES ('rebuild');")
+        XCTAssertTrue(try store.search(query: "shiproom").isEmpty)
+        XCTAssertEqual(try store.search(query: "launchpad").map(\.id), [frame.id])
+
+        try store.delete(id: frame.id)
+        try connection.execute("INSERT INTO knowledge_frames_fts(knowledge_frames_fts) VALUES ('integrity-check');")
+        XCTAssertTrue(try store.search(query: "launchpad").isEmpty)
+    }
+
     func testKnowledgeTrigramIndexTracksUpdateAndDelete() throws {
         let connection = try currentConnection()
         let store = SQLiteKnowledgeFrameStore(connection: connection)

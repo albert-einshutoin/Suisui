@@ -1940,7 +1940,6 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         let normalizedName = try StoreFieldValidation.requiredTrimmed(name, argument: "name", tool: .frameCreate)
         let validatedBody = try StoreFieldValidation.requiredNonBlank(body, argument: "body", tool: .frameCreate)
         let triggersJSON = try SQL.jsonArray(triggers, column: "knowledge_frames.triggers_json")
-        let indexedBody = Self.indexedKnowledgeBody(body: validatedBody, triggersJSON: triggersJSON)
 
         return try connection.transaction {
             try connection.execute(
@@ -1956,7 +1955,7 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
                 INSERT INTO knowledge_frames_fts (rowid, name, body)
                 VALUES (?, ?, ?);
                 """,
-                parameters: [.integer(id), .text(normalizedName), .text(indexedBody)]
+                parameters: [.integer(id), .text(normalizedName), .text(validatedBody)]
             )
 
             return try getLocked(id: id)
@@ -1968,8 +1967,6 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         defer { lock.unlock() }
 
         let oldRecord = try getLocked(id: id)
-        let oldTriggersJSON = try SQL.jsonArray(oldRecord.triggers, column: "knowledge_frames.triggers_json")
-        let oldIndexedBody = Self.indexedKnowledgeBody(body: oldRecord.body, triggersJSON: oldTriggersJSON)
         var assignments: [String] = []
         var parameters: [SQLiteValue] = []
         if let name {
@@ -1995,21 +1992,19 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
                 INSERT INTO knowledge_frames_fts (knowledge_frames_fts, rowid, name, body)
                 VALUES ('delete', ?, ?, ?);
                 """,
-                parameters: [.integer(id), .text(oldRecord.name), .text(oldIndexedBody)]
+                parameters: [.integer(id), .text(oldRecord.name), .text(oldRecord.body)]
             )
             try connection.execute(
                 "UPDATE knowledge_frames SET \(assignments.joined(separator: ", ")) WHERE id = ?;",
                 parameters: parameters + [.integer(id)]
             )
             let record = try getLocked(id: id)
-            let recordTriggersJSON = try SQL.jsonArray(record.triggers, column: "knowledge_frames.triggers_json")
-            let recordIndexedBody = Self.indexedKnowledgeBody(body: record.body, triggersJSON: recordTriggersJSON)
             try connection.execute(
                 """
                 INSERT INTO knowledge_frames_fts (rowid, name, body)
                 VALUES (?, ?, ?);
                 """,
-                parameters: [.integer(id), .text(record.name), .text(recordIndexedBody)]
+                parameters: [.integer(id), .text(record.name), .text(record.body)]
             )
             return record
         }
@@ -2033,15 +2028,13 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         defer { lock.unlock() }
 
         let record = try getLocked(id: id)
-        let triggersJSON = try SQL.jsonArray(record.triggers, column: "knowledge_frames.triggers_json")
-        let indexedBody = Self.indexedKnowledgeBody(body: record.body, triggersJSON: triggersJSON)
         try connection.transaction {
             try connection.execute(
                 """
                 INSERT INTO knowledge_frames_fts (knowledge_frames_fts, rowid, name, body)
                 VALUES ('delete', ?, ?, ?);
                 """,
-                parameters: [.integer(id), .text(record.name), .text(indexedBody)]
+                parameters: [.integer(id), .text(record.name), .text(record.body)]
             )
             try connection.execute("DELETE FROM knowledge_frames WHERE id = ?;", parameters: [.integer(id)])
         }
@@ -2350,10 +2343,6 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         }
 
         return try KnowledgeFrameRecord(row: row)
-    }
-
-    private static func indexedKnowledgeBody(body: String, triggersJSON: String) -> String {
-        body + "\n" + triggersJSON
     }
 
     private static let maximumBoundedSearchResults = 128

@@ -2266,11 +2266,10 @@ public enum CoreMigrations {
                         content_rowid='id'
                     );
 
-                    -- Triggers are serialized in the base table. Index them with
-                    -- body text so the external-content table stays compatible
-                    -- with existing FTS reads while trigger terms become searchable.
+                    -- External-content FTS rows must mirror the base table's
+                    -- columns. Trigger terms stay in the trigram index below.
                     INSERT INTO knowledge_frames_fts(rowid, name, body)
-                    SELECT id, name, body || char(10) || triggers_json
+                    SELECT id, name, body
                     FROM knowledge_frames;
 
                     CREATE VIRTUAL TABLE knowledge_frames_trigram_fts USING fts5(
