@@ -3,6 +3,14 @@ import XCTest
 @testable import SuisuiCore
 
 final class DevelopmentRepositoryIndexTests: XCTestCase {
+    #if os(iOS) || targetEnvironment(macCatalyst)
+    func testGitManifestReaderFailsClosedWhenSubprocessesAreUnsupported() {
+        XCTAssertThrowsError(try GitManifestReader.paths(at: URL(fileURLWithPath: "/workspace"))) { error in
+            XCTAssertEqual(error as? DevelopmentRepositoryIndexError, .gitManifestUnsupported)
+        }
+    }
+    #endif
+
     func testRefreshIndexesTrackedAndUntrackedTextWhileSkippingSensitiveBinaryAndSymlinkFiles() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }

@@ -7,6 +7,7 @@ public enum DevelopmentRepositoryIndexError: Error, Equatable, Sendable {
     case invalidQuery
     case invalidSelectedPath
     case tooManySelectedPaths
+    case gitManifestUnsupported
     case gitManifestUnavailable
     case manifestTooLarge
     case tooManyFiles
@@ -1175,6 +1176,11 @@ enum GitManifestReader {
         timeout: TimeInterval = 15,
         executableURL: URL = URL(fileURLWithPath: "/usr/bin/git")
     ) throws -> ManifestData {
+        #if os(iOS) || targetEnvironment(macCatalyst)
+        // Repository manifests require a local git subprocess, which mobile
+        // targets intentionally do not ship. Never fall back to a filesystem walk.
+        throw DevelopmentRepositoryIndexError.gitManifestUnsupported
+        #else
         let process = Process()
         let standardOutput = Pipe()
         process.executableURL = executableURL
@@ -1237,6 +1243,7 @@ enum GitManifestReader {
             throw DevelopmentRepositoryIndexError.gitManifestUnavailable
         }
         return result.output
+        #endif
     }
 }
 
