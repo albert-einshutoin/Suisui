@@ -11,6 +11,7 @@ public enum DevelopmentRepositoryIndexError: Error, Equatable, Sendable {
     case manifestTooLarge
     case tooManyFiles
     case indexedContentTooLarge
+    case fileReadUnavailable
 }
 
 public actor DevelopmentRepositoryIndex {
@@ -33,10 +34,13 @@ public actor DevelopmentRepositoryIndex {
         pattern: #"^\s*(?:let|var)\s+[A-Za-z_][A-Za-z0-9_]*\s+=\s+[A-Za-z_][A-Za-z0-9_.]*\s*$"#
     )
     private static let safeSourceTypedDeclaration = try? NSRegularExpression(
-        pattern: #"(?i:^(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret))\s*:\s*[A-Z][A-Za-z0-9_.<>?]*\s*$"#
+        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.<>?]*\s*$"#
     )
     private static let safeSourceTypedFunctionParameter = try? NSRegularExpression(
-        pattern: #"(?i:^(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret))\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?=\s*(?:,|\)))"#
+        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.<>?]*(?=\s*(?:,|\)))"#
+    )
+    private static let serializedCredential = try? NSRegularExpression(
+        pattern: #"(?im)^\s*client[-_]key[-_]data\s*:\s*\S+|^\s*-----BEGIN (?:[A-Z0-9 ]*PRIVATE KEY)-----"#
     )
     private static let swiftTypedDeclarationPrefix = try? NSRegularExpression(
         pattern: #"^\s*(?:(?:private|public|internal|fileprivate|static|final|lazy)\s+)*(?:let|var)\s+$"#
@@ -181,8 +185,18 @@ public actor DevelopmentRepositoryIndex {
             // The manifest name is untrusted filesystem input.  Descending from
             // the approved root with openat/O_NOFOLLOW rejects both an ancestor
             // swap and a final-component symlink before any bytes are indexed.
-            guard let data = try? boundedFileData(root: root, relativePath: relativePath),
-                  let contents = String(data: data, encoding: .utf8),
+            let data: Data
+            do {
+                data = try boundedFileData(root: root, relativePath: relativePath)
+            } catch DevelopmentRepositoryFileError.symlinkNotAllowed,
+                    DevelopmentRepositoryIndexError.indexedContentTooLarge {
+                continue
+            } catch {
+                // A partial snapshot is worse than a failed refresh: preserve the
+                // prior generation until all manifest files can be read again.
+                throw DevelopmentRepositoryIndexError.fileReadUnavailable
+            }
+            guard let contents = String(data: data, encoding: .utf8),
                   (try? DevelopmentRepositoryFilePathPolicy.validateTextContent(contents)) != nil,
                   !containsIndexCredential(contents, relativePath: relativePath, redactor: redactor) else {
                 continue
@@ -320,6 +334,12 @@ public actor DevelopmentRepositoryIndex {
         redactor: DeveloperSecretRedactor
     ) -> Bool {
         let range = NSRange(contents.startIndex..<contents.endIndex, in: contents)
+        guard let serializedCredential else {
+            return true
+        }
+        if serializedCredential.firstMatch(in: contents, range: range) != nil {
+            return true
+        }
         let report = redactor.redact(contents).report
         // Shared redaction intentionally treats every token assignment as risky for
         // user-visible output. Source indexing keeps that policy for specific
@@ -392,7 +412,9 @@ public actor DevelopmentRepositoryIndex {
         }
         var directoryDescriptor = Darwin.open(root.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
         guard directoryDescriptor >= 0 else {
-            throw DevelopmentRepositoryFileError.symlinkNotAllowed
+            throw errno == ELOOP
+                ? DevelopmentRepositoryFileError.symlinkNotAllowed
+                : DevelopmentRepositoryIndexError.fileReadUnavailable
         }
         defer { Darwin.close(directoryDescriptor) }
 
@@ -403,7 +425,9 @@ public actor DevelopmentRepositoryIndex {
                 O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW
             )
             guard nextDescriptor >= 0 else {
-                throw DevelopmentRepositoryFileError.symlinkNotAllowed
+                throw errno == ELOOP
+                    ? DevelopmentRepositoryFileError.symlinkNotAllowed
+                    : DevelopmentRepositoryIndexError.fileReadUnavailable
             }
             Darwin.close(directoryDescriptor)
             directoryDescriptor = nextDescriptor
@@ -415,13 +439,17 @@ public actor DevelopmentRepositoryIndex {
             O_RDONLY | O_CLOEXEC | O_NOFOLLOW
         )
         guard descriptor >= 0 else {
-            throw DevelopmentRepositoryFileError.symlinkNotAllowed
+            throw errno == ELOOP
+                ? DevelopmentRepositoryFileError.symlinkNotAllowed
+                : DevelopmentRepositoryIndexError.fileReadUnavailable
         }
         let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         defer { try? handle.close() }
         var descriptorState = stat()
-        guard Darwin.fstat(descriptor, &descriptorState) == 0,
-              (descriptorState.st_mode & S_IFMT) == S_IFREG else {
+        guard Darwin.fstat(descriptor, &descriptorState) == 0 else {
+            throw DevelopmentRepositoryIndexError.fileReadUnavailable
+        }
+        guard (descriptorState.st_mode & S_IFMT) == S_IFREG else {
             throw DevelopmentRepositoryFileError.targetIsDirectory
         }
         let data = try handle.read(upToCount: DevelopmentRepositoryFilePathPolicy.maximumContentBytes + 1) ?? Data()

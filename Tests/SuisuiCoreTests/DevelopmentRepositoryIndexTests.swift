@@ -78,10 +78,24 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(serviceResults.isEmpty)
     }
 
+    func testRefreshDoesNotPersistKubernetesKeyDataOrPEM() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("client-key-data: QUJDREVGR0hJSktMTU4=", to: "Kube.yml")
+        try fixture.write("  -----BEGIN PRIVATE KEY-----\n  placeholder\n  -----END PRIVATE KEY-----", to: "KeyMaterial.txt")
+        let index = try migratedIndex()
+        try await index.refresh(workspace: workspace(fixture))
+
+        let kubernetesResults = try await index.search(query: "QUJDREVGR0hJSktMTU4", workspace: workspace(fixture))
+        let pemResults = try await index.search(query: "PRIVATE", workspace: workspace(fixture))
+        XCTAssertTrue(kubernetesResults.isEmpty)
+        XCTAssertTrue(pemResults.isEmpty)
+    }
+
     func testRefreshIndexesTypedSwiftTokenButExcludesCredentialAssignment() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
-        try fixture.write("func approve(token: ApprovalToken) {}\nlet apiKey = value\nlet password: Password\nlet token = value", to: "Sources/Approval.swift")
+        try fixture.write("func approve(token: ApprovalToken) {}\nprivate let clientSecret: String\nfunc use(authToken: Token) {}\nlet apiKey = value\nlet password: Password\nlet token = value", to: "Sources/Approval.swift")
         let credentials = [
             "Settings.env.swift": "API_KEY=long-secret-value",
             "TokenQuoted.swift": "token=\"long-secret-value\"",
@@ -111,12 +125,14 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         try await index.refresh(workspace: workspace(fixture))
 
         let sourceResults = try await index.search(query: "approve", workspace: workspace(fixture))
+        let compoundSourceResults = try await index.search(query: "authToken", workspace: workspace(fixture))
         let credentialResults = try await index.search(query: "long", workspace: workspace(fixture))
         let uppercaseCredentialResults = try await index.search(query: "ABCDEFGHIJK1234", workspace: workspace(fixture))
         let compoundCredentialResults = try await index.search(query: "compound", workspace: workspace(fixture))
         let textCredentialResults = try await index.search(query: "textonlymarker", workspace: workspace(fixture))
         let nonSwiftFunctionResults = try await index.search(query: "NonSwiftMarker", workspace: workspace(fixture))
         XCTAssertEqual(sourceResults.map(\.sourcePath), ["Sources/Approval.swift"])
+        XCTAssertEqual(compoundSourceResults.map(\.sourcePath), ["Sources/Approval.swift"])
         XCTAssertTrue(credentialResults.isEmpty)
         XCTAssertTrue(uppercaseCredentialResults.isEmpty)
         XCTAssertTrue(compoundCredentialResults.isEmpty)
@@ -200,6 +216,23 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: missingRepository) }
         await XCTAssertThrowsErrorAsync(try await index.refresh(workspace: CodebaseMemoryWorkspace(rootPath: missingRepository.path, selectedRelativePaths: [])))
         let preservedResults = try await index.search(query: "second", workspace: workspace(fixture))
+        XCTAssertEqual(preservedResults.map(\.sourcePath), ["Notes.md"])
+    }
+
+    func testRefreshKeepsPreviousGenerationWhenManifestFileCannotBeRead() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("previous marker", to: "Notes.md")
+        let index = try migratedIndex()
+        try await index.refresh(workspace: workspace(fixture))
+
+        let fileURL = fixture.url.appendingPathComponent("Notes.md")
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: fileURL.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path) }
+        await XCTAssertThrowsErrorAsync(try await index.refresh(workspace: workspace(fixture)))
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+
+        let preservedResults = try await index.search(query: "previous", workspace: workspace(fixture))
         XCTAssertEqual(preservedResults.map(\.sourcePath), ["Notes.md"])
     }
 
