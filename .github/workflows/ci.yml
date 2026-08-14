@@ -308,12 +308,13 @@ jobs:
 
   ui-visual:
     # Preserve the established required-check context while the locale matrix
-    # provides independent evidence. This aggregator fails unless every
-    # required locale completed successfully.
+    # provides independent evidence. It also carries the isolated Rust result
+    # so a broken helper cannot pass an established product gate.
     name: UI Visual (live baseline)
     needs:
       - test_strategy
       - full_validation
+      - kokoro-rust-poc
       - ui-visual-locales
     if: ${{ always() }}
     runs-on: ubuntu-latest
@@ -322,9 +323,15 @@ jobs:
       - name: Aggregate locale visual gates
         env:
           EVENT_NAME: ${{ github.event_name }}
+          KOKORO_RUST_RESULT: ${{ needs.kokoro-rust-poc.result }}
           VISUAL_SELECTION_STATE: ${{ needs.test_strategy.outputs.ui_visual_state }}
           LOCALE_VISUAL_RESULT: ${{ needs.ui-visual-locales.result }}
         run: |
+          if [[ "$KOKORO_RUST_RESULT" != "success" ]]; then
+            echo "failure_category=rust" >&2
+            echo "failure_reason=rust-boundary-gate-did-not-succeed" >&2
+            exit 1
+          fi
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             case "$VISUAL_SELECTION_STATE" in
               1)

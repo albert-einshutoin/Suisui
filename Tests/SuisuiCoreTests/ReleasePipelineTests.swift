@@ -12807,6 +12807,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(workflow.contains("cargo fmt --manifest-path rust/kokoro-helper/Cargo.toml --check"))
         XCTAssertTrue(workflow.contains("cargo test --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features"))
         XCTAssertTrue(workflow.contains("cargo clippy --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features -- -D warnings"))
+        XCTAssertTrue(workflow.contains("KOKORO_RUST_RESULT: ${{ needs.kokoro-rust-poc.result }}"))
+        XCTAssertTrue(workflow.contains("failure_reason=rust-boundary-gate-did-not-succeed"))
     }
 
     func testKokoroRuntimeWrapperFailsClosedBeforeImportForUnsafeRuntimeInputs() throws {
