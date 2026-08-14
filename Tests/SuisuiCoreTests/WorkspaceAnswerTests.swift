@@ -153,6 +153,18 @@ final class WorkspaceAnswerTests: XCTestCase {
         )
     }
 
+    func testRetrieveFailsClosedForShortUnicodeTaskBeyondCandidateBudget() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "VorÜbergabe handoff")
+        for index in 0..<1024 {
+            _ = try stores.tasks.create(title: "Unrelated newer task \(index)")
+        }
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(try retriever.retrieve(question: "üb", limit: 1), [])
+    }
+
     func testRetrieveCompletesLiteralTaskSubstringsAlongsideFTSHits() throws {
         let stores = try makeStores()
         _ = try stores.tasks.create(title: "Prepare invoice report")

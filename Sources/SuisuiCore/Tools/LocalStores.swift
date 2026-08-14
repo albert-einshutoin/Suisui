@@ -1607,12 +1607,15 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         }
         if records.count < limit, Self.needsUnicodeLiteralPaging(for: tokens) {
             var cursor: Int64?
-            while records.count < limit {
-                let candidates = try unicodeLiteralCandidatePageLocked(beforeID: cursor)
+            var remainingCandidates = Self.maximumUnicodeLiteralCandidates
+            while records.count < limit, remainingCandidates > 0 {
+                let pageLimit = min(Self.unicodeLiteralCandidatePageSize, remainingCandidates)
+                let candidates = try unicodeLiteralCandidatePageLocked(beforeID: cursor, limit: pageLimit)
                 guard let lastID = candidates.last?.id else {
                     break
                 }
                 cursor = lastID
+                remainingCandidates -= candidates.count
                 for record in candidates {
                     guard tokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
                           seenIDs.insert(record.id).inserted else {
@@ -1620,7 +1623,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
                     }
                     records.append(record)
                 }
-                guard candidates.count == Self.unicodeLiteralCandidatePageSize else {
+                guard candidates.count == pageLimit else {
                     break
                 }
             }
@@ -1628,16 +1631,17 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         return Array(records.sorted { $0.id > $1.id }.prefix(limit))
     }
 
-    private func unicodeLiteralCandidatePageLocked(beforeID: Int64?) throws -> [TaskRecord] {
+    private func unicodeLiteralCandidatePageLocked(beforeID: Int64?, limit: Int) throws -> [TaskRecord] {
         let cursorPredicate = beforeID.map { _ in " AND tasks.id < ?" } ?? ""
         var parameters: [SQLiteValue] = []
         if let beforeID {
             parameters.append(.integer(beforeID))
         }
-        parameters.append(.integer(Int64(Self.unicodeLiteralCandidatePageSize)))
+        parameters.append(.integer(Int64(limit)))
         // ponytail: FTS5 trigrams cannot index one- or two-scalar literals.
-        // Page by keyset instead of materializing history; add a bigram index
-        // only if profiling shows these rare short-Unicode queries are hot.
+        // Cap keyset work so a no-match does not decode the whole history while
+        // holding this store lock; add a bigram index if profiling needs deeper
+        // short-Unicode recall.
         return try connection.queryRows(
             """
             SELECT tasks.* FROM tasks
@@ -1693,6 +1697,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
 
     private static let maximumUnicodePrefixCandidates = 128
     private static let unicodeLiteralCandidatePageSize = 128
+    static let maximumUnicodeLiteralCandidates = 1_024
 
     private static func needsUnicodeLiteralPaging(for tokens: [String]) -> Bool {
         tokens.contains { token in
@@ -2181,19 +2186,22 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         if limit.map({ records.count < $0 }) ?? true,
            Self.needsUnicodeLiteralPaging(for: [trimmed]) {
             var cursor: Int64?
-            while limit.map({ records.count < $0 }) ?? true {
-                let candidates = try unicodeLiteralCandidatePageLocked(afterID: cursor)
+            var remainingCandidates = SQLiteTaskStore.maximumUnicodeLiteralCandidates
+            while (limit.map { records.count < $0 } ?? true), remainingCandidates > 0 {
+                let pageLimit = min(Self.unicodeLiteralCandidatePageSize, remainingCandidates)
+                let candidates = try unicodeLiteralCandidatePageLocked(afterID: cursor, limit: pageLimit)
                 guard let lastID = candidates.last?.id else {
                     break
                 }
                 cursor = lastID
+                remainingCandidates -= candidates.count
                 for record in candidates {
                     guard Self.matchesLiteral(record, text: trimmed), seenIDs.insert(record.id).inserted else {
                         continue
                     }
                     records.append(record)
                 }
-                guard candidates.count == Self.unicodeLiteralCandidatePageSize else {
+                guard candidates.count == pageLimit else {
                     break
                 }
             }
@@ -2344,12 +2352,15 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
 
         if records.count < limit, Self.needsUnicodeLiteralPaging(for: boundedTokens) {
             var cursor: Int64?
-            while records.count < limit {
-                let candidates = try unicodeLiteralCandidatePageLocked(afterID: cursor)
+            var remainingCandidates = SQLiteTaskStore.maximumUnicodeLiteralCandidates
+            while records.count < limit, remainingCandidates > 0 {
+                let pageLimit = min(Self.unicodeLiteralCandidatePageSize, remainingCandidates)
+                let candidates = try unicodeLiteralCandidatePageLocked(afterID: cursor, limit: pageLimit)
                 guard let lastID = candidates.last?.id else {
                     break
                 }
                 cursor = lastID
+                remainingCandidates -= candidates.count
                 for record in candidates {
                     guard records.count < limit,
                           boundedTokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
@@ -2358,7 +2369,7 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
                     }
                     records.append(record)
                 }
-                guard candidates.count == Self.unicodeLiteralCandidatePageSize else {
+                guard candidates.count == pageLimit else {
                     break
                 }
             }
@@ -2367,16 +2378,15 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         return Array(records.prefix(limit))
     }
 
-    private func unicodeLiteralCandidatePageLocked(afterID: Int64?) throws -> [KnowledgeFrameRecord] {
+    private func unicodeLiteralCandidatePageLocked(afterID: Int64?, limit: Int) throws -> [KnowledgeFrameRecord] {
         let cursorPredicate = afterID.map { _ in " WHERE id > ?" } ?? ""
         var parameters: [SQLiteValue] = []
         if let afterID {
             parameters.append(.integer(afterID))
         }
-        parameters.append(.integer(Int64(Self.unicodeLiteralCandidatePageSize)))
-        // ponytail: FTS5 trigrams cannot index one- or two-scalar literals.
-        // Page by keyset instead of materializing history; add a bigram index
-        // only if profiling shows these rare short-Unicode queries are hot.
+        parameters.append(.integer(Int64(limit)))
+        // ponytail: see the task store. The shared cap bounds no-match lock
+        // time; add a bigram index if profiling requires deeper recall.
         return try connection.queryRows(
             """
             SELECT * FROM knowledge_frames\(cursorPredicate)

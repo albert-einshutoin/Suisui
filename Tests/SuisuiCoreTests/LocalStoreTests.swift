@@ -543,6 +543,20 @@ final class LocalStoreTests: XCTestCase {
         )
     }
 
+    func testTaskShortUnicodeSearchFailsClosedBeyondCandidateBudget() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+        _ = try store.create(title: "VorÜbergabe handoff")
+        for index in 0..<1024 {
+            _ = try store.create(title: "Unrelated newer task \(index)")
+        }
+
+        XCTAssertEqual(try store.searchOpenTasks(matching: ["üb"], limit: 1).map(\.id), [])
+        XCTAssertEqual(try store.searchOpenTasksByContent(text: "üb", limit: 1).map(\.id), [])
+        XCTAssertEqual(try store.searchOpenTasks(matching: ["税"], limit: 1).map(\.id), [])
+        XCTAssertEqual(try store.searchOpenTasksByContent(text: "税", limit: 1).map(\.id), [])
+    }
+
     func testTaskTokenSearchFiltersDiacriticFTSFalseHitBeforeFillingLimit() throws {
         let connection = try currentConnection()
         let store = SQLiteTaskStore(connection: connection)
@@ -646,6 +660,20 @@ final class LocalStoreTests: XCTestCase {
             try store.search(query: "üb", limit: 1).map(\.id),
             [frame.id]
         )
+    }
+
+    func testKnowledgeShortUnicodeSearchFailsClosedBeyondCandidateBudget() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        for index in 0..<1024 {
+            _ = try store.create(name: "Unrelated frame \(index)", body: "No matching text")
+        }
+        _ = try store.create(name: "VorÜbergabe notes", body: "handoff details")
+
+        XCTAssertEqual(try store.search(matching: ["üb"], limit: 1).map(\.id), [])
+        XCTAssertEqual(try store.search(query: "üb", limit: 1).map(\.id), [])
+        XCTAssertEqual(try store.search(matching: ["税"], limit: 1).map(\.id), [])
+        XCTAssertEqual(try store.search(query: "税", limit: 1).map(\.id), [])
     }
 
     func testKnowledgeSearchCompletesLiteralSubstringsAlongsideFTSHits() throws {
