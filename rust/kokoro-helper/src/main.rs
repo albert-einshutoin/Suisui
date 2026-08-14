@@ -197,10 +197,12 @@ fn read_tokens(path: PathBuf) -> AppResult<Vec<i64>> {
 fn read_voice_style(path: &Path, token_count: usize) -> AppResult<Vec<f32>> {
     let bytes = read_bounded(path, MAX_VOICE_BYTES, "Kokoro voice file")?;
     let frame_bytes = STYLE_VALUES * size_of::<f32>();
-    if bytes.len() % frame_bytes != 0 || token_count == 0 {
+    if bytes.len() % frame_bytes != 0 || token_count < 3 {
         return Err("Kokoro voice file has an invalid raw f32 shape".to_owned());
     }
-    let offset = (token_count - 1)
+    // The ONNX asset contract indexes voice rows by the unpadded token count;
+    // this CLI requires both surrounding pad ids in the supplied sequence.
+    let offset = (token_count - 2)
         .checked_mul(frame_bytes)
         .filter(|offset| offset + frame_bytes <= bytes.len())
         .ok_or_else(|| "Kokoro voice file has no style for this token count".to_owned())?;
@@ -423,7 +425,7 @@ mod tests {
         let output = directory.join("speech.wav");
         fs::write(&model, CONTRACT_MODEL).unwrap();
         let mut voice_bytes = vec![0_u8; STYLE_VALUES * size_of::<f32>() * 3];
-        let selected_frame = STYLE_VALUES * size_of::<f32>() * 2;
+        let selected_frame = STYLE_VALUES * size_of::<f32>();
         for sample in voice_bytes[selected_frame..].chunks_exact_mut(size_of::<f32>()) {
             sample.copy_from_slice(&0.25_f32.to_le_bytes());
         }
@@ -504,7 +506,7 @@ mod tests {
         fs::create_dir_all(&directory).unwrap();
         let voice = directory.join("af_heart.bin");
         let mut bytes = vec![0_u8; STYLE_VALUES * size_of::<f32>() * 3];
-        let offset = STYLE_VALUES * size_of::<f32>() * 2;
+        let offset = STYLE_VALUES * size_of::<f32>();
         bytes[offset..offset + 4].copy_from_slice(&0.5_f32.to_le_bytes());
         fs::write(&voice, bytes).unwrap();
 
