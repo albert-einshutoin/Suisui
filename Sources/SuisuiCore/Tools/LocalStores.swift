@@ -1499,7 +1499,10 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             return []
         }
         let predicate = tokens.map { _ in
-            "(instr(lower(tasks.title), ?) > 0 OR instr(lower(COALESCE(tasks.detail, '')), ?) > 0)"
+            """
+            (instr(lower(tasks.title), ?) > 0
+             OR instr(lower(COALESCE(tasks.detail, '')), ?) > 0)
+            """
         }.joined(separator: " OR ")
         let exclusion = excludingIDs.isEmpty
             ? ""
@@ -1512,7 +1515,7 @@ public final class SQLiteTaskStore: @unchecked Sendable {
         }
         parameters.append(contentsOf: excludingIDs.sorted().map { .integer($0) })
         parameters.append(.integer(Int64(limit)))
-        return try connection.queryRows(
+        let candidates = try connection.queryRows(
             """
             SELECT tasks.* FROM tasks
             LEFT JOIN projects ON projects.id = tasks.project_id
@@ -1524,6 +1527,49 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             """,
             parameters: parameters
         ).map(TaskRecord.init(row:))
+        // SQLite `lower()` is ASCII-only. Swift confirms the original
+        // case-insensitive contains contract over this bounded result set;
+        // Unicode case-folded prefix candidates are added below.
+        var records = candidates.filter { record in
+            tokens.contains { Self.matchesLiteral(record, text: $0) }
+        }
+        var seenIDs = excludingIDs
+        seenIDs.formUnion(records.map(\.id))
+        if let prefixMatch = Self.unicodePrefixMatch(for: tokens) {
+            // unicode61 case-folds Unicode prefix terms. Keep this candidate
+            // window bounded, excluding already-selected FTS rows so they
+            // cannot consume the caller's remaining result slots before Swift
+            // restores literal contains semantics.
+            let prefixPlaceholders = seenIDs.map { _ in "?" }.joined(separator: ", ")
+            let prefixExclusion = prefixPlaceholders.isEmpty
+                ? ""
+                : " AND tasks.id NOT IN (\(prefixPlaceholders))"
+            var prefixParameters: [SQLiteValue] = [.text(prefixMatch)]
+            prefixParameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
+            prefixParameters.append(.integer(Int64(Self.maximumUnicodePrefixCandidates)))
+            let prefixCandidates = try connection.queryRows(
+                """
+                SELECT tasks.* FROM tasks
+                JOIN tasks_fts ON tasks_fts.rowid = tasks.id
+                LEFT JOIN projects ON projects.id = tasks.project_id
+                WHERE tasks_fts MATCH ?
+                  AND tasks.status != 'completed'
+                  AND (tasks.project_id IS NULL OR projects.status != 'archived')
+                  \(prefixExclusion)
+                ORDER BY tasks.id DESC
+                LIMIT ?;
+                """,
+                parameters: prefixParameters
+            ).map(TaskRecord.init(row:))
+            for record in prefixCandidates {
+                guard tokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
+                      seenIDs.insert(record.id).inserted else {
+                    continue
+                }
+                records.append(record)
+            }
+        }
+        return Array(records.sorted { $0.id > $1.id }.prefix(limit))
     }
 
     private static func sortForProjectBoard(_ lhs: TaskRecord, _ rhs: TaskRecord) -> Bool {
@@ -1560,6 +1606,24 @@ public final class SQLiteTaskStore: @unchecked Sendable {
     private static func matchesLiteral(_ record: TaskRecord, text: String) -> Bool {
         record.title.range(of: text, options: .caseInsensitive) != nil
             || record.detail?.range(of: text, options: .caseInsensitive) != nil
+    }
+
+    private static let maximumUnicodePrefixCandidates = 128
+
+    private static func unicodePrefixMatch(for tokens: [String]) -> String? {
+        let prefixes = tokens.compactMap { token -> String? in
+            let leadingWord = token.drop(while: { !$0.isLetter && !$0.isNumber })
+            let prefix = String(leadingWord.prefix(while: { $0.isLetter || $0.isNumber }))
+            guard !prefix.isEmpty,
+                  prefix.unicodeScalars.contains(where: { $0.value > 0x7F }) else {
+                return nil
+            }
+            return "\"\(SQL.escapeFTS(prefix))\"*"
+        }
+        guard !prefixes.isEmpty else {
+            return nil
+        }
+        return prefixes.joined(separator: " OR ")
     }
 
     static func boundedSearchTokens(_ tokens: [String]) -> [String] {

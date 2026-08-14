@@ -373,6 +373,45 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertTrue(bounded.allSatisfy { $0.count <= 128 })
     }
 
+    func testTaskSQLiteFallbackPreservesNonASCIICaseInsensitiveSubstrings() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+        let task = try store.create(title: "Übergabe checklist")
+
+        XCTAssertEqual(
+            try store.searchOpenTasksByContent(text: "übe", limit: 1).map(\.id),
+            [task.id]
+        )
+        XCTAssertEqual(
+            try store.searchOpenTasks(matching: ["übe"], limit: 1).map(\.id),
+            [task.id]
+        )
+    }
+
+    func testTaskUnicodePrefixCandidatesSkipFalseFTSHitBeforeFillingLimit() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+        let literalTask = try store.create(title: "Übe? handoff")
+        _ = try store.create(title: "Übergabe")
+
+        XCTAssertEqual(
+            try store.searchOpenTasksByContent(text: "übe?", limit: 1).map(\.id),
+            [literalTask.id]
+        )
+    }
+
+    func testTaskWorkspaceUnicodePrefixFallbackDoesNotSpendRemainingLimitOnFTSHit() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+        let substringTask = try store.create(title: "Übergabe handoff")
+        let ftsTask = try store.create(title: "Exact match", detail: "übe")
+
+        XCTAssertEqual(
+            try store.searchOpenTasks(matching: ["übe"], limit: 2).map(\.id),
+            [ftsTask.id, substringTask.id]
+        )
+    }
+
     func testKnowledgeSearchCompletesLiteralSubstringsAlongsideFTSHits() throws {
         let connection = try currentConnection()
         let store = SQLiteKnowledgeFrameStore(connection: connection)
