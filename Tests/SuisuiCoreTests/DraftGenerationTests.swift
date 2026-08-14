@@ -59,6 +59,21 @@ final class DraftGenerationTests: XCTestCase {
         XCTAssertEqual(redaction.report.matchedPatternNames, ["assignment"])
     }
 
+    func testJSONRedactionConsumesEscapedStringValues() {
+        let secretSuffix = "TOPSECRET"
+        let fixtures = [
+            #"{"token":"prefix\"TOPSECRET"}"#,
+            #"{"auth":"prefix\"TOPSECRET"}"#,
+        ]
+
+        for fixture in fixtures {
+            let redaction = DeveloperSecretRedactor().redact(fixture)
+
+            XCTAssertFalse(redaction.text.contains(secretSuffix))
+            XCTAssertEqual(redaction.text, "{[REDACTED_SECRET]}")
+        }
+    }
+
     func testInvalidRedactionPatternFailsClosedWithoutLeakingInput() {
         let redactor = DeveloperSecretRedactor(patternDefinitions: [
             SecretRedactionPatternDefinition(name: "broken", expression: "[")
