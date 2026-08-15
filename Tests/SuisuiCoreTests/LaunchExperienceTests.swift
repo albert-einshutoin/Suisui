@@ -147,6 +147,13 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertFalse(script.contains("VERIFY_TIMEOUT_SECONDS=\"${SUISUI_VERIFY_TIMEOUT_SECONDS:-12}\""))
     }
 
+    func testVerifyModePinsDefaultSQLiteCLIToTheSystemRuntime() throws {
+        let script = try readPackageFile("script/build_and_run.sh")
+
+        XCTAssertTrue(script.contains("VERIFY_SQLITE3=\"${SQLITE3:-/usr/bin/sqlite3}\""))
+        XCTAssertFalse(script.contains("VERIFY_SQLITE3=\"${SQLITE3:-sqlite3}\""))
+    }
+
     func testWindowlessSavedStateStillShowsProjectBoardOnLaunch() throws {
         let script = try readPackageFile("script/build_and_run.sh")
         let source = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")

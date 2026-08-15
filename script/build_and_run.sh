@@ -101,7 +101,10 @@ VERIFY_HOME="$VERIFY_ROOT/home"
 VERIFY_CFFIXED_USER_HOME="$VERIFY_ROOT/cfixed-user-home"
 VERIFY_TMPDIR="$VERIFY_ROOT/tmp"
 VERIFY_DATABASE_PATH="$VERIFY_ROOT/suisui.sqlite3"
-VERIFY_SQLITE3="${SQLITE3:-sqlite3}"
+# The app links the system SQLite framework. Pin the smoke fixture writer to the
+# same system CLI so a PATH-provided SQLite without FTS5 cannot parse its FTS
+# triggers differently after the app has migrated the database.
+VERIFY_SQLITE3="${SQLITE3:-/usr/bin/sqlite3}"
 VERIFY_APP_LAUNCHER_SOURCE="$ROOT_DIR/script/launch_macos_app.swift"
 VERIFY_APP_LAUNCHER_EXECUTABLE="$VERIFY_ROOT/launch-macos-app"
 BOOTSTRAP_LAUNCH_PID=""
