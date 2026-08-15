@@ -65,6 +65,24 @@ final class SelectiveCIWorkflowTests: XCTestCase {
         XCTAssertTrue(orchestrator.contains("\"$ROOT_DIR/ci/run-full.sh\""))
     }
 
+    func testFullAndHostedValidationShareFailClosedRustBoundaryRunner() throws {
+        let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        let fullRunner = try readRepositoryFile("ci/run-full.sh")
+        let rustRunner = try readRepositoryFile("ci/verify-rust-boundaries.sh")
+
+        XCTAssertTrue(fullRunner.contains("./ci/verify-rust-boundaries.sh --require-cargo"))
+        XCTAssertFalse(fullRunner.contains("SUISUI_REQUIRE_RUST_BOUNDARIES"))
+        XCTAssertTrue(workflow.contains("./ci/verify-rust-boundaries.sh --require-cargo"))
+        XCTAssertFalse(workflow.contains("SUISUI_REQUIRE_RUST_BOUNDARIES"))
+        XCTAssertFalse(workflow.contains("cargo fmt --manifest-path rust/kokoro-helper/Cargo.toml --check"))
+        XCTAssertTrue(rustRunner.contains("rust/kokoro-helper/Cargo.toml"))
+        XCTAssertTrue(rustRunner.contains("rust/embedding-helper/Cargo.toml"))
+        XCTAssertTrue(rustRunner.contains("cargo fmt --manifest-path"))
+        XCTAssertTrue(rustRunner.contains("cargo test --manifest-path"))
+        XCTAssertTrue(rustRunner.contains("cargo clippy --manifest-path"))
+        XCTAssertTrue(rustRunner.contains("--require-cargo"))
+    }
+
     func testContributorDocumentationExplainsSafeOperationAndExtensionPoints() throws {
         let documentation = try readRepositoryFile("docs/quality/selective-ci.md")
 

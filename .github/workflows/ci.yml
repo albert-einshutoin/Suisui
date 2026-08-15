@@ -212,14 +212,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-rust-boundaries-
 
       - name: Verify isolated Rust boundaries
-        run: |
-          rustc --version
-          cargo fmt --manifest-path rust/kokoro-helper/Cargo.toml --check
-          cargo test --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features
-          cargo clippy --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features -- -D warnings
-          cargo fmt --manifest-path rust/embedding-helper/Cargo.toml --check
-          cargo test --manifest-path rust/embedding-helper/Cargo.toml --locked --all-targets --all-features
-          cargo clippy --manifest-path rust/embedding-helper/Cargo.toml --locked --all-targets --all-features -- -D warnings
+        run: ./ci/verify-rust-boundaries.sh --require-cargo
 
   ui-runtime:
     name: UI Runtime (production route)
