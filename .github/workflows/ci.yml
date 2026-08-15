@@ -459,6 +459,11 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 30
     steps:
+      - name: Disable Spotlight indexing for launch measurement
+        # The hosted runner can otherwise index checkout and app artifacts in
+        # the background, making runner load—not product latency—fail the SLO.
+        run: sudo /usr/bin/mdutil -a -i off
+
       - name: Checkout tested revision
         uses: actions/checkout@v4
 

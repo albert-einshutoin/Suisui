@@ -117,6 +117,27 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertFalse(measureJob.contains("Restore Swift build cache"))
     }
 
+    func testPerformanceMeasurementDisablesSpotlightBeforeCheckoutAndArtifactExtraction() throws {
+        let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        let performanceScript = try readRepositoryFile("script/check_release_launch_performance_smoke.sh")
+        let measureStart = try XCTUnwrap(workflow.range(of: "\n  ui-performance:"))
+        let measureJob = String(workflow[measureStart.lowerBound...])
+        let isolation = try XCTUnwrap(
+            measureJob.range(of: "      - name: Disable Spotlight indexing for launch measurement\n")
+        )
+        let checkout = try XCTUnwrap(
+            measureJob.range(of: "      - name: Checkout tested revision\n")
+        )
+
+        XCTAssertLessThan(isolation.lowerBound, checkout.lowerBound)
+        XCTAssertTrue(measureJob.contains("    runs-on: macos-26\n"))
+        XCTAssertTrue(measureJob.contains("sudo /usr/bin/mdutil -a -i off"))
+        XCTAssertTrue(measureJob.contains("SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS: 1000"))
+        XCTAssertTrue(performanceScript.contains("RUNNER_QUIESCENCE_MAX_WAIT_SECONDS=60"))
+        XCTAssertTrue(performanceScript.contains("RUNNER_QUIESCENCE_MIN_CPU_IDLE_PERCENT=80"))
+        XCTAssertTrue(performanceScript.contains("RUNNER_QUIESCENCE_REQUIRED_IDLE_SAMPLES=3"))
+    }
+
     func testVisualRequiredCheckAggregatorFailsClosedForUnknownSelectorResults() throws {
         let workflow = try readRepositoryFile(".github/workflows/ci.yml")
         let script = try visualAggregatorScript(from: workflow)
