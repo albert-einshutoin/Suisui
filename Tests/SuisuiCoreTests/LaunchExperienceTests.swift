@@ -154,6 +154,13 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertFalse(script.contains("VERIFY_SQLITE3=\"${SQLITE3:-sqlite3}\""))
     }
 
+    func testCIGatesExportTheSystemSQLiteCLIUnlessExplicitlyOverridden() throws {
+        let ci = try readPackageFile("scripts/ci.sh")
+
+        XCTAssertTrue(ci.contains("export SQLITE3=\"${SQLITE3:-/usr/bin/sqlite3}\""))
+        XCTAssertFalse(ci.contains("export SQLITE3=\"sqlite3\""))
+    }
+
     func testWindowlessSavedStateStillShowsProjectBoardOnLaunch() throws {
         let script = try readPackageFile("script/build_and_run.sh")
         let source = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
