@@ -65,6 +65,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-swift-6-
 
+      # run-full.sh validates both Rust crates, so reuse the dedicated Rust
+      # gate's bounded cache instead of recompiling them inside the 40m limit.
+      - name: Restore bounded Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            rust/kokoro-helper/target
+            rust/embedding-helper/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-rust-boundaries-${{ hashFiles('rust/kokoro-helper/Cargo.lock', 'rust/embedding-helper/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-rust-boundaries-
+
       - name: Show toolchain
         run: |
           swift --version
@@ -162,6 +176,20 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-swift-6-${{ hashFiles('Package.resolved', 'Package.swift') }}-${{ hashFiles('ci/config/**', 'ci/impact/**') }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-swift-6-
+
+      # run-full.sh validates both Rust crates, so reuse the dedicated Rust
+      # gate's bounded cache instead of recompiling them inside the 40m limit.
+      - name: Restore bounded Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            rust/kokoro-helper/target
+            rust/embedding-helper/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-rust-boundaries-${{ hashFiles('rust/kokoro-helper/Cargo.lock', 'rust/embedding-helper/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-rust-boundaries-
 
       - name: Show toolchain
         run: |
