@@ -6495,6 +6495,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("ax_wait_for_owned_app_pid"))
         XCTAssertTrue(script.contains("SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1"))
         XCTAssertTrue(script.contains("SQLITE_BUSY_TIMEOUT_MS=\"${SUISUI_RUNTIME_ACCESSIBLE_CRUD_SQLITE_BUSY_TIMEOUT_MS:-5000}\""))
+        XCTAssertTrue(script.contains("SQLITE3=\"${SQLITE3:-/usr/bin/sqlite3}\""))
+        XCTAssertFalse(script.contains("SQLITE3=\"${SQLITE3:-sqlite3}\""))
         XCTAssertTrue(script.contains("DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS=\"${SUISUI_RUNTIME_ACCESSIBLE_CRUD_DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS:-10}\""))
         XCTAssertTrue(script.contains("FORM_POSTCONDITION_TIMEOUT_SECONDS=\"${SUISUI_RUNTIME_ACCESSIBLE_CRUD_FORM_POSTCONDITION_TIMEOUT_SECONDS:-10}\""))
         XCTAssertTrue(script.contains("MAX_LAUNCH_ATTEMPTS=2"))
@@ -9071,6 +9073,8 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
         XCTAssertTrue(script.contains("DEFAULT_DATABASE_PATH=\"$ROOT_DIR/.tmp/voiceover-review/Suisui-voiceover-review.sqlite\""))
+        XCTAssertTrue(script.contains("SQLITE3=\"${SQLITE3:-/usr/bin/sqlite3}\""))
+        XCTAssertFalse(script.contains("SQLITE3=\"${SQLITE3:-sqlite3}\""))
         XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
         XCTAssertTrue(script.contains("/usr/bin/nohup /usr/bin/env \"${launch_environment[@]}\" \"$APP_BINARY\" >/dev/null 2>&1 &"))
         XCTAssertTrue(script.contains("app_pid=$!"))
