@@ -790,6 +790,21 @@ final class ProjectTaskKnowledgeToolTests: XCTestCase {
         XCTAssertEqual(result.output["count"], .number(1))
     }
 
+    func testKnowledgeFrameSearchReturnsMoreThanTheInteractiveBound() throws {
+        let stores = try makeStores()
+        let search = KnowledgeFrameTool(name: .frameSearch, store: stores.knowledge)
+        for index in 0..<129 {
+            _ = try stores.knowledge.create(name: "Frame \(index)", body: "tool compatibility literal")
+        }
+
+        let result = try search.execute(
+            arguments: ["query": .string("tool compatibility literal")],
+            context: ToolExecutionContext(source: .developerTool)
+        )
+
+        XCTAssertEqual(result.output["count"], .number(129))
+    }
+
     func testKnowledgeFrameListAndSearchToolsReturnPersistentFrameRecords() throws {
         let stores = try makeStores()
         let release = try stores.knowledge.create(

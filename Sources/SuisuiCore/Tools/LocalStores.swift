@@ -2121,12 +2121,19 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         guard remaining != 0 else {
             return records
         }
-        let exclusion = seenIDs.isEmpty
-            ? ""
-            : " AND id NOT IN (\(Array(repeating: "?", count: seenIDs.count).joined(separator: ", ")))"
+        let exclusion: String
         let lowered = trimmed.lowercased()
         var parameters: [SQLiteValue] = [.text(lowered), .text(lowered), .text(lowered)]
-        parameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
+        if limit == nil {
+            // The compatibility API returns every match. Avoid dynamically
+            // binding all FTS IDs; seenIDs below preserves FTS-first order.
+            exclusion = ""
+        } else {
+            exclusion = seenIDs.isEmpty
+                ? ""
+                : " AND id NOT IN (\(Array(repeating: "?", count: seenIDs.count).joined(separator: ", ")))"
+            parameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
+        }
         let fallbackLimit = remaining.map { _ in "LIMIT ?" } ?? ""
         if let remaining {
             parameters.append(.integer(Int64(remaining)))
@@ -2154,11 +2161,16 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         if limit.map({ records.count < $0 }) ?? true,
            let trigramMatch = Self.unicodeTrigramMatch(for: [trimmed]) {
             let trigramLimit = limit.map { $0 - records.count }
-            let exclusion = seenIDs.isEmpty
-                ? ""
-                : " AND knowledge_frames.id NOT IN (\(Array(repeating: "?", count: seenIDs.count).joined(separator: ", ")))"
+            let exclusion: String
             var trigramParameters: [SQLiteValue] = [.text(trigramMatch)]
-            trigramParameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
+            if limit == nil {
+                exclusion = ""
+            } else {
+                exclusion = seenIDs.isEmpty
+                    ? ""
+                    : " AND knowledge_frames.id NOT IN (\(Array(repeating: "?", count: seenIDs.count).joined(separator: ", ")))"
+                trigramParameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
+            }
             let trigramLimitClause = trigramLimit.map { _ in "LIMIT ?" } ?? ""
             if let trigramLimit {
                 trigramParameters.append(.integer(Int64(trigramLimit)))

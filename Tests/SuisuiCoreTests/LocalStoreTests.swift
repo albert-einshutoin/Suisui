@@ -712,6 +712,25 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(try store.search(query: "50% done").map(\.id), [literalFrame.id])
     }
 
+    func testKnowledgeCompatibilitySearchRecoversTriggerLiteralFromFTSFalseCandidate() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let triggerLiteral = try store.create(
+            name: "résumé",
+            body: "FTS tokenized source candidate",
+            triggers: ["resume"]
+        )
+
+        XCTAssertEqual(
+            try connection.queryRows(
+                "SELECT rowid FROM knowledge_frames_fts WHERE knowledge_frames_fts MATCH ?;",
+                parameters: [.text("\"resume\"")]
+            ).count,
+            1
+        )
+        XCTAssertEqual(try store.search(query: "resume").map(\.id), [triggerLiteral.id])
+    }
+
     func testKnowledgeBoundedSearchCompletesAfterManyFalseFTSCandidates() throws {
         let connection = try currentConnection()
         let store = SQLiteKnowledgeFrameStore(connection: connection)
@@ -740,6 +759,28 @@ final class LocalStoreTests: XCTestCase {
         }
 
         XCTAssertEqual(try store.search(query: "bounded literal", limit: 10_000).count, 128)
+    }
+
+    func testKnowledgeCompatibilitySearchKeepsAllFTSAndFallbackResultsWithoutDynamicExclusions() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        for index in 0..<1_024 {
+            _ = try store.create(name: "Compatibility \(index)", body: "compatibility literal result")
+        }
+        var fallbackIDs: [Int64] = []
+        for index in 0..<130 {
+            let fallback = try store.create(
+                name: "Fallback \(index)",
+                body: "Trigger-only result",
+                triggers: ["compatibility literal"]
+            )
+            fallbackIDs.append(fallback.id)
+        }
+
+        let results = try store.search(query: "compatibility literal")
+
+        XCTAssertEqual(results.count, 1_154)
+        XCTAssertEqual(results.suffix(fallbackIDs.count).map(\.id), fallbackIDs)
     }
 
     func testKnowledgeLiteralSearchUsesDecodedTriggersInsteadOfJSONSyntax() throws {

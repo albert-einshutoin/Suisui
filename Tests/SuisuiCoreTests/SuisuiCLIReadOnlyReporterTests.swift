@@ -49,6 +49,21 @@ final class SuisuiCLIReadOnlyReporterTests: XCTestCase {
         XCTAssertTrue(lines.contains("- Release readiness frame"))
     }
 
+    func testFramesSearchReturnsMoreThanTheInteractiveBound() throws {
+        let databaseURL = temporaryDirectory().appendingPathComponent("many-frames.sqlite")
+        let connection = try SQLiteConnection(path: databaseURL.path)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        for index in 0..<129 {
+            _ = try store.create(name: "CLI Frame \(index)", body: "cli compatibility literal")
+        }
+        let reporter = SuisuiCLIReadOnlyReporter(databaseURL: databaseURL, now: fixedNow())
+
+        let lines = try reporter.framesSearchLines(query: "cli compatibility literal")
+
+        XCTAssertTrue(lines.contains("count: 129"))
+    }
+
     func testFramesSearchRequiresTrigramMigrationForNonASCIISearch() throws {
         let databaseURL = temporaryDirectory().appendingPathComponent("legacy.sqlite")
         let connection = try SQLiteConnection(path: databaseURL.path)
