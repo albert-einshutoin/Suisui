@@ -1926,6 +1926,11 @@ enum GitManifestReader {
                 environment[key] = value
             }
         }
+        // This lookup reads only core.excludesFile; the manifest subprocess
+        // still replaces global config with /dev/null before listing files.
+        if let globalConfig = inherited["GIT_CONFIG_GLOBAL"], !globalConfig.isEmpty {
+            environment["GIT_CONFIG_GLOBAL"] = globalConfig
+        }
         return try configuredExcludesFile(
             arguments: ["config", "--global", "--path", "--get", "core.excludesFile"],
             environment: environment,

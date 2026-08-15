@@ -1238,6 +1238,70 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(visible.map(\.sourcePath), ["Visible.md"])
     }
 
+    func testRefreshHonorsExplicitGitConfigGlobalExcludeForUntrackedFiles() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let home = fixture.url.appendingPathComponent("home", isDirectory: true)
+        let globalConfig = fixture.url.appendingPathComponent("explicit-global.gitconfig")
+        let excludes = fixture.url.appendingPathComponent("explicit-global-ignore")
+        let hookMarker = fixture.url.appendingPathComponent("explicit-global-fsmonitor-ran")
+        let hook = fixture.url.appendingPathComponent("explicit-global-fsmonitor.sh")
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        try "ExplicitlyConfiguredGloballyIgnored.md\n".write(
+            to: excludes,
+            atomically: true,
+            encoding: .utf8
+        )
+        try "#!/bin/sh\ntouch '\(hookMarker.path)'\n".write(
+            to: hook,
+            atomically: true,
+            encoding: .utf8
+        )
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: hook.path)
+        try "[core]\n\texcludesFile = \(excludes.path)\n\tfsmonitor = \(hook.path)\n".write(
+            to: globalConfig,
+            atomically: true,
+            encoding: .utf8
+        )
+        try fixture.write("explicitglobalignoremarker", to: "ExplicitlyConfiguredGloballyIgnored.md")
+        try fixture.write("explicitglobalvisiblemarker", to: "Visible.md")
+
+        let previousHome = ProcessInfo.processInfo.environment["HOME"]
+        let previousXDGConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
+        let previousGlobalConfig = ProcessInfo.processInfo.environment["GIT_CONFIG_GLOBAL"]
+        setenv("HOME", home.path, 1)
+        unsetenv("XDG_CONFIG_HOME")
+        setenv("GIT_CONFIG_GLOBAL", globalConfig.path, 1)
+        defer {
+            if let previousHome { setenv("HOME", previousHome, 1) } else { unsetenv("HOME") }
+            if let previousXDGConfigHome {
+                setenv("XDG_CONFIG_HOME", previousXDGConfigHome, 1)
+            } else {
+                unsetenv("XDG_CONFIG_HOME")
+            }
+            if let previousGlobalConfig {
+                setenv("GIT_CONFIG_GLOBAL", previousGlobalConfig, 1)
+            } else {
+                unsetenv("GIT_CONFIG_GLOBAL")
+            }
+        }
+
+        let index = try migratedIndex()
+        try await index.refresh(workspace: workspace(fixture))
+
+        let ignored = try await index.search(
+            query: "explicitglobalignoremarker",
+            workspace: workspace(fixture)
+        )
+        let visible = try await index.search(
+            query: "explicitglobalvisiblemarker",
+            workspace: workspace(fixture)
+        )
+        XCTAssertTrue(ignored.isEmpty)
+        XCTAssertEqual(visible.map(\.sourcePath), ["Visible.md"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: hookMarker.path))
+    }
+
     func testRefreshHonorsRepositoryAndGlobalExcludesWithoutLoadingGlobalHooks() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
