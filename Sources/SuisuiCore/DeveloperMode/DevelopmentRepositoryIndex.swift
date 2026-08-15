@@ -36,7 +36,7 @@ public actor DevelopmentRepositoryIndex {
     // For indexing, reject every value-bearing form. Only the value-free Swift
     // type grammars below can remain searchable.
     private static let credentialKeyAssignments = try? NSRegularExpression(
-        pattern: #"(?<![\p{L}\p{M}\p{N}_])(?i:(?:[\p{L}_][\p{L}\p{M}\p{N}_]*)?(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret|credentials?)[\p{L}\p{M}\p{N}_]*)(?![\p{L}\p{M}\p{N}_])"#
+        pattern: #"(?<![\p{L}\p{M}\p{N}_])(?i:(?:[\p{L}_][\p{L}\p{M}\p{N}_]*)?(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|passwd|passphrase|db[_-]?pass|secret|credentials?)[\p{L}\p{M}\p{N}_]*)(?![\p{L}\p{M}\p{N}_])"#
     )
     private static let ambiguousSwiftSubscriptAssignment = try? NSRegularExpression(
         pattern: #"\[\s*(?!\"[^\"\\\r\n]{0,512}\"\s*\])(?=[^\]\r\n]{0,512}\")[^\]\r\n]{1,512}\]\s*(?:\s|/\*[\s\S]*?\*/|//[^\r\n]*(?:\r\n|\r|\n))*=(?!=)"#
@@ -1159,13 +1159,7 @@ public actor DevelopmentRepositoryIndex {
     }
 
     private static func isJSONCredentialKey(_ key: String) -> Bool {
-        let normalized = String(key.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }).lowercased()
-        if ["auth", "auths", "authorization", "identitytoken"].contains(normalized) {
-            return true
-        }
-        return ["apikey", "accesskey", "privatekey", "clientkeydata", "token", "password", "secret", "credential", "credentials"].contains {
-            normalized.hasSuffix($0)
-        }
+        DeveloperSecretRedactor.isCredentialJSONKey(key)
     }
 
     private static func containsAmbiguousSwiftDictionaryKey(in source: String) -> Bool {
@@ -1931,11 +1925,14 @@ enum GitManifestReader {
         if let globalConfig = inherited["GIT_CONFIG_GLOBAL"], !globalConfig.isEmpty {
             environment["GIT_CONFIG_GLOBAL"] = globalConfig
         }
-        return try configuredExcludesFile(
+        if let configured = try configuredExcludesFile(
             arguments: ["config", "--global", "--path", "--get", "core.excludesFile"],
             environment: environment,
             executableURL: executableURL
-        ) ?? defaultGlobalExcludesFile(in: inherited)
+        ) {
+            return configured
+        }
+        return defaultGlobalExcludesFile(in: inherited)
     }
 
     private static func systemExcludesFile(executableURL: URL) throws -> String? {
@@ -1993,7 +1990,7 @@ enum GitManifestReader {
         guard !path.isEmpty, !path.contains("\n"), !path.contains("\r") else {
             throw DevelopmentRepositoryIndexError.gitManifestUnavailable
         }
-        return path
+        return normalizedExistingExcludesFile(path: path)
     }
 
     private static func defaultGlobalExcludesFile(in environment: [String: String]) -> String? {
@@ -2007,10 +2004,15 @@ enum GitManifestReader {
         } else {
             path = nil
         }
-        guard let path, FileManager.default.fileExists(atPath: path) else {
+        guard let path else {
             return nil
         }
-        return path
+        return normalizedExistingExcludesFile(path: path)
+    }
+
+    private static func normalizedExistingExcludesFile(path: String) -> String? {
+        let normalizedPath = URL(fileURLWithPath: path).standardizedFileURL.path
+        return FileManager.default.fileExists(atPath: normalizedPath) ? normalizedPath : nil
     }
 
     private static func boundedGitOutput(

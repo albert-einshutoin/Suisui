@@ -208,6 +208,43 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(swift.isEmpty)
     }
 
+    func testRefreshRejectsPasswordAliasesButIndexesValueFreeSwiftTypes() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write(#"{"db_pass":"dbpassindexmarker","db_\u0070ass":"escapeddbpassindexmarker","passwd":"passwdindexmarker"}"#, to: "Settings.json")
+        try fixture.write("passphrase = \"passphraseindexmarker\"", to: "Settings.toml")
+        try fixture.write(
+            "let db_pass: String\nlet passwd: PasswordValue\nlet passphrase: Passphrase\nlet safeAliasTypeMarker = true",
+            to: "Sources/PasswordAliases.swift"
+        )
+        try fixture.write(
+            "let compass: Compass\nlet bypass: Bypass\nlet harmlessDirectionalMarker = compass",
+            to: "Sources/Navigation.swift"
+        )
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let dbPass = try await index.search(query: "dbpassindexmarker", workspace: workspace(fixture))
+        let escapedDBPass = try await index.search(query: "escapeddbpassindexmarker", workspace: workspace(fixture))
+        let passwd = try await index.search(query: "passwdindexmarker", workspace: workspace(fixture))
+        let passphrase = try await index.search(query: "passphraseindexmarker", workspace: workspace(fixture))
+        XCTAssertTrue(dbPass.isEmpty)
+        XCTAssertTrue(escapedDBPass.isEmpty)
+        XCTAssertTrue(passwd.isEmpty)
+        XCTAssertTrue(passphrase.isEmpty)
+        let safeTypes = try await index.search(
+            query: "safeAliasTypeMarker",
+            workspace: workspace(fixture)
+        )
+        let harmlessSource = try await index.search(
+            query: "harmlessDirectionalMarker",
+            workspace: workspace(fixture)
+        )
+        XCTAssertEqual(safeTypes.map(\.sourcePath), ["Sources/PasswordAliases.swift"])
+        XCTAssertEqual(harmlessSource.map(\.sourcePath), ["Sources/Navigation.swift"])
+    }
+
     func testRefreshDoesNotPersistConnectionURIsWithEmptyUsername() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
@@ -1300,6 +1337,50 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(ignored.isEmpty)
         XCTAssertEqual(visible.map(\.sourcePath), ["Visible.md"])
         XCTAssertFalse(FileManager.default.fileExists(atPath: hookMarker.path))
+    }
+
+    func testRefreshIgnoresMissingExplicitGlobalExcludeFile() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let home = fixture.url.appendingPathComponent("home", isDirectory: true)
+        let globalConfig = fixture.url.appendingPathComponent("missing-global.gitconfig")
+        let missingExcludes = fixture.url.appendingPathComponent("missing-global-ignore")
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        try "[core]\n\texcludesFile = \(missingExcludes.path)\n".write(
+            to: globalConfig,
+            atomically: true,
+            encoding: .utf8
+        )
+        try fixture.write("missingglobalvisiblemarker", to: "Visible.md")
+
+        let previousHome = ProcessInfo.processInfo.environment["HOME"]
+        let previousXDGConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
+        let previousGlobalConfig = ProcessInfo.processInfo.environment["GIT_CONFIG_GLOBAL"]
+        setenv("HOME", home.path, 1)
+        unsetenv("XDG_CONFIG_HOME")
+        setenv("GIT_CONFIG_GLOBAL", globalConfig.path, 1)
+        defer {
+            if let previousHome { setenv("HOME", previousHome, 1) } else { unsetenv("HOME") }
+            if let previousXDGConfigHome {
+                setenv("XDG_CONFIG_HOME", previousXDGConfigHome, 1)
+            } else {
+                unsetenv("XDG_CONFIG_HOME")
+            }
+            if let previousGlobalConfig {
+                setenv("GIT_CONFIG_GLOBAL", previousGlobalConfig, 1)
+            } else {
+                unsetenv("GIT_CONFIG_GLOBAL")
+            }
+        }
+
+        let index = try migratedIndex()
+        try await index.refresh(workspace: workspace(fixture))
+
+        let visible = try await index.search(
+            query: "missingglobalvisiblemarker",
+            workspace: workspace(fixture)
+        )
+        XCTAssertEqual(visible.map(\.sourcePath), ["Visible.md"])
     }
 
     func testRefreshHonorsRepositoryAndGlobalExcludesWithoutLoadingGlobalHooks() async throws {

@@ -135,6 +135,22 @@ final class DraftGenerationTests: XCTestCase {
         }
     }
 
+    func testPasswordAliasKeysAreRedactedFromJSONAndConfig() {
+        let fixtures = [
+            (#"{"db_pass":"db-pass-draft-marker"}"#, "db-pass-draft-marker"),
+            (#"{"db_\u0070ass":"escaped-db-pass-draft-marker"}"#, "escaped-db-pass-draft-marker"),
+            (#"passwd = "passwd-draft-marker""#, "passwd-draft-marker"),
+            ("passphrase: passphrase-draft-marker", "passphrase-draft-marker"),
+        ]
+
+        for (fixture, marker) in fixtures {
+            let redaction = DeveloperSecretRedactor().redact(fixture)
+
+            XCTAssertFalse(redaction.text.contains(marker), fixture)
+            XCTAssertTrue(redaction.text.contains("[REDACTED_SECRET]"), fixture)
+        }
+    }
+
     func testConnectionURIUserInfoIsRedacted() {
         let fixtureCredential = ["fixture", "credential"].joined(separator: "-")
         let redaction = DeveloperSecretRedactor().redact(

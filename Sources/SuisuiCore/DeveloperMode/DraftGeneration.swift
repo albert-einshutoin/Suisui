@@ -53,11 +53,11 @@ public struct DeveloperSecretRedactor: Sendable {
         // Repository indexes must reject Docker credential JSON before it can be
         // persisted; matching field names catches encoded values too.
         SecretRedactionPatternDefinition(name: "docker_auth_json", expression: #"(?i)\"(?:auths|auth|identitytoken)\"\s*:\s*(?:\{|\"(?:\\.|[^\"\\])*\")"#),
-        SecretRedactionPatternDefinition(name: "credential_json", expression: #"(?i)\"(?:api[_-]?key|token|password|secret|client_secret|private_key)\"\s*:\s*\"(?:\\.|[^\"\\])*\""#),
+        SecretRedactionPatternDefinition(name: "credential_json", expression: #"(?i)\"(?:api[_-]?key|token|[A-Za-z0-9_-]*(?:password|passwd|passphrase)|db[_-]?pass|secret|client_secret|private_key)\"\s*:\s*\"(?:\\.|[^\"\\])*\""#),
         SecretRedactionPatternDefinition(name: "credential_uri", expression: #"(?i)\b[a-z][a-z0-9+.-]*://[^/\s:@]*:[^@\s/]+@"#),
         SecretRedactionPatternDefinition(name: "authorization_header", expression: #"(?i)\bauthorization\b\s*[\"']?\s*[:=]\s*(?:\"(?:\\.|[^\"\\\r\n])*\"|'(?:\\.|[^'\\\r\n])*'|[^\s,;\r\n][^\r\n]*)"#),
         SecretRedactionPatternDefinition(name: "jwt", expression: #"(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*(?![A-Za-z0-9_-])"#),
-        SecretRedactionPatternDefinition(name: "assignment", expression: #"(?i)\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*(?!\[REDACTED_SECRET\])[^\s,;]+"#)
+        SecretRedactionPatternDefinition(name: "assignment", expression: #"(?i)\b(?:api[_-]?key|token|[A-Za-z0-9_-]*(?:password|passwd|passphrase)|db[_-]?pass|secret)\s*[:=]\s*(?!\[REDACTED_SECRET\])[^\s,;]+"#)
     ]
 
     private let patterns: [CompiledPattern]
@@ -211,10 +211,15 @@ public struct DeveloperSecretRedactor: Sendable {
         return false
     }
 
-    private static func isCredentialJSONKey(_ key: String) -> Bool {
+    static func isCredentialJSONKey(_ key: String) -> Bool {
         let normalized = key.lowercased().filter { $0.isLetter || $0.isNumber }
-        return ["auth", "auths", "authorization", "identitytoken"].contains(normalized)
-            || ["apikey", "accesskey", "privatekey", "token", "password", "secret"]
+        return ["auth", "auths", "authorization", "identitytoken", "dbpass"].contains(normalized)
+            // Config ecosystems commonly abbreviate password independently of
+            // separator and case, so all repository egress paths share these suffixes.
+            || [
+                "apikey", "accesskey", "privatekey", "clientkeydata", "token",
+                "password", "passwd", "passphrase", "secret", "credential", "credentials",
+            ]
                 .contains(where: normalized.hasSuffix)
     }
 }

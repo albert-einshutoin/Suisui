@@ -295,6 +295,35 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
         }
     }
 
+    func testRepositoryFileClientRejectsPasswordAliasConfigOnRead() throws {
+        let workspace = temporaryDirectory()
+        let fixtures = [
+            ("Config/Database.json", #"{"db_pass":"db-pass-read-marker"}"#),
+            ("Config/Auth.toml", "passwd = \"passwd-read-marker\""),
+            ("Config/Encryption.yaml", "passphrase: passphrase-read-marker"),
+        ]
+        for (path, contents) in fixtures {
+            try write(contents, to: workspace.appendingPathComponent(path))
+        }
+        let harmlessSource = "let compass: Compass\nlet bypass: Bypass\n"
+        try write(harmlessSource, to: workspace.appendingPathComponent("Sources/Navigation.swift"))
+        let client = DevelopmentRepositoryFileClient(project: ProjectRecord(
+            id: 42,
+            title: "Suisui",
+            status: "active",
+            workspacePath: workspace.path
+        ))
+
+        for (path, _) in fixtures {
+            XCTAssertThrowsError(try client.read(relativePath: path), path) { error in
+                guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                    return XCTFail("Expected secret-like content rejection, got \(error)")
+                }
+            }
+        }
+        XCTAssertEqual(try client.read(relativePath: "Sources/Navigation.swift").contents, harmlessSource)
+    }
+
     func testListFilesWithinApprovedWorkspaceReturnsSortedEntries() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()

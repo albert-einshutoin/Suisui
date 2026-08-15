@@ -2232,6 +2232,27 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDevelopmentRepositoryEditPreviewRejectsPasswordAliasConfig() throws {
+        let subject = try makeDevelopmentRepositoryEditPreviewSubject()
+        let fixtures = [
+            ("Config/Database.json", #"{"db_pass":"db-pass-preview-marker"}"#),
+            ("Config/Auth.toml", "passwd = \"passwd-preview-marker\""),
+            ("Config/Encryption.yaml", "passphrase: passphrase-preview-marker"),
+        ]
+
+        for (path, contents) in fixtures {
+            XCTAssertNil(subject.viewModel.developmentRepositoryEditPreview(
+                for: subject.project,
+                task: subject.task,
+                operation: .create,
+                relativePath: path,
+                contents: contents,
+                expectedSHA256: nil
+            ), path)
+        }
+    }
+
+    @MainActor
     func testDevelopmentRepositoryEditPreviewRejectsSwiftCredentialAliasAssignment() throws {
         let subject = try makeDevelopmentRepositoryEditPreviewSubject()
         let cases: [(name: String, contents: String)] = [
