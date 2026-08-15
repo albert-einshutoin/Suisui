@@ -8287,6 +8287,16 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("set -x"))
     }
 
+    func testReleaseLaunchPerformanceUsesAnOverrideableSystemSQLiteCLIForFTSTriggers() throws {
+        let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
+
+        XCTAssertTrue(script.contains("SQLITE3=\"${SQLITE3:-/usr/bin/sqlite3}\""))
+        XCTAssertTrue(script.contains("\"$SQLITE3\" -batch -noheader \"$PERFORMANCE_DATABASE_PATH\""))
+        XCTAssertTrue(script.contains("if ! \"$SQLITE3\" \"$PERFORMANCE_DATABASE_PATH\" <<'SQL'"))
+        XCTAssertFalse(script.contains("$(sqlite3 -batch -noheader"))
+        XCTAssertFalse(script.contains("if ! sqlite3 \"$PERFORMANCE_DATABASE_PATH\""))
+    }
+
     func testReleaseLaunchPerformanceWaitsForBoundedRunnerQuiescenceBeforeMeasuring() throws {
         let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
 
@@ -8374,7 +8384,7 @@ final class ReleasePipelineTests: XCTestCase {
         let schemaSource = String(script[schemaFunction.lowerBound..<schemaFunctionEnd.lowerBound])
         XCTAssertLessThan(
             try XCTUnwrap(schemaSource.range(of: "ax_process_matches_identity")).lowerBound,
-            try XCTUnwrap(schemaSource.range(of: "sqlite3 -batch -noheader")).lowerBound
+            try XCTUnwrap(schemaSource.range(of: "\"$SQLITE3\" -batch -noheader")).lowerBound
         )
 
         let preparationFunction = try XCTUnwrap(script.range(of: "prepare_production_fixture()"))
