@@ -193,15 +193,17 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
         struct Tooling {
             var authorization: ToolActionAuthorization?
 
-            func use(authorization: AuthorizationPolicy) {
-                request(authorization: authorizationStatus(), timeout: timeout)
-            }
+            func use(authorization: AuthorizationPolicy) {}
         }
         """
         try write(safeSource, to: workspace.appendingPathComponent("Sources/Tooling.swift"))
         try write(
             "request(authorization: \"Token file-access-secret-marker\", timeout: timeout)\n",
             to: workspace.appendingPathComponent("Sources/Unsafe.swift")
+        )
+        try write(
+            "request(authorization: authorizationStatus(), timeout: timeout)\n",
+            to: workspace.appendingPathComponent("Sources/UnsafeCallLabel.swift")
         )
         let project = ProjectRecord(
             id: 42,
@@ -218,6 +220,78 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
             guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
                 return XCTFail("Expected secret-like content rejection, got \(error)")
             }
+        }
+        XCTAssertThrowsError(try client.read(relativePath: "Sources/UnsafeCallLabel.swift")) { error in
+            guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                return XCTFail("Expected secret-like content rejection, got \(error)")
+            }
+        }
+    }
+
+    func testRepositoryFileClientRejectsSwiftCredentialAliasOnReadCreateAndUpdate() throws {
+        let workspace = temporaryDirectory()
+        let cases: [(name: String, contents: String)] = [
+            (
+                "Alias",
+                "let value = \"opaquecredentialmaterialalias7X9Q\"\nlet password = value\n"
+            ),
+            (
+                "Tuple",
+                "let opaque = \"opaquecredentialmaterialtuple7X9Q\"\nlet (password) = (opaque)\n"
+            ),
+            (
+                "Compound",
+                """
+                let opaque = "opaquecredentialmaterialcompound7X9Q"
+                struct Holder {
+                    var password: String
+                    mutating func append() {
+                        password += opaque
+                    }
+                }
+                """
+            )
+        ]
+        let project = ProjectRecord(
+            id: 42,
+            title: "Suisui",
+            status: "active",
+            workspacePath: workspace.path
+        )
+        let client = DevelopmentRepositoryFileClient(project: project)
+
+        for item in cases {
+            let unsafePath = "Sources/Unsafe\(item.name).swift"
+            let createdPath = "Sources/Created\(item.name).swift"
+            let existingPath = "Sources/Existing\(item.name).swift"
+            let existingURL = workspace.appendingPathComponent(existingPath)
+            try write(item.contents, to: workspace.appendingPathComponent(unsafePath))
+            try write("let baseline = true\n", to: existingURL)
+
+            XCTAssertThrowsError(try client.read(relativePath: unsafePath)) { error in
+                guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                    return XCTFail("Expected secret-like content rejection, got \(error)")
+                }
+            }
+
+            XCTAssertThrowsError(try client.create(relativePath: createdPath, contents: item.contents)) { error in
+                guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                    return XCTFail("Expected secret-like content rejection, got \(error)")
+                }
+            }
+
+            let baseline = try client.read(relativePath: existingPath)
+            XCTAssertThrowsError(try client.update(
+                relativePath: existingPath,
+                contents: item.contents,
+                expectedSHA256: baseline.sha256
+            )) { error in
+                guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                    return XCTFail("Expected secret-like content rejection, got \(error)")
+                }
+            }
+            XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.appendingPathComponent(createdPath).path))
+            XCTAssertEqual(try String(contentsOf: existingURL, encoding: .utf8), "let baseline = true\n")
         }
     }
 

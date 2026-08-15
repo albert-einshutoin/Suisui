@@ -2232,14 +2232,53 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDevelopmentRepositoryEditPreviewRejectsSwiftCredentialAliasAssignment() throws {
+        let subject = try makeDevelopmentRepositoryEditPreviewSubject()
+        let cases: [(name: String, contents: String)] = [
+            (
+                "Alias",
+                "let value = \"opaquecredentialmaterialalias7X9Q\"\nlet password = value\n"
+            ),
+            (
+                "Tuple",
+                "let opaque = \"opaquecredentialmaterialtuple7X9Q\"\nlet (password) = (opaque)\n"
+            ),
+            (
+                "Compound",
+                """
+                let opaque = "opaquecredentialmaterialcompound7X9Q"
+                struct Holder {
+                    var password: String
+                    mutating func append() {
+                        password += opaque
+                    }
+                }
+                """
+            )
+        ]
+
+        for item in cases {
+            let preview = subject.viewModel.developmentRepositoryEditPreview(
+                for: subject.project,
+                task: subject.task,
+                operation: .create,
+                relativePath: "Sources/App/Credential\(item.name).swift",
+                contents: item.contents,
+                expectedSHA256: nil
+            )
+            XCTAssertNil(preview, "Credential assignment must not enter edit preview: \(item.name)")
+        }
+        XCTAssertNil(subject.viewModel.todayCommandFeedback)
+        XCTAssertNil(subject.viewModel.errorMessage)
+    }
+
+    @MainActor
     func testDevelopmentRepositoryEditPreviewAllowsSafeSwiftAuthorizationSourceButRejectsLiteral() throws {
         let subject = try makeDevelopmentRepositoryEditPreviewSubject()
         let safeSource = """
         struct Tooling {
             var authorization: ToolActionAuthorization?
-            func use(authorization: AuthorizationPolicy) {
-                request(authorization: authorizationStatus(), timeout: timeout)
-            }
+            func use(authorization: AuthorizationPolicy) {}
         }
         """
 
@@ -2249,6 +2288,14 @@ final class ProjectBoardStoreTests: XCTestCase {
             operation: .create,
             relativePath: "Sources/App/Tooling.swift",
             contents: safeSource,
+            expectedSHA256: nil
+        ))
+        XCTAssertNil(subject.viewModel.developmentRepositoryEditPreview(
+            for: subject.project,
+            task: subject.task,
+            operation: .create,
+            relativePath: "Sources/App/UnsafeCallLabel.swift",
+            contents: "request(authorization: authorizationStatus(), timeout: timeout)\n",
             expectedSHA256: nil
         ))
         XCTAssertNil(subject.viewModel.developmentRepositoryEditPreview(

@@ -33,8 +33,8 @@ public actor DevelopmentRepositoryIndex {
     private let recordPublishCheckpoint: (@Sendable (Int) -> Void)?
 
     // Assignment-only redaction is deliberately broader for user-visible output.
-    // For indexing, reject every such assignment unless it matches one of the
-    // narrow Swift grammars below; unknown syntax stays fail-closed.
+    // For indexing, reject every value-bearing form. Only the value-free Swift
+    // type grammars below can remain searchable.
     private static let credentialKeyAssignments = try? NSRegularExpression(
         pattern: #"(?<![\p{L}\p{M}\p{N}_])(?i:(?:[\p{L}_][\p{L}\p{M}\p{N}_]*)?(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|secret|credentials?)[\p{L}\p{M}\p{N}_]*)(?![\p{L}\p{M}\p{N}_])"#
     )
@@ -47,35 +47,23 @@ public actor DevelopmentRepositoryIndex {
     private static let standaloneProviderCredential = try? NSRegularExpression(
         pattern: #"(?<![A-Za-z0-9_-])(?:xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{20,}|glpat-[A-Za-z0-9_-]{8,})(?![A-Za-z0-9_-])"#
     )
-    private static let safeSwiftAssignment = try? NSRegularExpression(
-        pattern: #"^\s*(?:(?:let|var)\s+)?(?:self\.)?[A-Za-z_][A-Za-z0-9_]*\s+=\s*(.+?)\s*$"#
-    )
-    private static let safeSwiftOptionalBinding = try? NSRegularExpression(
-        pattern: #"^\s*(?:guard|if)\s+let\s+(?:self\.)?([A-Za-z_][A-Za-z0-9_]*)\s+=\s*(.+?)(?:\s+else)?\s*\{"#
-    )
-    private static let safeSwiftCallLabel = try? NSRegularExpression(
-        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*(.+?)\s*,?\s*\)*\s*$"#
-    )
     private static let safeBareSwiftRegexCredentialPattern = try? NSRegularExpression(
         pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*\[[^\]\r\n]{1,128}\](?:[+*?]|\{\d+(?:,\d*)?\})?/\s*$"#
     )
-    private static let safeSwiftExpressionAtom = try? NSRegularExpression(
-        pattern: #"^(?:try\s+)?(?:nil|true|false|\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*(?:\(\s*(?:(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*(?:\s*,\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?\.?[A-Za-z_][A-Za-z0-9_]*(?:(?:\?\.|\.)[A-Za-z_][A-Za-z0-9_]*)*)*)?\s*\))?)$"#
-    )
     private static let safeSourceTypedDeclaration = try? NSRegularExpression(
-        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*(?:any\s+)?[A-Z\[(][A-Za-z0-9_.<>\[\]():?,\s]*$"#
+        pattern: #"^\s*(?:@[A-Za-z_][A-Za-z0-9_]*\s+)*(?:(?:(?:private|public|internal|fileprivate)(?:\(set\))?|static|final|lazy)\s+)*(?:let|var)\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*(?:any\s+)?[A-Z\[(][A-Za-z0-9_.<>\[\]():?,\s]*$"#
     )
     private static let safeSourceTypedFunctionParameter = try? NSRegularExpression(
-        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*(?:any\s+)?[A-Z\[(][A-Za-z0-9_.<>\[\]():?,\s]*(?:\s*=\s*nil)?(?=\s*(?:,|\)))"#
+        pattern: #"\s*(?:_|[A-Za-z_][A-Za-z0-9_]*)(?:\s+[A-Za-z_][A-Za-z0-9_]*)?\s*:\s*(?:any\s+)?[A-Z\[(][A-Za-z0-9_.<>\[\]():?,\s]*(?:\s*=\s*nil)?(?=\s*(?:,|\)))"#
     )
     private static let safeSwiftNominalTypeDeclaration = try? NSRegularExpression(
-        pattern: #"^\s*(?:(?:private|public|internal|fileprivate|package|open|final)\s+)*(?:struct|class|enum|protocol|actor|extension)\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*(?:[A-Z][A-Za-z0-9_.<>?]*|@unchecked\s+Sendable)(?:\s*,\s*(?:[A-Z][A-Za-z0-9_.<>?]*|@unchecked\s+Sendable))*\s*(?:[{][}]?)?\s*$"#
+        pattern: #"^\s*(?:(?:private|public|internal|fileprivate|package|open|final)\s+)*(?:struct|class|enum|protocol|actor|extension)\s+[A-Za-z_][A-Za-z0-9_]*(?:\s*:\s*(?:[A-Z][A-Za-z0-9_.<>?]*|@unchecked\s+Sendable)(?:\s*,\s*(?:[A-Z][A-Za-z0-9_.<>?]*|@unchecked\s+Sendable))*)?\s*(?:[{][}]?)?\s*$"#
     )
     private static let safeSwiftTypealiasDeclaration = try? NSRegularExpression(
         pattern: #"^\s*typealias\s+[A-Za-z_][A-Za-z0-9_]*\s*=\s*[A-Z][A-Za-z0-9_.]*\s*$"#
     )
     private static let safeSwiftGenericConstraint = try? NSRegularExpression(
-        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.]*\s*\{(?:\})?\s*$"#
+        pattern: #"[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.]*\s*\{(?:\})?\s*$"#
     )
     private static let safeSwiftCaseDeclaration = try? NSRegularExpression(
         pattern: #"^\s*case\s+\.[A-Za-z_][A-Za-z0-9_]*\s*:\s*$"#
@@ -86,14 +74,11 @@ public actor DevelopmentRepositoryIndex {
     private static let yamlClientKeyData = try? NSRegularExpression(
         pattern: #"(?i)client[-_]?key[-_]?data"#
     )
-    private static let swiftTypedDeclarationPrefix = try? NSRegularExpression(
-        pattern: #"^\s*(?:@[A-Za-z_][A-Za-z0-9_]*\s+)*(?:(?:(?:private|public|internal|fileprivate)(?:\(set\))?|static|final|lazy)\s+)*(?:let|var)\s+$"#
-    )
     private static let swiftFunctionParameterPrefix = try? NSRegularExpression(
-        pattern: #"\b(?:func\s+[A-Za-z_][A-Za-z0-9_]*\s*|init\s*)$"#
+        pattern: #"\b(?:func\s+[A-Za-z_][A-Za-z0-9_]*(?:<[A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*>)?\s*|init\s*)$"#
     )
-    private static let swiftCallOpener = try? NSRegularExpression(
-        pattern: #"^\s*(?:try\s+)?[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\s*$"#
+    private static let swiftFunctionParameterOpener = try? NSRegularExpression(
+        pattern: #"(\b(?:func\s+[A-Za-z_][A-Za-z0-9_]*(?:<[A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*>)?\s*|init\s*))\("#
     )
 
     private struct SwiftLexicalPosition {
@@ -774,68 +759,62 @@ public actor DevelopmentRepositoryIndex {
         }
         guard let assignments = credentialKeyAssignments,
               let authorizationIdentifiers = authorizationIdentifier,
-              let safeAssignment = safeSwiftAssignment,
-              let safeOptionalBinding = safeSwiftOptionalBinding,
-              let safeCallLabel = safeSwiftCallLabel,
-              let safeBareRegexPattern = safeBareSwiftRegexCredentialPattern,
-              let safeExpressionAtom = safeSwiftExpressionAtom,
-              let safeTypedDeclaration = safeSourceTypedDeclaration,
-              let safeTypedFunctionParameter = safeSourceTypedFunctionParameter,
-              let safeNominalTypeDeclaration = safeSwiftNominalTypeDeclaration,
-              let safeTypealiasDeclaration = safeSwiftTypealiasDeclaration,
-              let safeGenericConstraint = safeSwiftGenericConstraint,
-              let safeCaseDeclaration = safeSwiftCaseDeclaration,
-              let typedDeclarationPrefix = swiftTypedDeclarationPrefix,
-              let functionParameterPrefix = swiftFunctionParameterPrefix,
-              let callOpener = swiftCallOpener else {
+              let safeBareRegexPattern = safeBareSwiftRegexCredentialPattern else {
             return true
         }
         let candidateMatches = assignments.matches(in: contents, range: range) +
             authorizationIdentifiers.matches(in: contents, range: range)
+        let candidateEnds = Set(candidateMatches.compactMap {
+            Range($0.range, in: contents)?.upperBound
+        })
+        let assignmentEnds = credentialAssignmentDelimiterEnds(
+            in: contents,
+            candidateEnds: candidateEnds
+        )
+        let hasCredentialValueReport = report.matchedPatternNames.contains("assignment") ||
+            report.matchedPatternNames.contains("authorization_header")
         // Only Swift has a narrow safe grammar. Non-prose formats are
-        // fail-closed on credential-shaped identifiers; prose keeps the
-        // delimiter check so ordinary documentation remains searchable.
+        // fail-closed on credential-shaped identifiers. Prose relies on the
+        // shared redactor so ordinary documentation remains searchable.
         if isNonSwiftNonProseFile(relativePath), !candidateMatches.isEmpty {
             return true
         }
-        let candidateEnds = Set(candidateMatches.compactMap { Range($0.range, in: contents)?.upperBound })
-        let assignmentEnds = credentialAssignmentDelimiterEnds(in: contents, candidateEnds: candidateEnds)
-        let matches = candidateMatches.filter {
-            Range($0.range, in: contents).map { assignmentEnds.contains($0.upperBound) } == true
+        let isSwiftSource = relativePath.lowercased().hasSuffix(".swift")
+        guard !candidateMatches.isEmpty else {
+            return hasCredentialValueReport
         }
-        guard !matches.isEmpty else {
-            return report.matchedPatternNames.contains("assignment") ||
-                report.matchedPatternNames.contains("authorization_header")
+        guard isSwiftSource else {
+            return hasCredentialValueReport || !assignmentEnds.isEmpty
         }
-        // The source-shape exceptions below are meaningful only for Swift files.
-        // A config or prose file using the same text remains fail-closed.
-        guard relativePath.lowercased().hasSuffix(".swift") else {
+        // Every Swift identifier candidate participates. Only a bounded regex or
+        // the exact source range of a value-free declaration can reopen it.
+        guard candidateMatches.count <= maximumSwiftCredentialCandidates else {
             return true
         }
-        // Detailed source-shape validation slices the candidate's line. Cap
-        // adversarial generated Swift before those per-candidate slices can
-        // become quadratic; an omitted file is safer than persisting a secret.
-        guard matches.count <= maximumSwiftCredentialCandidates else {
-            return true
-        }
-        let matchPositions = Set(matches.compactMap { Range($0.range, in: contents)?.lowerBound })
-        let lexicalPositions = swiftLexicalPositions(in: contents, at: matchPositions)
-        return matches.contains { match in
+        let candidateRanges = candidateMatches.compactMap { Range($0.range, in: contents) }
+        let lexicalTargets = Set(candidateRanges.flatMap { candidateRange in
+            let lineRange = contents.lineRange(for: candidateRange)
+            return [candidateRange.lowerBound, lineRange.lowerBound, lineRange.upperBound]
+        })
+        let lexicalPositions = swiftLexicalPositions(in: contents, at: lexicalTargets)
+        // One generated line may hold every allowed candidate. Its start/end
+        // lexer state is shared, so scan the declaration grammar only once.
+        var safeRangeCache: [String.Index: [NSRange]] = [:]
+        // Multiline parameter lines share one opener; validate its prefix once.
+        var multilineOpenerCache: [String.Index: Bool] = [:]
+        return candidateMatches.contains { match in
             guard let swiftRange = Range(match.range, in: contents) else {
                 return true
             }
             let lineRange = contents.lineRange(for: swiftRange)
-            let line = String(contents[lineRange])
-            // A source-shaped exception must end on this line.  Swift permits
-            // operators and assignments to continue onto the next one, where a
-            // literal credential could otherwise be appended after a safe name.
-            let continuesOnNextLine = hasSwiftContinuation(after: lineRange.upperBound, in: contents)
-            guard let lexicalPosition = lexicalPositions[swiftRange.lowerBound] else {
+            guard let lexicalPosition = lexicalPositions[swiftRange.lowerBound],
+                  let lineStartPosition = lexicalPositions[lineRange.lowerBound],
+                  let lineEndPosition = lexicalPositions[lineRange.upperBound] else {
                 return true
             }
             if !lexicalPosition.isInNormalCode {
                 guard lexicalPosition.literalKind == .regex else {
-                    return true
+                    return hasCredentialValueReport || assignmentEnds.contains(swiftRange.upperBound)
                 }
                 let regexSuffix = String(contents[swiftRange.lowerBound..<lineRange.upperBound])
                 let regexRange = NSRange(regexSuffix.startIndex..<regexSuffix.endIndex, in: regexSuffix)
@@ -843,73 +822,244 @@ public actor DevelopmentRepositoryIndex {
                 // a regex. Literal token/password text remains fail-closed.
                 return safeBareRegexPattern.firstMatch(in: regexSuffix, range: regexRange) == nil
             }
-            let assignmentPrefix = String(contents[lineRange.lowerBound..<swiftRange.lowerBound])
-            let prefixRange = NSRange(assignmentPrefix.startIndex..<assignmentPrefix.endIndex, in: assignmentPrefix)
-            let assignmentSuffix = String(contents[swiftRange.lowerBound..<lineRange.upperBound])
-            let suffixRange = NSRange(assignmentSuffix.startIndex..<assignmentSuffix.endIndex, in: assignmentSuffix)
-            let openerPrefix = lexicalPosition.openParenthesis.map { openParenthesis in
-                let openerLineRange = contents.lineRange(for: openParenthesis..<contents.index(after: openParenthesis))
-                return String(contents[openerLineRange.lowerBound..<openParenthesis])
-            }
-            let hasSafeTypedDeclaration = typedDeclarationPrefix.firstMatch(in: assignmentPrefix, range: prefixRange) != nil &&
-                safeTypedDeclaration.firstMatch(in: assignmentSuffix, range: suffixRange) != nil
-            let isTypedFunctionParameter = openerPrefix.map { prefix in
-                let range = NSRange(prefix.startIndex..<prefix.endIndex, in: prefix)
-                return functionParameterPrefix.firstMatch(in: prefix, range: range) != nil
-            } == true &&
-                safeTypedFunctionParameter.firstMatch(in: assignmentSuffix, range: suffixRange) != nil
-            let isTypedClosureParameter = openerPrefix?.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("{") == true &&
-                safeTypedFunctionParameter.firstMatch(in: assignmentSuffix, range: suffixRange) != nil
-            // These exceptions accept type syntax only; keeping literals outside
-            // the grammar preserves fail-closed handling for credential values.
-            let isTypedDeclaration = (hasSafeTypedDeclaration &&
-                !line.contains("=") && !line.contains("\"") && !line.contains("'")) ||
-                ((isTypedFunctionParameter || isTypedClosureParameter) && !line.contains("\"") && !line.contains("'"))
-            let trimmedPrefix = assignmentPrefix.trimmingCharacters(in: .whitespacesAndNewlines)
-            let isGenericConstraint = (trimmedPrefix == "where" || trimmedPrefix.hasSuffix(" where")) &&
-                safeGenericConstraint.firstMatch(in: assignmentSuffix, range: suffixRange) != nil
-            let fullLineRange = NSRange(line.startIndex..<line.endIndex, in: line)
-            let isNominalType = safeNominalTypeDeclaration.firstMatch(in: line, range: fullLineRange) != nil
-            let isTypealiasDeclaration = safeTypealiasDeclaration.firstMatch(in: line, range: fullLineRange) != nil
-            let isCaseDeclaration = safeCaseDeclaration.firstMatch(in: line, range: fullLineRange) != nil
-            let isSafeAssignment = containsSafeSwiftExpression(in: line, grammar: safeAssignment, atom: safeExpressionAtom) ||
-                // The binding's name must be this candidate. Otherwise a later
-                // assignment in the same body could inherit the binding's safety.
-                containsSafeSwiftOptionalBinding(
-                    in: line,
-                    source: contents,
-                    lineStart: lineRange.lowerBound,
-                    candidateRange: swiftRange,
-                    grammar: safeOptionalBinding,
-                    atom: safeExpressionAtom
+            let lineNSRange = NSRange(lineRange, in: contents)
+            let candidateRange = NSRange(
+                location: match.range.location - lineNSRange.location,
+                length: match.range.length
+            )
+            let safeRanges: [NSRange]
+            if let cachedRanges = safeRangeCache[lineRange.lowerBound] {
+                safeRanges = cachedRanges
+            } else {
+                let continuation = swiftContinuation(
+                    after: lineRange.upperBound,
+                    in: contents,
+                    matching: lineStartPosition.openParenthesis,
+                    from: lineEndPosition
                 )
-            // These forms contain only source identifiers/member references, never
-            // a literal credential. The surrounding argument list prevents config
-            // syntax from becoming an indexing exception.
-            let hasCurrentLineCommentOrQuote = assignmentPrefix.contains("//") ||
-                assignmentPrefix.contains("/*") ||
-                assignmentPrefix.contains("\"") ||
-                assignmentPrefix.contains("'")
-            let isAuthorization = String(contents[swiftRange]).caseInsensitiveCompare("authorization") == .orderedSame
-            let isCallLabel = !hasCurrentLineCommentOrQuote &&
-                hasOpenSwiftArgumentList(in: contents, openParenthesis: lexicalPosition.openParenthesis, callOpener: callOpener) &&
-                (containsSafeSwiftExpression(in: assignmentSuffix, grammar: safeCallLabel, atom: safeExpressionAtom) ||
-                    (isAuthorization && containsSafeSwiftAuthorizationCallLabel(in: assignmentSuffix, atom: safeExpressionAtom)))
-            let isSafeSourceShape = isNominalType || isCaseDeclaration ||
-                (!continuesOnNextLine && (isTypedDeclaration || isTypealiasDeclaration ||
-                    isGenericConstraint || isSafeAssignment || isCallLabel))
-            return !isSafeSourceShape
+                if continuation.hasContinuation {
+                    safeRanges = []
+                } else {
+                    let isMultilineParameterOpener: Bool
+                    if let openParenthesis = lineStartPosition.openParenthesis,
+                       openParenthesis < lineRange.lowerBound {
+                        if let cachedOpener = multilineOpenerCache[openParenthesis] {
+                            isMultilineParameterOpener = cachedOpener
+                        } else {
+                            let openerLineRange = contents.lineRange(
+                                for: openParenthesis..<contents.index(after: openParenthesis)
+                            )
+                            let prefix = String(contents[openerLineRange.lowerBound..<openParenthesis])
+                            let prefixRange = NSRange(prefix.startIndex..<prefix.endIndex, in: prefix)
+                            let isFunction = swiftFunctionParameterPrefix?.firstMatch(
+                                in: prefix,
+                                range: prefixRange
+                            ) != nil
+                            let isClosure = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
+                                .hasSuffix("{")
+                            isMultilineParameterOpener = isFunction || isClosure
+                            multilineOpenerCache[openParenthesis] = isMultilineParameterOpener
+                        }
+                    } else {
+                        isMultilineParameterOpener = false
+                    }
+                    let line = String(contents[lineRange])
+                    safeRanges = safeSwiftDeclarationRanges(
+                        in: line,
+                        closesParenthesisOnNextLine: continuation.closesMatchingParenthesis,
+                        hasStableDeclarationScope: lineStartPosition.openParenthesis ==
+                            lineEndPosition.openParenthesis &&
+                            lineStartPosition.openBrace == lineEndPosition.openBrace,
+                        isMultilineParameterOpener: isMultilineParameterOpener
+                    )
+                }
+                safeRangeCache[lineRange.lowerBound] = safeRanges
+            }
+            return !safeRanges.contains {
+                $0.location <= candidateRange.location &&
+                    NSMaxRange(candidateRange) <= NSMaxRange($0)
+            }
         }
     }
 
-    private static func hasSwiftContinuation(after lineEnd: String.Index, in source: String) -> Bool {
+    private static func safeSwiftDeclarationRanges(
+        in line: String,
+        closesParenthesisOnNextLine: Bool,
+        hasStableDeclarationScope: Bool,
+        isMultilineParameterOpener: Bool
+    ) -> [NSRange] {
+        guard let typedDeclaration = safeSourceTypedDeclaration,
+              let typedParameter = safeSourceTypedFunctionParameter,
+              let nominalType = safeSwiftNominalTypeDeclaration,
+              let typealiasDeclaration = safeSwiftTypealiasDeclaration,
+              let genericConstraint = safeSwiftGenericConstraint,
+              let caseDeclaration = safeSwiftCaseDeclaration,
+              let functionOpener = swiftFunctionParameterOpener else {
+            return []
+        }
+
+        func hasBalancedTypeDelimiters(_ range: NSRange, in value: String) -> Bool {
+            guard let swiftRange = Range(range, in: value) else {
+                return false
+            }
+            var delimiters: [Character] = []
+            for character in value[swiftRange] {
+                switch character {
+                case "(", "<", "[":
+                    delimiters.append(character)
+                case ")", ">", "]":
+                    let expected: Character = character == ")" ? "(" : character == ">" ? "<" : "["
+                    guard delimiters.popLast() == expected else {
+                        return false
+                    }
+                default:
+                    continue
+                }
+            }
+            return delimiters.isEmpty
+        }
+
+        let fullRange = NSRange(line.startIndex..<line.endIndex, in: line)
+        var ranges = [nominalType, typealiasDeclaration, caseDeclaration]
+            .compactMap { $0.firstMatch(in: line, range: fullRange)?.range }
+            .filter { hasBalancedTypeDelimiters($0, in: line) }
+        if hasStableDeclarationScope,
+           let match = typedDeclaration.firstMatch(in: line, range: fullRange)?.range,
+           hasBalancedTypeDelimiters(match, in: line) {
+            ranges.append(match)
+        }
+
+        func appendTypedParameters(after openingParenthesis: String.Index, functionRange: NSRange?) {
+            let parameterStart = line.index(after: openingParenthesis)
+            let isEmpty = line[parameterStart...].drop(while: \.isWhitespace).first == ")"
+            var cursor = parameterStart
+            var foundParameter = false
+
+            while cursor < line.endIndex {
+                let searchRange = NSRange(cursor..<line.endIndex, in: line)
+                guard let match = typedParameter.firstMatch(
+                    in: line,
+                    options: [.anchored],
+                    range: searchRange
+                ),
+                      hasBalancedTypeDelimiters(match.range, in: line),
+                      let swiftMatch = Range(match.range, in: line) else {
+                    break
+                }
+                ranges.append(match.range)
+                foundParameter = true
+
+                var delimiter = swiftMatch.upperBound
+                while delimiter < line.endIndex, line[delimiter].isWhitespace {
+                    delimiter = line.index(after: delimiter)
+                }
+                guard delimiter < line.endIndex, line[delimiter] == "," else {
+                    break
+                }
+                // Restart the anchored grammar after the comma. If the next
+                // segment is not a parameter, the loop stops and it stays unsafe.
+                cursor = line.index(after: delimiter)
+            }
+
+            if let functionRange, (foundParameter || isEmpty),
+               hasBalancedTypeDelimiters(functionRange, in: line) {
+                ranges.append(functionRange)
+            }
+        }
+
+        // Discover every one-line function opener in one regex pass, then add
+        // closure openers during one character pass without rebuilding prefixes.
+        var parameterOpeners: [(index: String.Index, functionRange: NSRange?)] = []
+        var seenOpeners: Set<String.Index> = []
+        for match in functionOpener.matches(in: line, range: fullRange) {
+            guard let matchRange = Range(match.range, in: line),
+                  matchRange.upperBound > line.startIndex else {
+                continue
+            }
+            let openingParenthesis = line.index(before: matchRange.upperBound)
+            if seenOpeners.insert(openingParenthesis).inserted {
+                parameterOpeners.append((openingParenthesis, match.range(at: 1)))
+            }
+        }
+        var previousNonWhitespace: Character?
+        for index in line.indices {
+            let character = line[index]
+            if character == "(", previousNonWhitespace == "{",
+               seenOpeners.insert(index).inserted {
+                parameterOpeners.append((index, nil))
+            }
+            if !character.isWhitespace {
+                previousNonWhitespace = character
+            }
+        }
+        for opener in parameterOpeners {
+            appendTypedParameters(
+                after: opener.index,
+                functionRange: opener.functionRange
+            )
+        }
+
+        // A multiline parameter has its opener on an earlier line. Validate the
+        // opener once, then apply the same parameter grammar to this whole line.
+        if isMultilineParameterOpener {
+            // The grammar requires `,` or `)` after a parameter. Synthesize
+            // only the close that the lexer tied to this same argument list.
+            let parameterSource = closesParenthesisOnNextLine ? line + ")" : line
+            let parameterRange = NSRange(
+                parameterSource.startIndex..<parameterSource.endIndex,
+                in: parameterSource
+            )
+            if let parameterMatch = typedParameter.firstMatch(
+                in: parameterSource,
+                options: [.anchored],
+                range: parameterRange
+            ),
+               hasBalancedTypeDelimiters(parameterMatch.range, in: parameterSource) {
+                ranges.append(parameterMatch.range)
+            }
+        }
+
+        // Generic constraints are value-free only inside the grammar's exact
+        // range; a same-line body remains outside the allowlist.
+        var searchStart = line.startIndex
+        while let keyword = line.range(of: "where", range: searchStart..<line.endIndex) {
+            let beforeIsIdentifier = keyword.lowerBound > line.startIndex &&
+                (line[line.index(before: keyword.lowerBound)].isLetter ||
+                    line[line.index(before: keyword.lowerBound)].isNumber ||
+                    line[line.index(before: keyword.lowerBound)] == "_")
+            let afterIsIdentifier = keyword.upperBound < line.endIndex &&
+                (line[keyword.upperBound].isLetter ||
+                    line[keyword.upperBound].isNumber ||
+                    line[keyword.upperBound] == "_")
+            if !beforeIsIdentifier, !afterIsIdentifier {
+                let constraintRange = NSRange(keyword.upperBound..<line.endIndex, in: line)
+                if let match = genericConstraint.firstMatch(
+                    in: line,
+                    options: [.anchored],
+                    range: constraintRange
+                ),
+                   hasBalancedTypeDelimiters(match.range, in: line) {
+                    ranges.append(match.range)
+                }
+            }
+            searchStart = keyword.upperBound
+        }
+        return ranges
+    }
+
+    private static func swiftContinuation(
+        after lineEnd: String.Index,
+        in source: String,
+        matching openParenthesis: String.Index?,
+        from lineEndPosition: SwiftLexicalPosition
+    ) -> (hasContinuation: Bool, closesMatchingParenthesis: Bool) {
         var index = lineEnd
         while true {
             while index < source.endIndex, source[index].isWhitespace {
                 index = source.index(after: index)
             }
             guard index < source.endIndex else {
-                return false
+                return (false, false)
             }
             let nextIndex = source.index(after: index)
             let nextCharacter = nextIndex < source.endIndex ? source[nextIndex] : nil
@@ -922,7 +1072,7 @@ public actor DevelopmentRepositoryIndex {
             if source[index] == "@" {
                 // Attributes begin a new declaration context; they cannot
                 // continue an expression.
-                return false
+                return (false, false)
             }
             if source[index] == "#" {
                 // A conditional-compilation line may surround a postfix chain.
@@ -935,14 +1085,19 @@ public actor DevelopmentRepositoryIndex {
             break
         }
         guard index < source.endIndex else {
-            return false
+            return (false, false)
         }
         let character = source[index]
+        if character == ")", let openParenthesis {
+            let closesMatchingParenthesis = lineEndPosition.isInNormalCode &&
+                lineEndPosition.openParenthesis == openParenthesis
+            return (!closesMatchingParenthesis, closesMatchingParenthesis)
+        }
         if !character.isLetter && !character.isNumber && character != "_" &&
             !["}", ")", "]"].contains(character) {
             // Operators include user-defined Unicode forms, so a fixed operator
             // list would reopen the multiline literal bypass.
-            return true
+            return (true, false)
         }
         var tokenEnd = index
         while tokenEnd < source.endIndex,
@@ -952,7 +1107,7 @@ public actor DevelopmentRepositoryIndex {
         // `as` and `is` may place their type on a following line or after a
         // tab. Treat the complete identifier token as a continuation keyword.
         let token = String(source[index..<tokenEnd])
-        return token == "as" || token == "is"
+        return (token == "as" || token == "is", false)
     }
 
     private static func isNonSwiftNonProseFile(_ relativePath: String) -> Bool {
@@ -1011,82 +1166,6 @@ public actor DevelopmentRepositoryIndex {
         return ["apikey", "accesskey", "privatekey", "clientkeydata", "token", "password", "secret", "credential", "credentials"].contains {
             normalized.hasSuffix($0)
         }
-    }
-
-    private static func containsSafeSwiftExpression(
-        in value: String,
-        grammar: NSRegularExpression,
-        atom: NSRegularExpression
-    ) -> Bool {
-        let range = NSRange(value.startIndex..<value.endIndex, in: value)
-        guard let match = grammar.firstMatch(in: value, range: range),
-              let expressionRange = Range(match.range(at: 1), in: value) else {
-            return false
-        }
-        return isSafeSwiftExpression(String(value[expressionRange]), atom: atom)
-    }
-
-    private static func containsSafeSwiftOptionalBinding(
-        in value: String,
-        source: String,
-        lineStart: String.Index,
-        candidateRange: Range<String.Index>,
-        grammar: NSRegularExpression,
-        atom: NSRegularExpression
-    ) -> Bool {
-        let range = NSRange(value.startIndex..<value.endIndex, in: value)
-        guard let match = grammar.firstMatch(in: value, range: range),
-              let nameRange = Range(match.range(at: 1), in: value),
-              let expressionRange = Range(match.range(at: 2), in: value) else {
-            return false
-        }
-        let nameStart = source.index(lineStart, offsetBy: value.distance(from: value.startIndex, to: nameRange.lowerBound))
-        let nameEnd = source.index(lineStart, offsetBy: value.distance(from: value.startIndex, to: nameRange.upperBound))
-        guard (nameStart..<nameEnd) == candidateRange else {
-            return false
-        }
-        return isSafeSwiftExpression(String(value[expressionRange]), atom: atom)
-    }
-
-    private static func containsSafeSwiftAuthorizationCallLabel(
-        in value: String,
-        atom: NSRegularExpression
-    ) -> Bool {
-        guard let expression = swiftAuthorizationCallValue(in: value) else {
-            return false
-        }
-        return isSafeSwiftExpression(expression, atom: atom)
-    }
-
-    private static func swiftAuthorizationCallValue(in value: String) -> String? {
-        guard let colon = value.firstIndex(of: ":"),
-              value[..<colon].trimmingCharacters(in: .whitespacesAndNewlines)
-                .caseInsensitiveCompare("authorization") == .orderedSame else {
-            return nil
-        }
-        var index = value.index(after: colon)
-        while index < value.endIndex, value[index].isWhitespace {
-            index = value.index(after: index)
-        }
-        let expressionStart = index
-        let delimiters = Set(value.indices.filter { value[$0] == "," || value[$0] == ")" })
-        let lexicalPositions = swiftLexicalPositions(in: value, at: delimiters)
-        // A regex cannot distinguish a nested-call comma from the next argument.
-        // Reuse the repository's bounded Swift lexer so only a normal-code,
-        // top-level delimiter ends the Authorization value.
-        guard let expressionEnd = value.indices.first(where: { candidate in
-            guard delimiters.contains(candidate),
-                  let position = lexicalPositions[candidate],
-                  position.isInNormalCode else {
-                return false
-            }
-            return position.openParenthesis == nil && position.openBrace == nil
-        }) else {
-            return nil
-        }
-        let expression = value[expressionStart..<expressionEnd]
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return expression.isEmpty ? nil : expression
     }
 
     private static func containsAmbiguousSwiftDictionaryKey(in source: String) -> Bool {
@@ -1169,9 +1248,8 @@ public actor DevelopmentRepositoryIndex {
         }
     }
 
-    // Resolve every candidate's next meaningful token during one walk. A
-    // per-candidate lookahead turns a long comment packed with token-like text
-    // into quadratic work, so pending candidates share the same delimiter.
+    // Correlate non-Swift keys and Swift string subscripts with their following
+    // delimiter without treating ordinary credential words as values.
     private static func credentialAssignmentDelimiterEnds(
         in source: String,
         candidateEnds: Set<String.Index>
@@ -1232,13 +1310,9 @@ public actor DevelopmentRepositoryIndex {
                         quoteCanClose = false
                     }
                 } else if isExplicitLineContinuation {
-                    // Python-style explicit continuations make the following
-                    // line part of this assignment expression.
                     index = source.index(after: nextIndex)
                     continue
                 } else if beginsLineComment {
-                    // C-family, SQL, and Python line comments are all legal in
-                    // supported source types, so wait for the next line token.
                     lineComment = true
                     index = character == "#" ? nextIndex : source.index(after: nextIndex)
                     continue
@@ -1307,8 +1381,8 @@ public actor DevelopmentRepositoryIndex {
         return false
     }
 
-    // Scan once and snapshot only credential-like positions: rescanning each
-    // prefix would make a dense, 256 KiB source file quadratic.
+    // Scan once and snapshot credential-like positions plus their line boundaries:
+    // rescanning each prefix would make a dense, 256 KiB source file quadratic.
     // The snapshots also keep comment/string text from creating a safe exception
     // or contributing a misleading unmatched parenthesis.
     // ponytail: this intentionally recognizes only the lexical states needed by
@@ -1416,6 +1490,15 @@ public actor DevelopmentRepositoryIndex {
             }
         }
 
+        if positions.contains(source.endIndex) {
+            snapshots[source.endIndex] = SwiftLexicalPosition(
+                isInNormalCode: !lineComment && blockCommentDepth == 0 && literalDelimiter == nil,
+                literalKind: literalDelimiter?.kind,
+                openParenthesis: unmatchedOpenParentheses.last,
+                openBrace: unmatchedOpenBraces.last
+            )
+        }
+
         return snapshots
     }
 
@@ -1518,41 +1601,6 @@ public actor DevelopmentRepositoryIndex {
             cursor = source.index(after: cursor)
         }
         return cursor < source.endIndex && source[cursor] == "#" ? nil : cursor
-    }
-
-    private static func hasOpenSwiftArgumentList(
-        in source: String,
-        openParenthesis: String.Index?,
-        callOpener: NSRegularExpression
-    ) -> Bool {
-        guard let openParenthesis else {
-            return false
-        }
-        let lineRange = source.lineRange(for: openParenthesis..<source.index(after: openParenthesis))
-        let openerPrefix = String(source[lineRange.lowerBound..<openParenthesis])
-        let range = NSRange(openerPrefix.startIndex..<openerPrefix.endIndex, in: openerPrefix)
-        return callOpener.firstMatch(in: openerPrefix, range: range) != nil
-    }
-
-    private static func isSafeSwiftExpression(_ expression: String, atom: NSRegularExpression) -> Bool {
-        let comparisonParts = expression.components(separatedBy: "==")
-        guard comparisonParts.count <= 2 else {
-            return false
-        }
-        if comparisonParts.count == 2,
-           !["true", "false", "nil"].contains(comparisonParts[1].trimmingCharacters(in: .whitespacesAndNewlines)) {
-            return false
-        }
-        // Each operand is intentionally limited to source names, member access,
-        // and calls with the same. Quotes and config-style literals cannot form an
-        // atom, so the exception cannot persist a credential value.
-        return comparisonParts[0]
-            .components(separatedBy: "??")
-            .allSatisfy { candidate in
-                let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
-                let range = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
-                return atom.firstMatch(in: trimmed, range: range) != nil
-            }
     }
 
     private static func containsCJK(_ value: String) -> Bool {

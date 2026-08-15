@@ -205,7 +205,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(toml.isEmpty)
         XCTAssertTrue(yaml.isEmpty)
         XCTAssertTrue(json.isEmpty)
-        XCTAssertEqual(swift.map(\.sourcePath), ["Sources/Credentials.swift"])
+        XCTAssertTrue(swift.isEmpty)
     }
 
     func testRefreshDoesNotPersistConnectionURIsWithEmptyUsername() async throws {
@@ -332,7 +332,14 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
     func testRefreshIndexesTypedSwiftTokenButExcludesCredentialAssignment() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
-        try fixture.write("func approve(token: ApprovalToken) {}\nprivate let clientSecret: String\nfunc use(authToken: Token) {}\nlet apiKey = value\nlet password: Password\nlet token = value", to: "Sources/Approval.swift")
+        try fixture.write(
+            "func approve(token: ApprovalToken) {}\nprivate let clientSecret: String\nfunc use(authToken: Token) {}\nlet password: Password",
+            to: "Sources/Approval.swift"
+        )
+        try fixture.write(
+            "let apiKey = value\nlet token = value",
+            to: "Sources/ApprovalUnsafe.swift"
+        )
         try fixture.write("public struct ServiceAccessToken: Codable {}", to: "Sources/ServiceAccessToken.swift")
         try fixture.write(
             "final class KeychainOAuthCredentialStore: OAuthCredentialStore, @unchecked Sendable {}\nfinal class OAuthCredentialStoreBox: @unchecked Sendable {}\nlet uncheckedNominalMarker = KeychainOAuthCredentialStore()\nlet uncheckedOnlyMarker = OAuthCredentialStoreBox()",
@@ -389,6 +396,13 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             }
             struct Connector {
                 let accessTokenKey: SecretKey
+            }
+            """,
+            to: "Sources/SaaSConnectorTypes.swift"
+        )
+        try fixture.write(
+            """
+            struct ConnectorImplementation {
                 init(
                     accessTokenKey: SecretKey
                 ) {
@@ -522,21 +536,21 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let nonSwiftFunctionResults = try await index.search(query: "NonSwiftMarker", workspace: workspace(fixture))
         XCTAssertEqual(sourceResults.map(\.sourcePath), ["Sources/Approval.swift"])
         XCTAssertEqual(compoundSourceResults.map(\.sourcePath), ["Sources/Approval.swift"])
-        XCTAssertEqual(responseResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
-        XCTAssertEqual(caseResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
-        XCTAssertEqual(memberResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
-        XCTAssertEqual(callLabelResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
-        XCTAssertEqual(localAssignmentResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
-        XCTAssertEqual(optionalExpressionResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
-        XCTAssertEqual(enumShorthandResults.map(\.sourcePath), ["Sources/SaaSConnectors.swift"])
+        XCTAssertEqual(responseResults.map(\.sourcePath), ["Sources/SaaSConnectorTypes.swift"])
+        XCTAssertEqual(caseResults.map(\.sourcePath), ["Sources/SaaSConnectorTypes.swift"])
+        XCTAssertEqual(memberResults.map(\.sourcePath), ["Sources/SaaSConnectorTypes.swift"])
+        XCTAssertTrue(callLabelResults.isEmpty)
+        XCTAssertTrue(localAssignmentResults.isEmpty)
+        XCTAssertTrue(optionalExpressionResults.isEmpty)
+        XCTAssertTrue(enumShorthandResults.isEmpty)
         XCTAssertEqual(nominalTypeResults.map(\.sourcePath), ["Sources/ServiceAccessToken.swift"])
-        XCTAssertEqual(uncheckedNominalResults.map(\.sourcePath), ["Sources/KeychainOAuthCredentialStore.swift"])
-        XCTAssertEqual(uncheckedOnlyResults.map(\.sourcePath), ["Sources/KeychainOAuthCredentialStore.swift"])
-        XCTAssertEqual(optionalBindingResults.map(\.sourcePath), ["Sources/OptionalBindings.swift"])
-        XCTAssertEqual(authorizationGrammarResults.map(\.sourcePath), ["Sources/OptionalBindings.swift"])
-        XCTAssertEqual(appSettingsAuthorizationResults.map(\.sourcePath), ["Sources/AppSettings.swift"])
+        XCTAssertTrue(uncheckedNominalResults.isEmpty)
+        XCTAssertTrue(uncheckedOnlyResults.isEmpty)
+        XCTAssertTrue(optionalBindingResults.isEmpty)
+        XCTAssertTrue(authorizationGrammarResults.isEmpty)
+        XCTAssertTrue(appSettingsAuthorizationResults.isEmpty)
         XCTAssertEqual(toolingAuthorizationResults.map(\.sourcePath), ["Sources/Tooling.swift"])
-        XCTAssertEqual(setterAccessModifierResults.map(\.sourcePath), ["Sources/SettingsAccess.swift"])
+        XCTAssertTrue(setterAccessModifierResults.isEmpty)
         XCTAssertTrue(setterLiteralResults.isEmpty)
         XCTAssertTrue(numericAuthorizationResults.isEmpty)
         XCTAssertTrue(credentialResults.isEmpty)
@@ -673,7 +687,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(pemResults.isEmpty)
         XCTAssertTrue(computedResults.isEmpty)
         XCTAssertTrue(unicodeResults.isEmpty)
-        XCTAssertEqual(safeResults.map(\.sourcePath), ["Sources/SafeBoundary.swift"])
+        XCTAssertTrue(safeResults.isEmpty)
 
         let fileClient = DevelopmentRepositoryFileClient(project: ProjectRecord(
             id: 42,
@@ -688,7 +702,11 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
                 }
             }
         }
-        XCTAssertEqual(try fileClient.read(relativePath: "Sources/SafeBoundary.swift").contents, safe)
+        XCTAssertThrowsError(try fileClient.read(relativePath: "Sources/SafeBoundary.swift")) { error in
+            guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                return XCTFail("Expected secret-like content rejection, got \(error)")
+            }
+        }
     }
 
     func testRefreshAndFileReadRejectComputedDictionaryCredentialKeys() async throws {
@@ -772,7 +790,220 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(try fileClient.read(relativePath: "Sources/SafeDictionary.swift").contents, safe)
     }
 
-    func testRefreshIndexesSwiftCollectionTypesButRejectsLiteralAssignment() async throws {
+    func testRefreshDoesNotPersistSwiftCredentialAliasAssignment() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let cases: [(path: String, marker: String, contents: String)] = [
+            (
+                "Sources/CredentialAlias.swift",
+                "opaquecredentialmaterialalias7X9Q",
+                "let value = \"opaquecredentialmaterialalias7X9Q\"\nlet password = value\n"
+            ),
+            (
+                "Sources/CredentialTuple.swift",
+                "opaquecredentialmaterialtuple7X9Q",
+                "let opaque = \"opaquecredentialmaterialtuple7X9Q\"\nlet (password) = (opaque)\n"
+            ),
+            (
+                "Sources/CredentialCompound.swift",
+                "opaquecredentialmaterialcompound7X9Q",
+                """
+                let opaque = "opaquecredentialmaterialcompound7X9Q"
+                struct Holder {
+                    var password: String
+                    mutating func append() {
+                        password += opaque
+                    }
+                }
+                """
+            )
+        ]
+        for item in cases {
+            try fixture.write(item.contents, to: item.path)
+        }
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        for item in cases {
+            let results = try await index.search(query: item.marker, workspace: workspace(fixture))
+            XCTAssertTrue(results.isEmpty, "Credential marker must not be indexed: \(item.path)")
+        }
+
+        let fileClient = DevelopmentRepositoryFileClient(project: ProjectRecord(
+            id: 42,
+            title: "Suisui",
+            status: "active",
+            workspacePath: fixture.url.path
+        ))
+        for item in cases {
+            XCTAssertThrowsError(try fileClient.read(relativePath: item.path)) { error in
+                guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                    return XCTFail("Expected secret-like content rejection, got \(error)")
+                }
+            }
+        }
+    }
+
+    func testRefreshAndFileReadRejectsMultilineTupleCredentialAssignment() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let source = """
+        let opaque1 = "opaque1"
+        let opaque2 = "opaque2"
+        let password: (
+            String, String
+        ) = (opaque1, opaque2)
+        let multilineTupleMarker = true
+        """
+        try fixture.write(source, to: "Sources/MultilineTupleCredential.swift")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let results = try await index.search(
+            query: "multilineTupleMarker",
+            workspace: workspace(fixture)
+        )
+        XCTAssertTrue(results.isEmpty)
+
+        let fileClient = DevelopmentRepositoryFileClient(project: ProjectRecord(
+            id: 42,
+            title: "Suisui",
+            status: "active",
+            workspacePath: fixture.url.path
+        ))
+        XCTAssertThrowsError(try fileClient.read(relativePath: "Sources/MultilineTupleCredential.swift")) { error in
+            guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                return XCTFail("Expected secret-like content rejection, got \(error)")
+            }
+        }
+    }
+
+    func testRefreshAndFileReadRejectsIncompleteGenericCredentialAssignment() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let source = """
+        let opaque = "opaque"
+        let password: Result<
+            String, Error
+        > = opaque
+        let genericTypeMarker = true
+        """
+        try fixture.write(source, to: "Sources/IncompleteGenericCredential.swift")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let results = try await index.search(query: "genericTypeMarker", workspace: workspace(fixture))
+        XCTAssertTrue(results.isEmpty)
+
+        let fileClient = DevelopmentRepositoryFileClient(project: ProjectRecord(
+            id: 42,
+            title: "Suisui",
+            status: "active",
+            workspacePath: fixture.url.path
+        ))
+        XCTAssertThrowsError(try fileClient.read(relativePath: "Sources/IncompleteGenericCredential.swift")) { error in
+            guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                return XCTFail("Expected secret-like content rejection, got \(error)")
+            }
+        }
+    }
+
+    func testRefreshIndexesSwiftFunctionSecondCredentialParameter() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write(
+            "func f(id: ID, password: Password) { let functionParameterMarker = true }",
+            to: "Sources/FunctionParameters.swift"
+        )
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let results = try await index.search(query: "functionParameterMarker", workspace: workspace(fixture))
+        XCTAssertEqual(results.map(\.sourcePath), ["Sources/FunctionParameters.swift"])
+    }
+
+    func testRefreshIndexesSwiftFunctionOptionalDefaultBeforeCredentialParameter() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write(
+            "func f(id: ID? = nil, password: Password) { let optionalDefaultParameterMarker = true }",
+            to: "Sources/OptionalDefaultParameter.swift"
+        )
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let results = try await index.search(
+            query: "optionalDefaultParameterMarker",
+            workspace: workspace(fixture)
+        )
+        XCTAssertEqual(results.map(\.sourcePath), ["Sources/OptionalDefaultParameter.swift"])
+    }
+
+    func testRefreshIndexesCompletedNestedTypedCredentialProperty() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write(
+            """
+            struct TokenOne {}
+            struct TokenTwo {}
+            struct TokenThree {}
+            struct NestedTypes {
+                let password: (TokenOne, (TokenTwo, TokenThree))
+            }
+            let nestedTypedPropertyMarker = true
+            """,
+            to: "Sources/NestedTypedProperty.swift"
+        )
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let results = try await index.search(query: "nestedTypedPropertyMarker", workspace: workspace(fixture))
+        XCTAssertEqual(results.map(\.sourcePath), ["Sources/NestedTypedProperty.swift"])
+    }
+
+    func testRefreshIndexesSwiftCredentialParameterAfterManyDefaults() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let declarations = (0..<32).map { "struct P\($0) {}" }.joined(separator: "\n")
+        let parameters = (0..<32).map { "p\($0): P\($0)? = nil" }.joined(separator: ", ")
+        try fixture.write(
+            """
+            \(declarations)
+            struct Password {}
+            func f(\(parameters), password: Password) { let repeatedParameterMarker = true }
+            """,
+            to: "Sources/RepeatedParameters.swift"
+        )
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let results = try await index.search(query: "repeatedParameterMarker", workspace: workspace(fixture))
+        XCTAssertEqual(results.map(\.sourcePath), ["Sources/RepeatedParameters.swift"])
+    }
+
+    func testRefreshIndexesSwiftClosureSecondCredentialParameter() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write(
+            "let f = { (id: ID, password: Password) in let closureParameterMarker = true }",
+            to: "Sources/ClosureParameters.swift"
+        )
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let results = try await index.search(query: "closureParameterMarker", workspace: workspace(fixture))
+        XCTAssertEqual(results.map(\.sourcePath), ["Sources/ClosureParameters.swift"])
+    }
+
+    func testRefreshRejectsSwiftCollectionCredentialValueUse() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
         try fixture.write(
@@ -798,11 +1029,32 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
 
         let safe = try await index.search(query: "collectiontypemarker", workspace: workspace(fixture))
         let literal = try await index.search(query: "collectionliteralsecretmarker", workspace: workspace(fixture))
-        XCTAssertEqual(safe.map(\.sourcePath), ["Sources/CollectionState.swift"])
+        XCTAssertTrue(safe.isEmpty)
         XCTAssertTrue(literal.isEmpty)
     }
 
-    func testRefreshIndexesSwiftExistentialCredentialTypesButRejectsLiterals() async throws {
+    func testRefreshIndexesSwiftMultilineFinalCredentialParameterWithoutTrailingComma() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write(
+            """
+            func use(
+                password: Password
+            ) {
+                let multilineParameterMarker = true
+            }
+            """,
+            to: "Sources/MultilineParameter.swift"
+        )
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let results = try await index.search(query: "multilineParameterMarker", workspace: workspace(fixture))
+        XCTAssertEqual(results.map(\.sourcePath), ["Sources/MultilineParameter.swift"])
+    }
+
+    func testRefreshRejectsSwiftExistentialCredentialValueUseAndLiterals() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
         try fixture.write(
@@ -832,12 +1084,12 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let safe = try await index.search(query: "existentialtypemarker", workspace: workspace(fixture))
         let literal = try await index.search(query: "existentialliteralsecretmarker", workspace: workspace(fixture))
         let numeric = try await index.search(query: "424242", workspace: workspace(fixture))
-        XCTAssertEqual(safe.map(\.sourcePath), ["Sources/Tooling.swift"])
+        XCTAssertTrue(safe.isEmpty)
         XCTAssertTrue(literal.isEmpty)
         XCTAssertTrue(numeric.isEmpty)
     }
 
-    func testRefreshAndFileReadIndexSafeSwiftAliasGenericAndClosureTypes() async throws {
+    func testRefreshAndFileReadRejectSwiftAliasGenericAndClosureValueUse() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
         let safe = """
@@ -861,7 +1113,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
 
         let safeResults = try await index.search(query: "safeGrammarMarker", workspace: workspace(fixture))
         let secretResults = try await index.search(query: "safegrammarsecretmarker", workspace: workspace(fixture))
-        XCTAssertEqual(safeResults.map(\.sourcePath), ["Sources/SafeGrammar.swift"])
+        XCTAssertTrue(safeResults.isEmpty)
         XCTAssertTrue(secretResults.isEmpty)
 
         let fileClient = DevelopmentRepositoryFileClient(project: ProjectRecord(
@@ -870,7 +1122,11 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             status: "active",
             workspacePath: fixture.url.path
         ))
-        XCTAssertEqual(try fileClient.read(relativePath: "Sources/SafeGrammar.swift").contents, safe)
+        XCTAssertThrowsError(try fileClient.read(relativePath: "Sources/SafeGrammar.swift")) { error in
+            guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                return XCTFail("Expected secret-like content rejection, got \(error)")
+            }
+        }
         XCTAssertThrowsError(try fileClient.read(relativePath: "Sources/LiteralCredential.swift")) { error in
             guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
                 return XCTFail("Expected secret-like content rejection, got \(error)")
@@ -905,7 +1161,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(apiKey.map(\.sourcePath), ["Sources/CredentialExtensions.swift"])
     }
 
-    func testRefreshAndFileReadIndexOpenAndPackageCredentialTypes() async throws {
+    func testRefreshAndFileReadRejectOpenAndPackageCredentialValueUse() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
         let safe = #"""
@@ -922,7 +1178,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
 
         let safeResults = try await index.search(query: "nominalModifierMarker", workspace: workspace(fixture))
         let literalResults = try await index.search(query: "nominalmodifiersecretmarker", workspace: workspace(fixture))
-        XCTAssertEqual(safeResults.map(\.sourcePath), ["Sources/NominalModifiers.swift"])
+        XCTAssertTrue(safeResults.isEmpty)
         XCTAssertTrue(literalResults.isEmpty)
 
         let fileClient = DevelopmentRepositoryFileClient(project: ProjectRecord(
@@ -931,7 +1187,11 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             status: "active",
             workspacePath: fixture.url.path
         ))
-        XCTAssertEqual(try fileClient.read(relativePath: "Sources/NominalModifiers.swift").contents, safe)
+        XCTAssertThrowsError(try fileClient.read(relativePath: "Sources/NominalModifiers.swift")) { error in
+            guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                return XCTFail("Expected secret-like content rejection, got \(error)")
+            }
+        }
         XCTAssertThrowsError(try fileClient.read(relativePath: "Sources/NominalLiteral.swift")) { error in
             guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
                 return XCTFail("Expected secret-like content rejection, got \(error)")
@@ -1273,9 +1533,9 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let attribute = try await index.search(query: "attributetriviamarker", workspace: workspace(fixture))
         let directive = try await index.search(query: "directivetriviamarker", workspace: workspace(fixture))
         XCTAssertTrue(credential.isEmpty)
-        XCTAssertEqual(comment.map(\.sourcePath), ["Sources/Trivia.swift"])
-        XCTAssertEqual(attribute.map(\.sourcePath), ["Sources/Trivia.swift"])
-        XCTAssertEqual(directive.map(\.sourcePath), ["Sources/Trivia.swift"])
+        XCTAssertTrue(comment.isEmpty)
+        XCTAssertTrue(attribute.isEmpty)
+        XCTAssertTrue(directive.isEmpty)
     }
 
     func testRefreshIndexesDenseCredentialWordsInsideLineComment() async throws {
@@ -1912,8 +2172,8 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let isolatedResults = try await index.search(query: "shared", workspace: workspace(second))
         XCTAssertEqual(Set(cjkResults.map(\.sourcePath)), ["Docs/Japanese.md", "Docs/設計ノート.md"])
         XCTAssertEqual(halfWidthResults.map(\.sourcePath), ["Docs/ｶﾀｶﾅ.md"])
-        XCTAssertEqual(selectedResults.map(\.sourcePath), ["Sources/Only.swift"])
-        XCTAssertEqual(directoryResults.map(\.sourcePath), ["Sources/Only.swift"])
+        XCTAssertTrue(selectedResults.isEmpty)
+        XCTAssertTrue(directoryResults.isEmpty)
         XCTAssertEqual(isolatedResults.map(\.sourcePath), ["Other.md"])
     }
 
