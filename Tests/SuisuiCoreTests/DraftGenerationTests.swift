@@ -231,6 +231,22 @@ final class DraftGenerationTests: XCTestCase {
         }
     }
 
+    func testEscapedCredentialValueAliasKeysFailClosedWithoutRejectingHarmlessValueKeys() {
+        for fixture in [
+            #"{"apiKey\u0056alue":"escaped-api-key-value-marker"}"#,
+            #"{"to\u006benValue":"escaped-token-value-marker"}"#,
+            #"{"accessKey\u0056alue":"escaped-access-key-value-marker"}"#,
+        ] {
+            let redaction = DeveloperSecretRedactor().redact(fixture)
+
+            XCTAssertEqual(redaction.text, "[REDACTED_SECRET]", fixture)
+            XCTAssertEqual(redaction.report.matchedPatternNames, ["credential_json"], fixture)
+        }
+
+        let harmless = #"{"preview\u0056alue":"harmless-value-marker"}"#
+        XCTAssertEqual(DeveloperSecretRedactor().redact(harmless).text, harmless)
+    }
+
     func testEscapedCredentialKeyScanBudgetFailsClosed() {
         let adversarialQuotes = String(repeating: #"\""#, count: 10_000)
 

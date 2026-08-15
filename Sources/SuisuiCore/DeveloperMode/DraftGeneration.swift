@@ -213,14 +213,19 @@ public struct DeveloperSecretRedactor: Sendable {
 
     static func isCredentialJSONKey(_ key: String) -> Bool {
         let normalized = key.lowercased().filter { $0.isLetter || $0.isNumber }
-        return ["auth", "auths", "authorization", "identitytoken", "dbpass"].contains(normalized)
+        // Serialized config models often append `Value` to a credential field.
+        // Strip that neutral wrapper once so `previewValue` stays harmless.
+        let credentialCandidate = normalized.hasSuffix("value")
+            ? String(normalized.dropLast("value".count))
+            : normalized
+        return ["auth", "auths", "authorization", "identitytoken", "dbpass"].contains(credentialCandidate)
             // Config ecosystems commonly abbreviate password independently of
             // separator and case, so all repository egress paths share these suffixes.
             || [
                 "apikey", "accesskey", "privatekey", "clientkeydata", "token",
                 "password", "passwd", "passphrase", "secret", "credential", "credentials",
             ]
-                .contains(where: normalized.hasSuffix)
+                .contains(where: credentialCandidate.hasSuffix)
     }
 }
 

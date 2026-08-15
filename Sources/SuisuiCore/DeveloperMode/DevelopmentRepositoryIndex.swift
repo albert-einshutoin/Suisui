@@ -1873,7 +1873,7 @@ enum GitManifestReader {
         process.currentDirectoryURL = root
         process.standardOutput = standardOutput
         process.standardError = FileHandle.nullDevice
-        process.environment = [
+        var environment = [
             "PATH": "/usr/bin:/bin",
             "HOME": "/nonexistent",
             "XDG_CONFIG_HOME": "/nonexistent",
@@ -1881,6 +1881,15 @@ enum GitManifestReader {
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_TERMINAL_PROMPT": "0",
         ]
+        // Keep global/system config isolated, but retain user path expansion
+        // for repository-local core.excludesFile values such as ~/.config/… .
+        let inheritedEnvironment = ProcessInfo.processInfo.environment
+        for key in ["HOME", "XDG_CONFIG_HOME"] {
+            if let value = inheritedEnvironment[key], !value.isEmpty {
+                environment[key] = value
+            }
+        }
+        process.environment = environment
         let result = try boundedGitOutput(
             process: process,
             standardOutput: standardOutput,

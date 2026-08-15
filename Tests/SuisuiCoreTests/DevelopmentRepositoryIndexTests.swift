@@ -1433,6 +1433,52 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: hookMarker.path))
     }
 
+    func testRefreshExpandsHomeForRepositoryExcludeWithoutLoadingHooks() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let home = fixture.url.appendingPathComponent("home", isDirectory: true)
+        let excludesDirectory = home.appendingPathComponent(".config", isDirectory: true)
+        let excludes = excludesDirectory.appendingPathComponent("project.ignore")
+        let hookMarker = fixture.url.appendingPathComponent("repository-tilde-fsmonitor-ran")
+        let hook = fixture.url.appendingPathComponent("repository-tilde-fsmonitor.sh")
+        try FileManager.default.createDirectory(at: excludesDirectory, withIntermediateDirectories: true)
+        try "RepositoryTildeIgnored.md\n".write(to: excludes, atomically: true, encoding: .utf8)
+        try "#!/bin/sh\ntouch '\(hookMarker.path)'\n".write(to: hook, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: hook.path)
+        try fixture.runGit(["config", "core.excludesFile", "~/.config/project.ignore"])
+        try fixture.runGit(["config", "core.fsmonitor", hook.path])
+        try fixture.write("repositorytildeignoremarker", to: "RepositoryTildeIgnored.md")
+        try fixture.write("repositorytildevisiblemarker", to: "Visible.md")
+
+        let previousHome = ProcessInfo.processInfo.environment["HOME"]
+        let previousXDGConfigHome = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
+        setenv("HOME", home.path, 1)
+        unsetenv("XDG_CONFIG_HOME")
+        defer {
+            if let previousHome { setenv("HOME", previousHome, 1) } else { unsetenv("HOME") }
+            if let previousXDGConfigHome {
+                setenv("XDG_CONFIG_HOME", previousXDGConfigHome, 1)
+            } else {
+                unsetenv("XDG_CONFIG_HOME")
+            }
+        }
+
+        let index = try migratedIndex()
+        try await index.refresh(workspace: workspace(fixture))
+
+        let ignored = try await index.search(
+            query: "repositorytildeignoremarker",
+            workspace: workspace(fixture)
+        )
+        let visible = try await index.search(
+            query: "repositorytildevisiblemarker",
+            workspace: workspace(fixture)
+        )
+        XCTAssertTrue(ignored.isEmpty)
+        XCTAssertEqual(visible.map(\.sourcePath), ["Visible.md"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: hookMarker.path))
+    }
+
     func testRefreshHonorsSystemExcludeWithoutLoadingSystemHooksOrGlobalConfig() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
@@ -1587,10 +1633,14 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         try fixture.write(#"{"items":[{"client_\u0073ecret":"escapedsecretmarker"}]}"#, to: "Config/EscapedSecret.json")
         try fixture.write(#"{"auths":{"registry":{"au\u0074h":"escapedauthmarker"}}}"#, to: "Config/EscapedDocker.json")
         try fixture.write(#"{"Authoriz\u0061tion":"Bearer escapedauthorizationmarker"}"#, to: "Config/EscapedAuthorization.json")
+        try fixture.write(#"{"apiKey\u0056alue":"escapedapikeyvaluemarker"}"#, to: "Config/EscapedAPIKeyValue.json")
+        try fixture.write(#"{"to\u006benValue":"escapedtokenvaluemarker"}"#, to: "Config/EscapedTokenValue.json")
+        try fixture.write(#"{"accessKey\u0056alue":"escapedaccesskeyvaluemarker"}"#, to: "Config/EscapedAccessKeyValue.json")
         try fixture.write(#"{"to\u006ben":"malformedjsonmarker""#, to: "Config/MalformedEscapedToken.json")
         try fixture.write(#""to\u006ben" = "escapedtomlmarker""#, to: "Config/EscapedToken.toml")
         try fixture.write(#""client_\u0073ecret" = "escapedtomlsecretmarker""#, to: "Config/EscapedSecret.toml")
         try fixture.write(#"{"message":"OAuth token lifecycle harmlessjsonmarker","items":[{"label":"normal"}]}"#, to: "Config/Harmless.json")
+        try fixture.write(#"{"preview\u0056alue":"harmlessescapedvaluemarker"}"#, to: "Config/HarmlessEscapedValue.json")
         let index = try migratedIndex()
 
         try await index.refresh(workspace: workspace(fixture))
@@ -1599,18 +1649,26 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let escapedSecret = try await index.search(query: "escapedsecretmarker", workspace: workspace(fixture))
         let escapedAuth = try await index.search(query: "escapedauthmarker", workspace: workspace(fixture))
         let escapedAuthorization = try await index.search(query: "escapedauthorizationmarker", workspace: workspace(fixture))
+        let escapedAPIKeyValue = try await index.search(query: "escapedapikeyvaluemarker", workspace: workspace(fixture))
+        let escapedTokenValue = try await index.search(query: "escapedtokenvaluemarker", workspace: workspace(fixture))
+        let escapedAccessKeyValue = try await index.search(query: "escapedaccesskeyvaluemarker", workspace: workspace(fixture))
         let malformed = try await index.search(query: "malformedjsonmarker", workspace: workspace(fixture))
         let escapedTOML = try await index.search(query: "escapedtomlmarker", workspace: workspace(fixture))
         let escapedTOMLSecret = try await index.search(query: "escapedtomlsecretmarker", workspace: workspace(fixture))
         let harmless = try await index.search(query: "harmlessjsonmarker", workspace: workspace(fixture))
+        let harmlessEscapedValue = try await index.search(query: "harmlessescapedvaluemarker", workspace: workspace(fixture))
         XCTAssertTrue(escapedToken.isEmpty)
         XCTAssertTrue(escapedSecret.isEmpty)
         XCTAssertTrue(escapedAuth.isEmpty)
         XCTAssertTrue(escapedAuthorization.isEmpty)
+        XCTAssertTrue(escapedAPIKeyValue.isEmpty)
+        XCTAssertTrue(escapedTokenValue.isEmpty)
+        XCTAssertTrue(escapedAccessKeyValue.isEmpty)
         XCTAssertTrue(malformed.isEmpty)
         XCTAssertTrue(escapedTOML.isEmpty)
         XCTAssertTrue(escapedTOMLSecret.isEmpty)
         XCTAssertEqual(harmless.map(\.sourcePath), ["Config/Harmless.json"])
+        XCTAssertEqual(harmlessEscapedValue.map(\.sourcePath), ["Config/HarmlessEscapedValue.json"])
     }
 
     func testRefreshExcludesEscapedJavaScriptCredentialIdentifiers() async throws {

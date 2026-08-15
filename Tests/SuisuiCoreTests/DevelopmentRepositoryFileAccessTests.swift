@@ -324,6 +324,35 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
         XCTAssertEqual(try client.read(relativePath: "Sources/Navigation.swift").contents, harmlessSource)
     }
 
+    func testRepositoryFileClientRejectsEscapedCredentialValueAliasesButReadsHarmlessValueKey() throws {
+        let workspace = temporaryDirectory()
+        let unsafeFixtures = [
+            ("Config/ProviderA.json", #"{"apiKey\u0056alue":"api-key-value-read-marker"}"#),
+            ("Config/ProviderB.json", #"{"to\u006benValue":"token-value-read-marker"}"#),
+            ("Config/ProviderC.json", #"{"accessKey\u0056alue":"access-key-value-read-marker"}"#),
+        ]
+        for (path, contents) in unsafeFixtures {
+            try write(contents, to: workspace.appendingPathComponent(path))
+        }
+        let harmless = #"{"display\u0056alue":"harmless-value-read-marker"}"#
+        try write(harmless, to: workspace.appendingPathComponent("Config/Display.json"))
+        let client = DevelopmentRepositoryFileClient(project: ProjectRecord(
+            id: 42,
+            title: "Suisui",
+            status: "active",
+            workspacePath: workspace.path
+        ))
+
+        for (path, _) in unsafeFixtures {
+            XCTAssertThrowsError(try client.read(relativePath: path), path) { error in
+                guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                    return XCTFail("Expected secret-like content rejection, got \(error)")
+                }
+            }
+        }
+        XCTAssertEqual(try client.read(relativePath: "Config/Display.json").contents, harmless)
+    }
+
     func testListFilesWithinApprovedWorkspaceReturnsSortedEntries() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()

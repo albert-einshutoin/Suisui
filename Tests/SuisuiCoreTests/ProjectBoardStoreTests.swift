@@ -2253,6 +2253,35 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDevelopmentRepositoryEditPreviewRejectsEscapedCredentialValueAliasesOnly() throws {
+        let subject = try makeDevelopmentRepositoryEditPreviewSubject()
+        let unsafeFixtures = [
+            ("Config/ProviderA.json", #"{"apiKey\u0056alue":"api-key-value-preview-marker"}"#),
+            ("Config/ProviderB.json", #"{"to\u006benValue":"token-value-preview-marker"}"#),
+            ("Config/ProviderC.json", #"{"accessKey\u0056alue":"access-key-value-preview-marker"}"#),
+        ]
+
+        for (path, contents) in unsafeFixtures {
+            XCTAssertNil(subject.viewModel.developmentRepositoryEditPreview(
+                for: subject.project,
+                task: subject.task,
+                operation: .create,
+                relativePath: path,
+                contents: contents,
+                expectedSHA256: nil
+            ), path)
+        }
+        XCTAssertNotNil(subject.viewModel.developmentRepositoryEditPreview(
+            for: subject.project,
+            task: subject.task,
+            operation: .create,
+            relativePath: "Config/Display.json",
+            contents: #"{"display\u0056alue":"harmless-value-preview-marker"}"#,
+            expectedSHA256: nil
+        ))
+    }
+
+    @MainActor
     func testDevelopmentRepositoryEditPreviewRejectsSwiftCredentialAliasAssignment() throws {
         let subject = try makeDevelopmentRepositoryEditPreviewSubject()
         let cases: [(name: String, contents: String)] = [
