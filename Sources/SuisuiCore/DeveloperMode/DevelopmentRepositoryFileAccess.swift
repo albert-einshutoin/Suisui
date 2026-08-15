@@ -150,6 +150,8 @@ public enum DevelopmentRepositoryFilePathPolicy {
         ".docker/config.json"
     ]
 
+    private static let pathRedactor = DeveloperSecretRedactor()
+
     public static func validatedRelativePath(_ rawPath: String) throws -> String {
         let components = try validatedPathComponents(rawPath)
 
@@ -260,6 +262,16 @@ public enum DevelopmentRepositoryFilePathPolicy {
     }
 
     private static func isSecretLike(components: [String]) -> Bool {
+        // Relative paths are persisted and later exposed as search titles.
+        // Treat them as prose so ordinary source names remain valid, while the
+        // same provider/redactor policy used for file contents rejects embedded values.
+        if DevelopmentRepositoryIndex.containsRepositoryCredential(
+            components.joined(separator: "/"),
+            relativePath: "RepositoryPath.txt",
+            redactor: pathRedactor
+        ) {
+            return true
+        }
         let lowercased = components.map { $0.lowercased() }
         if secretPathPairs.contains(lowercased.joined(separator: "/")) ||
             zip(lowercased, lowercased.dropFirst()).contains(where: { pair in

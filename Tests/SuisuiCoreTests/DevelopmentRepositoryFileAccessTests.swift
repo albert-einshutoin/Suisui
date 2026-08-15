@@ -768,8 +768,25 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
             )
         }
 
+        XCTAssertThrowsError(
+            try createTool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "relativePath": .string("docs/sk-proj-pathwritemarker1234567890.md"),
+                    "contents": .string("safe body\n")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentRepositoryCreateFile, "Repository file path looks like a credential or secret file.")
+            )
+        }
+
         XCTAssertEqual(try String(contentsOf: workspace.appendingPathComponent("docs/plan.md"), encoding: .utf8), "existing\n")
         XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.appendingPathComponent("docs/notes.md").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.appendingPathComponent("docs/sk-proj-pathwritemarker1234567890.md").path))
     }
 
     func testRepositoryFileAccessRejectsTraversalAndSymlinkEscapes() throws {
@@ -914,6 +931,7 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
         try FileManager.default.createDirectory(at: workspace.appendingPathComponent(".git"), withIntermediateDirectories: true)
         try write("ref: refs/heads/main\n", to: workspace.appendingPathComponent(".git/HEAD"))
         try write("token=secret\n", to: workspace.appendingPathComponent(".env"))
+        try write("safe body\n", to: workspace.appendingPathComponent("docs/sk-proj-pathreadmarker1234567890.md"))
         try Data([0x89, 0x50, 0x4E, 0x47]).write(to: workspace.appendingPathComponent("image.png"))
         let project = try stores.projects.create(title: "Suisui", workspacePath: workspace.path)
         let readTool = DevelopmentRepositoryFileTool(name: .developmentRepositoryReadFile, projectStore: stores.projects)
@@ -921,6 +939,7 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
         for (path, message) in [
             (".git/HEAD", "Repository file path must not target git metadata."),
             (".env", "Repository file path looks like a credential or secret file."),
+            ("docs/sk-proj-pathreadmarker1234567890.md", "Repository file path looks like a credential or secret file."),
             ("image.png", "Repository file path must target a supported text file.")
         ] {
             XCTAssertThrowsError(

@@ -34,6 +34,45 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(Set(found.map(\.sourcePath)), ["Notes.md", "Sources/Tracked.swift"])
     }
 
+    func testRefreshDoesNotPersistCredentialValuesFromRelativePaths() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        try fixture.write("filename body marker", to: "docs/sk-proj-filenamepathmarker1234567890.md")
+        try fixture.write("parentbodymarkerunique", to: "docs/sk-proj-parentpathmarker1234567890/Notes.md")
+        try fixture.write("gitlabpathbodyunique", to: "docs/glpat-pathgitlabmarker123456/Notes.md")
+        try fixture.write("harmlesspathmarkerunique", to: "docs/authentication/Overview.md")
+        try fixture.write("let harmlesssourcepathmarkerunique = true", to: "Sources/Token/Client.swift")
+        let index = try migratedIndex()
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let filenameResults = try await index.search(
+            query: "filenamepathmarker1234567890",
+            workspace: workspace(fixture)
+        )
+        let parentResults = try await index.search(
+            query: "parentbodymarkerunique",
+            workspace: workspace(fixture)
+        )
+        let harmlessResults = try await index.search(
+            query: "harmlesspathmarkerunique",
+            workspace: workspace(fixture)
+        )
+        let gitLabResults = try await index.search(
+            query: "gitlabpathbodyunique",
+            workspace: workspace(fixture)
+        )
+        let harmlessSourceResults = try await index.search(
+            query: "harmlesssourcepathmarkerunique",
+            workspace: workspace(fixture)
+        )
+        XCTAssertTrue(filenameResults.isEmpty)
+        XCTAssertTrue(parentResults.isEmpty)
+        XCTAssertTrue(gitLabResults.isEmpty)
+        XCTAssertEqual(harmlessResults.map(\.sourcePath), ["docs/authentication/Overview.md"])
+        XCTAssertEqual(harmlessSourceResults.map(\.sourcePath), ["Sources/Token/Client.swift"])
+    }
+
     func testRefreshDoesNotNormalizeManifestPathIntoIgnoredSibling() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
