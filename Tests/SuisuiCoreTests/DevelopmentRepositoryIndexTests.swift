@@ -132,6 +132,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let slackAppCredential = "xapp-" + "slackappindexmarker123"
         let googleCredential = "AIza" + "googleindexmarker1234567890"
         let gitLabCredential = "glpat-" + "gitlabindexmarker123"
+        let awsSessionCredential = "ASIA" + "ABCDEFGHIJKLMNOP"
         let stripeCredentials = ["sk_live", "sk_test", "rk_live", "rk_test"].enumerated().map { index, prefix in
             ("Stripe\(index).md", prefix + "_" + "stripevariantsecret\(index)")
         }
@@ -143,6 +144,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         try fixture.write("Slack prefix xapp-short harmlessslackindexmarker", to: "SlackDocs.md")
         try fixture.write("Copied value: \(googleCredential)", to: "Notes.md")
         try fixture.write("Leaked sample: \(gitLabCredential)", to: "README.md")
+        try fixture.write("standaloneawssessionmarker \(awsSessionCredential)", to: "AWS.md")
         for (path, credential) in stripeCredentials {
             try fixture.write("Captured stripevariantmarker: \(credential)", to: path)
         }
@@ -162,6 +164,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         let stripe = try await index.search(query: "stripevariantmarker", workspace: workspace(fixture))
         let harmlessStripe = try await index.search(query: "harmlessstripeindexmarker", workspace: workspace(fixture))
         let github = try await index.search(query: "githubfamilymarker", workspace: workspace(fixture))
+        let awsSession = try await index.search(query: "standaloneawssessionmarker", workspace: workspace(fixture))
         XCTAssertTrue(slack.isEmpty)
         XCTAssertTrue(slackApp.isEmpty)
         XCTAssertEqual(harmlessSlack.map(\.sourcePath), ["SlackDocs.md"])
@@ -170,6 +173,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertTrue(stripe.isEmpty)
         XCTAssertEqual(harmlessStripe.map(\.sourcePath), ["StripeDocs.md"])
         XCTAssertTrue(github.isEmpty)
+        XCTAssertTrue(awsSession.isEmpty)
 
         let fileClient = DevelopmentRepositoryFileClient(project: ProjectRecord(
             id: 42,
@@ -177,7 +181,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             status: "active",
             workspacePath: fixture.url.path
         ))
-        for path in ["Slack.md", "SlackApp.md"] + githubCredentials.map(\.0) {
+        for path in ["Slack.md", "SlackApp.md", "AWS.md"] + githubCredentials.map(\.0) {
             XCTAssertThrowsError(try fileClient.read(relativePath: path)) { error in
                 guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
                     return XCTFail("Expected secret-like content rejection, got \(error)")
@@ -1829,6 +1833,66 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
         XCTAssertEqual(try rows[0].string("contents"), "replacementidentitymarker")
     }
 
+    func testSuccessfulRefreshAfterWorkspaceMoveRetiresOldSnapshotAndPreservesClone() async throws {
+        let fixture = try RepositoryFixture()
+        let clone = try RepositoryFixture()
+        let movedRoot = fixture.url.deletingLastPathComponent().appendingPathComponent(
+            "suisui-index-moved-\(UUID().uuidString)"
+        )
+        defer {
+            try? FileManager.default.removeItem(at: fixture.url)
+            try? FileManager.default.moveItem(at: movedRoot, to: fixture.url)
+            fixture.remove()
+            clone.remove()
+        }
+        try fixture.write("movedoldmarker", to: "Notes.md")
+        try clone.write("clonepreservedmarker", to: "Notes.md")
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let index = DevelopmentRepositoryIndex(connection: connection)
+        try await index.refresh(workspace: workspace(fixture))
+        try await index.refresh(workspace: workspace(clone))
+
+        var originalState = stat()
+        XCTAssertEqual(Darwin.lstat(fixture.url.path, &originalState), 0)
+        let originalKey = DevelopmentRepositoryIndex.workspaceKey(
+            root: fixture.url,
+            device: originalState.st_dev,
+            inode: originalState.st_ino,
+            birthTimeSeconds: Int64(originalState.st_birthtimespec.tv_sec),
+            birthTimeNanoseconds: Int64(originalState.st_birthtimespec.tv_nsec)
+        )
+        try FileManager.default.moveItem(at: fixture.url, to: movedRoot)
+        try "movednewmarker".write(
+            to: movedRoot.appendingPathComponent("Notes.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        var movedState = stat()
+        XCTAssertEqual(Darwin.lstat(movedRoot.path, &movedState), 0)
+        let movedKey = DevelopmentRepositoryIndex.workspaceKey(
+            root: movedRoot,
+            device: movedState.st_dev,
+            inode: movedState.st_ino,
+            birthTimeSeconds: Int64(movedState.st_birthtimespec.tv_sec),
+            birthTimeNanoseconds: Int64(movedState.st_birthtimespec.tv_nsec)
+        )
+        XCTAssertNotEqual(originalKey, movedKey)
+
+        let movedWorkspace = CodebaseMemoryWorkspace(rootPath: movedRoot.path, selectedRelativePaths: [])
+        try await index.refresh(workspace: movedWorkspace)
+
+        let stale = try await index.search(query: "movedoldmarker", workspace: movedWorkspace)
+        let moved = try await index.search(query: "movednewmarker", workspace: movedWorkspace)
+        let preservedClone = try await index.search(query: "clonepreservedmarker", workspace: workspace(clone))
+        XCTAssertTrue(stale.isEmpty)
+        XCTAssertEqual(moved.map(\.sourcePath), ["Notes.md"])
+        XCTAssertEqual(preservedClone.map(\.sourcePath), ["Notes.md"])
+
+        let rows = try connection.queryRows("SELECT workspace_key FROM codebase_index_files;")
+        XCTAssertEqual(rows.count, 2)
+    }
+
     func testRefreshRollsBackWhenWorkspaceIsReplacedBeforeCommit() async throws {
         let fixture = try RepositoryFixture()
         defer { fixture.remove() }
@@ -2530,6 +2594,33 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
 
         let results = try await index.search(query: "Swift実装", workspace: workspace(fixture))
         XCTAssertEqual(results.map(\.sourcePath), ["Docs/Mixed.md"])
+    }
+
+    func testSearchIndexesCJKCompatibilityIdeographBounds() async throws {
+        let fixture = try RepositoryFixture()
+        defer { fixture.remove() }
+        let lowerBound = "\u{F900}"
+        let upperBound = "\u{FAFF}"
+        try fixture.write("compatibility lower \(lowerBound)", to: "Docs/CompatibilityLower.md")
+        try fixture.write("compatibility upper \(upperBound)", to: "Docs/CompatibilityUpper.md")
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let index = DevelopmentRepositoryIndex(connection: connection)
+
+        try await index.refresh(workspace: workspace(fixture))
+
+        let rows = try connection.queryRows(
+            "SELECT relative_path, cjk_terms FROM codebase_index_files WHERE relative_path LIKE 'Docs/Compatibility%';"
+        )
+        let storedTerms = try Dictionary(uniqueKeysWithValues: rows.map {
+            (try $0.string("relative_path"), try $0.string("cjk_terms"))
+        })
+        XCTAssertTrue(try XCTUnwrap(storedTerms["Docs/CompatibilityLower.md"]).contains(lowerBound))
+        XCTAssertTrue(try XCTUnwrap(storedTerms["Docs/CompatibilityUpper.md"]).contains(upperBound))
+        let lowerResults = try await index.search(query: lowerBound, workspace: workspace(fixture))
+        let upperResults = try await index.search(query: upperBound, workspace: workspace(fixture))
+        XCTAssertEqual(lowerResults.map(\.sourcePath), ["Docs/CompatibilityLower.md"])
+        XCTAssertEqual(upperResults.map(\.sourcePath), ["Docs/CompatibilityUpper.md"])
     }
 
     func testSearchRejectsPunctuationOnlyQuery() async throws {

@@ -57,6 +57,16 @@ final class DraftGenerationTests: XCTestCase {
         XCTAssertEqual(redaction.report.matchedPatternNames, ["ghp"])
     }
 
+    func testAWSAccessKeyPrefixesAreRedacted() {
+        let credentials = ["AKIA", "ASIA"].map { $0 + "ABCDEFGHIJKLMNOP" }
+
+        let redaction = DeveloperSecretRedactor().redact(credentials.joined(separator: "\n"))
+
+        XCTAssertTrue(credentials.allSatisfy { !redaction.text.contains($0) })
+        XCTAssertEqual(redaction.report.replacementCount, credentials.count)
+        XCTAssertEqual(redaction.report.matchedPatternNames, ["aws_access_key"])
+    }
+
     func testSlackBotAndAppTokensAreRedactedWithoutMatchingShortDocumentation() {
         let tokens = [
             "xoxb-" + "slackdraftsecretmarker",

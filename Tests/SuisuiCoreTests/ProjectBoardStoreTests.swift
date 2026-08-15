@@ -2232,6 +2232,21 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDevelopmentRepositoryEditPreviewRejectsASIASessionCredential() throws {
+        let subject = try makeDevelopmentRepositoryEditPreviewSubject()
+        let credential = "ASIA" + "ABCDEFGHIJKLMNOP"
+
+        XCTAssertNil(subject.viewModel.developmentRepositoryEditPreview(
+            for: subject.project,
+            task: subject.task,
+            operation: .create,
+            relativePath: "Docs/Session.md",
+            contents: "temporary provider value \(credential)\n",
+            expectedSHA256: nil
+        ))
+    }
+
+    @MainActor
     func testDevelopmentRepositoryEditPreviewRejectsPasswordAliasConfig() throws {
         let subject = try makeDevelopmentRepositoryEditPreviewSubject()
         let fixtures = [

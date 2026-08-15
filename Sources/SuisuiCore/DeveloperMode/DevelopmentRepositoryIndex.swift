@@ -212,10 +212,17 @@ public actor DevelopmentRepositoryIndex {
             // replacement may retire its former inode's snapshot. Keeping this
             // inside the transaction preserves it if the new snapshot fails.
             try connection.execute(
-                "DELETE FROM codebase_index_files WHERE workspace_key = ? OR (workspace_key LIKE ? AND workspace_key <> ?);",
+                """
+                DELETE FROM codebase_index_files
+                WHERE workspace_key = ?
+                   OR (workspace_key LIKE ? AND workspace_key <> ?)
+                   OR (workspace_key LIKE ? AND workspace_key <> ?);
+                """,
                 parameters: [
                     .text(Self.legacyWorkspaceKey(root: root)),
-                    .text("\(Self.workspaceKeyPrefix(root: root))%"),
+                    .text("\(Self.legacyWorkspaceKeyPrefix(root: root))%"),
+                    .text(workspaceKey),
+                    .text("repository-index:%:\(Self.workspaceIdentitySuffix(rootDescriptor))"),
                     .text(workspaceKey),
                 ]
             )
@@ -467,10 +474,14 @@ public actor DevelopmentRepositoryIndex {
         birthTimeSeconds: Int64,
         birthTimeNanoseconds: Int64
     ) -> String {
-        "\(workspaceKeyPrefix(root: root))\(device):\(inode):\(birthTimeSeconds):\(birthTimeNanoseconds)"
+        "\(legacyWorkspaceKeyPrefix(root: root))\(device):\(inode):\(birthTimeSeconds):\(birthTimeNanoseconds)"
     }
 
-    private static func workspaceKeyPrefix(root: URL) -> String {
+    private static func workspaceIdentitySuffix(_ descriptor: WorkspaceRootDescriptor) -> String {
+        "\(descriptor.device):\(descriptor.inode):\(descriptor.birthTimeSeconds):\(descriptor.birthTimeNanoseconds)"
+    }
+
+    private static func legacyWorkspaceKeyPrefix(root: URL) -> String {
         "repository-index:\(sha256(root.path)):"
     }
 
@@ -685,7 +696,9 @@ public actor DevelopmentRepositoryIndex {
 
     private static func isCJK(_ scalar: Unicode.Scalar) -> Bool {
         switch scalar.value {
-        case 0x3040...0x30FF, 0x3400...0x9FFF, 0xAC00...0xD7AF, 0xFF66...0xFF9F:
+        case 0x3040...0x30FF, 0x3400...0x9FFF, 0xAC00...0xD7AF,
+             0xF900...0xFAFF, // CJK Compatibility Ideographs
+             0xFF66...0xFF9F:
             true
         default:
             false

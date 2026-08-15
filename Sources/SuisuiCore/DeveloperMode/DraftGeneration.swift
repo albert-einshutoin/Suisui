@@ -46,7 +46,7 @@ public struct DeveloperSecretRedactor: Sendable {
         SecretRedactionPatternDefinition(name: "slack", expression: #"(?<![A-Za-z0-9_-])(?:xox[baprs]|xapp)-[A-Za-z0-9-]{10,}(?![A-Za-z0-9_-])"#),
         SecretRedactionPatternDefinition(name: "openai", expression: #"sk-(?:proj-)?[A-Za-z0-9_-]{8,}"#),
         SecretRedactionPatternDefinition(name: "stripe", expression: #"(?<![A-Za-z0-9_-])(?:sk|rk)_(?:live|test)_[A-Za-z0-9_-]{8,}(?![A-Za-z0-9_-])"#),
-        SecretRedactionPatternDefinition(name: "aws_access_key", expression: #"AKIA[0-9A-Z]{16}"#),
+        SecretRedactionPatternDefinition(name: "aws_access_key", expression: #"(?:AKIA|ASIA)[0-9A-Z]{16}"#),
         // Consume the entire key block, not only its header, so draft/log output
         // cannot retain secret body lines. An unterminated block fails closed.
         SecretRedactionPatternDefinition(name: "private_key_block", expression: #"(?is)-----BEGIN ([A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?)-----.*?(?:-----END \1-----|\z)"#),
