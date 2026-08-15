@@ -10,7 +10,7 @@ source "$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh"
 
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-SQLITE3="${SQLITE3:-sqlite3}"
+SQLITE3="${SQLITE3:-/usr/bin/sqlite3}"
 DATABASE_PATH="${SUISUI_DATABASE_PATH:?SUISUI_DATABASE_PATH is required}"
 RUNTIME_HOME="${HOME:?isolated HOME is required}"
 WITNESS_DIR="${SUISUI_VOICE_TASK_CONTINUITY_WITNESS_DIR:?witness directory is required}"

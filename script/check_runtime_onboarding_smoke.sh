@@ -9,7 +9,7 @@ APP_BINARY="$ROOT_DIR/dist/${APP_NAME:?APP_NAME is required}.app/Contents/MacOS/
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_BUTTON_HELPER="${AX_BUTTON_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_button.swift}"
 AX_MARKER_HELPER="${AX_MARKER_HELPER:-$ROOT_DIR/script/ui_evidence_ax_marker_check.swift}"
-SQLITE3="${SQLITE3:-sqlite3}"
+SQLITE3="${SQLITE3:-/usr/bin/sqlite3}"
 TIMEOUT_SECONDS="${SUISUI_RUNTIME_ONBOARDING_TIMEOUT_SECONDS:-45}"
 KEEP_HOME="${SUISUI_RUNTIME_ONBOARDING_KEEP_HOME:-0}"
 

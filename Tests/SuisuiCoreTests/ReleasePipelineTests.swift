@@ -8300,19 +8300,26 @@ final class ReleasePipelineTests: XCTestCase {
     }
 
     func testRuntimeSmokeScriptsPinSQLiteCLIToSystemByDefault() throws {
-        let scripts = [
-            "script/check_runtime_development_pr_smoke.sh",
-            "script/check_project_board_header_layout_smoke.sh",
-            "script/check_runtime_voice_review_smoke.sh",
-            "script/check_runtime_today_complete_smoke.sh",
-            "script/check_layout_stability_smoke.sh",
-            "script/check_runtime_today_production_route_smoke.sh"
-        ]
+        let scriptDirectory = packageRoot().appendingPathComponent("script", isDirectory: true)
+        let scripts = try FileManager.default.contentsOfDirectory(
+            at: scriptDirectory,
+            includingPropertiesForKeys: nil
+        )
+        .filter { $0.pathExtension == "sh" }
+        .sorted { $0.path < $1.path }
 
-        for path in scripts {
-            let script = try readPackageFile(path)
-            XCTAssertTrue(script.contains("SQLITE3=\"${SQLITE3:-/usr/bin/sqlite3}\""), path)
-            XCTAssertFalse(script.contains("SQLITE3=\"${SQLITE3:-sqlite3}\""), path)
+        var sqliteScripts: [(path: String, contents: String)] = []
+        for scriptURL in scripts {
+            let contents = try String(contentsOf: scriptURL, encoding: .utf8)
+            if contents.contains("SQLITE3=") {
+                sqliteScripts.append((scriptURL.lastPathComponent, contents))
+            }
+        }
+
+        XCTAssertFalse(sqliteScripts.isEmpty)
+        for script in sqliteScripts {
+            XCTAssertTrue(script.contents.contains("SQLITE3=\"${SQLITE3:-/usr/bin/sqlite3}\""), script.path)
+            XCTAssertFalse(script.contents.contains("SQLITE3=\"${SQLITE3:-sqlite3}\""), script.path)
         }
     }
 
