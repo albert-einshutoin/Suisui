@@ -2232,6 +2232,36 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDevelopmentRepositoryEditPreviewAllowsSafeSwiftAuthorizationSourceButRejectsLiteral() throws {
+        let subject = try makeDevelopmentRepositoryEditPreviewSubject()
+        let safeSource = """
+        struct Tooling {
+            var authorization: ToolActionAuthorization?
+            func use(authorization: AuthorizationPolicy) {
+                request(authorization: authorizationStatus(), timeout: timeout)
+            }
+        }
+        """
+
+        XCTAssertNotNil(subject.viewModel.developmentRepositoryEditPreview(
+            for: subject.project,
+            task: subject.task,
+            operation: .create,
+            relativePath: "Sources/App/Tooling.swift",
+            contents: safeSource,
+            expectedSHA256: nil
+        ))
+        XCTAssertNil(subject.viewModel.developmentRepositoryEditPreview(
+            for: subject.project,
+            task: subject.task,
+            operation: .create,
+            relativePath: "Sources/App/Unsafe.swift",
+            contents: "request(authorization: \"Token edit-preview-secret-marker\", timeout: timeout)\n",
+            expectedSHA256: nil
+        ))
+    }
+
+    @MainActor
     func testDevelopmentRepositoryUpdateReviewRequiresExpectedSHA() throws {
         let stores = try makeStoreBundle()
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
@@ -2294,7 +2324,7 @@ final class ProjectBoardStoreTests: XCTestCase {
             task: currentTask,
             operation: .update,
             relativePath: "Sources/App/AuthCallback.swift",
-            contents: "func handleOAuthCallback() {}\n",
+            contents: "var authorization: ToolActionAuthorization?\nfunc use(authorization: AuthorizationPolicy) {}\n",
             expectedSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         ))
 

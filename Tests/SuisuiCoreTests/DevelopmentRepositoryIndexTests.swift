@@ -332,7 +332,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
                 func useDefault(authorization: ToolActionAuthorization? = nil) {}
 
                 func send() {
-                    request(authorization: authorizationStatus())
+                    request(authorization: authorizationStatus(), timeout: timeout)
                     request(authorization: authorization)
                     request(authorization: .notDetermined)
                     request(authorization: try ToolActionAuthorization(level: level))
@@ -401,7 +401,7 @@ final class DevelopmentRepositoryIndexTests: XCTestCase {
             "OptionalBindingLiteral.swift": "guard let accessToken = \"long-secret-value\" else { return }",
             "OptionalBindingTrailingCredential.swift": "if let idToken = cachedToken { accessToken = \"long-secret-value\" }\nguard let refreshToken = cachedRefreshToken else { accessToken = \"long-secret-value\" }",
             "SameNameOptionalBindingTrailingCredential.swift": "if let accessToken = cachedToken { accessToken = \"long-secret-value\" }\nguard let accessToken = cachedToken else { accessToken = \"long-secret-value\" }",
-            "AuthorizationLiteral.swift": "request(authorization: \"Token long-secret-value\")",
+            "AuthorizationLiteral.swift": "request(authorization: \"Token long-secret-value\", timeout: timeout)",
             "AuthorizationNumericLiteral.swift": "request(authorization: 424242)",
             "PascalCredential.json": "{\"ServiceAccessToken\":\"long-secret-value\"}",
             "TypealiasCredential.swift": "typealias ServiceAccessToken: Codable",

@@ -194,13 +194,13 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
             var authorization: ToolActionAuthorization?
 
             func use(authorization: AuthorizationPolicy) {
-                request(authorization: authorizationStatus())
+                request(authorization: authorizationStatus(), timeout: timeout)
             }
         }
         """
         try write(safeSource, to: workspace.appendingPathComponent("Sources/Tooling.swift"))
         try write(
-            "request(authorization: \"Token file-access-secret-marker\")\n",
+            "request(authorization: \"Token file-access-secret-marker\", timeout: timeout)\n",
             to: workspace.appendingPathComponent("Sources/Unsafe.swift")
         )
         let project = ProjectRecord(
