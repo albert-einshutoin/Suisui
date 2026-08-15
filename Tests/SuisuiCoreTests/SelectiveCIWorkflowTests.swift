@@ -83,6 +83,24 @@ final class SelectiveCIWorkflowTests: XCTestCase {
         XCTAssertTrue(rustRunner.contains("--require-cargo"))
     }
 
+    func testDedicatedRustJobRunsOnlyForSelectivePullRequestValidation() throws {
+        let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        let rustStart = try XCTUnwrap(workflow.range(of: "\n  kokoro-rust-poc:"))
+        let visualStart = try XCTUnwrap(workflow.range(of: "\n  ui-runtime:", range: rustStart.upperBound..<workflow.endIndex))
+        let rustJob = String(workflow[rustStart.lowerBound..<visualStart.lowerBound])
+
+        XCTAssertTrue(rustJob.contains("needs:\n      - test_strategy"))
+        XCTAssertTrue(rustJob.contains("if: ${{ always() && github.event_name == 'pull_request' && needs.test_strategy.outputs.strategy != 'full' }}"))
+
+        XCTAssertTrue(workflow.contains("TEST_STRATEGY_RESULT: ${{ needs.test_strategy.result }}"))
+        XCTAssertTrue(workflow.contains("TEST_STRATEGY: ${{ needs.test_strategy.outputs.strategy }}"))
+        XCTAssertTrue(workflow.contains("FULL_VALIDATION_RESULT: ${{ needs.full_validation.result }}"))
+        XCTAssertTrue(workflow.contains("rust_result=\"$FULL_VALIDATION_RESULT\""))
+        XCTAssertTrue(workflow.contains("$TEST_STRATEGY_RESULT\" != \"success\""))
+        XCTAssertTrue(workflow.contains("rust_result=\"$TEST_STRATEGY_RESULT\""))
+        XCTAssertTrue(workflow.contains("rust_result=\"$RUST_BOUNDARY_RESULT\""))
+    }
+
     func testCompleteValidationRoutesRestoreBothRustBoundaryCaches() throws {
         let workflow = try readRepositoryFile(".github/workflows/ci.yml")
         let selectedStart = try XCTUnwrap(workflow.range(of: "\n  test_strategy:"))

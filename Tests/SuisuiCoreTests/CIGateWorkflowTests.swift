@@ -126,16 +126,21 @@ final class CIGateWorkflowTests: XCTestCase {
             selectionState: String,
             matrixResult: String,
             rustResult: String,
+            testStrategy: String,
+            testStrategyResult: String,
+            fullValidationResult: String,
             expectedExitCode: Int32,
             expectedOutput: String
         )] = [
-            ("pull_request", "0", "skipped", "success", 0, "status=not-required"),
-            ("pull_request", "1", "success", "success", 0, "status=passed"),
-            ("pull_request", "1", "failure", "success", 1, "locale-visual-gate-did-not-succeed"),
-            ("pull_request", "", "success", "success", 1, "visual-selection-result-invalid"),
-            ("pull_request", "2", "success", "success", 1, "visual-selection-result-invalid"),
-            ("push", "", "success", "success", 0, "status=passed"),
-            ("pull_request", "0", "skipped", "failure", 1, "rust-boundary-gate-did-not-succeed")
+            ("pull_request", "0", "skipped", "success", "selective", "success", "skipped", 0, "status=not-required"),
+            ("pull_request", "1", "success", "success", "selective", "success", "skipped", 0, "status=passed"),
+            ("pull_request", "1", "failure", "success", "selective", "success", "skipped", 1, "locale-visual-gate-did-not-succeed"),
+            ("pull_request", "", "success", "success", "selective", "success", "skipped", 1, "visual-selection-result-invalid"),
+            ("pull_request", "2", "success", "success", "selective", "success", "skipped", 1, "visual-selection-result-invalid"),
+            ("pull_request", "1", "success", "skipped", "full", "success", "skipped", 0, "status=passed"),
+            ("push", "", "success", "success", "", "skipped", "success", 0, "status=passed"),
+            ("pull_request", "0", "skipped", "success", "selective", "failure", "skipped", 1, "rust-boundary-gate-did-not-succeed"),
+            ("pull_request", "0", "skipped", "failure", "selective", "success", "skipped", 1, "rust-boundary-gate-did-not-succeed")
         ]
 
         for testCase in cases {
@@ -144,6 +149,9 @@ final class CIGateWorkflowTests: XCTestCase {
                 environment: [
                     "EVENT_NAME": testCase.eventName,
                     "RUST_BOUNDARY_RESULT": testCase.rustResult,
+                    "TEST_STRATEGY": testCase.testStrategy,
+                    "TEST_STRATEGY_RESULT": testCase.testStrategyResult,
+                    "FULL_VALIDATION_RESULT": testCase.fullValidationResult,
                     "VISUAL_SELECTION_STATE": testCase.selectionState,
                     "LOCALE_VISUAL_RESULT": testCase.matrixResult
                 ]
