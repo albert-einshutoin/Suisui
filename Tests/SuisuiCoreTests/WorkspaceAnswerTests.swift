@@ -95,6 +95,87 @@ final class WorkspaceAnswerTests: XCTestCase {
         XCTAssertEqual(snippets.first?.detail, "Ask the printing vendor about quotes")
     }
 
+    func testRetrieveFindsUnicodeInternalTaskSubstringBeyondNewerRows() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "VorÜbergabe handoff")
+        for index in 0..<129 {
+            _ = try stores.tasks.create(title: "Unrelated newer task \(index)")
+        }
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "übe", limit: 1).map(\.title),
+            ["VorÜbergabe handoff"]
+        )
+    }
+
+    func testRetrieveFindsCanonicalUnicodeTaskSubstringAcrossNFCAndNFD() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "VorU\u{0308}bergabe handoff")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "über", limit: 1).map(\.title),
+            ["VorU\u{0308}bergabe handoff"]
+        )
+    }
+
+    func testRetrieveRetainsTrailingTokenFromLongQuestion() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "Task tailneedle")
+        _ = try stores.frames.create(name: "Knowledge tailneedle", body: "details")
+        let question = ((0..<33).map { "filler\($0)" } + ["tailneedle"])
+            .joined(separator: " ")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+        let snippets = try retriever.retrieve(question: question, limit: 2)
+
+        XCTAssertEqual(
+            Set(snippets.map { "\($0.kind):\($0.title)" }),
+            ["task:Task tailneedle", "knowledge:Knowledge tailneedle"]
+        )
+    }
+
+    func testRetrievePagesShortUnicodeInternalTaskSubstringBeyondNewerRows() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "VorÜbergabe handoff")
+        for index in 0..<129 {
+            _ = try stores.tasks.create(title: "Unrelated newer task \(index)")
+        }
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "üb", limit: 1).map(\.title),
+            ["VorÜbergabe handoff"]
+        )
+    }
+
+    func testRetrieveFailsClosedForShortUnicodeTaskBeyondCandidateBudget() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "VorÜbergabe handoff")
+        for index in 0..<1024 {
+            _ = try stores.tasks.create(title: "Unrelated newer task \(index)")
+        }
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(try retriever.retrieve(question: "üb", limit: 1), [])
+    }
+
+    func testRetrieveCompletesLiteralTaskSubstringsAlongsideFTSHits() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "Prepare invoice report")
+        _ = try stores.tasks.create(title: "Record voice memo")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+        let snippets = try retriever.retrieve(question: "What about voice?", limit: 2)
+
+        XCTAssertEqual(Set(snippets.filter { $0.kind == "task" }.map(\.title)), ["Prepare invoice report", "Record voice memo"])
+    }
+
     func testRetrieveMatchesJapaneseTaskTitleWithoutSpaceSeparation() throws {
         let stores = try makeStores()
         _ = try stores.tasks.create(title: "リリース準備タスク")
@@ -104,6 +185,16 @@ final class WorkspaceAnswerTests: XCTestCase {
         let snippets = try retriever.retrieve(question: "リリースの進捗は？")
 
         XCTAssertEqual(snippets.map(\.title), ["リリース準備タスク"])
+    }
+
+    func testRetrieveMatchesJapaneseTaskTitleWhenPhraseStartsAfterOtherText() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "請求書リリース確認")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+        let snippets = try retriever.retrieve(question: "リリースの進捗は？")
+
+        XCTAssertEqual(snippets.map(\.title), ["請求書リリース確認"])
     }
 
     func testRetrieveIncludesKnowledgeFrameFTSHitsWithBodyPreview() throws {
@@ -123,6 +214,109 @@ final class WorkspaceAnswerTests: XCTestCase {
         XCTAssertLessThanOrEqual(detail.count, 163)
     }
 
+    func testRetrieveMatchesJapaneseKnowledgeTextInTheMiddleOfATitle() throws {
+        let stores = try makeStores()
+        _ = try stores.frames.create(
+            name: "請求書リリース手順",
+            body: "承認後に公開する"
+        )
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+        let snippets = try retriever.retrieve(question: "リリースの手順は？")
+
+        XCTAssertEqual(snippets.filter { $0.kind == "knowledge" }.map(\.title), ["請求書リリース手順"])
+    }
+
+    func testRetrievePrefersCompleteCJKKnowledgeWordBeforeOlderBigramMatches() throws {
+        let stores = try makeStores()
+        for index in 0..<8 {
+            _ = try stores.frames.create(name: "リリース候補\(index)", body: "details")
+        }
+        _ = try stores.frames.create(name: "リリース", body: "details")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+        let snippets = try retriever.retrieve(question: "リリース", limit: 2)
+
+        XCTAssertTrue(snippets.contains { $0.kind == "knowledge" && $0.title == "リリース" })
+    }
+
+    func testRetrieveUsesSingleJapaneseCharacterAsKnowledgeLiteralFallback() throws {
+        let stores = try makeStores()
+        _ = try stores.frames.create(name: "税務メモ", body: "税金の確認")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "税?").map(\.title),
+            ["税務メモ"]
+        )
+    }
+
+    func testRetrieveUsesSingleASCIICharacterAsKnowledgeLiteralFallback() throws {
+        let stores = try makeStores()
+        _ = try stores.frames.create(name: "C compiler notes", body: "Compile the local helper")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "C?").map(\.title),
+            ["C compiler notes"]
+        )
+    }
+
+    func testRetrieveNormalizesSentenceTerminatorsForSingleCharacterKnowledgeFallback() throws {
+        let stores = try makeStores()
+        _ = try stores.frames.create(name: "C compiler notes", body: "Compile the local helper")
+        _ = try stores.frames.create(name: "税務メモ", body: "税金の確認")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "C.").map(\.title),
+            ["C compiler notes"]
+        )
+        XCTAssertEqual(
+            try retriever.retrieve(question: "税.").map(\.title),
+            ["税務メモ"]
+        )
+    }
+
+    func testRetrievePunctuatedSingleCharacterKnowledgeFallbackPreservesDeadlineLimit() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "Due today", dueAt: "2026-06-17T06:00:00Z")
+        _ = try stores.tasks.create(title: "C task should not be scanned")
+        _ = try stores.frames.create(name: "C compiler notes", body: "Compile the local helper")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "C.", limit: 2).map(\.title),
+            ["Due today", "C compiler notes"]
+        )
+        XCTAssertEqual(
+            try retriever.retrieve(question: "C.", limit: 1).map(\.title),
+            ["Due today"]
+        )
+    }
+
+    func testRetrieveSingleCharacterKnowledgeFallbackPreservesDeadlineOrderAndLimit() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "Due today", dueAt: "2026-06-17T06:00:00Z")
+        _ = try stores.tasks.create(title: "税 task should not be scanned")
+        _ = try stores.frames.create(name: "税務メモ", body: "税金の確認")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "税?", limit: 2).map(\.title),
+            ["Due today", "税務メモ"]
+        )
+        XCTAssertEqual(
+            try retriever.retrieve(question: "税?", limit: 1).map(\.title),
+            ["Due today"]
+        )
+    }
+
     func testRetrieveDedupesByKindAndTitleAndCapsAtLimit() throws {
         let stores = try makeStores()
         // Overdue AND keyword-matched: must appear exactly once.
@@ -138,6 +332,78 @@ final class WorkspaceAnswerTests: XCTestCase {
 
         let all = try retriever.retrieve(question: "launch review", limit: 50)
         XCTAssertEqual(all.filter { $0.kind == "task" && $0.title == "Launch review" }.count, 1)
+    }
+
+    func testRetrieveOverfetchesTaskCandidatesBeforeDedupingTitles() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "Launch review")
+        _ = try stores.tasks.create(title: "Launch review")
+        _ = try stores.tasks.create(title: "Launch retrospective")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "launch", limit: 2).map(\.title),
+            ["Launch review", "Launch retrospective"]
+        )
+    }
+
+    func testRetrieveOverfetchesKnowledgeCandidatesBeforeDedupingTitles() throws {
+        let stores = try makeStores()
+        _ = try stores.frames.create(name: "Launch notes", body: "first")
+        _ = try stores.frames.create(name: "Launch notes", body: "second")
+        _ = try stores.frames.create(name: "Launch retrospective", body: "third")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "launch", limit: 2).map(\.title),
+            ["Launch notes", "Launch retrospective"]
+        )
+    }
+
+    func testRetrievePagesPastEightDuplicateTaskTitlesBeforeDeduping() throws {
+        let stores = try makeStores()
+        for _ in 0..<8 {
+            _ = try stores.tasks.create(title: "Launch review")
+        }
+        _ = try stores.tasks.create(title: "Prelaunch retrospective")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "launch review", limit: 2).map(\.title),
+            ["Launch review", "Prelaunch retrospective"]
+        )
+    }
+
+    func testRetrievePagesPastEightDuplicateKnowledgeTitlesBeforeDeduping() throws {
+        let stores = try makeStores()
+        for index in 0..<8 {
+            _ = try stores.frames.create(name: "Launch review notes", body: "duplicate \(index)")
+        }
+        _ = try stores.frames.create(name: "Prelaunch retrospective", body: "unique")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "launch review", limit: 2).map(\.title),
+            ["Launch review notes", "Prelaunch retrospective"]
+        )
+    }
+
+    func testRetrieveUsesExactTaskMatchBeforeOlderSubstringAfterDeadlineConsumesSlot() throws {
+        let stores = try makeStores()
+        _ = try stores.tasks.create(title: "Send daily summary", dueAt: "2026-06-17T06:00:00Z")
+        _ = try stores.tasks.create(title: "Prepare invoice report")
+        _ = try stores.tasks.create(title: "Record voice memo")
+
+        let retriever = makeRetriever(stores: stores, now: "2026-06-17T00:00:00Z")
+
+        XCTAssertEqual(
+            try retriever.retrieve(question: "What about voice?", limit: 2).map(\.title),
+            ["Send daily summary", "Record voice memo"]
+        )
     }
 
     func testRetrieveReturnsNothingForBlankQuestion() throws {

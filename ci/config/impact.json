@@ -79,6 +79,14 @@
       "reason": "dependency lock file changed"
     },
     {
+      "pattern": "rust/**/Cargo.toml",
+      "reason": "Rust build or dependency configuration changed"
+    },
+    {
+      "pattern": "rust/**/Cargo.lock",
+      "reason": "Rust dependency lock file changed"
+    },
+    {
       "pattern": ".swift-version",
       "reason": "compiler configuration changed"
     },

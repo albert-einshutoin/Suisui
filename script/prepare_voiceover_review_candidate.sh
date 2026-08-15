@@ -18,7 +18,10 @@ APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 DEFAULT_DATABASE_PATH="$ROOT_DIR/.tmp/voiceover-review/Suisui-voiceover-review.sqlite"
 VOICEOVER_REVIEW_ARTIFACT_PATH="$ROOT_DIR/docs/release/evidence/accessibility-voiceover.md"
 TIMEOUT_SECONDS="${SUISUI_VOICEOVER_REVIEW_TIMEOUT_SECONDS:-30}"
-SQLITE3="${SQLITE3:-sqlite3}"
+# The app uses the system SQLite framework. Pin fixture seeding to the matching
+# CLI so a PATH-provided build without FTS5 trigram support cannot fail after
+# migrations; callers can still override SQLITE3 for a compatible test binary.
+SQLITE3="${SQLITE3:-/usr/bin/sqlite3}"
 
 release_candidate_source_commit() {
   local commit
@@ -305,7 +308,7 @@ write_voiceover_evidence_command() {
     printf 'EXPECTED_DATABASE_PATH=%q\n' "$candidate_database_path"
     printf 'EXPECTED_PROJECT_ID=%q\n' "$candidate_project_id"
     printf 'EXPECTED_SELECTED_DESTINATION=%q\n' "project:$candidate_project_id"
-    printf '%s\n' 'SQLITE3="${SQLITE3:-sqlite3}"'
+    printf '%s\n' 'SQLITE3="${SQLITE3:-/usr/bin/sqlite3}"'
     printf '%s\n' 'CANDIDATE_APP_PID=""'
     printf '\n'
     printf '%s\n' 'if [[ ! -f "$VOICEOVER_LAUNCH_ENV_FILE" ]]; then'

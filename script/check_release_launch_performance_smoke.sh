@@ -2,6 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The app migrates FTS5 tables before this smoke seeds its fixture. Use the
+# matching system SQLite unless a focused test explicitly supplies another one.
+SQLITE3="${SQLITE3:-/usr/bin/sqlite3}"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 CI_REDACT_HELPER="$ROOT_DIR/script/ci_redact_stream.sh"
 
@@ -499,7 +502,7 @@ wait_for_database_schema() {
       return 1
     fi
     if [[ -f "$PERFORMANCE_DATABASE_PATH" ]] &&
-      [[ "$(sqlite3 -batch -noheader "$PERFORMANCE_DATABASE_PATH" \
+      [[ "$("$SQLITE3" -batch -noheader "$PERFORMANCE_DATABASE_PATH" \
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('projects', 'tasks');" 2>/dev/null || true)" == "2" ]]; then
       return 0
     fi
@@ -609,7 +612,7 @@ seed_production_fixture() {
   # A fresh CI workspace otherwise opens the recovery route because it has no
   # projects. Seed one deterministic local project before starting the measured
   # launch so the sample can only pass through the production Project Board.
-  if ! sqlite3 "$PERFORMANCE_DATABASE_PATH" <<'SQL'
+  if ! "$SQLITE3" "$PERFORMANCE_DATABASE_PATH" <<'SQL'
 .bail on
 .timeout 5000
 BEGIN IMMEDIATE;

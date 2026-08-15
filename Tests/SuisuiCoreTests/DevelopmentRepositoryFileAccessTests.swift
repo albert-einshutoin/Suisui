@@ -187,6 +187,172 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
         XCTAssertEqual(accessCounter.value, 1)
     }
 
+    func testRepositoryFileClientAllowsSwiftAuthorizationTypesButRejectsLiteralCredentials() throws {
+        let workspace = temporaryDirectory()
+        let safeSource = """
+        struct Tooling {
+            var authorization: ToolActionAuthorization?
+
+            func use(authorization: AuthorizationPolicy) {}
+        }
+        """
+        try write(safeSource, to: workspace.appendingPathComponent("Sources/Tooling.swift"))
+        try write(
+            "request(authorization: \"Token file-access-secret-marker\", timeout: timeout)\n",
+            to: workspace.appendingPathComponent("Sources/Unsafe.swift")
+        )
+        try write(
+            "request(authorization: authorizationStatus(), timeout: timeout)\n",
+            to: workspace.appendingPathComponent("Sources/UnsafeCallLabel.swift")
+        )
+        let project = ProjectRecord(
+            id: 42,
+            title: "Suisui",
+            status: "active",
+            workspacePath: workspace.path
+        )
+        let client = DevelopmentRepositoryFileClient(project: project)
+
+        let safeRecord = try client.read(relativePath: "Sources/Tooling.swift")
+
+        XCTAssertEqual(safeRecord.contents, safeSource)
+        XCTAssertThrowsError(try client.read(relativePath: "Sources/Unsafe.swift")) { error in
+            guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                return XCTFail("Expected secret-like content rejection, got \(error)")
+            }
+        }
+        XCTAssertThrowsError(try client.read(relativePath: "Sources/UnsafeCallLabel.swift")) { error in
+            guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                return XCTFail("Expected secret-like content rejection, got \(error)")
+            }
+        }
+    }
+
+    func testRepositoryFileClientRejectsSwiftCredentialAliasOnReadCreateAndUpdate() throws {
+        let workspace = temporaryDirectory()
+        let cases: [(name: String, contents: String)] = [
+            (
+                "Alias",
+                "let value = \"opaquecredentialmaterialalias7X9Q\"\nlet password = value\n"
+            ),
+            (
+                "Tuple",
+                "let opaque = \"opaquecredentialmaterialtuple7X9Q\"\nlet (password) = (opaque)\n"
+            ),
+            (
+                "Compound",
+                """
+                let opaque = "opaquecredentialmaterialcompound7X9Q"
+                struct Holder {
+                    var password: String
+                    mutating func append() {
+                        password += opaque
+                    }
+                }
+                """
+            )
+        ]
+        let project = ProjectRecord(
+            id: 42,
+            title: "Suisui",
+            status: "active",
+            workspacePath: workspace.path
+        )
+        let client = DevelopmentRepositoryFileClient(project: project)
+
+        for item in cases {
+            let unsafePath = "Sources/Unsafe\(item.name).swift"
+            let createdPath = "Sources/Created\(item.name).swift"
+            let existingPath = "Sources/Existing\(item.name).swift"
+            let existingURL = workspace.appendingPathComponent(existingPath)
+            try write(item.contents, to: workspace.appendingPathComponent(unsafePath))
+            try write("let baseline = true\n", to: existingURL)
+
+            XCTAssertThrowsError(try client.read(relativePath: unsafePath)) { error in
+                guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                    return XCTFail("Expected secret-like content rejection, got \(error)")
+                }
+            }
+
+            XCTAssertThrowsError(try client.create(relativePath: createdPath, contents: item.contents)) { error in
+                guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                    return XCTFail("Expected secret-like content rejection, got \(error)")
+                }
+            }
+
+            let baseline = try client.read(relativePath: existingPath)
+            XCTAssertThrowsError(try client.update(
+                relativePath: existingPath,
+                contents: item.contents,
+                expectedSHA256: baseline.sha256
+            )) { error in
+                guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                    return XCTFail("Expected secret-like content rejection, got \(error)")
+                }
+            }
+            XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.appendingPathComponent(createdPath).path))
+            XCTAssertEqual(try String(contentsOf: existingURL, encoding: .utf8), "let baseline = true\n")
+        }
+    }
+
+    func testRepositoryFileClientRejectsPasswordAliasConfigOnRead() throws {
+        let workspace = temporaryDirectory()
+        let fixtures = [
+            ("Config/Database.json", #"{"db_pass":"db-pass-read-marker"}"#),
+            ("Config/Auth.toml", "passwd = \"passwd-read-marker\""),
+            ("Config/Encryption.yaml", "passphrase: passphrase-read-marker"),
+        ]
+        for (path, contents) in fixtures {
+            try write(contents, to: workspace.appendingPathComponent(path))
+        }
+        let harmlessSource = "let compass: Compass\nlet bypass: Bypass\n"
+        try write(harmlessSource, to: workspace.appendingPathComponent("Sources/Navigation.swift"))
+        let client = DevelopmentRepositoryFileClient(project: ProjectRecord(
+            id: 42,
+            title: "Suisui",
+            status: "active",
+            workspacePath: workspace.path
+        ))
+
+        for (path, _) in fixtures {
+            XCTAssertThrowsError(try client.read(relativePath: path), path) { error in
+                guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                    return XCTFail("Expected secret-like content rejection, got \(error)")
+                }
+            }
+        }
+        XCTAssertEqual(try client.read(relativePath: "Sources/Navigation.swift").contents, harmlessSource)
+    }
+
+    func testRepositoryFileClientRejectsEscapedCredentialValueAliasesButReadsHarmlessValueKey() throws {
+        let workspace = temporaryDirectory()
+        let unsafeFixtures = [
+            ("Config/ProviderA.json", #"{"apiKey\u0056alue":"api-key-value-read-marker"}"#),
+            ("Config/ProviderB.json", #"{"to\u006benValue":"token-value-read-marker"}"#),
+            ("Config/ProviderC.json", #"{"accessKey\u0056alue":"access-key-value-read-marker"}"#),
+        ]
+        for (path, contents) in unsafeFixtures {
+            try write(contents, to: workspace.appendingPathComponent(path))
+        }
+        let harmless = #"{"display\u0056alue":"harmless-value-read-marker"}"#
+        try write(harmless, to: workspace.appendingPathComponent("Config/Display.json"))
+        let client = DevelopmentRepositoryFileClient(project: ProjectRecord(
+            id: 42,
+            title: "Suisui",
+            status: "active",
+            workspacePath: workspace.path
+        ))
+
+        for (path, _) in unsafeFixtures {
+            XCTAssertThrowsError(try client.read(relativePath: path), path) { error in
+                guard case .secretLikeContent = error as? DevelopmentRepositoryFileError else {
+                    return XCTFail("Expected secret-like content rejection, got \(error)")
+                }
+            }
+        }
+        XCTAssertEqual(try client.read(relativePath: "Config/Display.json").contents, harmless)
+    }
+
     func testListFilesWithinApprovedWorkspaceReturnsSortedEntries() throws {
         let stores = try makeStores()
         let workspace = temporaryDirectory()
@@ -734,8 +900,25 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
             )
         }
 
+        XCTAssertThrowsError(
+            try createTool.execute(
+                arguments: [
+                    "projectId": .number(Double(project.id)),
+                    "relativePath": .string("docs/sk-proj-pathwritemarker1234567890.md"),
+                    "contents": .string("safe body\n")
+                ],
+                context: approvedContext()
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ToolExecutionError,
+                .executionFailed(.developmentRepositoryCreateFile, "Repository file path looks like a credential or secret file.")
+            )
+        }
+
         XCTAssertEqual(try String(contentsOf: workspace.appendingPathComponent("docs/plan.md"), encoding: .utf8), "existing\n")
         XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.appendingPathComponent("docs/notes.md").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.appendingPathComponent("docs/sk-proj-pathwritemarker1234567890.md").path))
     }
 
     func testRepositoryFileAccessRejectsTraversalAndSymlinkEscapes() throws {
@@ -880,6 +1063,7 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
         try FileManager.default.createDirectory(at: workspace.appendingPathComponent(".git"), withIntermediateDirectories: true)
         try write("ref: refs/heads/main\n", to: workspace.appendingPathComponent(".git/HEAD"))
         try write("token=secret\n", to: workspace.appendingPathComponent(".env"))
+        try write("safe body\n", to: workspace.appendingPathComponent("docs/sk-proj-pathreadmarker1234567890.md"))
         try Data([0x89, 0x50, 0x4E, 0x47]).write(to: workspace.appendingPathComponent("image.png"))
         let project = try stores.projects.create(title: "Suisui", workspacePath: workspace.path)
         let readTool = DevelopmentRepositoryFileTool(name: .developmentRepositoryReadFile, projectStore: stores.projects)
@@ -887,6 +1071,7 @@ final class DevelopmentRepositoryFileAccessTests: XCTestCase {
         for (path, message) in [
             (".git/HEAD", "Repository file path must not target git metadata."),
             (".env", "Repository file path looks like a credential or secret file."),
+            ("docs/sk-proj-pathreadmarker1234567890.md", "Repository file path looks like a credential or secret file."),
             ("image.png", "Repository file path must target a supported text file.")
         ] {
             XCTAssertThrowsError(

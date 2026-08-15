@@ -1,0 +1,2121 @@
+import CryptoKit
+import Darwin
+import Foundation
+
+public enum DevelopmentRepositoryIndexError: Error, Equatable, Sendable {
+    case invalidWorkspace
+    case invalidQuery
+    case invalidSelectedPath
+    case tooManySelectedPaths
+    case gitManifestUnsupported
+    case gitManifestUnavailable
+    case manifestTooLarge
+    case tooManyFiles
+    case indexedContentTooLarge
+    case fileReadUnavailable
+}
+
+public actor DevelopmentRepositoryIndex {
+    public static let maximumFiles = 100_000
+    public static let maximumManifestBytes = 32 * 1024 * 1024
+    public static let maximumIndexedContentBytes = 512 * 1024 * 1024
+    public static let maximumSelectedPaths = 64
+    public static let maximumResults = 50
+    private static let maximumQueryUTF8Bytes = 4 * 1024
+    private static let maximumSwiftCredentialCandidates = 256
+
+    private let database: SQLiteDatabaseWorker
+    private let redactor: DeveloperSecretRedactor
+    private let maximumRefreshReadBytes: Int
+    private let manifestExecutableURL: URL
+    private let beforeRefreshCommit: (@Sendable () throws -> Void)?
+    private let recordScanCheckpoint: (@Sendable (Int) -> Void)?
+    private let recordPublishCheckpoint: (@Sendable (Int) -> Void)?
+
+    // Assignment-only redaction is deliberately broader for user-visible output.
+    // For indexing, reject every value-bearing form. Only the value-free Swift
+    // type grammars below can remain searchable.
+    private static let credentialKeyAssignments = try? NSRegularExpression(
+        pattern: #"(?<![\p{L}\p{M}\p{N}_])(?i:(?:[\p{L}_][\p{L}\p{M}\p{N}_]*)?(?:api[_-]?key|access[_-]?key|private[_-]?key|token|password|passwd|passphrase|db[_-]?pass|secret|credentials?)[\p{L}\p{M}\p{N}_]*)(?![\p{L}\p{M}\p{N}_])"#
+    )
+    private static let ambiguousSwiftSubscriptAssignment = try? NSRegularExpression(
+        pattern: #"\[\s*(?!\"[^\"\\\r\n]{0,512}\"\s*\])(?=[^\]\r\n]{0,512}\")[^\]\r\n]{1,512}\]\s*(?:\s|/\*[\s\S]*?\*/|//[^\r\n]*(?:\r\n|\r|\n))*=(?!=)"#
+    )
+    private static let authorizationIdentifier = try? NSRegularExpression(
+        pattern: #"\b(?i:authorization)\b"#
+    )
+    private static let standaloneProviderCredential = try? NSRegularExpression(
+        pattern: #"(?<![A-Za-z0-9_-])(?:xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{20,}|glpat-[A-Za-z0-9_-]{8,})(?![A-Za-z0-9_-])"#
+    )
+    private static let safeBareSwiftRegexCredentialPattern = try? NSRegularExpression(
+        pattern: #"^[A-Za-z_][A-Za-z0-9_]*\s*:\s*\[[^\]\r\n]{1,128}\](?:[+*?]|\{\d+(?:,\d*)?\})?/\s*$"#
+    )
+    private static let safeSourceTypedDeclaration = try? NSRegularExpression(
+        pattern: #"^\s*(?:@[A-Za-z_][A-Za-z0-9_]*\s+)*(?:(?:(?:private|public|internal|fileprivate)(?:\(set\))?|static|final|lazy)\s+)*(?:let|var)\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*(?:any\s+)?[A-Z\[(][A-Za-z0-9_.<>\[\]():?,\s]*$"#
+    )
+    private static let safeSourceTypedFunctionParameter = try? NSRegularExpression(
+        pattern: #"\s*(?:_|[A-Za-z_][A-Za-z0-9_]*)(?:\s+[A-Za-z_][A-Za-z0-9_]*)?\s*:\s*(?:any\s+)?[A-Z\[(][A-Za-z0-9_.<>\[\]():?,\s]*(?:\s*=\s*nil)?(?=\s*(?:,|\)))"#
+    )
+    private static let safeSwiftNominalTypeDeclaration = try? NSRegularExpression(
+        pattern: #"^\s*(?:(?:private|public|internal|fileprivate|package|open|final)\s+)*(?:struct|class|enum|protocol|actor|extension)\s+[A-Za-z_][A-Za-z0-9_]*(?:\s*:\s*(?:[A-Z][A-Za-z0-9_.<>?]*|@unchecked\s+Sendable)(?:\s*,\s*(?:[A-Z][A-Za-z0-9_.<>?]*|@unchecked\s+Sendable))*)?\s*(?:[{][}]?)?\s*$"#
+    )
+    private static let safeSwiftTypealiasDeclaration = try? NSRegularExpression(
+        pattern: #"^\s*typealias\s+[A-Za-z_][A-Za-z0-9_]*\s*=\s*[A-Z][A-Za-z0-9_.]*\s*$"#
+    )
+    private static let safeSwiftGenericConstraint = try? NSRegularExpression(
+        pattern: #"[A-Za-z_][A-Za-z0-9_]*\s*:\s*[A-Z][A-Za-z0-9_.]*\s*\{(?:\})?\s*$"#
+    )
+    private static let safeSwiftCaseDeclaration = try? NSRegularExpression(
+        pattern: #"^\s*case\s+\.[A-Za-z_][A-Za-z0-9_]*\s*:\s*$"#
+    )
+    private static let serializedCredential = try? NSRegularExpression(
+        pattern: #"(?im)^\s*[\"']?client[-_]key[-_]data[\"']?\s*:\s*\S+"#
+    )
+    private static let yamlClientKeyData = try? NSRegularExpression(
+        pattern: #"(?i)client[-_]?key[-_]?data"#
+    )
+    private static let swiftFunctionParameterPrefix = try? NSRegularExpression(
+        pattern: #"\b(?:func\s+[A-Za-z_][A-Za-z0-9_]*(?:<[A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*>)?\s*|init\s*)$"#
+    )
+    private static let swiftFunctionParameterOpener = try? NSRegularExpression(
+        pattern: #"(\b(?:func\s+[A-Za-z_][A-Za-z0-9_]*(?:<[A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*>)?\s*|init\s*))\("#
+    )
+
+    private struct SwiftLexicalPosition {
+        var isInNormalCode: Bool
+        var literalKind: SwiftLiteralKind?
+        var openParenthesis: String.Index?
+        var openBrace: String.Index?
+    }
+
+    private struct SwiftBracketEntry {
+        let openParenthesis: String.Index?
+        let openBrace: String.Index?
+        var start: String.Index
+        var hasKeyDelimiter = false
+        var ternaryDepth = 0
+    }
+
+    private enum SwiftLiteralKind: Equatable {
+        case string
+        case regex
+    }
+
+    private struct SwiftLiteralDelimiter {
+        var kind: SwiftLiteralKind
+        var hashCount: Int
+        var isMultiline: Bool
+    }
+
+    private struct WorkspaceRootDescriptor {
+        let descriptor: Int32
+        let device: dev_t
+        let inode: ino_t
+        let birthTimeSeconds: Int64
+        let birthTimeNanoseconds: Int64
+    }
+
+    public init(connection: SQLiteConnection, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) {
+        self.init(
+            connection: connection,
+            redactor: redactor,
+            maximumRefreshReadBytes: DevelopmentRepositoryIndex.maximumIndexedContentBytes,
+            manifestExecutableURL: GitManifestReader.defaultExecutableURL
+        )
+    }
+
+    init(
+        connection: SQLiteConnection,
+        redactor: DeveloperSecretRedactor = DeveloperSecretRedactor(),
+        maximumRefreshReadBytes: Int = DevelopmentRepositoryIndex.maximumIndexedContentBytes,
+        manifestExecutableURL: URL = GitManifestReader.defaultExecutableURL,
+        beforeRefreshCommit: (@Sendable () throws -> Void)? = nil,
+        recordScanCheckpoint: (@Sendable (Int) -> Void)? = nil,
+        recordPublishCheckpoint: (@Sendable (Int) -> Void)? = nil
+    ) {
+        database = SQLiteDatabaseWorker(connection: connection)
+        self.redactor = redactor
+        self.maximumRefreshReadBytes = maximumRefreshReadBytes
+        self.manifestExecutableURL = manifestExecutableURL
+        self.beforeRefreshCommit = beforeRefreshCommit
+        self.recordScanCheckpoint = recordScanCheckpoint
+        self.recordPublishCheckpoint = recordPublishCheckpoint
+    }
+
+    public init(path: String, redactor: DeveloperSecretRedactor = DeveloperSecretRedactor()) throws {
+        database = try SQLiteDatabaseWorker(path: path)
+        self.redactor = redactor
+        maximumRefreshReadBytes = DevelopmentRepositoryIndex.maximumIndexedContentBytes
+        manifestExecutableURL = GitManifestReader.defaultExecutableURL
+        beforeRefreshCommit = nil
+        recordScanCheckpoint = nil
+        recordPublishCheckpoint = nil
+    }
+
+    public func refresh(workspace: CodebaseMemoryWorkspace) async throws {
+        try Task.checkCancellation()
+        let root = try Self.workspaceRoot(workspace.rootPath)
+        let rootDescriptor = try Self.openWorkspaceRoot(root)
+        defer { Darwin.close(rootDescriptor.descriptor) }
+        let workspaceKey = Self.workspaceKey(root: root, descriptor: rootDescriptor)
+        let records = try Self.records(
+            root: root,
+            rootDescriptor: rootDescriptor,
+            redactor: redactor,
+            maximumRefreshReadBytes: maximumRefreshReadBytes,
+            manifestExecutableURL: manifestExecutableURL,
+            recordScanCheckpoint: recordScanCheckpoint
+        )
+        let beforeRefreshCommit = self.beforeRefreshCommit
+        let recordPublishCheckpoint = self.recordPublishCheckpoint
+
+        try Task.checkCancellation()
+        try await database.transaction { connection in
+            let generation = (try connection.queryRows(
+                "SELECT COALESCE(MAX(generation), 0) + 1 AS generation FROM codebase_index_files WHERE workspace_key = ?;",
+                parameters: [.text(workspaceKey)]
+            ).first?.int64("generation")) ?? 1
+
+            for (offset, record) in records.enumerated() {
+                recordPublishCheckpoint?(offset)
+                // Publishing is a synchronous SQLite loop, so every row must
+                // provide a cancellation point before mutating the transaction.
+                try Task.checkCancellation()
+                try connection.execute(
+                    """
+                    INSERT INTO codebase_index_files (workspace_key, relative_path, byte_count, sha256, contents, cjk_terms, generation)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(workspace_key, relative_path) DO UPDATE SET
+                        byte_count = excluded.byte_count,
+                        sha256 = excluded.sha256,
+                        contents = excluded.contents,
+                        cjk_terms = excluded.cjk_terms,
+                        generation = excluded.generation;
+                    """,
+                    parameters: [
+                        .text(workspaceKey),
+                        .text(record.relativePath),
+                        .integer(Int64(record.byteCount)),
+                        .text(record.sha256),
+                        .text(record.contents),
+                        .text(record.cjkTerms),
+                        .integer(generation),
+                    ]
+                )
+            }
+            try Task.checkCancellation()
+            try connection.execute(
+                "DELETE FROM codebase_index_files WHERE workspace_key = ? AND generation < ?;",
+                parameters: [.text(workspaceKey), .integer(generation)]
+            )
+            // A successful refresh is the only point at which a same-path
+            // replacement may retire its former inode's snapshot. Keeping this
+            // inside the transaction preserves it if the new snapshot fails.
+            try connection.execute(
+                """
+                DELETE FROM codebase_index_files
+                WHERE workspace_key = ?
+                   OR (workspace_key LIKE ? AND workspace_key <> ?)
+                   OR (workspace_key LIKE ? AND workspace_key <> ?);
+                """,
+                parameters: [
+                    .text(Self.legacyWorkspaceKey(root: root)),
+                    .text("\(Self.legacyWorkspaceKeyPrefix(root: root))%"),
+                    .text(workspaceKey),
+                    .text("repository-index:%:\(Self.workspaceIdentitySuffix(rootDescriptor))"),
+                    .text(workspaceKey),
+                ]
+            )
+            try beforeRefreshCommit?()
+            // Keep the final identity check inside the transaction so a root
+            // replacement after scanning rolls back both publication and cleanup.
+            try Self.verifyWorkspaceRoot(root, matches: rootDescriptor)
+        }
+    }
+
+    public func search(
+        query rawQuery: String,
+        workspace: CodebaseMemoryWorkspace,
+        topK: Int = 10
+    ) async throws -> [CodebaseMemorySnippet] {
+        let root = try Self.workspaceRoot(workspace.rootPath)
+        let rootDescriptor = try Self.openWorkspaceRoot(root)
+        defer { Darwin.close(rootDescriptor.descriptor) }
+        let query = try Self.validatedQuery(rawQuery)
+        let terms = Self.searchTerms(query)
+        guard !terms.isEmpty else {
+            throw DevelopmentRepositoryIndexError.invalidQuery
+        }
+        let selectedPaths = try Self.validatedSelectedPaths(workspace.selectedRelativePaths)
+        guard topK > 0 else {
+            return []
+        }
+        let limit = max(1, min(topK, Self.maximumResults))
+        try Self.verifyWorkspaceRoot(root, matches: rootDescriptor)
+        let workspaceKey = Self.workspaceKey(root: root, descriptor: rootDescriptor)
+
+        let snippets = try await database.run { connection in
+            let rows = try Self.ftsRows(
+                connection: connection,
+                terms: terms,
+                joiner: " AND ",
+                workspaceKey: workspaceKey,
+                selectedPaths: selectedPaths,
+                limit: limit
+            )
+            let cjkTerms = terms.filter(Self.containsCJK)
+            var finalRows = rows
+            if !cjkTerms.isEmpty, finalRows.count < limit {
+                let exactFallback = try Self.cjkRows(
+                    connection: connection,
+                    terms: terms,
+                    joiner: " AND ",
+                    workspaceKey: workspaceKey,
+                    selectedPaths: selectedPaths,
+                    excludedPaths: try finalRows.map { try $0.string("relative_path") },
+                    limit: limit - finalRows.count
+                )
+                finalRows.append(contentsOf: exactFallback)
+            }
+            if finalRows.count < limit {
+                // Prefer full-term FTS and CJK substring matches before partial
+                // matches, then fill only the remaining slots without duplicates.
+                let partialRows = try Self.ftsRows(
+                    connection: connection,
+                    terms: terms,
+                    joiner: " OR ",
+                    workspaceKey: workspaceKey,
+                    selectedPaths: selectedPaths,
+                    excludedPaths: try finalRows.map { try $0.string("relative_path") },
+                    limit: limit - finalRows.count
+                )
+                finalRows.append(contentsOf: partialRows)
+            }
+            if !cjkTerms.isEmpty, finalRows.count < limit {
+                let partialFallback = try Self.cjkRows(
+                    connection: connection,
+                    terms: terms,
+                    joiner: " OR ",
+                    workspaceKey: workspaceKey,
+                    selectedPaths: selectedPaths,
+                    excludedPaths: try finalRows.map { try $0.string("relative_path") },
+                    limit: limit - finalRows.count
+                )
+                finalRows.append(contentsOf: partialFallback)
+            }
+            return try finalRows.map { row in
+                let path = try row.string("relative_path")
+                let preview = try row.string("preview")
+                return CodebaseMemorySnippet(
+                    id: Self.sha256("\(workspaceKey):\(path)"),
+                    title: path,
+                    sourcePath: path,
+                    bodyPreview: String(preview.prefix(400))
+                )
+            }
+        }
+        try Self.verifyWorkspaceRoot(root, matches: rootDescriptor)
+        return snippets
+    }
+
+    private static func records(
+        root: URL,
+        rootDescriptor: WorkspaceRootDescriptor,
+        redactor: DeveloperSecretRedactor,
+        maximumRefreshReadBytes: Int,
+        manifestExecutableURL: URL,
+        recordScanCheckpoint: (@Sendable (Int) -> Void)?
+    ) throws -> [IndexedFile] {
+        try verifyWorkspaceRoot(root, matches: rootDescriptor)
+        try Task.checkCancellation()
+        let entries = try GitManifestReader.entries(
+            at: root,
+            executableURL: manifestExecutableURL,
+            expectedRootIdentity: .init(device: rootDescriptor.device, inode: rootDescriptor.inode)
+        )
+        try Task.checkCancellation()
+        try verifyWorkspaceRoot(root, matches: rootDescriptor)
+        var totalBytes = 0
+        var records: [IndexedFile] = []
+        for (offset, entry) in entries.enumerated() {
+            recordScanCheckpoint?(offset)
+            // This loop can consume the entire repository without suspending;
+            // check every entry before doing any file I/O.
+            try Task.checkCancellation()
+            // Git itself marks these entries as absent from this checkout. They
+            // are intentional manifest exclusions, unlike a post-manifest
+            // file-to-directory replacement which must abort the refresh.
+            guard !entry.isUnavailable else {
+                continue
+            }
+            let path = entry.path
+            try verifyWorkspaceRoot(root, matches: rootDescriptor)
+            guard let relativePath = try? DevelopmentRepositoryFilePathPolicy.validatedRelativePath(path),
+                  // The policy trims user-facing paths, but git names are byte-level
+                  // identities.  Never let a trimmed manifest name reopen another file.
+                  relativePath == path else {
+                continue
+            }
+            // The manifest name is untrusted filesystem input.  Descending from
+            // the approved root with openat/O_NOFOLLOW rejects both an ancestor
+            // swap and a final-component symlink before any bytes are indexed.
+            let read: BoundedFileRead
+            do {
+                read = try boundedFileRead(rootDescriptor: rootDescriptor.descriptor, relativePath: relativePath)
+            } catch DevelopmentRepositoryFileError.symlinkNotAllowed {
+                continue
+            } catch {
+                // A partial snapshot is worse than a failed refresh: preserve the
+                // prior generation until all manifest files can be read again.
+                throw DevelopmentRepositoryIndexError.fileReadUnavailable
+            }
+            // Every opened byte consumes the refresh budget, even when later
+            // rejected as binary or secret. Otherwise a manifest full of
+            // excluded files could bypass the aggregate work limit.
+            totalBytes += read.data.count
+            guard totalBytes <= maximumRefreshReadBytes else {
+                throw DevelopmentRepositoryIndexError.indexedContentTooLarge
+            }
+            guard !read.isOversized else {
+                continue
+            }
+            let data = read.data
+            guard let contents = String(data: data, encoding: .utf8),
+                  (try? DevelopmentRepositoryFilePathPolicy.validateTextContent(contents)) != nil,
+                  !containsRepositoryCredential(contents, relativePath: relativePath, redactor: redactor) else {
+                continue
+            }
+            let cjkTerms = cjkIndexTerms(relativePath: relativePath, contents: contents)
+            let derivedBytes = cjkTerms.utf8.count
+            // Derived FTS material consumes durable storage too. Charge it to
+            // the same aggregate budget before publication so a CJK-heavy
+            // repository cannot expand a bounded refresh into a multi-GB DB.
+            guard derivedBytes <= maximumRefreshReadBytes - totalBytes else {
+                throw DevelopmentRepositoryIndexError.indexedContentTooLarge
+            }
+            totalBytes += derivedBytes
+            records.append(IndexedFile(
+                relativePath: relativePath,
+                byteCount: data.count,
+                sha256: sha256(data),
+                contents: contents,
+                cjkTerms: cjkTerms
+            ))
+        }
+        try verifyWorkspaceRoot(root, matches: rootDescriptor)
+        return records
+    }
+
+    private static func workspaceRoot(_ rawPath: String) throws -> URL {
+        guard rawPath.hasPrefix("/") else {
+            throw DevelopmentRepositoryIndexError.invalidWorkspace
+        }
+        let root = URL(fileURLWithPath: rawPath).standardizedFileURL
+        guard (try? root.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else {
+            throw DevelopmentRepositoryIndexError.invalidWorkspace
+        }
+        guard (try? root.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+            throw DevelopmentRepositoryIndexError.invalidWorkspace
+        }
+        return root
+    }
+
+    private static func openWorkspaceRoot(_ root: URL) throws -> WorkspaceRootDescriptor {
+        let descriptor = Darwin.open(root.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard descriptor >= 0 else {
+            throw DevelopmentRepositoryIndexError.invalidWorkspace
+        }
+        var state = stat()
+        guard Darwin.fstat(descriptor, &state) == 0, (state.st_mode & S_IFMT) == S_IFDIR else {
+            Darwin.close(descriptor)
+            throw DevelopmentRepositoryIndexError.invalidWorkspace
+        }
+        let birthTimeSeconds = Int64(state.st_birthtimespec.tv_sec)
+        let birthTimeNanoseconds = Int64(state.st_birthtimespec.tv_nsec)
+        // Darwin zeroes birth time when a filesystem cannot provide it. Using
+        // that value would silently reduce identity back to reusable dev+inode.
+        guard isUsableBirthTime(seconds: birthTimeSeconds, nanoseconds: birthTimeNanoseconds) else {
+            Darwin.close(descriptor)
+            throw DevelopmentRepositoryIndexError.invalidWorkspace
+        }
+        return WorkspaceRootDescriptor(
+            descriptor: descriptor,
+            device: state.st_dev,
+            inode: state.st_ino,
+            birthTimeSeconds: birthTimeSeconds,
+            birthTimeNanoseconds: birthTimeNanoseconds
+        )
+    }
+
+    private static func verifyWorkspaceRoot(_ root: URL, matches descriptor: WorkspaceRootDescriptor) throws {
+        try verifyWorkspaceRootIdentity(
+            root,
+            device: descriptor.device,
+            inode: descriptor.inode,
+            birthTimeSeconds: descriptor.birthTimeSeconds,
+            birthTimeNanoseconds: descriptor.birthTimeNanoseconds
+        )
+    }
+
+    private static func workspaceKey(root: URL, descriptor: WorkspaceRootDescriptor) -> String {
+        workspaceKey(
+            root: root,
+            device: descriptor.device,
+            inode: descriptor.inode,
+            birthTimeSeconds: descriptor.birthTimeSeconds,
+            birthTimeNanoseconds: descriptor.birthTimeNanoseconds
+        )
+    }
+
+    static func workspaceKey(
+        root: URL,
+        device: dev_t,
+        inode: ino_t,
+        birthTimeSeconds: Int64,
+        birthTimeNanoseconds: Int64
+    ) -> String {
+        "\(legacyWorkspaceKeyPrefix(root: root))\(device):\(inode):\(birthTimeSeconds):\(birthTimeNanoseconds)"
+    }
+
+    private static func workspaceIdentitySuffix(_ descriptor: WorkspaceRootDescriptor) -> String {
+        "\(descriptor.device):\(descriptor.inode):\(descriptor.birthTimeSeconds):\(descriptor.birthTimeNanoseconds)"
+    }
+
+    private static func legacyWorkspaceKeyPrefix(root: URL) -> String {
+        "repository-index:\(sha256(root.path)):"
+    }
+
+    private static func legacyWorkspaceKey(root: URL) -> String {
+        sha256(root.path)
+    }
+
+    static func verifyWorkspaceRootIdentity(
+        _ root: URL,
+        device: dev_t,
+        inode: ino_t,
+        birthTimeSeconds: Int64,
+        birthTimeNanoseconds: Int64
+    ) throws {
+        var state = stat()
+        guard Darwin.lstat(root.path, &state) == 0,
+              (state.st_mode & S_IFMT) == S_IFDIR,
+              state.st_dev == device,
+              state.st_ino == inode else {
+            throw DevelopmentRepositoryIndexError.fileReadUnavailable
+        }
+        let actualBirthTimeSeconds = Int64(state.st_birthtimespec.tv_sec)
+        let actualBirthTimeNanoseconds = Int64(state.st_birthtimespec.tv_nsec)
+        guard isUsableBirthTime(seconds: actualBirthTimeSeconds, nanoseconds: actualBirthTimeNanoseconds),
+              actualBirthTimeSeconds == birthTimeSeconds,
+              actualBirthTimeNanoseconds == birthTimeNanoseconds else {
+            throw DevelopmentRepositoryIndexError.fileReadUnavailable
+        }
+    }
+
+    private static func isUsableBirthTime(seconds: Int64, nanoseconds: Int64) -> Bool {
+        (seconds != 0 || nanoseconds != 0) && (0..<1_000_000_000).contains(nanoseconds)
+    }
+
+    private static func validatedQuery(_ rawQuery: String) throws -> String {
+        let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        // One Character may contain unbounded combining scalars.  Bound UTF-8
+        // first so tokenization cannot retain a multi-megabyte grapheme.
+        guard !query.isEmpty,
+              query.utf8.count <= maximumQueryUTF8Bytes,
+              query.count <= 512,
+              !query.unicodeScalars.contains(where: { $0.value == 0 }) else {
+            throw DevelopmentRepositoryIndexError.invalidQuery
+        }
+        return query
+    }
+
+    private static func validatedSelectedPaths(_ rawPaths: [String]) throws -> [RepositorySelection] {
+        guard rawPaths.count <= maximumSelectedPaths else {
+            throw DevelopmentRepositoryIndexError.tooManySelectedPaths
+        }
+        do {
+            return try rawPaths.map { rawPath in
+                let path = try DevelopmentRepositoryFilePathPolicy.validatedRelativeDirectoryPath(rawPath)
+                guard let path else {
+                    throw DevelopmentRepositoryIndexError.invalidSelectedPath
+                }
+                // Selection is an indexed path boundary, not a live filesystem
+                // query: a failed refresh must keep its prior directory snapshot.
+                return RepositorySelection(path: path, includesDescendants: true)
+            }
+        } catch {
+            throw DevelopmentRepositoryIndexError.invalidSelectedPath
+        }
+    }
+
+    private static func ftsRows(
+        connection: SQLiteConnection,
+        terms: [String],
+        joiner: String,
+        workspaceKey: String,
+        selectedPaths: [RepositorySelection],
+        excludedPaths: [String] = [],
+        limit: Int
+    ) throws -> [SQLiteMaterializedRow] {
+        let selection = selectedPaths.sqlClause(column: "i.relative_path")
+        let exclusion = excludedPaths.isEmpty
+            ? ""
+            : " AND i.relative_path NOT IN (\(Array(repeating: "?", count: excludedPaths.count).joined(separator: ", ")))"
+        let sql = """
+        SELECT i.relative_path,
+               snippet(codebase_index_files_fts, 1, '', '', '…', 32) AS preview
+        FROM codebase_index_files_fts
+        INNER JOIN codebase_index_files i ON i.id = codebase_index_files_fts.rowid
+        WHERE codebase_index_files_fts MATCH ? AND i.workspace_key = ?\(selection)\(exclusion)
+        ORDER BY bm25(codebase_index_files_fts), i.relative_path
+        LIMIT ?;
+        """
+        return try connection.queryRows(
+            sql,
+            parameters: [.text("{relative_path contents} : (\(ftsMatch(terms, joiner: joiner)))"), .text(workspaceKey)] + selectedPaths.sqlParameters + excludedPaths.map(SQLiteValue.text) + [.integer(Int64(limit))]
+        )
+    }
+
+    private static func cjkRows(
+        connection: SQLiteConnection,
+        terms: [String],
+        joiner: String,
+        workspaceKey: String,
+        selectedPaths: [RepositorySelection],
+        excludedPaths: [String],
+        limit: Int
+    ) throws -> [SQLiteMaterializedRow] {
+        let cjkTerms = terms.filter(containsCJK)
+        guard !cjkTerms.isEmpty else {
+            return []
+        }
+        let nonCJKTerms = terms.filter { !containsCJK($0) }
+        var matchClauses = ["cjk_terms : (\(ftsMatch(cjkTerms, joiner: joiner)))"]
+        if !nonCJKTerms.isEmpty {
+            matchClauses.append("{relative_path contents} : (\(ftsMatch(nonCJKTerms, joiner: joiner)))")
+        }
+        // The fallback stage's joiner applies between language groups too:
+        // exact search requires both, while partial search accepts either.
+        let matchExpression = "(\(matchClauses.joined(separator: joiner)))"
+        let selection = selectedPaths.sqlClause(column: "i.relative_path")
+        let exclusion = excludedPaths.isEmpty
+            ? ""
+            : " AND i.relative_path NOT IN (\(Array(repeating: "?", count: excludedPaths.count).joined(separator: ", ")))"
+        return try connection.queryRows(
+            """
+            SELECT i.relative_path, i.contents
+            FROM codebase_index_files_fts
+            INNER JOIN codebase_index_files i ON i.id = codebase_index_files_fts.rowid
+            WHERE codebase_index_files_fts MATCH ? AND i.workspace_key = ?\(selection)\(exclusion)
+            ORDER BY i.relative_path LIMIT ?;
+            """,
+            parameters: [.text(matchExpression), .text(workspaceKey)] + selectedPaths.sqlParameters + excludedPaths.map(SQLiteValue.text) + [.integer(Int64(limit))]
+        )
+        .map { row in
+            let contents = try row.string("contents")
+            return SQLiteMaterializedRow(cells: [
+                "relative_path": try row.cell("relative_path"),
+                "preview": .text(contextualPreview(contents: contents, terms: terms)),
+            ])
+        }
+    }
+
+    private static func cjkIndexTerms(relativePath: String, contents: String) -> String {
+        var tokens: Set<String> = []
+        var run: [Character] = []
+
+        func flushRun() {
+            guard !run.isEmpty else {
+                return
+            }
+            for index in run.indices {
+                tokens.insert(String(run[index]))
+                if index < run.index(before: run.endIndex) {
+                    tokens.insert(String(run[index...run.index(after: index)]))
+                }
+            }
+            run.removeAll(keepingCapacity: true)
+        }
+
+        for character in relativePath + "\n" + contents {
+            if isCJKCharacter(character) {
+                run.append(character)
+            } else {
+                flushRun()
+            }
+        }
+        flushRun()
+        // FTS5 trigram cannot index one- or two-character literals. Storing
+        // those grams as ordinary tokens keeps short CJK lookup index-backed.
+        return tokens.sorted().joined(separator: " ")
+    }
+
+    private static func searchTerms(_ query: String) -> [String] {
+        let separators = CharacterSet.whitespacesAndNewlines
+            .union(.punctuationCharacters)
+            .union(.symbols)
+        let words = query.components(separatedBy: separators)
+        let terms = words.flatMap(cjkBigramsOrWord)
+        return SQLiteTaskStore.boundedSearchTokens(terms)
+    }
+
+    private static func cjkBigramsOrWord(_ word: String) -> [String] {
+        var runs: [String] = []
+        var currentRun = ""
+        var currentIsCJK: Bool?
+        for character in word {
+            let characterIsCJK = isCJKCharacter(character)
+            if currentIsCJK != nil, currentIsCJK != characterIsCJK {
+                runs.append(currentRun)
+                currentRun = ""
+            }
+            currentRun.append(character)
+            currentIsCJK = characterIsCJK
+        }
+        if !currentRun.isEmpty {
+            runs.append(currentRun)
+        }
+
+        return runs.flatMap { run in
+            let characters = Array(run)
+            guard characters.count > 1,
+                  characters.first.map(isCJKCharacter) == true else {
+                return [run]
+            }
+            // CJK has no word boundaries. Split only its run so adjacent Latin
+            // text remains searchable while bounded 2-grams find CJK fragments.
+            return (0..<(characters.count - 1)).map { index in
+                String(characters[index...(index + 1)])
+            }
+        }
+    }
+
+    private static func isCJKCharacter(_ character: Character) -> Bool {
+        !character.unicodeScalars.isEmpty && character.unicodeScalars.allSatisfy(isCJK)
+    }
+
+    private static func isCJK(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x3040...0x30FF, 0x3400...0x9FFF, 0xAC00...0xD7AF,
+             0xF900...0xFAFF, // CJK Compatibility Ideographs
+             0xFF66...0xFF9F:
+            true
+        default:
+            false
+        }
+    }
+
+    private static func ftsMatch(_ terms: [String], joiner: String) -> String {
+        terms.map { "\"\($0.replacingOccurrences(of: "\"", with: "\"\""))\"" }.joined(separator: joiner)
+    }
+
+    private static func contextualPreview(contents: String, terms: [String]) -> String {
+        guard let match = terms.lazy.compactMap({
+            contents.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive])
+        }).first else {
+            return String(contents.prefix(400))
+        }
+        let start = contents.index(match.lowerBound, offsetBy: -160, limitedBy: contents.startIndex) ?? contents.startIndex
+        let end = contents.index(match.upperBound, offsetBy: 238, limitedBy: contents.endIndex) ?? contents.endIndex
+        return (start == contents.startIndex ? "" : "…") + String(contents[start..<end]) + (end == contents.endIndex ? "" : "…")
+    }
+
+    // Indexing and direct repository reads share one credential policy so a
+    // safe Swift type cannot be accepted for persistence but rejected on egress.
+    static func containsRepositoryCredential(
+        _ contents: String,
+        relativePath: String,
+        redactor: DeveloperSecretRedactor
+    ) -> Bool {
+        let range = NSRange(contents.startIndex..<contents.endIndex, in: contents)
+        // JSON object keys may spell credential names with Unicode escapes.  The
+        // parser decodes those escapes before this boundary decides persistence.
+        if relativePath.lowercased().hasSuffix(".json"), containsJSONCredentialKey(contents) {
+            return true
+        }
+        if containsAmbiguousNonSwiftEscape(contents, relativePath: relativePath) {
+            return true
+        }
+        if relativePath.lowercased().hasSuffix(".swift"),
+           ambiguousSwiftSubscriptAssignment?.firstMatch(in: contents, range: range) != nil ||
+            containsAmbiguousSwiftDictionaryKey(in: contents) {
+            // Escapes, interpolation, and expressions can synthesize a credential
+            // key. Only a single plain dictionary/subscript literal stays open.
+            return true
+        }
+        guard let standaloneProviderCredential,
+              let serializedCredential,
+              let yamlClientKeyData else {
+            return true
+        }
+        // CI sanitizer taxonomy treats these opaque provider prefixes as secrets
+        // even in prose; reject them before any repository text is persisted.
+        if standaloneProviderCredential.firstMatch(in: contents, range: range) != nil {
+            return true
+        }
+        // A client-key-data token is secret material regardless of delimiter or
+        // format; YAML anchors can separate its key from the eventual mapping.
+        if yamlClientKeyData.firstMatch(in: contents, range: range) != nil {
+            return true
+        }
+        if serializedCredential.firstMatch(in: contents, range: range) != nil {
+            return true
+        }
+        let report = redactor.redact(contents).report
+        // Shared redaction intentionally treats every token assignment as risky for
+        // user-visible output. Source indexing keeps that policy for specific
+        // patterns, while allowing typed Swift names such as `token: Type`.
+        // Drafts redact every Authorization value. Indexing can reopen only its
+        // typed Swift forms below, after correlating the actual identifier range.
+        if report.matchedPatternNames.contains(where: { $0 != "assignment" && $0 != "authorization_header" }) {
+            return true
+        }
+        guard let assignments = credentialKeyAssignments,
+              let authorizationIdentifiers = authorizationIdentifier,
+              let safeBareRegexPattern = safeBareSwiftRegexCredentialPattern else {
+            return true
+        }
+        let candidateMatches = assignments.matches(in: contents, range: range) +
+            authorizationIdentifiers.matches(in: contents, range: range)
+        let candidateEnds = Set(candidateMatches.compactMap {
+            Range($0.range, in: contents)?.upperBound
+        })
+        let assignmentEnds = credentialAssignmentDelimiterEnds(
+            in: contents,
+            candidateEnds: candidateEnds
+        )
+        let hasCredentialValueReport = report.matchedPatternNames.contains("assignment") ||
+            report.matchedPatternNames.contains("authorization_header")
+        // Only Swift has a narrow safe grammar. Non-prose formats are
+        // fail-closed on credential-shaped identifiers. Prose relies on the
+        // shared redactor so ordinary documentation remains searchable.
+        if isNonSwiftNonProseFile(relativePath), !candidateMatches.isEmpty {
+            return true
+        }
+        let isSwiftSource = relativePath.lowercased().hasSuffix(".swift")
+        guard !candidateMatches.isEmpty else {
+            return hasCredentialValueReport
+        }
+        guard isSwiftSource else {
+            return hasCredentialValueReport || !assignmentEnds.isEmpty
+        }
+        // Every Swift identifier candidate participates. Only a bounded regex or
+        // the exact source range of a value-free declaration can reopen it.
+        guard candidateMatches.count <= maximumSwiftCredentialCandidates else {
+            return true
+        }
+        let candidateRanges = candidateMatches.compactMap { Range($0.range, in: contents) }
+        let lexicalTargets = Set(candidateRanges.flatMap { candidateRange in
+            let lineRange = contents.lineRange(for: candidateRange)
+            return [candidateRange.lowerBound, lineRange.lowerBound, lineRange.upperBound]
+        })
+        let lexicalPositions = swiftLexicalPositions(in: contents, at: lexicalTargets)
+        // One generated line may hold every allowed candidate. Its start/end
+        // lexer state is shared, so scan the declaration grammar only once.
+        var safeRangeCache: [String.Index: [NSRange]] = [:]
+        // Multiline parameter lines share one opener; validate its prefix once.
+        var multilineOpenerCache: [String.Index: Bool] = [:]
+        return candidateMatches.contains { match in
+            guard let swiftRange = Range(match.range, in: contents) else {
+                return true
+            }
+            let lineRange = contents.lineRange(for: swiftRange)
+            guard let lexicalPosition = lexicalPositions[swiftRange.lowerBound],
+                  let lineStartPosition = lexicalPositions[lineRange.lowerBound],
+                  let lineEndPosition = lexicalPositions[lineRange.upperBound] else {
+                return true
+            }
+            if !lexicalPosition.isInNormalCode {
+                guard lexicalPosition.literalKind == .regex else {
+                    return hasCredentialValueReport || assignmentEnds.contains(swiftRange.upperBound)
+                }
+                let regexSuffix = String(contents[swiftRange.lowerBound..<lineRange.upperBound])
+                let regexRange = NSRange(regexSuffix.startIndex..<regexSuffix.endIndex, in: regexSuffix)
+                // Only a bounded character-class reference is harmless inside
+                // a regex. Literal token/password text remains fail-closed.
+                return safeBareRegexPattern.firstMatch(in: regexSuffix, range: regexRange) == nil
+            }
+            let lineNSRange = NSRange(lineRange, in: contents)
+            let candidateRange = NSRange(
+                location: match.range.location - lineNSRange.location,
+                length: match.range.length
+            )
+            let safeRanges: [NSRange]
+            if let cachedRanges = safeRangeCache[lineRange.lowerBound] {
+                safeRanges = cachedRanges
+            } else {
+                let continuation = swiftContinuation(
+                    after: lineRange.upperBound,
+                    in: contents,
+                    matching: lineStartPosition.openParenthesis,
+                    from: lineEndPosition
+                )
+                if continuation.hasContinuation {
+                    safeRanges = []
+                } else {
+                    let isMultilineParameterOpener: Bool
+                    if let openParenthesis = lineStartPosition.openParenthesis,
+                       openParenthesis < lineRange.lowerBound {
+                        if let cachedOpener = multilineOpenerCache[openParenthesis] {
+                            isMultilineParameterOpener = cachedOpener
+                        } else {
+                            let openerLineRange = contents.lineRange(
+                                for: openParenthesis..<contents.index(after: openParenthesis)
+                            )
+                            let prefix = String(contents[openerLineRange.lowerBound..<openParenthesis])
+                            let prefixRange = NSRange(prefix.startIndex..<prefix.endIndex, in: prefix)
+                            let isFunction = swiftFunctionParameterPrefix?.firstMatch(
+                                in: prefix,
+                                range: prefixRange
+                            ) != nil
+                            let isClosure = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
+                                .hasSuffix("{")
+                            isMultilineParameterOpener = isFunction || isClosure
+                            multilineOpenerCache[openParenthesis] = isMultilineParameterOpener
+                        }
+                    } else {
+                        isMultilineParameterOpener = false
+                    }
+                    let line = String(contents[lineRange])
+                    safeRanges = safeSwiftDeclarationRanges(
+                        in: line,
+                        closesParenthesisOnNextLine: continuation.closesMatchingParenthesis,
+                        hasStableDeclarationScope: lineStartPosition.openParenthesis ==
+                            lineEndPosition.openParenthesis &&
+                            lineStartPosition.openBrace == lineEndPosition.openBrace,
+                        isMultilineParameterOpener: isMultilineParameterOpener
+                    )
+                }
+                safeRangeCache[lineRange.lowerBound] = safeRanges
+            }
+            return !safeRanges.contains {
+                $0.location <= candidateRange.location &&
+                    NSMaxRange(candidateRange) <= NSMaxRange($0)
+            }
+        }
+    }
+
+    private static func safeSwiftDeclarationRanges(
+        in line: String,
+        closesParenthesisOnNextLine: Bool,
+        hasStableDeclarationScope: Bool,
+        isMultilineParameterOpener: Bool
+    ) -> [NSRange] {
+        guard let typedDeclaration = safeSourceTypedDeclaration,
+              let typedParameter = safeSourceTypedFunctionParameter,
+              let nominalType = safeSwiftNominalTypeDeclaration,
+              let typealiasDeclaration = safeSwiftTypealiasDeclaration,
+              let genericConstraint = safeSwiftGenericConstraint,
+              let caseDeclaration = safeSwiftCaseDeclaration,
+              let functionOpener = swiftFunctionParameterOpener else {
+            return []
+        }
+
+        func hasBalancedTypeDelimiters(_ range: NSRange, in value: String) -> Bool {
+            guard let swiftRange = Range(range, in: value) else {
+                return false
+            }
+            var delimiters: [Character] = []
+            for character in value[swiftRange] {
+                switch character {
+                case "(", "<", "[":
+                    delimiters.append(character)
+                case ")", ">", "]":
+                    let expected: Character = character == ")" ? "(" : character == ">" ? "<" : "["
+                    guard delimiters.popLast() == expected else {
+                        return false
+                    }
+                default:
+                    continue
+                }
+            }
+            return delimiters.isEmpty
+        }
+
+        let fullRange = NSRange(line.startIndex..<line.endIndex, in: line)
+        var ranges = [nominalType, typealiasDeclaration, caseDeclaration]
+            .compactMap { $0.firstMatch(in: line, range: fullRange)?.range }
+            .filter { hasBalancedTypeDelimiters($0, in: line) }
+        if hasStableDeclarationScope,
+           let match = typedDeclaration.firstMatch(in: line, range: fullRange)?.range,
+           hasBalancedTypeDelimiters(match, in: line) {
+            ranges.append(match)
+        }
+
+        func appendTypedParameters(after openingParenthesis: String.Index, functionRange: NSRange?) {
+            let parameterStart = line.index(after: openingParenthesis)
+            let isEmpty = line[parameterStart...].drop(while: \.isWhitespace).first == ")"
+            var cursor = parameterStart
+            var foundParameter = false
+
+            while cursor < line.endIndex {
+                let searchRange = NSRange(cursor..<line.endIndex, in: line)
+                guard let match = typedParameter.firstMatch(
+                    in: line,
+                    options: [.anchored],
+                    range: searchRange
+                ),
+                      hasBalancedTypeDelimiters(match.range, in: line),
+                      let swiftMatch = Range(match.range, in: line) else {
+                    break
+                }
+                ranges.append(match.range)
+                foundParameter = true
+
+                var delimiter = swiftMatch.upperBound
+                while delimiter < line.endIndex, line[delimiter].isWhitespace {
+                    delimiter = line.index(after: delimiter)
+                }
+                guard delimiter < line.endIndex, line[delimiter] == "," else {
+                    break
+                }
+                // Restart the anchored grammar after the comma. If the next
+                // segment is not a parameter, the loop stops and it stays unsafe.
+                cursor = line.index(after: delimiter)
+            }
+
+            if let functionRange, (foundParameter || isEmpty),
+               hasBalancedTypeDelimiters(functionRange, in: line) {
+                ranges.append(functionRange)
+            }
+        }
+
+        // Discover every one-line function opener in one regex pass, then add
+        // closure openers during one character pass without rebuilding prefixes.
+        var parameterOpeners: [(index: String.Index, functionRange: NSRange?)] = []
+        var seenOpeners: Set<String.Index> = []
+        for match in functionOpener.matches(in: line, range: fullRange) {
+            guard let matchRange = Range(match.range, in: line),
+                  matchRange.upperBound > line.startIndex else {
+                continue
+            }
+            let openingParenthesis = line.index(before: matchRange.upperBound)
+            if seenOpeners.insert(openingParenthesis).inserted {
+                parameterOpeners.append((openingParenthesis, match.range(at: 1)))
+            }
+        }
+        var previousNonWhitespace: Character?
+        for index in line.indices {
+            let character = line[index]
+            if character == "(", previousNonWhitespace == "{",
+               seenOpeners.insert(index).inserted {
+                parameterOpeners.append((index, nil))
+            }
+            if !character.isWhitespace {
+                previousNonWhitespace = character
+            }
+        }
+        for opener in parameterOpeners {
+            appendTypedParameters(
+                after: opener.index,
+                functionRange: opener.functionRange
+            )
+        }
+
+        // A multiline parameter has its opener on an earlier line. Validate the
+        // opener once, then apply the same parameter grammar to this whole line.
+        if isMultilineParameterOpener {
+            // The grammar requires `,` or `)` after a parameter. Synthesize
+            // only the close that the lexer tied to this same argument list.
+            let parameterSource = closesParenthesisOnNextLine ? line + ")" : line
+            let parameterRange = NSRange(
+                parameterSource.startIndex..<parameterSource.endIndex,
+                in: parameterSource
+            )
+            if let parameterMatch = typedParameter.firstMatch(
+                in: parameterSource,
+                options: [.anchored],
+                range: parameterRange
+            ),
+               hasBalancedTypeDelimiters(parameterMatch.range, in: parameterSource) {
+                ranges.append(parameterMatch.range)
+            }
+        }
+
+        // Generic constraints are value-free only inside the grammar's exact
+        // range; a same-line body remains outside the allowlist.
+        var searchStart = line.startIndex
+        while let keyword = line.range(of: "where", range: searchStart..<line.endIndex) {
+            let beforeIsIdentifier = keyword.lowerBound > line.startIndex &&
+                (line[line.index(before: keyword.lowerBound)].isLetter ||
+                    line[line.index(before: keyword.lowerBound)].isNumber ||
+                    line[line.index(before: keyword.lowerBound)] == "_")
+            let afterIsIdentifier = keyword.upperBound < line.endIndex &&
+                (line[keyword.upperBound].isLetter ||
+                    line[keyword.upperBound].isNumber ||
+                    line[keyword.upperBound] == "_")
+            if !beforeIsIdentifier, !afterIsIdentifier {
+                let constraintRange = NSRange(keyword.upperBound..<line.endIndex, in: line)
+                if let match = genericConstraint.firstMatch(
+                    in: line,
+                    options: [.anchored],
+                    range: constraintRange
+                ),
+                   hasBalancedTypeDelimiters(match.range, in: line) {
+                    ranges.append(match.range)
+                }
+            }
+            searchStart = keyword.upperBound
+        }
+        return ranges
+    }
+
+    private static func swiftContinuation(
+        after lineEnd: String.Index,
+        in source: String,
+        matching openParenthesis: String.Index?,
+        from lineEndPosition: SwiftLexicalPosition
+    ) -> (hasContinuation: Bool, closesMatchingParenthesis: Bool) {
+        var index = lineEnd
+        while true {
+            while index < source.endIndex, source[index].isWhitespace {
+                index = source.index(after: index)
+            }
+            guard index < source.endIndex else {
+                return (false, false)
+            }
+            let nextIndex = source.index(after: index)
+            let nextCharacter = nextIndex < source.endIndex ? source[nextIndex] : nil
+            if source[index] == "/", nextCharacter == "/" {
+                while index < source.endIndex, source[index] != "\n", source[index] != "\r" {
+                    index = source.index(after: index)
+                }
+                continue
+            }
+            if source[index] == "@" {
+                // Attributes begin a new declaration context; they cannot
+                // continue an expression.
+                return (false, false)
+            }
+            if source[index] == "#" {
+                // A conditional-compilation line may surround a postfix chain.
+                // Skip the directive and classify the next normal code token.
+                while index < source.endIndex, source[index] != "\n", source[index] != "\r" {
+                    index = source.index(after: index)
+                }
+                continue
+            }
+            break
+        }
+        guard index < source.endIndex else {
+            return (false, false)
+        }
+        let character = source[index]
+        if character == ")", let openParenthesis {
+            let closesMatchingParenthesis = lineEndPosition.isInNormalCode &&
+                lineEndPosition.openParenthesis == openParenthesis
+            return (!closesMatchingParenthesis, closesMatchingParenthesis)
+        }
+        if !character.isLetter && !character.isNumber && character != "_" &&
+            !["}", ")", "]"].contains(character) {
+            // Operators include user-defined Unicode forms, so a fixed operator
+            // list would reopen the multiline literal bypass.
+            return (true, false)
+        }
+        var tokenEnd = index
+        while tokenEnd < source.endIndex,
+              (source[tokenEnd].isLetter || source[tokenEnd].isNumber || source[tokenEnd] == "_") {
+            tokenEnd = source.index(after: tokenEnd)
+        }
+        // `as` and `is` may place their type on a following line or after a
+        // tab. Treat the complete identifier token as a continuation keyword.
+        let token = String(source[index..<tokenEnd])
+        return (token == "as" || token == "is", false)
+    }
+
+    private static func isNonSwiftNonProseFile(_ relativePath: String) -> Bool {
+        let filename = URL(fileURLWithPath: relativePath).lastPathComponent.lowercased()
+        if ["readme", "license"].contains(filename) {
+            return false
+        }
+        let extensionName = URL(fileURLWithPath: relativePath).pathExtension.lowercased()
+        return extensionName != "swift" && extensionName != "json" &&
+            !["md", "markdown", "txt", "rst", "adoc"].contains(extensionName)
+    }
+
+    private static func containsJSONCredentialKey(_ contents: String) -> Bool {
+        guard let object = try? JSONSerialization.jsonObject(with: Data(contents.utf8), options: [.fragmentsAllowed]) else {
+            // Escaped keys are undecidable without a valid parse. A malformed
+            // JSON config therefore cannot receive the raw-regex fallback.
+            return true
+        }
+        return containsJSONCredentialKey(in: object)
+    }
+
+    private static func containsAmbiguousNonSwiftEscape(
+        _ contents: String,
+        relativePath: String
+    ) -> Bool {
+        let extensionName = URL(fileURLWithPath: relativePath).pathExtension.lowercased()
+        guard extensionName != "json", extensionName != "swift" else {
+            return false
+        }
+        // Escape expansion differs across non-Swift languages and can turn a
+        // harmless raw token into a credential key. Reject it at this boundary
+        // rather than attempting to maintain parsers for every indexed format.
+        return contents.contains("\\u") || contents.contains("\\U") || contents.contains("\\x")
+    }
+
+    private static func containsJSONCredentialKey(in object: Any) -> Bool {
+        if let dictionary = object as? [String: Any] {
+            for (key, value) in dictionary {
+                if isJSONCredentialKey(key) || containsJSONCredentialKey(in: value) {
+                    return true
+                }
+            }
+            return false
+        }
+        if let array = object as? [Any] {
+            return array.contains { containsJSONCredentialKey(in: $0) }
+        }
+        return false
+    }
+
+    private static func isJSONCredentialKey(_ key: String) -> Bool {
+        DeveloperSecretRedactor.isCredentialJSONKey(key)
+    }
+
+    private static func containsAmbiguousSwiftDictionaryKey(in source: String) -> Bool {
+        let relevantCharacters: Set<Character> = ["[", "]", ",", ":", "?"]
+        let positions = Set(source.indices.filter { relevantCharacters.contains(source[$0]) })
+        let lexicalPositions = swiftLexicalPositions(in: source, at: positions)
+        var entries: [SwiftBracketEntry] = []
+
+        for index in source.indices {
+            guard let lexicalPosition = lexicalPositions[index], lexicalPosition.isInNormalCode else {
+                continue
+            }
+            let character = source[index]
+            let next = source.index(after: index)
+
+            switch character {
+            case "[":
+                entries.append(SwiftBracketEntry(
+                    openParenthesis: lexicalPosition.openParenthesis,
+                    openBrace: lexicalPosition.openBrace,
+                    start: next
+                ))
+            case "]":
+                _ = entries.popLast()
+            case ",":
+                if let last = entries.indices.last,
+                   entries[last].openParenthesis == lexicalPosition.openParenthesis,
+                   entries[last].openBrace == lexicalPosition.openBrace {
+                    entries[last].start = next
+                    entries[last].hasKeyDelimiter = false
+                    entries[last].ternaryDepth = 0
+                }
+            case "?":
+                guard let last = entries.indices.last,
+                      !entries[last].hasKeyDelimiter,
+                      entries[last].openParenthesis == lexicalPosition.openParenthesis,
+                      entries[last].openBrace == lexicalPosition.openBrace else {
+                    continue
+                }
+                let previous = index > source.startIndex ? source[source.index(before: index)] : nil
+                let following = next < source.endIndex ? source[next] : nil
+                // Swift's ternary `?` requires leading whitespace. This excludes
+                // `?.`, `?(`, `?[`, `try?`, and both characters of `??`.
+                if previous?.isWhitespace == true && following != "?" {
+                    entries[last].ternaryDepth += 1
+                }
+            case ":":
+                guard let last = entries.indices.last,
+                      !entries[last].hasKeyDelimiter,
+                      entries[last].openParenthesis == lexicalPosition.openParenthesis,
+                      entries[last].openBrace == lexicalPosition.openBrace else {
+                    continue
+                }
+                if entries[last].ternaryDepth > 0 {
+                    entries[last].ternaryDepth -= 1
+                    continue
+                }
+                let key = source[entries[last].start..<index]
+                // Each entry is visited once. String-related keys that are not
+                // one plain literal stay closed without parsing their expression.
+                if key.utf8.count > 512 ||
+                    (key.contains("\"") && !isPlainSwiftStringDictionaryKey(key)) {
+                    return true
+                }
+                entries[last].hasKeyDelimiter = true
+            default:
+                break
+            }
+        }
+        return false
+    }
+
+    private static func isPlainSwiftStringDictionaryKey(_ source: Substring) -> Bool {
+        let key = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard key.utf8.count <= 514, key.first == "\"", key.last == "\"" else {
+            return false
+        }
+        return !key.dropFirst().dropLast().contains { character in
+            character == "\"" || character == "\\" || character == "\n" || character == "\r"
+        }
+    }
+
+    // Correlate non-Swift keys and Swift string subscripts with their following
+    // delimiter without treating ordinary credential words as values.
+    private static func credentialAssignmentDelimiterEnds(
+        in source: String,
+        candidateEnds: Set<String.Index>
+    ) -> Set<String.Index> {
+        var lineComment = false
+        var blockCommentDepth = 0
+        var pendingEnds: [String.Index] = []
+        var quoteCanClose = true
+        var assignmentEnds: Set<String.Index> = []
+        var index = source.startIndex
+
+        func resolvePending(with character: Character) {
+            if character == ":" || character == "=" {
+                assignmentEnds.formUnion(pendingEnds)
+            }
+            pendingEnds.removeAll(keepingCapacity: true)
+            quoteCanClose = true
+        }
+
+        while index < source.endIndex {
+            if candidateEnds.contains(index) {
+                pendingEnds.append(index)
+            }
+            let character = source[index]
+            let nextIndex = source.index(after: index)
+            let nextCharacter = nextIndex < source.endIndex ? source[nextIndex] : nil
+
+            if lineComment {
+                if character == "\n" || character == "\r" {
+                    lineComment = false
+                }
+            } else if blockCommentDepth > 0 {
+                if character == "/", nextCharacter == "*" {
+                    blockCommentDepth += 1
+                    index = source.index(after: nextIndex)
+                    continue
+                }
+                if character == "*", nextCharacter == "/" {
+                    blockCommentDepth -= 1
+                    index = source.index(after: nextIndex)
+                    continue
+                }
+            } else if !pendingEnds.isEmpty {
+                let beginsLineComment =
+                    (character == "/" && nextCharacter == "/") ||
+                    (character == "-" && nextCharacter == "-") ||
+                    character == "#"
+                let isExplicitLineContinuation = character == "\\" &&
+                    (nextCharacter == "\n" || nextCharacter == "\r")
+                if character.isWhitespace {
+                    // Keep looking.
+                } else if quoteCanClose, character == "\"" || character == "'" || character == "`" {
+                    if hasSubscriptAssignment(afterClosingQuoteAt: index, in: source) {
+                        assignmentEnds.formUnion(pendingEnds)
+                        pendingEnds.removeAll(keepingCapacity: true)
+                        quoteCanClose = true
+                    } else {
+                        quoteCanClose = false
+                    }
+                } else if isExplicitLineContinuation {
+                    index = source.index(after: nextIndex)
+                    continue
+                } else if beginsLineComment {
+                    lineComment = true
+                    index = character == "#" ? nextIndex : source.index(after: nextIndex)
+                    continue
+                } else if character == "/", nextCharacter == "*" {
+                    blockCommentDepth = 1
+                    index = source.index(after: nextIndex)
+                    continue
+                } else {
+                    resolvePending(with: character)
+                }
+            }
+            index = nextIndex
+        }
+        return assignmentEnds
+    }
+
+    private static func hasSubscriptAssignment(
+        afterClosingQuoteAt quote: String.Index,
+        in source: String
+    ) -> Bool {
+        var index = source.index(after: quote)
+        while index < source.endIndex, source[index].isWhitespace {
+            index = source.index(after: index)
+        }
+        guard index < source.endIndex, source[index] == "]" else {
+            return false
+        }
+        index = source.index(after: index)
+
+        var blockCommentDepth = 0
+        var lineComment = false
+        while index < source.endIndex {
+            let character = source[index]
+            let next = source.index(after: index)
+            let nextCharacter = next < source.endIndex ? source[next] : nil
+            if lineComment {
+                if character == "\n" || character == "\r" {
+                    lineComment = false
+                }
+            } else if blockCommentDepth > 0 {
+                if character == "/", nextCharacter == "*" {
+                    blockCommentDepth += 1
+                    index = source.index(after: next)
+                    continue
+                }
+                if character == "*", nextCharacter == "/" {
+                    blockCommentDepth -= 1
+                    index = source.index(after: next)
+                    continue
+                }
+            } else if character.isWhitespace {
+                // Keep scanning trivia.
+            } else if character == "/", nextCharacter == "*" {
+                blockCommentDepth = 1
+                index = source.index(after: next)
+                continue
+            } else if character == "/", nextCharacter == "/" {
+                lineComment = true
+                index = source.index(after: next)
+                continue
+            } else {
+                return character == "=" && nextCharacter != "="
+            }
+            index = next
+        }
+        return false
+    }
+
+    // Scan once and snapshot credential-like positions plus their line boundaries:
+    // rescanning each prefix would make a dense, 256 KiB source file quadratic.
+    // The snapshots also keep comment/string text from creating a safe exception
+    // or contributing a misleading unmatched parenthesis.
+    // ponytail: this intentionally recognizes only the lexical states needed by
+    // the credential exceptions; use SwiftSyntax if those exceptions grow.
+    private static func swiftLexicalPositions(
+        in source: String,
+        at positions: Set<String.Index>
+    ) -> [String.Index: SwiftLexicalPosition] {
+        var lineComment = false
+        var blockCommentDepth = 0
+        var literalDelimiter: SwiftLiteralDelimiter?
+        var unmatchedOpenParentheses: [String.Index] = []
+        var unmatchedOpenBraces: [String.Index] = []
+        var snapshots: [String.Index: SwiftLexicalPosition] = [:]
+        var index = source.startIndex
+
+        while index < source.endIndex {
+            if positions.contains(index) {
+                snapshots[index] = SwiftLexicalPosition(
+                    isInNormalCode: !lineComment && blockCommentDepth == 0 && literalDelimiter == nil,
+                    literalKind: literalDelimiter?.kind,
+                    openParenthesis: unmatchedOpenParentheses.last,
+                    openBrace: unmatchedOpenBraces.last
+                )
+            }
+            let character = source[index]
+            let nextIndex = source.index(after: index)
+            let nextCharacter = nextIndex < source.endIndex ? source[nextIndex] : nil
+
+            if lineComment {
+                lineComment = character != "\n" && character != "\r"
+                index = nextIndex
+                continue
+            }
+            if blockCommentDepth > 0 {
+                if character == "/", nextCharacter == "*" {
+                    blockCommentDepth += 1
+                    index = source.index(after: nextIndex)
+                } else if character == "*", nextCharacter == "/" {
+                    blockCommentDepth -= 1
+                    index = source.index(after: nextIndex)
+                } else {
+                    index = nextIndex
+                }
+                continue
+            }
+            if let delimiter = literalDelimiter {
+                if delimiter.kind == .string,
+                   delimiter.hashCount == 0,
+                   source[index] == "\\" {
+                    var cursor = index
+                    var backslashCount = 0
+                    while cursor < source.endIndex, source[cursor] == "\\" {
+                        backslashCount += 1
+                        cursor = source.index(after: cursor)
+                    }
+                    if let closingDelimiterEnd = literalDelimiterEnd(at: cursor, in: source, delimiter: delimiter) {
+                        // An even run leaves the quote unescaped; an odd run
+                        // consumes it as string content. Looking only at the
+                        // final backslash reverses this result for `"\\\\"`.
+                        if backslashCount.isMultiple(of: 2) {
+                            literalDelimiter = nil
+                        }
+                        index = closingDelimiterEnd
+                    } else {
+                        index = cursor
+                    }
+                } else if let escapedDelimiterEnd = escapedLiteralDelimiterEnd(at: index, in: source, delimiter: delimiter) {
+                    index = escapedDelimiterEnd
+                } else if let closingDelimiterEnd = literalDelimiterEnd(at: index, in: source, delimiter: delimiter) {
+                    literalDelimiter = nil
+                    index = closingDelimiterEnd
+                } else {
+                    index = nextIndex
+                }
+                continue
+            }
+
+            if character == "/", nextCharacter == "/" {
+                lineComment = true
+                index = source.index(after: nextIndex)
+            } else if character == "/", nextCharacter == "*" {
+                blockCommentDepth = 1
+                index = source.index(after: nextIndex)
+            } else if let delimiter = literalDelimiterStarting(at: index, in: source) {
+                literalDelimiter = delimiter
+                let delimiterLength = delimiter.kind == .regex
+                    ? 1 + delimiter.hashCount
+                    : (delimiter.isMultiline ? 3 : 1) + delimiter.hashCount
+                index = source.index(index, offsetBy: delimiterLength)
+            } else if character == "(" {
+                unmatchedOpenParentheses.append(index)
+                index = nextIndex
+            } else if character == ")" {
+                _ = unmatchedOpenParentheses.popLast()
+                index = nextIndex
+            } else if character == "{" {
+                unmatchedOpenBraces.append(index)
+                index = nextIndex
+            } else if character == "}" {
+                _ = unmatchedOpenBraces.popLast()
+                index = nextIndex
+            } else {
+                index = nextIndex
+            }
+        }
+
+        if positions.contains(source.endIndex) {
+            snapshots[source.endIndex] = SwiftLexicalPosition(
+                isInNormalCode: !lineComment && blockCommentDepth == 0 && literalDelimiter == nil,
+                literalKind: literalDelimiter?.kind,
+                openParenthesis: unmatchedOpenParentheses.last,
+                openBrace: unmatchedOpenBraces.last
+            )
+        }
+
+        return snapshots
+    }
+
+    private static func literalDelimiterStarting(at index: String.Index, in source: String) -> SwiftLiteralDelimiter? {
+        if source[index] == "\"" {
+            return SwiftLiteralDelimiter(kind: .string, hashCount: 0, isMultiline: source[index...].hasPrefix("\"\"\""))
+        }
+        if source[index] == "/", isBareSwiftRegexStart(at: index, in: source) {
+            return SwiftLiteralDelimiter(kind: .regex, hashCount: 0, isMultiline: false)
+        }
+        guard source[index] == "#" else {
+            return nil
+        }
+        var hashCount = 0
+        var cursor = index
+        while cursor < source.endIndex, source[cursor] == "#" {
+            hashCount += 1
+            cursor = source.index(after: cursor)
+        }
+        guard cursor < source.endIndex else {
+            return nil
+        }
+        if source[cursor] == "\"" {
+            return SwiftLiteralDelimiter(kind: .string, hashCount: hashCount, isMultiline: source[cursor...].hasPrefix("\"\"\""))
+        }
+        if source[cursor] == "/" {
+            return SwiftLiteralDelimiter(kind: .regex, hashCount: hashCount, isMultiline: true)
+        }
+        return nil
+    }
+
+    private static func isBareSwiftRegexStart(at index: String.Index, in source: String) -> Bool {
+        var cursor = index
+        while cursor > source.startIndex {
+            let previous = source.index(before: cursor)
+            let character = source[previous]
+            if character.isWhitespace {
+                cursor = previous
+                continue
+            }
+            if ["=", ":", "(", "[", "{", ",", "!", "?", ";"].contains(character) {
+                return true
+            }
+            guard character.isLetter || character == "_" else {
+                return false
+            }
+            var tokenStart = previous
+            while tokenStart > source.startIndex {
+                let beforeToken = source.index(before: tokenStart)
+                guard source[beforeToken].isLetter || source[beforeToken].isNumber || source[beforeToken] == "_" else {
+                    break
+                }
+                tokenStart = beforeToken
+            }
+            return ["await", "case", "in", "return", "throw", "try"].contains(String(source[tokenStart...previous]))
+        }
+        return true
+    }
+
+    private static func escapedLiteralDelimiterEnd(
+        at index: String.Index,
+        in source: String,
+        delimiter: SwiftLiteralDelimiter
+    ) -> String.Index? {
+        guard source[index] == "\\" else {
+            return nil
+        }
+        var cursor = source.index(after: index)
+        if delimiter.kind == .regex {
+            // Swift regex literals escape a potential `/<hashes>` terminator as
+            // `\/<hashes>`; raw strings instead put the hashes before the quote.
+            return literalDelimiterEnd(at: cursor, in: source, delimiter: delimiter)
+        }
+        for _ in 0..<delimiter.hashCount {
+            guard cursor < source.endIndex, source[cursor] == "#" else {
+                return nil
+            }
+            cursor = source.index(after: cursor)
+        }
+        return literalDelimiterEnd(at: cursor, in: source, delimiter: delimiter)
+    }
+
+    private static func literalDelimiterEnd(
+        at index: String.Index,
+        in source: String,
+        delimiter: SwiftLiteralDelimiter
+    ) -> String.Index? {
+        var cursor = index
+        let closingCharacter: Character = delimiter.kind == .regex ? "/" : "\""
+        for _ in 0..<(delimiter.kind == .regex ? 1 : (delimiter.isMultiline ? 3 : 1)) {
+            guard cursor < source.endIndex, source[cursor] == closingCharacter else {
+                return nil
+            }
+            cursor = source.index(after: cursor)
+        }
+        for _ in 0..<delimiter.hashCount {
+            guard cursor < source.endIndex, source[cursor] == "#" else {
+                return nil
+            }
+            cursor = source.index(after: cursor)
+        }
+        return cursor < source.endIndex && source[cursor] == "#" ? nil : cursor
+    }
+
+    private static func containsCJK(_ value: String) -> Bool {
+        value.unicodeScalars.contains(where: isCJK)
+    }
+
+    private static func sha256(_ value: String) -> String {
+        sha256(Data(value.utf8))
+    }
+
+    private static func sha256(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func boundedFileData(root: URL, relativePath: String) throws -> Data {
+        let rootDescriptor = Darwin.open(root.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard rootDescriptor >= 0 else {
+            throw DevelopmentRepositoryIndexError.fileReadUnavailable
+        }
+        defer { Darwin.close(rootDescriptor) }
+        let read = try boundedFileRead(rootDescriptor: rootDescriptor, relativePath: relativePath)
+        guard !read.isOversized else {
+            throw DevelopmentRepositoryIndexError.indexedContentTooLarge
+        }
+        return read.data
+    }
+
+    private static func boundedFileRead(rootDescriptor: Int32, relativePath: String) throws -> BoundedFileRead {
+        let components = relativePath.split(separator: "/").map(String.init)
+        guard !components.isEmpty else {
+            throw DevelopmentRepositoryFileError.invalidRelativePath
+        }
+        var directoryDescriptor = Darwin.dup(rootDescriptor)
+        guard directoryDescriptor >= 0 else {
+            // The root descriptor is fixed before manifest generation; without a
+            // duplicate we cannot guarantee every openat read stays in that inode.
+            throw DevelopmentRepositoryIndexError.fileReadUnavailable
+        }
+        defer { Darwin.close(directoryDescriptor) }
+
+        for component in components.dropLast() {
+            let nextDescriptor = Darwin.openat(
+                directoryDescriptor,
+                component,
+                O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW
+            )
+            guard nextDescriptor >= 0 else {
+                // A manifest cannot stably name a symlinked ancestor. Treat this
+                // as a post-manifest race rather than an intentional file exclusion.
+                throw DevelopmentRepositoryIndexError.fileReadUnavailable
+            }
+            Darwin.close(directoryDescriptor)
+            directoryDescriptor = nextDescriptor
+        }
+
+        let descriptor = Darwin.openat(
+            directoryDescriptor,
+            components[components.count - 1],
+            // A tracked pathname can be replaced with a FIFO after manifest
+            // creation. Nonblocking open lets fstat reject it without a writer.
+            O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW
+        )
+        guard descriptor >= 0 else {
+            throw errno == ELOOP
+                ? DevelopmentRepositoryFileError.symlinkNotAllowed
+                : DevelopmentRepositoryIndexError.fileReadUnavailable
+        }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        defer { try? handle.close() }
+        var descriptorState = stat()
+        guard Darwin.fstat(descriptor, &descriptorState) == 0 else {
+            throw DevelopmentRepositoryIndexError.fileReadUnavailable
+        }
+        guard (descriptorState.st_mode & S_IFMT) == S_IFREG else {
+            throw DevelopmentRepositoryIndexError.fileReadUnavailable
+        }
+        let data = try handle.read(upToCount: DevelopmentRepositoryFilePathPolicy.maximumContentBytes + 1) ?? Data()
+        return BoundedFileRead(
+            data: data,
+            isOversized: data.count > DevelopmentRepositoryFilePathPolicy.maximumContentBytes
+        )
+    }
+}
+
+public struct SQLiteCodebaseMemoryConnector: CodebaseMemoryConnector {
+    private let index: DevelopmentRepositoryIndex
+
+    public init(index: DevelopmentRepositoryIndex) {
+        self.index = index
+    }
+
+    public func search(_ request: CodebaseMemorySearchRequest) async throws -> [CodebaseMemorySnippet] {
+        try await index.search(query: request.query, workspace: request.workspace)
+    }
+}
+
+private struct IndexedFile: Sendable {
+    let relativePath: String
+    let byteCount: Int
+    let sha256: String
+    let contents: String
+    let cjkTerms: String
+}
+
+private struct BoundedFileRead {
+    let data: Data
+    let isOversized: Bool
+}
+
+private struct RepositorySelection: Sendable {
+    let path: String
+    let includesDescendants: Bool
+}
+
+private extension Array where Element == RepositorySelection {
+    func sqlClause(column: String) -> String {
+        guard !isEmpty else {
+            return ""
+        }
+        let clauses = map { selection in
+            selection.includesDescendants
+                ? "(\(column) = ? OR substr(\(column), 1, length(?)) = ?)"
+                : "\(column) = ?"
+        }
+        return " AND (\(clauses.joined(separator: " OR ")))"
+    }
+
+    var sqlParameters: [SQLiteValue] {
+        flatMap { selection in
+            guard selection.includesDescendants else {
+                return [SQLiteValue.text(selection.path)]
+            }
+            let prefix = selection.path + "/"
+            return [SQLiteValue.text(selection.path), .text(prefix), .text(prefix)]
+        }
+    }
+}
+
+enum GitManifestReader {
+    static let defaultExecutableURL = URL(fileURLWithPath: "/usr/bin/git")
+    private static let maximumExcludesOutputBytes = 4 * 1024
+    private static let excludesLookupTimeout: TimeInterval = 1
+
+    struct Entry {
+        let path: String
+        let isUnavailable: Bool
+    }
+
+    struct RootIdentity {
+        let device: dev_t
+        let inode: ino_t
+    }
+
+    static func paths(
+        at root: URL,
+        timeout: TimeInterval = 15,
+        executableURL: URL = defaultExecutableURL,
+        expectedRootIdentity: RootIdentity? = nil
+    ) throws -> [String] {
+        try manifestEntries(
+            at: root,
+            timeout: timeout,
+            executableURL: executableURL,
+            expectedRootIdentity: expectedRootIdentity
+        ).map(\.path)
+    }
+
+    static func entries(
+        at root: URL,
+        timeout: TimeInterval = 15,
+        executableURL: URL = defaultExecutableURL,
+        expectedRootIdentity: RootIdentity? = nil
+    ) throws -> [Entry] {
+        try manifestEntries(
+            at: root,
+            timeout: timeout,
+            executableURL: executableURL,
+            expectedRootIdentity: expectedRootIdentity
+        )
+    }
+
+    private static func manifestEntries(
+        at root: URL,
+        timeout: TimeInterval = 15,
+        executableURL: URL = defaultExecutableURL,
+        expectedRootIdentity: RootIdentity? = nil
+    ) throws -> [Entry] {
+        let output = try manifestData(
+            at: root,
+            arguments: ["ls-files", "--cached", "--others", "--deleted", "--stage", "-v", "-z", "--exclude-standard"],
+            timeout: timeout,
+            executableURL: executableURL,
+            expectedRootIdentity: expectedRootIdentity
+        )
+        var orderedPaths: [String] = []
+        var unavailableByPath: [String: Bool] = [:]
+        for record in nullTerminatedStrings(from: output) {
+            guard let parsed = parseManifestRecord(record) else {
+                throw DevelopmentRepositoryIndexError.gitManifestUnavailable
+            }
+            if let existing = unavailableByPath[parsed.path] {
+                unavailableByPath[parsed.path] = existing || parsed.isUnavailable
+            } else {
+                orderedPaths.append(parsed.path)
+                unavailableByPath[parsed.path] = parsed.isUnavailable
+            }
+        }
+        guard orderedPaths.count <= DevelopmentRepositoryIndex.maximumFiles else {
+            throw DevelopmentRepositoryIndexError.tooManyFiles
+        }
+        return orderedPaths.map { Entry(path: $0, isUnavailable: unavailableByPath[$0] == true) }
+    }
+
+    private static func parseManifestRecord(_ record: String) -> Entry? {
+        if record.hasPrefix("? ") {
+            return Entry(path: String(record.dropFirst(2)), isUnavailable: false)
+        }
+        guard let separator = record.firstIndex(of: "\t") else {
+            return nil
+        }
+        let fields = record[..<separator].split(separator: " ")
+        guard fields.count >= 2 else {
+            return nil
+        }
+        let tag = fields[0].uppercased()
+        let path = String(record[record.index(after: separator)...])
+        return Entry(path: path, isUnavailable: tag == "R" || tag == "S" || fields[1] == "160000")
+    }
+
+    private static func nullTerminatedStrings(from output: ManifestData) -> [String] {
+        output.data.split(separator: 0, omittingEmptySubsequences: true).compactMap { String(data: $0, encoding: .utf8) }
+    }
+
+    private static func manifestData(
+        at root: URL,
+        arguments: [String],
+        timeout: TimeInterval = 15,
+        executableURL: URL = defaultExecutableURL,
+        expectedRootIdentity: RootIdentity? = nil
+    ) throws -> ManifestData {
+        #if os(iOS) || targetEnvironment(macCatalyst)
+        // Repository manifests require a local git subprocess, which mobile
+        // targets intentionally do not ship. Never fall back to a filesystem walk.
+        throw DevelopmentRepositoryIndexError.gitManifestUnsupported
+        #else
+        let rootIdentity = try expectedRootIdentity ?? currentRootIdentity(at: root)
+        let process = Process()
+        let standardOutput = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        // This read-only manifest must not inherit repository or user hooks.
+        // In particular, core.fsmonitor can execute a repo-configured command.
+        let options = [
+            "-c", "core.fsmonitor=false",
+            "-c", "core.hooksPath=/dev/null",
+        ]
+        var manifestArguments = arguments
+        if let globalExcludesFile = try globalExcludesFile(executableURL: executableURL) {
+            // `-c core.excludesFile` would replace the repository-local setting.
+            // Add the global patterns as an ls-files input instead, retaining both
+            // ignore sources while global hooks and commands remain isolated.
+            manifestArguments.append("--exclude-from=\(globalExcludesFile)")
+        }
+        if let systemExcludesFile = try systemExcludesFile(executableURL: executableURL) {
+            manifestArguments.append("--exclude-from=\(systemExcludesFile)")
+        }
+        // Process holds `.` as its cwd across exec. Verify that inode inside the
+        // child before invoking git so an ABA path replacement cannot redirect a
+        // valid parent-side check to another workspace.
+        process.arguments = [
+            "-c",
+            "actual=$(/usr/bin/stat -f '%d:%i' .) || exit 125\n[ \"$actual\" = \"$1\" ] || exit 125\nshift\nexec \"$@\"",
+            "repository-manifest",
+            "\(rootIdentity.device):\(rootIdentity.inode)",
+            executableURL.path,
+        ] + options + manifestArguments
+        process.currentDirectoryURL = root
+        process.standardOutput = standardOutput
+        process.standardError = FileHandle.nullDevice
+        var environment = [
+            "PATH": "/usr/bin:/bin",
+            "HOME": "/nonexistent",
+            "XDG_CONFIG_HOME": "/nonexistent",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+        ]
+        // Keep global/system config isolated, but retain user path expansion
+        // for repository-local core.excludesFile values such as ~/.config/… .
+        let inheritedEnvironment = ProcessInfo.processInfo.environment
+        for key in ["HOME", "XDG_CONFIG_HOME"] {
+            if let value = inheritedEnvironment[key], !value.isEmpty {
+                environment[key] = value
+            }
+        }
+        process.environment = environment
+        let result = try boundedGitOutput(
+            process: process,
+            standardOutput: standardOutput,
+            timeout: timeout,
+            limit: DevelopmentRepositoryIndex.maximumManifestBytes
+        )
+        guard !result.output.exceeded else {
+            throw DevelopmentRepositoryIndexError.manifestTooLarge
+        }
+        guard result.terminationStatus == 0 else {
+            throw DevelopmentRepositoryIndexError.gitManifestUnavailable
+        }
+        return result.output
+        #endif
+    }
+
+    #if !(os(iOS) || targetEnvironment(macCatalyst))
+    private static func currentRootIdentity(at root: URL) throws -> RootIdentity {
+        var state = stat()
+        guard Darwin.lstat(root.path, &state) == 0, (state.st_mode & S_IFMT) == S_IFDIR else {
+            throw DevelopmentRepositoryIndexError.gitManifestUnavailable
+        }
+        return RootIdentity(device: state.st_dev, inode: state.st_ino)
+    }
+    #endif
+
+    #if !(os(iOS) || targetEnvironment(macCatalyst))
+    private static func globalExcludesFile(executableURL: URL) throws -> String? {
+        var environment = [
+            "PATH": "/usr/bin:/bin",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+        ]
+        let inherited = ProcessInfo.processInfo.environment
+        for key in ["HOME", "XDG_CONFIG_HOME"] {
+            if let value = inherited[key] {
+                environment[key] = value
+            }
+        }
+        // This lookup reads only core.excludesFile; the manifest subprocess
+        // still replaces global config with /dev/null before listing files.
+        if let globalConfig = inherited["GIT_CONFIG_GLOBAL"], !globalConfig.isEmpty {
+            environment["GIT_CONFIG_GLOBAL"] = globalConfig
+        }
+        if let configured = try configuredExcludesFile(
+            arguments: ["config", "--global", "--path", "--get", "core.excludesFile"],
+            environment: environment,
+            executableURL: executableURL
+        ) {
+            return configured
+        }
+        return defaultGlobalExcludesFile(in: inherited)
+    }
+
+    private static func systemExcludesFile(executableURL: URL) throws -> String? {
+        let inherited = ProcessInfo.processInfo.environment
+        var environment = [
+            "PATH": "/usr/bin:/bin",
+            "HOME": "/nonexistent",
+            "XDG_CONFIG_HOME": "/nonexistent",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0",
+        ]
+        if let systemConfig = inherited["GIT_CONFIG_SYSTEM"], !systemConfig.isEmpty {
+            environment["GIT_CONFIG_SYSTEM"] = systemConfig
+        }
+        // Read only the system ignore path, then disable all system config for
+        // the manifest itself so hooks and fsmonitor commands remain unreachable.
+        return try configuredExcludesFile(
+            arguments: ["config", "--system", "--path", "--get", "core.excludesFile"],
+            environment: environment,
+            executableURL: executableURL
+        )
+    }
+
+    private static func configuredExcludesFile(
+        arguments: [String],
+        environment: [String: String],
+        executableURL: URL
+    ) throws -> String? {
+        let process = Process()
+        let standardOutput = Pipe()
+        process.executableURL = executableURL
+        process.arguments = arguments
+        process.standardOutput = standardOutput
+        process.standardError = FileHandle.nullDevice
+        process.environment = environment
+        let result = try boundedGitOutput(
+            process: process,
+            standardOutput: standardOutput,
+            timeout: excludesLookupTimeout,
+            limit: maximumExcludesOutputBytes
+        )
+        if result.terminationStatus == 1, result.output.data.isEmpty {
+            return nil
+        }
+        guard result.terminationStatus == 0, !result.output.exceeded,
+              var path = String(data: result.output.data, encoding: .utf8) else {
+            throw DevelopmentRepositoryIndexError.gitManifestUnavailable
+        }
+        if path.last == "\n" {
+            path.removeLast()
+            if path.last == "\r" {
+                path.removeLast()
+            }
+        }
+        guard !path.isEmpty, !path.contains("\n"), !path.contains("\r") else {
+            throw DevelopmentRepositoryIndexError.gitManifestUnavailable
+        }
+        return normalizedExistingExcludesFile(path: path)
+    }
+
+    private static func defaultGlobalExcludesFile(in environment: [String: String]) -> String? {
+        let path: String?
+        if let xdgConfigHome = environment["XDG_CONFIG_HOME"], !xdgConfigHome.isEmpty {
+            path = URL(fileURLWithPath: xdgConfigHome, isDirectory: true)
+                .appendingPathComponent("git/ignore").path
+        } else if let home = environment["HOME"], !home.isEmpty {
+            path = URL(fileURLWithPath: home, isDirectory: true)
+                .appendingPathComponent(".config/git/ignore").path
+        } else {
+            path = nil
+        }
+        guard let path else {
+            return nil
+        }
+        return normalizedExistingExcludesFile(path: path)
+    }
+
+    private static func normalizedExistingExcludesFile(path: String) -> String? {
+        let normalizedPath = URL(fileURLWithPath: path).standardizedFileURL.path
+        return FileManager.default.fileExists(atPath: normalizedPath) ? normalizedPath : nil
+    }
+
+    private static func boundedGitOutput(
+        process: Process,
+        standardOutput: Pipe,
+        timeout: TimeInterval,
+        limit: Int
+    ) throws -> (output: ManifestData, terminationStatus: Int32) {
+        try Task.checkCancellation()
+        let result = ProcessResult()
+        let group = DispatchGroup()
+        group.enter()
+        process.terminationHandler = { _ in group.leave() }
+        do {
+            try process.run()
+        } catch {
+            throw DevelopmentRepositoryIndexError.gitManifestUnavailable
+        }
+        // Drain concurrently because either git command can fill a pipe before exit.
+        group.enter()
+        DispatchQueue.global().async {
+            result.output = boundedManifestData(from: standardOutput.fileHandleForReading, limit: limit)
+            if result.output.exceeded {
+                process.terminate()
+            }
+            group.leave()
+        }
+
+        func terminateAndDrain() {
+            if process.isRunning {
+                process.terminate()
+            }
+            if group.wait(timeout: .now() + 1) == .timedOut, process.isRunning {
+                _ = Darwin.kill(process.processIdentifier, SIGKILL)
+            }
+            try? standardOutput.fileHandleForReading.close()
+            _ = group.wait(timeout: .now() + 1)
+        }
+
+        let deadline = DispatchTime.now() + timeout
+        while true {
+            do {
+                try Task.checkCancellation()
+            } catch {
+                terminateAndDrain()
+                throw error
+            }
+            let now = DispatchTime.now()
+            guard now < deadline else {
+                terminateAndDrain()
+                throw DevelopmentRepositoryIndexError.gitManifestUnavailable
+            }
+            // A short bounded wait keeps the synchronous Process API responsive
+            // without spinning while its output is drained on another queue.
+            if group.wait(timeout: min(deadline, now + 0.05)) == .success {
+                break
+            }
+        }
+        try Task.checkCancellation()
+        return (result.output, process.terminationStatus)
+    }
+    #endif
+}
+
+private final class ProcessResult: @unchecked Sendable {
+    var output = ManifestData(data: Data(), exceeded: false)
+}
+
+private struct ManifestData: Sendable {
+    let data: Data
+    let exceeded: Bool
+}
+
+private func boundedManifestData(from handle: FileHandle, limit: Int) -> ManifestData {
+    var data = Data()
+    while data.count <= limit {
+        guard let chunk = try? handle.read(upToCount: min(64 * 1024, limit + 1 - data.count)),
+              !chunk.isEmpty else {
+            return ManifestData(data: data, exceeded: false)
+        }
+        data.append(chunk)
+    }
+    return ManifestData(data: data, exceeded: true)
+}

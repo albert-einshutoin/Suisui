@@ -6495,6 +6495,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("ax_wait_for_owned_app_pid"))
         XCTAssertTrue(script.contains("SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1"))
         XCTAssertTrue(script.contains("SQLITE_BUSY_TIMEOUT_MS=\"${SUISUI_RUNTIME_ACCESSIBLE_CRUD_SQLITE_BUSY_TIMEOUT_MS:-5000}\""))
+        XCTAssertTrue(script.contains("SQLITE3=\"${SQLITE3:-/usr/bin/sqlite3}\""))
+        XCTAssertFalse(script.contains("SQLITE3=\"${SQLITE3:-sqlite3}\""))
         XCTAssertTrue(script.contains("DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS=\"${SUISUI_RUNTIME_ACCESSIBLE_CRUD_DESTRUCTIVE_POSTCONDITION_TIMEOUT_SECONDS:-10}\""))
         XCTAssertTrue(script.contains("FORM_POSTCONDITION_TIMEOUT_SECONDS=\"${SUISUI_RUNTIME_ACCESSIBLE_CRUD_FORM_POSTCONDITION_TIMEOUT_SECONDS:-10}\""))
         XCTAssertTrue(script.contains("MAX_LAUNCH_ATTEMPTS=2"))
@@ -8287,6 +8289,40 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("set -x"))
     }
 
+    func testReleaseLaunchPerformanceUsesAnOverrideableSystemSQLiteCLIForFTSTriggers() throws {
+        let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
+
+        XCTAssertTrue(script.contains("SQLITE3=\"${SQLITE3:-/usr/bin/sqlite3}\""))
+        XCTAssertTrue(script.contains("\"$SQLITE3\" -batch -noheader \"$PERFORMANCE_DATABASE_PATH\""))
+        XCTAssertTrue(script.contains("if ! \"$SQLITE3\" \"$PERFORMANCE_DATABASE_PATH\" <<'SQL'"))
+        XCTAssertFalse(script.contains("$(sqlite3 -batch -noheader"))
+        XCTAssertFalse(script.contains("if ! sqlite3 \"$PERFORMANCE_DATABASE_PATH\""))
+    }
+
+    func testRuntimeSmokeScriptsPinSQLiteCLIToSystemByDefault() throws {
+        let scriptDirectory = packageRoot().appendingPathComponent("script", isDirectory: true)
+        let scripts = try FileManager.default.contentsOfDirectory(
+            at: scriptDirectory,
+            includingPropertiesForKeys: nil
+        )
+        .filter { $0.pathExtension == "sh" }
+        .sorted { $0.path < $1.path }
+
+        var sqliteScripts: [(path: String, contents: String)] = []
+        for scriptURL in scripts {
+            let contents = try String(contentsOf: scriptURL, encoding: .utf8)
+            if contents.contains("SQLITE3=") {
+                sqliteScripts.append((scriptURL.lastPathComponent, contents))
+            }
+        }
+
+        XCTAssertFalse(sqliteScripts.isEmpty)
+        for script in sqliteScripts {
+            XCTAssertTrue(script.contents.contains("SQLITE3=\"${SQLITE3:-/usr/bin/sqlite3}\""), script.path)
+            XCTAssertFalse(script.contents.contains("SQLITE3=\"${SQLITE3:-sqlite3}\""), script.path)
+        }
+    }
+
     func testReleaseLaunchPerformanceWaitsForBoundedRunnerQuiescenceBeforeMeasuring() throws {
         let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
 
@@ -8374,7 +8410,7 @@ final class ReleasePipelineTests: XCTestCase {
         let schemaSource = String(script[schemaFunction.lowerBound..<schemaFunctionEnd.lowerBound])
         XCTAssertLessThan(
             try XCTUnwrap(schemaSource.range(of: "ax_process_matches_identity")).lowerBound,
-            try XCTUnwrap(schemaSource.range(of: "sqlite3 -batch -noheader")).lowerBound
+            try XCTUnwrap(schemaSource.range(of: "\"$SQLITE3\" -batch -noheader")).lowerBound
         )
 
         let preparationFunction = try XCTUnwrap(script.range(of: "prepare_production_fixture()"))
@@ -9061,6 +9097,8 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(script.contains("APP_BINARY=\"$APP_BUNDLE/Contents/MacOS/$APP_NAME\""))
         XCTAssertTrue(script.contains("DEFAULT_DATABASE_PATH=\"$ROOT_DIR/.tmp/voiceover-review/Suisui-voiceover-review.sqlite\""))
+        XCTAssertTrue(script.contains("SQLITE3=\"${SQLITE3:-/usr/bin/sqlite3}\""))
+        XCTAssertFalse(script.contains("SQLITE3=\"${SQLITE3:-sqlite3}\""))
         XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
         XCTAssertTrue(script.contains("/usr/bin/nohup /usr/bin/env \"${launch_environment[@]}\" \"$APP_BINARY\" >/dev/null 2>&1 &"))
         XCTAssertTrue(script.contains("app_pid=$!"))
@@ -12788,6 +12826,7 @@ final class ReleasePipelineTests: XCTestCase {
         let manifest = try readPackageFile("rust/kokoro-helper/Cargo.toml")
         let readme = try readPackageFile("rust/kokoro-helper/README.md")
         let workflow = try readPackageFile(".github/workflows/ci.yml")
+        let rustRunner = try readPackageFile("ci/verify-rust-boundaries.sh")
         let gitignore = try readPackageFile(".gitignore")
         let productionEntrypoints = try [
             "Package.swift",
@@ -12806,11 +12845,38 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(readme.contains("G2P実装や辞書を依存グラフへ含めず"))
         XCTAssertTrue(gitignore.contains("/rust/kokoro-helper/target/"))
         XCTAssertFalse(productionEntrypoints.contains("rust/kokoro-helper"))
-        XCTAssertTrue(workflow.contains("cargo fmt --manifest-path rust/kokoro-helper/Cargo.toml --check"))
-        XCTAssertTrue(workflow.contains("cargo test --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features"))
-        XCTAssertTrue(workflow.contains("cargo clippy --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features -- -D warnings"))
-        XCTAssertTrue(workflow.contains("KOKORO_RUST_RESULT: ${{ needs.kokoro-rust-poc.result }}"))
+        XCTAssertTrue(workflow.contains("./ci/verify-rust-boundaries.sh --require-cargo"))
+        XCTAssertTrue(rustRunner.contains("cargo fmt --manifest-path rust/kokoro-helper/Cargo.toml --check"))
+        XCTAssertTrue(rustRunner.contains("cargo test --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features"))
+        XCTAssertTrue(rustRunner.contains("cargo clippy --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features -- -D warnings"))
+        XCTAssertTrue(workflow.contains("RUST_BOUNDARY_RESULT: ${{ needs.kokoro-rust-poc.result }}"))
         XCTAssertTrue(workflow.contains("failure_reason=rust-boundary-gate-did-not-succeed"))
+    }
+
+    func testRustEmbeddingPoCIsSourceOnlyAndCoveredByRustBoundaryCI() throws {
+        let manifest = try readPackageFile("rust/embedding-helper/Cargo.toml")
+        let readme = try readPackageFile("rust/embedding-helper/README.md")
+        let workflow = try readPackageFile(".github/workflows/ci.yml")
+        let rustRunner = try readPackageFile("ci/verify-rust-boundaries.sh")
+        let gitignore = try readPackageFile(".gitignore")
+        let productionEntrypoints = try [
+            "Package.swift",
+            "script/build_and_run.sh",
+            "script/package_release.sh",
+            "script/sign_app.sh",
+            "script/verify_release_architecture.sh"
+        ].map(readPackageFile).joined(separator: "\n")
+
+        XCTAssertTrue(manifest.contains("fastembed"))
+        XCTAssertTrue(readme.contains("source-only"))
+        XCTAssertTrue(readme.contains("384"))
+        XCTAssertTrue(readme.contains("未接続"))
+        XCTAssertTrue(gitignore.contains("/rust/embedding-helper/target/"))
+        XCTAssertFalse(productionEntrypoints.contains("rust/embedding-helper"))
+        XCTAssertTrue(workflow.contains("./ci/verify-rust-boundaries.sh --require-cargo"))
+        XCTAssertTrue(rustRunner.contains("cargo fmt --manifest-path rust/embedding-helper/Cargo.toml --check"))
+        XCTAssertTrue(rustRunner.contains("cargo test --manifest-path rust/embedding-helper/Cargo.toml --locked --all-targets --all-features"))
+        XCTAssertTrue(rustRunner.contains("cargo clippy --manifest-path rust/embedding-helper/Cargo.toml --locked --all-targets --all-features -- -D warnings"))
     }
 
     func testKokoroRuntimeWrapperFailsClosedBeforeImportForUnsafeRuntimeInputs() throws {

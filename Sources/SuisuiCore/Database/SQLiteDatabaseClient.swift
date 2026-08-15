@@ -2191,6 +2191,170 @@ public enum CoreMigrations {
                     """
                 )
             },
+            DatabaseMigration(
+                id: "0036_create_task_and_knowledge_content_search"
+            ) { connection in
+                try connection.execute(
+                    """
+                    CREATE VIRTUAL TABLE tasks_fts USING fts5(
+                        title,
+                        detail,
+                        content='tasks',
+                        content_rowid='id'
+                    );
+
+                    INSERT INTO tasks_fts(tasks_fts) VALUES ('rebuild');
+
+                    CREATE TRIGGER tasks_fts_after_insert
+                    AFTER INSERT ON tasks BEGIN
+                        INSERT INTO tasks_fts(rowid, title, detail)
+                        VALUES (new.id, new.title, new.detail);
+                    END;
+
+                    CREATE TRIGGER tasks_fts_after_delete
+                    AFTER DELETE ON tasks BEGIN
+                        INSERT INTO tasks_fts(tasks_fts, rowid, title, detail)
+                        VALUES ('delete', old.id, old.title, old.detail);
+                    END;
+
+                    CREATE TRIGGER tasks_fts_after_content_update
+                    AFTER UPDATE OF title, detail ON tasks BEGIN
+                        INSERT INTO tasks_fts(tasks_fts, rowid, title, detail)
+                        VALUES ('delete', old.id, old.title, old.detail);
+                        INSERT INTO tasks_fts(rowid, title, detail)
+                        VALUES (new.id, new.title, new.detail);
+                    END;
+
+                    -- Keep word FTS for its exact-token ranking, and add a
+                    -- separate Unicode trigram index only for infix recovery.
+                    CREATE VIRTUAL TABLE tasks_trigram_fts USING fts5(
+                        title,
+                        detail,
+                        content='tasks',
+                        content_rowid='id',
+                        tokenize='trigram'
+                    );
+
+                    INSERT INTO tasks_trigram_fts(tasks_trigram_fts) VALUES ('rebuild');
+
+                    CREATE TRIGGER tasks_trigram_fts_after_insert
+                    AFTER INSERT ON tasks BEGIN
+                        INSERT INTO tasks_trigram_fts(rowid, title, detail)
+                        VALUES (new.id, new.title, new.detail);
+                    END;
+
+                    CREATE TRIGGER tasks_trigram_fts_after_delete
+                    AFTER DELETE ON tasks BEGIN
+                        INSERT INTO tasks_trigram_fts(tasks_trigram_fts, rowid, title, detail)
+                        VALUES ('delete', old.id, old.title, old.detail);
+                    END;
+
+                    CREATE TRIGGER tasks_trigram_fts_after_content_update
+                    AFTER UPDATE OF title, detail ON tasks BEGIN
+                        INSERT INTO tasks_trigram_fts(tasks_trigram_fts, rowid, title, detail)
+                        VALUES ('delete', old.id, old.title, old.detail);
+                        INSERT INTO tasks_trigram_fts(rowid, title, detail)
+                        VALUES (new.id, new.title, new.detail);
+                    END;
+
+                    DROP TABLE knowledge_frames_fts;
+
+                    CREATE VIRTUAL TABLE knowledge_frames_fts USING fts5(
+                        name,
+                        body,
+                        content='knowledge_frames',
+                        content_rowid='id'
+                    );
+
+                    -- External-content FTS rows must mirror the base table's
+                    -- columns. Trigger terms stay in the trigram index below.
+                    INSERT INTO knowledge_frames_fts(rowid, name, body)
+                    SELECT id, name, body
+                    FROM knowledge_frames;
+
+                    CREATE VIRTUAL TABLE knowledge_frames_trigram_fts USING fts5(
+                        name,
+                        body,
+                        tokenize='trigram'
+                    );
+
+                    INSERT INTO knowledge_frames_trigram_fts(rowid, name, body)
+                    SELECT id, name, body || char(10) || triggers_json
+                    FROM knowledge_frames;
+
+                    CREATE TRIGGER knowledge_frames_trigram_fts_after_insert
+                    AFTER INSERT ON knowledge_frames BEGIN
+                        INSERT INTO knowledge_frames_trigram_fts(rowid, name, body)
+                        VALUES (new.id, new.name, new.body || char(10) || new.triggers_json);
+                    END;
+
+                    CREATE TRIGGER knowledge_frames_trigram_fts_after_delete
+                    AFTER DELETE ON knowledge_frames BEGIN
+                        DELETE FROM knowledge_frames_trigram_fts WHERE rowid = old.id;
+                    END;
+
+                    CREATE TRIGGER knowledge_frames_trigram_fts_after_content_update
+                    AFTER UPDATE OF name, body, triggers_json ON knowledge_frames BEGIN
+                        DELETE FROM knowledge_frames_trigram_fts WHERE rowid = old.id;
+                        INSERT INTO knowledge_frames_trigram_fts(rowid, name, body)
+                        VALUES (new.id, new.name, new.body || char(10) || new.triggers_json);
+                    END;
+                    """
+                )
+            },
+            DatabaseMigration(
+                id: "0037_create_codebase_repository_index"
+            ) { connection in
+                try connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS codebase_index_files (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        workspace_key TEXT NOT NULL,
+                        relative_path TEXT NOT NULL,
+                        byte_count INTEGER NOT NULL,
+                        sha256 TEXT NOT NULL,
+                        contents TEXT NOT NULL,
+                        -- CJK 1/2-gram tokens keep short substring queries on FTS.
+                        cjk_terms TEXT NOT NULL,
+                        -- Generation lets refresh atomically publish a complete replacement snapshot.
+                        generation INTEGER NOT NULL,
+                        UNIQUE(workspace_key, relative_path)
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_codebase_index_files_workspace_generation
+                    ON codebase_index_files(workspace_key, generation);
+
+                    CREATE VIRTUAL TABLE codebase_index_files_fts USING fts5(
+                        relative_path,
+                        contents,
+                        cjk_terms,
+                        content='codebase_index_files',
+                        content_rowid='id'
+                    );
+
+                    CREATE TRIGGER codebase_index_files_fts_after_insert
+                    AFTER INSERT ON codebase_index_files BEGIN
+                        INSERT INTO codebase_index_files_fts(rowid, relative_path, contents, cjk_terms)
+                        VALUES (new.id, new.relative_path, new.contents, new.cjk_terms);
+                    END;
+
+                    CREATE TRIGGER codebase_index_files_fts_after_delete
+                    AFTER DELETE ON codebase_index_files BEGIN
+                        INSERT INTO codebase_index_files_fts(codebase_index_files_fts, rowid, relative_path, contents, cjk_terms)
+                        VALUES ('delete', old.id, old.relative_path, old.contents, old.cjk_terms);
+                    END;
+
+                    CREATE TRIGGER codebase_index_files_fts_after_content_update
+                    AFTER UPDATE OF relative_path, contents, cjk_terms ON codebase_index_files
+                    WHEN old.relative_path != new.relative_path OR old.contents != new.contents OR old.cjk_terms != new.cjk_terms BEGIN
+                        INSERT INTO codebase_index_files_fts(codebase_index_files_fts, rowid, relative_path, contents, cjk_terms)
+                        VALUES ('delete', old.id, old.relative_path, old.contents, old.cjk_terms);
+                        INSERT INTO codebase_index_files_fts(rowid, relative_path, contents, cjk_terms)
+                        VALUES (new.id, new.relative_path, new.contents, new.cjk_terms);
+                    END;
+                    """
+                )
+            },
         ]
     }
 }

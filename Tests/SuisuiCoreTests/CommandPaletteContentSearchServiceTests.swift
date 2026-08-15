@@ -49,6 +49,55 @@ final class CommandPaletteContentSearchServiceTests: XCTestCase {
         XCTAssertEqual(matches[0].content, "Renew passport before summer")
     }
 
+    func testJapaneseTaskContentSearchMatchesTextInTheMiddleOfATitle() throws {
+        let connection = try migratedConnection()
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let service = CommandPaletteContentSearchService(
+            taskStore: taskStore,
+            knowledgeFrameStore: SQLiteKnowledgeFrameStore(connection: connection)
+        )
+        let task = try taskStore.create(title: "請求書リリース確認")
+
+        XCTAssertEqual(
+            service.search(query: "リリース").map(\.source),
+            [.task(id: task.id, projectID: nil)]
+        )
+    }
+
+    func testTaskContentSearchKeepsLiteralSubstringSemanticsWhenFTSHasNoWordHit() throws {
+        let connection = try migratedConnection()
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let service = CommandPaletteContentSearchService(
+            taskStore: taskStore,
+            knowledgeFrameStore: SQLiteKnowledgeFrameStore(connection: connection)
+        )
+        let task = try taskStore.create(title: "Prepare invoice report")
+
+        XCTAssertEqual(
+            service.search(query: "voice").map(\.source),
+            [.task(id: task.id, projectID: nil)]
+        )
+    }
+
+    func testTaskContentSearchCompletesLiteralSubstringsAlongsideFTSHits() throws {
+        let connection = try migratedConnection()
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let service = CommandPaletteContentSearchService(
+            taskStore: taskStore,
+            knowledgeFrameStore: SQLiteKnowledgeFrameStore(connection: connection)
+        )
+        let substringTask = try taskStore.create(title: "Prepare invoice report")
+        let ftsTask = try taskStore.create(title: "Record voice memo")
+
+        XCTAssertEqual(
+            service.search(query: "voice", limit: 2).map(\.source),
+            [
+                .task(id: ftsTask.id, projectID: nil),
+                .task(id: substringTask.id, projectID: nil),
+            ]
+        )
+    }
+
     func testCompletedTasksAreExcluded() throws {
         let connection = try migratedConnection()
         let taskStore = SQLiteTaskStore(connection: connection)
@@ -128,6 +177,25 @@ final class CommandPaletteContentSearchServiceTests: XCTestCase {
             [.task(id: progressTask.id, projectID: nil)]
         )
         XCTAssertTrue(service.search(query: "0_ done").isEmpty)
+    }
+
+    func testTaskContentSearchFiltersTokenizedFTSCandidatesBeforeUsingItsLimit() throws {
+        let connection = try migratedConnection()
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let literalTask = try taskStore.create(
+            title: "Migration",
+            detail: "Roughly 50% done as of Friday"
+        )
+        _ = try taskStore.create(title: "Shortcut", detail: "Roughly 50 done as of Friday")
+        let service = CommandPaletteContentSearchService(
+            taskStore: taskStore,
+            knowledgeFrameStore: SQLiteKnowledgeFrameStore(connection: connection)
+        )
+
+        XCTAssertEqual(
+            service.search(query: "50% done", limit: 1).map(\.source),
+            [.task(id: literalTask.id, projectID: nil)]
+        )
     }
 
     func testShortQueriesReturnNothing() throws {
