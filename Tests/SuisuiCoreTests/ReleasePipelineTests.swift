@@ -8299,6 +8299,23 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("if ! sqlite3 \"$PERFORMANCE_DATABASE_PATH\""))
     }
 
+    func testRuntimeSmokeScriptsPinSQLiteCLIToSystemByDefault() throws {
+        let scripts = [
+            "script/check_runtime_development_pr_smoke.sh",
+            "script/check_project_board_header_layout_smoke.sh",
+            "script/check_runtime_voice_review_smoke.sh",
+            "script/check_runtime_today_complete_smoke.sh",
+            "script/check_layout_stability_smoke.sh",
+            "script/check_runtime_today_production_route_smoke.sh"
+        ]
+
+        for path in scripts {
+            let script = try readPackageFile(path)
+            XCTAssertTrue(script.contains("SQLITE3=\"${SQLITE3:-/usr/bin/sqlite3}\""), path)
+            XCTAssertFalse(script.contains("SQLITE3=\"${SQLITE3:-sqlite3}\""), path)
+        }
+    }
+
     func testReleaseLaunchPerformanceWaitsForBoundedRunnerQuiescenceBeforeMeasuring() throws {
         let script = try readPackageFile("script/check_release_launch_performance_smoke.sh")
 
