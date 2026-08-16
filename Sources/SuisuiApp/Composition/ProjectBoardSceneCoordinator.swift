@@ -33,6 +33,7 @@ final class ProjectBoardSceneCoordinator: ObservableObject {
 
     private var state = ProjectBoardSceneNavigationState()
     private var applicationAcknowledgements = ProjectBoardSceneApplicationAcknowledgements()
+    private var registeredSceneIDs: [UUID] = []
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -41,6 +42,9 @@ final class ProjectBoardSceneCoordinator: ObservableObject {
 
     func register(sceneID: UUID) {
         state.register(sceneID: sceneID)
+        if !registeredSceneIDs.contains(sceneID) {
+            registeredSceneIDs.append(sceneID)
+        }
         // SwiftUI can evaluate Commands before the backing NSWindow posts its
         // first key notification. Seed only the first registered board; window
         // notifications remain authoritative once multiple scenes exist.
@@ -52,12 +56,20 @@ final class ProjectBoardSceneCoordinator: ObservableObject {
 
     func unregister(sceneID: UUID) {
         state.unregister(sceneID: sceneID)
+        registeredSceneIDs.removeAll { $0 == sceneID }
         if activeSceneID == sceneID {
-            activeSceneID = nil
+            // Commands remain usable when the key board closes while a utility
+            // window has focus and another registered board stays open.
+            activeSceneID = registeredSceneIDs.last
         }
     }
 
     func markActive(sceneID: UUID) {
+        guard let index = registeredSceneIDs.firstIndex(of: sceneID) else {
+            return
+        }
+        registeredSceneIDs.remove(at: index)
+        registeredSceneIDs.append(sceneID)
         activeSceneID = sceneID
     }
 
