@@ -150,6 +150,28 @@ struct ProjectBoardWindowStateBridge: NSViewRepresentable {
                 }
             })
             observers.append(center.addObserver(
+                forName: .suisuiProjectBoardShortcutRequested,
+                object: nil,
+                queue: .main
+            ) { [weak self, weak window] notification in
+                guard let requestedSceneID = (
+                    notification.object as? ProjectBoardShortcutRequest
+                )?.sceneID else {
+                    return
+                }
+                MainActor.assumeIsolated {
+                    guard let self,
+                          let window,
+                          requestedSceneID == self.sceneID else {
+                        return
+                    }
+                    if window.isMiniaturized {
+                        window.deminiaturize(nil)
+                    }
+                    window.makeKeyAndOrderFront(nil)
+                }
+            })
+            observers.append(center.addObserver(
                 forName: NSWindow.willCloseNotification,
                 object: window,
                 queue: .main
