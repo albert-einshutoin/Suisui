@@ -134,6 +134,7 @@ mkdir -p "$ROOT_DIR/.tmp"
 WORK_DIR="$(mktemp -d "$ROOT_DIR/.tmp/suisui-mcp-compliance.XXXXXX")"
 EVIDENCE_FILE="$WORK_DIR/evidence.md"
 trap 'rm -rf "$WORK_DIR"' EXIT
+mkdir -p "$WORK_DIR/home" "$WORK_DIR/tmp"
 
 if [[ "$CUSTOM_INSPECTOR" == "0" ]]; then
   printf '{"private":true}\n' >"$WORK_DIR/package.json"
@@ -141,24 +142,9 @@ if [[ "$CUSTOM_INSPECTOR" == "0" ]]; then
   mkdir -p "$WORK_DIR/npm-cache" "$WORK_DIR/npm-prefix"
   INSPECTOR_COMMAND=(
     /usr/bin/env
-    -u npm_config_registry
-    -u NPM_CONFIG_REGISTRY
-    -u npm_config_userconfig
-    -u NPM_CONFIG_USERCONFIG
-    -u npm_config_globalconfig
-    -u NPM_CONFIG_GLOBALCONFIG
-    -u npm_config_cache
-    -u NPM_CONFIG_CACHE
-    -u npm_config_prefix
-    -u NPM_CONFIG_PREFIX
-    -u npm_config_offline
-    -u NPM_CONFIG_OFFLINE
-    -u npm_config_prefer_offline
-    -u NPM_CONFIG_PREFER_OFFLINE
-    -u npm_config_strict_ssl
-    -u NPM_CONFIG_STRICT_SSL
-    -u NODE_OPTIONS
-    -u NODE_PATH
+    -i
+    HOME="$WORK_DIR/home"
+    TMPDIR="$WORK_DIR/tmp"
     NPM_CONFIG_REGISTRY=https://registry.npmjs.org/
     NPM_CONFIG_USERCONFIG=/dev/null
     NPM_CONFIG_GLOBALCONFIG="$WORK_DIR/npm-globalconfig"
@@ -173,6 +159,15 @@ if [[ "$CUSTOM_INSPECTOR" == "0" ]]; then
     "$NODE_BIN" "$NPX_BIN" --loglevel error -y "$INSPECTOR_PACKAGE"
   )
 fi
+
+TRUSTED_NODE_COMMAND=(
+  /usr/bin/env
+  -i
+  HOME="$WORK_DIR/home"
+  TMPDIR="$WORK_DIR/tmp"
+  PATH="${NODE_BIN%/*}:/usr/bin:/bin"
+  "$NODE_BIN"
+)
 
 run_and_record() {
   local title="$1"
@@ -332,14 +327,14 @@ validate_inspector_call_output
 run_and_record \
   "Suisui local smoke success" \
   success \
-  "$NODE_BIN" "$SMOKE_CLIENT" \
+  "${TRUSTED_NODE_COMMAND[@]}" "$ROOT_DIR/$SMOKE_CLIENT" \
   --mode success
 
 for failure_mode in malformed-json mismatched-id invalid-schema timeout; do
   run_and_record \
     "Suisui local failure smoke: $failure_mode" \
     success \
-    "$NODE_BIN" "$SMOKE_CLIENT" \
+    "${TRUSTED_NODE_COMMAND[@]}" "$ROOT_DIR/$SMOKE_CLIENT" \
     --mode "$failure_mode" \
     --expect-failure "$failure_mode"
 done
