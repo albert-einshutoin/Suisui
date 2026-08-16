@@ -1,8 +1,8 @@
 # MCP Inspector Evidence
 
-Generated: 2026-08-16T08:24:58Z
+Generated: 2026-08-16T08:28:04Z
 
-- Source commit: `f4776ffb`
+- Source commit: `bce52a21`
 - Inspector identity: @modelcontextprotocol/inspector@2.2.0
 
 Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and Suisui's local JSON-RPC smoke checks.
