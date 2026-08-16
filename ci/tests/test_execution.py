@@ -383,6 +383,52 @@ class ExecutionContractTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0)
             self.assertIn("tracked.txt", result.stdout)
 
+    def test_trusted_git_does_not_parse_subcommand_context_as_global_chdir(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["/usr/bin/git", "init", "-q", str(root)], check=True)
+            tracked = root / "tracked.txt"
+            tracked.write_text("before\nafter\n", encoding="utf-8")
+            subprocess.run(["/usr/bin/git", "-C", str(root), "add", "tracked.txt"], check=True)
+            subprocess.run(
+                [
+                    "/usr/bin/git",
+                    "-C",
+                    str(root),
+                    "-c",
+                    "user.name=CI Test",
+                    "-c",
+                    "user.email=ci@example.invalid",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "-c",
+                    "core.hooksPath=/dev/null",
+                    "commit",
+                    "-qm",
+                    "baseline",
+                ],
+                check=True,
+            )
+
+            result = subprocess.run(
+                [str(TRUSTED_GIT), "-C", str(root), "grep", "-C", "1", "after", "--", "tracked.txt"],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("after", result.stdout)
+
+            log_result = subprocess.run(
+                [str(TRUSTED_GIT), "-C", str(root), "log", "-C", "--stat", "--oneline"],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(log_result.returncode, 0, log_result.stdout + log_result.stderr)
+
     def test_release_preflight_rejects_assume_unchanged_index_entries(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

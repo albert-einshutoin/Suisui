@@ -1,33 +1,51 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-work_tree="$PWD"
-previous_argument=""
+work_tree=""
+expected_global_value=""
 for argument in "$@"; do
-  if [[ "$previous_argument" == "-C" ]]; then
+  if [[ "$expected_global_value" == "-C" ]]; then
     if [[ "$argument" == /* ]]; then
       work_tree="$argument"
     else
-      work_tree="$work_tree/$argument"
+      work_tree="${work_tree:-$PWD}/$argument"
     fi
     work_tree="$(cd "$work_tree" && pwd -P)"
-    previous_argument=""
-  elif [[ "$argument" == "-C" ]]; then
-    previous_argument="-C"
+    expected_global_value=""
+    continue
   fi
+  if [[ -n "$expected_global_value" ]]; then
+    expected_global_value=""
+    continue
+  fi
+  case "$argument" in
+    -C) expected_global_value="-C" ;;
+    -c|--config-env) expected_global_value="option" ;;
+    --git-dir|--git-dir=*|--work-tree|--work-tree=*)
+      printf 'trusted git rejects caller-controlled repository roots\n' >&2
+      exit 2
+      ;;
+    -*) ;;
+    *) break ;;
+  esac
 done
+
+git_arguments=(
+  -c core.bare=false
+  -c core.fsmonitor=false
+  -c core.ignoreStat=false
+  -c core.trustctime=true
+  -c core.checkStat=default
+  -c core.fileMode=true
+  -c core.abbrev=8
+  -c core.hooksPath=/dev/null
+)
+if [[ -n "$work_tree" ]]; then
+  git_arguments=(--work-tree="$work_tree" "${git_arguments[@]}")
+fi
+git_arguments+=("$@")
 
 exec /usr/bin/env -i \
   PATH=/usr/bin:/bin \
   GIT_NO_REPLACE_OBJECTS=1 \
-  /usr/bin/git \
-  --work-tree="$work_tree" \
-  -c core.bare=false \
-  -c core.fsmonitor=false \
-  -c core.ignoreStat=false \
-  -c core.trustctime=true \
-  -c core.checkStat=default \
-  -c core.fileMode=true \
-  -c core.abbrev=8 \
-  -c core.hooksPath=/dev/null \
-  "$@"
+  /usr/bin/git "${git_arguments[@]}"

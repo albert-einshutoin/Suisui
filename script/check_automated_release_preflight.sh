@@ -64,7 +64,7 @@ export PATH="$ROOT_DIR/ci/trusted-bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebre
 
 default_automated_preflight_evidence_file() {
   local commit
-  commit="$("$TRUSTED_GIT" rev-parse --short HEAD 2>/dev/null || true)"
+  commit="$("$TRUSTED_GIT" -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || true)"
 
   if [[ -z "${commit//[[:space:]]/}" ]]; then
     printf ".tmp/automated-release-preflight.md"
@@ -162,12 +162,12 @@ require_clean_source_tree_for_evidence() {
     return 0
   fi
 
-  if ! "$TRUSTED_GIT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if ! "$TRUSTED_GIT" -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     echo "BLOCKER: automated preflight evidence requires a git worktree" >&2
     exit 2
   fi
 
-  if ! index_flags="$("$TRUSTED_GIT" ls-files -v -- .)"; then
+  if ! index_flags="$("$TRUSTED_GIT" -C "$ROOT_DIR" ls-files -v -- .)"; then
     echo "BLOCKER: automated preflight could not inspect the tracked source index" >&2
     exit 2
   fi
@@ -175,7 +175,7 @@ require_clean_source_tree_for_evidence() {
     echo "BLOCKER: automated preflight evidence rejects hidden tracked index entries" >&2
     exit 2
   fi
-  if ! tracked_changes="$("$TRUSTED_GIT" status --porcelain=v1 --untracked-files=no -- .)"; then
+  if ! tracked_changes="$("$TRUSTED_GIT" -C "$ROOT_DIR" status --porcelain=v1 --untracked-files=no -- .)"; then
     echo "BLOCKER: automated preflight could not inspect the tracked source tree" >&2
     exit 2
   fi
@@ -188,10 +188,10 @@ require_clean_source_tree_for_evidence() {
 tracked_source_tree_is_clean() {
   local index_flags tracked_changes
 
-  "$TRUSTED_GIT" rev-parse --is-inside-work-tree >/dev/null 2>&1 &&
-    index_flags="$("$TRUSTED_GIT" ls-files -v -- .)" &&
+  "$TRUSTED_GIT" -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 &&
+    index_flags="$("$TRUSTED_GIT" -C "$ROOT_DIR" ls-files -v -- .)" &&
     ! grep -Eq '^[a-zS] ' <<<"$index_flags" &&
-    tracked_changes="$("$TRUSTED_GIT" status --porcelain=v1 --untracked-files=no -- .)" &&
+    tracked_changes="$("$TRUSTED_GIT" -C "$ROOT_DIR" status --porcelain=v1 --untracked-files=no -- .)" &&
     [[ -z "$tracked_changes" ]]
 }
 
@@ -218,7 +218,7 @@ write_automated_preflight_evidence() {
   local evidence_dir generated_at source_commit private_dir private_file parent_canonical
   evidence_dir="$(dirname "$evidence_file")"
   generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-  source_commit="$("$TRUSTED_GIT" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
+  source_commit="$("$TRUSTED_GIT" -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
   private_dir="$(mktemp -d "$evidence_dir/.automated-release-preflight.XXXXXX")"
   private_file="$private_dir/evidence.md"
   umask 077
