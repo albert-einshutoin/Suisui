@@ -156,6 +156,8 @@ section() {
 }
 
 require_clean_source_tree_for_evidence() {
+  local index_flags tracked_changes
+
   if [[ -z "$AUTOMATED_PREFLIGHT_EVIDENCE_FILE" ]]; then
     return 0
   fi
@@ -165,16 +167,32 @@ require_clean_source_tree_for_evidence() {
     exit 2
   fi
 
-  if ! "$TRUSTED_GIT" diff --quiet -- . || ! "$TRUSTED_GIT" diff --cached --quiet -- .; then
+  if ! index_flags="$("$TRUSTED_GIT" ls-files -v -- .)"; then
+    echo "BLOCKER: automated preflight could not inspect the tracked source index" >&2
+    exit 2
+  fi
+  if grep -Eq '^[a-zS] ' <<<"$index_flags"; then
+    echo "BLOCKER: automated preflight evidence rejects hidden tracked index entries" >&2
+    exit 2
+  fi
+  if ! tracked_changes="$("$TRUSTED_GIT" status --porcelain=v1 --untracked-files=no -- .)"; then
+    echo "BLOCKER: automated preflight could not inspect the tracked source tree" >&2
+    exit 2
+  fi
+  if [[ -n "$tracked_changes" ]]; then
     echo "BLOCKER: automated preflight evidence requires a clean tracked source tree" >&2
     exit 2
   fi
 }
 
 tracked_source_tree_is_clean() {
+  local index_flags tracked_changes
+
   "$TRUSTED_GIT" rev-parse --is-inside-work-tree >/dev/null 2>&1 &&
-    "$TRUSTED_GIT" diff --quiet -- . &&
-    "$TRUSTED_GIT" diff --cached --quiet -- .
+    index_flags="$("$TRUSTED_GIT" ls-files -v -- .)" &&
+    ! grep -Eq '^[a-zS] ' <<<"$index_flags" &&
+    tracked_changes="$("$TRUSTED_GIT" status --porcelain=v1 --untracked-files=no -- .)" &&
+    [[ -z "$tracked_changes" ]]
 }
 
 refresh_manual_release_helpers() {

@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -120,6 +121,12 @@ class ExecutionContractTests(unittest.TestCase):
 
         self.assertIn("-u SUISUI_SWIFTPM_TEST_BASELINE_FILE", contents)
         self.assertIn("-u SUISUI_SWIFTPM_MAX_SKIPPED_FILE", contents)
+        self.assertIn('SUISUI_SWIFTPM_ARTIFACT_DIR="$CI_ARTIFACT_ROOT/swiftpm"', contents)
+        self.assertIn('SUISUI_CI_IMPACT_ARTIFACT_DIR="$ROOT_DIR/.tmp/ci-impact"', contents)
+        self.assertIn(
+            'SUISUI_CI_EXECUTION_REPORT="$ROOT_DIR/.tmp/ci-impact/full-execution.json"',
+            contents,
+        )
         self.assertIn("./ci/run-full.sh", contents)
         self.assertNotIn("cargo fmt --manifest-path", contents)
         self.assertNotIn("cargo test --manifest-path", contents)
@@ -140,6 +147,16 @@ class ExecutionContractTests(unittest.TestCase):
             self.assertIn(variable, contents)
         self.assertIn("GIT_NO_REPLACE_OBJECTS=1", contents)
         self.assertIn('PATH="$ROOT_DIR/ci/trusted-bin:/usr/bin:/bin:', contents)
+        trusted_git = TRUSTED_GIT.read_text(encoding="utf-8")
+        for setting in (
+            "core.bare=false",
+            "core.fsmonitor=false",
+            "core.ignoreStat=false",
+            "core.trustctime=true",
+            "core.checkStat=default",
+            "core.fileMode=true",
+        ):
+            self.assertIn(setting, trusted_git)
         self.assertNotIn("export GIT_CONFIG_GLOBAL=", contents)
         for variable in (
             "SUISUI_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY",
@@ -240,9 +257,11 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn("-u SUISUI_MCP_NPX_BIN", contents)
         self.assertIn("initialize_automated_preflight_evidence_destination", contents)
         self.assertIn("unsafe automated preflight evidence destination", contents)
+        self.assertIn('ls-files -v -- .', contents)
+        self.assertIn("grep -Eq '^[a-zS] ' <<<\"$index_flags\"", contents)
         self.assertIn("/bin/mv -fh", contents)
 
-    def test_trusted_git_ignores_caller_diff_configuration(self) -> None:
+    def test_trusted_git_status_ignores_caller_diff_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             subprocess.run(["/usr/bin/git", "init", "-q", str(root)], check=True)
@@ -258,6 +277,10 @@ class ExecutionContractTests(unittest.TestCase):
                     "user.name=CI Test",
                     "-c",
                     "user.email=ci@example.invalid",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "-c",
+                    "core.hooksPath=/dev/null",
                     "commit",
                     "-qm",
                     "baseline",
@@ -271,12 +294,24 @@ class ExecutionContractTests(unittest.TestCase):
             )
 
             result = subprocess.run(
-                [str(TRUSTED_GIT), "-C", str(root), "diff", "--quiet", "--", "."],
+                [
+                    str(TRUSTED_GIT),
+                    "-C",
+                    str(root),
+                    "status",
+                    "--porcelain=v1",
+                    "--untracked-files=no",
+                    "--",
+                    ".",
+                ],
                 env=environment,
                 check=False,
+                text=True,
+                capture_output=True,
             )
 
-            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("tracked.txt", result.stdout)
 
     def test_trusted_git_ignores_repository_fsmonitor_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -294,6 +329,10 @@ class ExecutionContractTests(unittest.TestCase):
                     "user.name=CI Test",
                     "-c",
                     "user.email=ci@example.invalid",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "-c",
+                    "core.hooksPath=/dev/null",
                     "commit",
                     "-qm",
                     "baseline",
@@ -319,14 +358,89 @@ class ExecutionContractTests(unittest.TestCase):
                 check=True,
                 capture_output=True,
             )
+            subprocess.run(
+                ["/usr/bin/git", "-C", str(root), "config", "core.bare", "true"],
+                check=True,
+            )
             tracked.write_text("after\n", encoding="utf-8")
 
             result = subprocess.run(
-                [str(TRUSTED_GIT), "-C", str(root), "diff", "--quiet", "--", "."],
+                [
+                    str(TRUSTED_GIT),
+                    "-C",
+                    str(root),
+                    "status",
+                    "--porcelain=v1",
+                    "--untracked-files=no",
+                    "--",
+                    ".",
+                ],
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("tracked.txt", result.stdout)
+
+    def test_release_preflight_rejects_assume_unchanged_index_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "ci/trusted-bin").mkdir(parents=True)
+            (root / "script").mkdir()
+            shutil.copy2(TRUSTED_GIT, root / "ci/trusted-bin/git")
+            shutil.copy2(RELEASE_PREFLIGHT, root / "script/check_automated_release_preflight.sh")
+            tracked = root / "000-hidden.txt"
+            tracked.write_text("before\n", encoding="utf-8")
+            filler_directory = root / "zz-fillers"
+            filler_directory.mkdir()
+            for index in range(800):
+                filler_name = f"{index:04d}-{'x' * 180}"
+                (filler_directory / filler_name).write_text("filler\n", encoding="utf-8")
+            subprocess.run(["/usr/bin/git", "init", "-q", str(root)], check=True)
+            subprocess.run(["/usr/bin/git", "-C", str(root), "add", "."], check=True)
+            subprocess.run(
+                [
+                    "/usr/bin/git",
+                    "-C",
+                    str(root),
+                    "-c",
+                    "user.name=CI Test",
+                    "-c",
+                    "user.email=ci@example.invalid",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "-c",
+                    "core.hooksPath=/dev/null",
+                    "commit",
+                    "-qm",
+                    "baseline",
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "/usr/bin/git",
+                    "-C",
+                    str(root),
+                    "update-index",
+                    "--assume-unchanged",
+                    "000-hidden.txt",
+                ],
+                check=True,
+            )
+            tracked.write_text("after\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [str(root / "script/check_automated_release_preflight.sh")],
+                cwd=str(root),
+                text=True,
+                capture_output=True,
                 check=False,
             )
 
-            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("rejects hidden tracked index entries", result.stderr)
 
     def test_release_preflight_rejects_external_and_symlink_evidence_paths_early(self) -> None:
         (REPOSITORY_ROOT / ".tmp").mkdir(exist_ok=True)
@@ -414,7 +528,8 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn("-u NODE_OPTIONS", contents)
         provenance = MCP_PROVENANCE.read_text(encoding="utf-8")
         self.assertIn("mcp_git()", provenance)
-        self.assertIn('/usr/bin/git "$@"', provenance)
+        self.assertIn("ci/trusted-bin/git", provenance)
+        self.assertIn("diff --no-ext-diff --no-textconv", provenance)
         self.assertNotIn('/usr/bin/git -C "$root_dir"', provenance)
 
     def test_mcp_verifier_rejects_symlink_evidence_destination_early(self) -> None:
@@ -480,8 +595,10 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn("release_git()", readiness)
         self.assertNotRegex(readiness, r'(?m)^\s*git -C "\$ROOT_DIR"')
         self.assertIn('PATH="$ROOT_DIR/ci/trusted-bin:$PATH"', readiness)
-        self.assertIn("/usr/bin/env -i", provenance)
-        self.assertIn("PATH=/usr/bin:/bin", provenance)
+        self.assertIn("ci/trusted-bin/git", provenance)
+        trusted_git = TRUSTED_GIT.read_text(encoding="utf-8")
+        self.assertIn("/usr/bin/env -i", trusted_git)
+        self.assertIn("PATH=/usr/bin:/bin", trusted_git)
 
     def test_orchestrator_self_test_proves_fail_closed_state_transitions(self) -> None:
         self.assertTrue(ORCHESTRATOR.exists(), "PR orchestrator must exist")

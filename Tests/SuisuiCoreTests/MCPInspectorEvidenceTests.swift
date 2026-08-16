@@ -30,6 +30,7 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertTrue(script.contains("docs/release/evidence/mcp-inspector.md"))
         XCTAssertTrue(script.contains("mcp_evidence_source_commit()"))
         XCTAssertTrue(provenance.contains("Sources/SuisuiApp/Composition"))
+        XCTAssertTrue(provenance.contains("script/verify_mcp_compliance.sh"))
         XCTAssertFalse(provenance.contains("Sources/SuisuiCore/ExternalMCP/ExternalMCPTestKit"))
     }
 
@@ -56,7 +57,7 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertTrue(script.contains(#"for parent_suffix in ^2 ^1"#))
         XCTAssertTrue(
             script.contains(
-                #"git -C "$root_dir" diff --quiet "$candidate_parent" "$content_source_ref" --"#
+                #"git -C "$root_dir" diff --no-ext-diff --no-textconv --quiet"#
             )
         )
     }
@@ -121,6 +122,7 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         let evidence = try readPackageFile("docs/release/evidence/mcp-inspector.md")
 
         XCTAssertTrue(evidence.contains("MCP Inspector CLI"))
+        XCTAssertTrue(evidence.contains("Inspector identity: @modelcontextprotocol/inspector@2.2.0"))
         XCTAssertTrue(evidence.contains("initialize -> tools/list -> tools/call"))
         XCTAssertTrue(evidence.contains("tools/list"))
         XCTAssertTrue(evidence.contains("tools/call"))

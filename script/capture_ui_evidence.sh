@@ -362,10 +362,16 @@ ui_evidence_product_source_commit() {
 }
 
 visual_product_source_is_clean() {
+  local index_flags tracked_changes
+
   # The capture script defines which visible states count as evidence, so a dirty
   # harness is as provenance-breaking as a dirty app binary.
-  git -C "$ROOT_DIR" diff --quiet -- Sources Package.swift script/capture_ui_evidence.sh \
-    && git -C "$ROOT_DIR" diff --cached --quiet -- Sources Package.swift script/capture_ui_evidence.sh \
+  index_flags="$(git -C "$ROOT_DIR" ls-files -v -- \
+    Sources Package.swift script/capture_ui_evidence.sh)" \
+    && ! grep -Eq '^[a-zS] ' <<<"$index_flags" \
+    && tracked_changes="$(git -C "$ROOT_DIR" status --porcelain=v1 --untracked-files=no -- \
+    Sources Package.swift script/capture_ui_evidence.sh)" \
+    && [[ -z "$tracked_changes" ]] \
     && [[ -z "$(git -C "$ROOT_DIR" ls-files --others --exclude-standard -- Sources Package.swift script/capture_ui_evidence.sh)" ]]
 }
 

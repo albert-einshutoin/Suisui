@@ -314,7 +314,7 @@ snapshot_tracked_evidence() {
       docs/quality/visual-baselines-ja \
       docs/quality/visual-baselines-apple-virtual \
       docs/quality/visual-baselines-ja-apple-virtual
-    git -C "$ROOT_DIR" diff --binary -- \
+    git -C "$ROOT_DIR" diff --no-ext-diff --no-textconv --binary -- \
       docs/release/evidence \
       docs/quality/visual-baseline-manifest.json \
       docs/quality/visual-baseline-manifest-ja.json \
@@ -324,7 +324,7 @@ snapshot_tracked_evidence() {
       docs/quality/visual-baselines-ja \
       docs/quality/visual-baselines-apple-virtual \
       docs/quality/visual-baselines-ja-apple-virtual
-    git -C "$ROOT_DIR" diff --cached --binary -- \
+    git -C "$ROOT_DIR" diff --no-ext-diff --no-textconv --cached --binary -- \
       docs/release/evidence \
       docs/quality/visual-baseline-manifest.json \
       docs/quality/visual-baseline-manifest-ja.json \

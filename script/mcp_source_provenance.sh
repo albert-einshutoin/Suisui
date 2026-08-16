@@ -6,21 +6,14 @@ MCP_SOURCE_PATHS=(
   Sources/SuisuiApp/Composition
   Sources/SuisuiApp/Views/SettingsView.swift
   fixtures/mcp
+  script/verify_mcp_compliance.sh
   Package.swift
 )
 
 mcp_git() {
-  /usr/bin/env -i \
-    PATH=/usr/bin:/bin \
-    GIT_NO_REPLACE_OBJECTS=1 \
-    /usr/bin/git \
-    -c core.fsmonitor=false \
-    -c core.ignoreStat=false \
-    -c core.abbrev=8 \
-    -c core.hooksPath=/dev/null \
-    -c diff.external= \
-    -c diff.trustExitCode=false \
-    "$@"
+  local trusted_git
+  trusted_git="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/ci/trusted-bin/git"
+  "$trusted_git" "$@"
 }
 
 mcp_content_source_ref() {
@@ -46,7 +39,8 @@ mcp_content_source_ref() {
       )"; then
         continue
       fi
-      if mcp_git -C "$root_dir" diff --quiet "$candidate_parent" "$content_source_ref" -- \
+      if mcp_git -C "$root_dir" diff --no-ext-diff --no-textconv --quiet \
+        "$candidate_parent" "$content_source_ref" -- \
         "${MCP_SOURCE_PATHS[@]}"; then
         content_source_ref="$candidate_parent"
         followed_parent=true

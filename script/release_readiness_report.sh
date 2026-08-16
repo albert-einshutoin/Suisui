@@ -35,12 +35,15 @@ release_git() {
     # environment there without trusting the caller's Git configuration.
     /usr/bin/env -i PATH=/usr/bin:/bin GIT_NO_REPLACE_OBJECTS=1 \
       /usr/bin/git \
+      --work-tree="$ROOT_DIR" \
+      -c core.bare=false \
       -c core.fsmonitor=false \
       -c core.ignoreStat=false \
+      -c core.trustctime=true \
+      -c core.checkStat=default \
+      -c core.fileMode=true \
       -c core.abbrev=8 \
       -c core.hooksPath=/dev/null \
-      -c diff.external= \
-      -c diff.trustExitCode=false \
       "$@"
   fi
 }
@@ -309,6 +312,7 @@ LOCAL_VOICE_REQUIRED_CONTEXT_LABELS=(
 )
 MCP_EVIDENCE_REQUIRED_MARKERS=(
   "Generated:"
+  "Inspector identity: @modelcontextprotocol/inspector@2.2.0"
   "Scope: validate the release MCP stdio fixture"
   'Implemented legacy baseline: `2025-11-25`'
   'Official stable latest: `2026-07-28`'
@@ -584,14 +588,26 @@ normalize_markdown_context_value() {
 }
 
 tracked_source_tree_status() {
-  local tracked_changes
+  local index_flags tracked_changes
 
   if ! release_git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     printf "unavailable"
     return 0
   fi
 
-  tracked_changes="$(release_git -C "$ROOT_DIR" status --porcelain --untracked-files=no 2>/dev/null || true)"
+  if ! index_flags="$(release_git -C "$ROOT_DIR" ls-files -v -- . 2>/dev/null)"; then
+    printf "unavailable"
+    return 0
+  fi
+  if grep -Eq '^[a-zS] ' <<<"$index_flags"; then
+    printf "dirty"
+    return 0
+  fi
+
+  if ! tracked_changes="$(release_git -C "$ROOT_DIR" status --porcelain --untracked-files=no 2>/dev/null)"; then
+    printf "unavailable"
+    return 0
+  fi
   if [[ -n "$tracked_changes" ]]; then
     printf "dirty"
   else

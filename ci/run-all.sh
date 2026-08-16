@@ -43,6 +43,9 @@ export PATH="$ROOT_DIR/ci/trusted-bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebre
 env \
   -u SUISUI_SWIFTPM_TEST_BASELINE_FILE \
   -u SUISUI_SWIFTPM_MAX_SKIPPED_FILE \
+  SUISUI_SWIFTPM_ARTIFACT_DIR="$CI_ARTIFACT_ROOT/swiftpm" \
+  SUISUI_CI_IMPACT_ARTIFACT_DIR="$ROOT_DIR/.tmp/ci-impact" \
+  SUISUI_CI_EXECUTION_REPORT="$ROOT_DIR/.tmp/ci-impact/full-execution.json" \
   ./ci/run-full.sh
 env \
   -u SUISUI_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY \
