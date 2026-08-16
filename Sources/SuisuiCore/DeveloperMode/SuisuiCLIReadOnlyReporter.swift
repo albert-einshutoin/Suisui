@@ -79,7 +79,16 @@ public struct SuisuiCLIReadOnlyReporter {
             ]
         }
 
-        let connection = try openConnection(requiredTables: ["knowledge_frames", "knowledge_frames_fts"])
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        var requiredTables = [
+            "knowledge_frames",
+            "knowledge_frames_fts",
+        ]
+        if trimmedQuery.unicodeScalars.count >= 3,
+           trimmedQuery.unicodeScalars.contains(where: { $0.value > 0x7F }) {
+            requiredTables.append("knowledge_frames_trigram_fts")
+        }
+        let connection = try openConnection(requiredTables: requiredTables)
         let frames = try SQLiteKnowledgeFrameStore(connection: connection).search(query: query)
         var lines = [
             "Suisui frames search",

@@ -138,12 +138,19 @@ public enum DevelopmentRepositoryFilePathPolicy {
 
     private static let secretBasenames: Set<String> = [
         ".env", ".netrc", ".npmrc", ".pypirc", ".yarnrc", "credentials", "credentials.json",
-        "id_rsa", "id_dsa", "password.json", "secret.json", "secrets.json", "token.json"
+        "credential.json", "id_rsa", "id_dsa", "password.json", "secret.json", "secrets.json", "token.json",
+        "tokens.json", "auth.json", "login.json"
     ]
 
     private static let secretDirectories: Set<String> = [
         ".aws", ".config/gh", ".gnupg", ".ssh"
     ]
+
+    private static let secretPathPairs: Set<String> = [
+        ".docker/config.json"
+    ]
+
+    private static let pathRedactor = DeveloperSecretRedactor()
 
     public static func validatedRelativePath(_ rawPath: String) throws -> String {
         let components = try validatedPathComponents(rawPath)
@@ -255,6 +262,23 @@ public enum DevelopmentRepositoryFilePathPolicy {
     }
 
     private static func isSecretLike(components: [String]) -> Bool {
+        // Relative paths are persisted and later exposed as search titles.
+        // Treat them as prose so ordinary source names remain valid, while the
+        // same provider/redactor policy used for file contents rejects embedded values.
+        if DevelopmentRepositoryIndex.containsRepositoryCredential(
+            components.joined(separator: "/"),
+            relativePath: "RepositoryPath.txt",
+            redactor: pathRedactor
+        ) {
+            return true
+        }
+        let lowercased = components.map { $0.lowercased() }
+        if secretPathPairs.contains(lowercased.joined(separator: "/")) ||
+            zip(lowercased, lowercased.dropFirst()).contains(where: { pair in
+                secretPathPairs.contains("\(pair.0)/\(pair.1)")
+            }) {
+            return true
+        }
         for (index, component) in components.enumerated() {
             let lowercased = component.lowercased()
             if secretDirectories.contains(lowercased) {
@@ -331,7 +355,7 @@ public struct DevelopmentRepositoryFileClient: Sendable {
             let contents = try decodeUTF8Text(data)
             // Path allowlists cannot distinguish source code about secrets from real
             // credentials, so reads fail closed if the file body matches token patterns.
-            try failIfSecretLikeContent(contents)
+            try failIfSecretLikeContent(contents, relativePath: relativePath)
             return record(relativePath: relativePath, contents: contents, scope: scope)
         }
     }
@@ -345,7 +369,7 @@ public struct DevelopmentRepositoryFileClient: Sendable {
         try DevelopmentRepositoryFilePathPolicy.validateTextContent(contents)
         // Avoid writing credential-looking material into a repo file through the
         // assistant queue; users can still edit such files manually outside Suisui.
-        try failIfSecretLikeContent(contents)
+        try failIfSecretLikeContent(contents, relativePath: relativePath)
         let scope = try ProjectWorkspaceScope(
             project: project,
             bookmarkResolver: bookmarkResolver,
@@ -374,7 +398,7 @@ public struct DevelopmentRepositoryFileClient: Sendable {
         let relativePath = try DevelopmentRepositoryFilePathPolicy.validatedRelativePath(rawPath)
         let expectedDigest = try DevelopmentRepositoryFilePathPolicy.validatedExpectedSHA256(expectedSHA256)
         try DevelopmentRepositoryFilePathPolicy.validateTextContent(contents)
-        try failIfSecretLikeContent(contents)
+        try failIfSecretLikeContent(contents, relativePath: relativePath)
         let scope = try ProjectWorkspaceScope(
             project: project,
             bookmarkResolver: bookmarkResolver,
@@ -591,11 +615,16 @@ public struct DevelopmentRepositoryFileClient: Sendable {
         return true
     }
 
-    private func failIfSecretLikeContent(_ contents: String) throws {
-        let report = redactor.redact(contents).report
-        guard report.replacementCount == 0 else {
-            throw DevelopmentRepositoryFileError.secretLikeContent(report.matchedPatternNames)
+    private func failIfSecretLikeContent(_ contents: String, relativePath: String) throws {
+        guard DevelopmentRepositoryIndex.containsRepositoryCredential(
+            contents,
+            relativePath: relativePath,
+            redactor: redactor
+        ) else {
+            return
         }
+        let report = redactor.redact(contents).report
+        throw DevelopmentRepositoryFileError.secretLikeContent(report.matchedPatternNames)
     }
 
     private func record(

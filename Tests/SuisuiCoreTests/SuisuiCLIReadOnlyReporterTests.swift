@@ -49,6 +49,58 @@ final class SuisuiCLIReadOnlyReporterTests: XCTestCase {
         XCTAssertTrue(lines.contains("- Release readiness frame"))
     }
 
+    func testFramesSearchReturnsMoreThanTheInteractiveBound() throws {
+        let databaseURL = temporaryDirectory().appendingPathComponent("many-frames.sqlite")
+        let connection = try SQLiteConnection(path: databaseURL.path)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        for index in 0..<129 {
+            _ = try store.create(name: "CLI Frame \(index)", body: "cli compatibility literal")
+        }
+        let reporter = SuisuiCLIReadOnlyReporter(databaseURL: databaseURL, now: fixedNow())
+
+        let lines = try reporter.framesSearchLines(query: "cli compatibility literal")
+
+        XCTAssertTrue(lines.contains("count: 129"))
+    }
+
+    func testFramesSearchRequiresTrigramMigrationForNonASCIISearch() throws {
+        let databaseURL = temporaryDirectory().appendingPathComponent("legacy.sqlite")
+        let connection = try SQLiteConnection(path: databaseURL.path)
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current.prefix {
+                $0.id != "0036_create_task_and_knowledge_content_search"
+            }
+        )
+        let reporter = SuisuiCLIReadOnlyReporter(databaseURL: databaseURL, now: fixedNow())
+
+        XCTAssertThrowsError(try reporter.framesSearchLines(query: "über")) { error in
+            XCTAssertEqual(
+                error as? SuisuiCLIReadOnlyError,
+                .missingTable("knowledge_frames_trigram_fts", databasePath: databaseURL.path)
+            )
+        }
+    }
+
+    func testFramesSearchKeepsASCIISearchWorkingBeforeTrigramMigration() throws {
+        let databaseURL = temporaryDirectory().appendingPathComponent("legacy-ascii.sqlite")
+        let connection = try SQLiteConnection(path: databaseURL.path)
+        try SQLiteMigrationRunner.migrate(
+            connection: connection,
+            migrations: CoreMigrations.current.prefix {
+                $0.id != "0036_create_task_and_knowledge_content_search"
+            }
+        )
+        _ = try SQLiteKnowledgeFrameStore(connection: connection).create(
+            name: "Release notes",
+            body: "release checklist"
+        )
+        let reporter = SuisuiCLIReadOnlyReporter(databaseURL: databaseURL, now: fixedNow())
+
+        XCTAssertTrue(try reporter.framesSearchLines(query: "release").contains("- Release notes"))
+    }
+
     func testMissingDatabaseDoesNotCreateFile() throws {
         let databaseURL = temporaryDirectory().appendingPathComponent("missing.sqlite")
         let reporter = SuisuiCLIReadOnlyReporter(databaseURL: databaseURL, now: fixedNow())

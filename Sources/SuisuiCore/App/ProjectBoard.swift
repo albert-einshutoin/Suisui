@@ -1277,9 +1277,15 @@ public final class ProjectBoardViewModel: ObservableObject {
         do {
             let reviewedRelativePath = try DevelopmentRepositoryFilePathPolicy.validatedRelativePath(relativePath)
             try DevelopmentRepositoryFilePathPolicy.validateTextContent(contents)
-            let contentRedaction = DeveloperSecretRedactor().redact(contents)
-            guard contentRedaction.report.matchedPatternNames.isEmpty else {
-                throw DevelopmentRepositoryFileError.secretLikeContent(contentRedaction.report.matchedPatternNames)
+            let redactor = DeveloperSecretRedactor()
+            guard !DevelopmentRepositoryIndex.containsRepositoryCredential(
+                contents,
+                relativePath: reviewedRelativePath,
+                redactor: redactor
+            ) else {
+                throw DevelopmentRepositoryFileError.secretLikeContent(
+                    redactor.redact(contents).report.matchedPatternNames
+                )
             }
 
             var arguments: [String: JSONValue] = [
@@ -1359,8 +1365,14 @@ public final class ProjectBoardViewModel: ObservableObject {
         do {
             let reviewedRelativePath = try DevelopmentRepositoryFilePathPolicy.validatedRelativePath(relativePath)
             try DevelopmentRepositoryFilePathPolicy.validateTextContent(contents)
-            let contentRedaction = DeveloperSecretRedactor().redact(contents)
-            guard contentRedaction.report.matchedPatternNames.isEmpty else {
+            // Keep edit review aligned with repository indexing and direct reads:
+            // shared redaction stays conservative, while safe Swift source shapes
+            // are reopened only by the source-aware repository credential policy.
+            guard !DevelopmentRepositoryIndex.containsRepositoryCredential(
+                contents,
+                relativePath: reviewedRelativePath,
+                redactor: DeveloperSecretRedactor()
+            ) else {
                 return nil
             }
 

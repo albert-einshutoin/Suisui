@@ -1,0 +1,10 @@
+[package]
+name = "suisui-embedding-helper"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+fastembed = { version = "=5.17.4", default-features = false, features = ["ort-download-binaries-rustls-tls"] }
+libc = "=0.2.189"

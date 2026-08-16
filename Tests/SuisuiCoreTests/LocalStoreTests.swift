@@ -303,6 +303,516 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(due.map(\.title), ["Soon"])
     }
 
+    func testTaskContentSearchFTSIndexTracksCreateUpdateAndDelete() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+
+        XCTAssertTrue(try connection.tableExists("tasks_fts"))
+
+        let task = try store.create(
+            title: "Release checklist",
+            detail: "Verify signing before upload"
+        )
+        XCTAssertEqual(
+            try store.searchOpenTasksByContent(text: "signing", limit: 10).map(\.id),
+            [task.id]
+        )
+
+        _ = try store.update(
+            id: task.id,
+            title: "Sprint checklist",
+            detail: "Run the deployment dry run"
+        )
+        XCTAssertTrue(try store.searchOpenTasksByContent(text: "release", limit: 10).isEmpty)
+        XCTAssertTrue(try store.searchOpenTasksByContent(text: "signing", limit: 10).isEmpty)
+        XCTAssertEqual(
+            try store.searchOpenTasksByContent(text: "sprint", limit: 10).map(\.id),
+            [task.id]
+        )
+        XCTAssertEqual(
+            try store.searchOpenTasksByContent(text: "dry run", limit: 10).map(\.id),
+            [task.id]
+        )
+
+        _ = try store.delete(id: task.id)
+        XCTAssertTrue(try store.searchOpenTasksByContent(text: "sprint", limit: 10).isEmpty)
+    }
+
+    func testTaskSearchKeepsDanglingProjectTasksAndExcludesArchivedProjects() throws {
+        let connection = try currentConnection()
+        let projects = SQLiteProjectStore(connection: connection)
+        let tasks = SQLiteTaskStore(connection: connection)
+        let dangling = try tasks.create(title: "Recover dangling reference", projectID: 99_999)
+        let archivedProject = try projects.create(title: "Archived project")
+        _ = try tasks.create(title: "Recover archived reference", projectID: archivedProject.id)
+        _ = try projects.archive(id: archivedProject.id)
+        let unassigned = try tasks.create(title: "Recover unassigned reference")
+
+        XCTAssertEqual(
+            try tasks.searchOpenTasksByContent(text: "recover", limit: 2).map(\.id),
+            [unassigned.id, dangling.id]
+        )
+        XCTAssertEqual(
+            try tasks.searchOpenTasks(matching: ["recover"], limit: 2).map(\.id),
+            [dangling.id, unassigned.id]
+        )
+    }
+
+    func testContentSearchMigrationBackfillsExistingTasksAndKnowledgeTriggers() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        let migrationsBeforeTaskSearch = CoreMigrations.current.filter {
+            $0.id != "0036_create_task_and_knowledge_content_search"
+        }
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: migrationsBeforeTaskSearch)
+        let taskStore = SQLiteTaskStore(connection: connection)
+        let knowledgeStore = SQLiteKnowledgeFrameStore(connection: connection)
+        let task = try taskStore.create(title: "Restore search index")
+        let unicodeTask = try taskStore.create(title: "VorÜbergabe handoff")
+        let frame = try knowledgeStore.create(
+            name: "Release guide",
+            body: "Verify signing",
+            triggers: ["shiproom"]
+        )
+        let unicodeFrame = try knowledgeStore.create(
+            name: "VorÜbergabe notes",
+            body: "handoff details"
+        )
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+
+        XCTAssertEqual(
+            try taskStore.searchOpenTasksByContent(text: "restore", limit: 10).map(\.id),
+            [task.id]
+        )
+        XCTAssertEqual(try knowledgeStore.search(query: "shiproom").map(\.id), [frame.id])
+        XCTAssertEqual(
+            try taskStore.searchOpenTasks(matching: ["übe"], limit: 10).map(\.id),
+            [unicodeTask.id]
+        )
+        XCTAssertEqual(
+            try knowledgeStore.search(matching: ["übe"], limit: 10).map(\.id),
+            [unicodeFrame.id]
+        )
+    }
+
+    func testTaskContentSearchBoundsTokensBeforeBuildingQuery() {
+        let longToken = String(repeating: "a", count: 129)
+        let tokens = [" ", longToken] + (0..<40).map { "token-\($0)" }
+
+        let bounded = SQLiteTaskStore.boundedSearchTokens(tokens)
+
+        XCTAssertEqual(bounded.count, 32)
+        XCTAssertEqual(bounded.first, String(repeating: "a", count: 128))
+        XCTAssertTrue(bounded.allSatisfy { $0.count <= 128 })
+    }
+
+    func testBoundedSearchTokensRetainsBothEndsOfLongQuestions() {
+        let tokens = (0..<33).map { "filler\($0)" } + ["tailneedle"]
+
+        XCTAssertEqual(
+            SQLiteTaskStore.boundedSearchTokens(tokens),
+            Array(tokens.prefix(16)) + Array(tokens.suffix(16))
+        )
+    }
+
+    func testTaskAndKnowledgeSearchRetainTrailingLongQuestionToken() throws {
+        let connection = try currentConnection()
+        let tasks = SQLiteTaskStore(connection: connection)
+        let frames = SQLiteKnowledgeFrameStore(connection: connection)
+        let task = try tasks.create(title: "Task tailneedle")
+        let frame = try frames.create(name: "Knowledge tailneedle", body: "details")
+        let tokens = (0..<33).map { "filler\($0)" } + ["tailneedle"]
+
+        XCTAssertEqual(try tasks.searchOpenTasks(matching: tokens, limit: 1).map(\.id), [task.id])
+        XCTAssertEqual(try frames.search(matching: tokens, limit: 1).map(\.id), [frame.id])
+    }
+
+    func testTaskSQLiteFallbackPreservesNonASCIICaseInsensitiveSubstrings() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+        let task = try store.create(title: "Übergabe checklist")
+
+        XCTAssertEqual(
+            try store.searchOpenTasksByContent(text: "übe", limit: 1).map(\.id),
+            [task.id]
+        )
+        XCTAssertEqual(
+            try store.searchOpenTasks(matching: ["übe"], limit: 1).map(\.id),
+            [task.id]
+        )
+        XCTAssertEqual(
+            try store.searchOpenTasksByContent(text: "übe", limit: 1).map(\.id),
+            [task.id]
+        )
+    }
+
+    func testTaskUnicodePrefixCandidatesSkipFalseFTSHitBeforeFillingLimit() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+        let literalTask = try store.create(title: "Übe? handoff")
+        _ = try store.create(title: "Übergabe")
+
+        XCTAssertEqual(
+            try store.searchOpenTasksByContent(text: "übe?", limit: 1).map(\.id),
+            [literalTask.id]
+        )
+    }
+
+    func testTaskWorkspaceUnicodePrefixFallbackDoesNotSpendRemainingLimitOnFTSHit() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+        let substringTask = try store.create(title: "Übergabe handoff")
+        let ftsTask = try store.create(title: "Exact match", detail: "übe")
+
+        XCTAssertEqual(
+            try store.searchOpenTasks(matching: ["übe"], limit: 2).map(\.id),
+            [ftsTask.id, substringTask.id]
+        )
+    }
+
+    func testTaskSearchFindsUnicodeCaseInsensitiveSubstringInsideFTSToken() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+        let task = try store.create(title: "VorÜbergabe handoff")
+
+        XCTAssertEqual(
+            try store.searchOpenTasksByContent(text: "übe", limit: 1).map(\.id),
+            [task.id]
+        )
+        XCTAssertEqual(
+            try store.searchOpenTasks(matching: ["übe"], limit: 1).map(\.id),
+            [task.id]
+        )
+    }
+
+    func testTaskSearchFindsCanonicalUnicodeSubstringAcrossNFCAndNFD() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+        let task = try store.create(title: "VorU\u{0308}bergabe handoff")
+
+        XCTAssertEqual(
+            try store.searchOpenTasksByContent(text: "über", limit: 1).map(\.id),
+            [task.id]
+        )
+        XCTAssertEqual(
+            try store.searchOpenTasks(matching: ["über"], limit: 1).map(\.id),
+            [task.id]
+        )
+    }
+
+    func testTaskContentSearchFindsQuotedUnicodePunctuationInsideFTSToken() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+        let task = try store.create(title: "VorÜbe?rgabe handoff")
+
+        XCTAssertEqual(
+            try store.searchOpenTasksByContent(text: "Übe?", limit: 1).map(\.id),
+            [task.id]
+        )
+    }
+
+    func testTaskWorkspaceSearchFindsUnicodeInternalSubstringBeyondNewerRows() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+        let task = try store.create(title: "VorÜbergabe handoff")
+        for index in 0..<129 {
+            _ = try store.create(title: "Unrelated newer task \(index)")
+        }
+
+        XCTAssertEqual(
+            try store.searchOpenTasks(matching: ["übe"], limit: 1).map(\.id),
+            [task.id]
+        )
+    }
+
+    func testTaskWorkspaceSearchPagesShortUnicodeSubstringBeyondNewerRows() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+        let task = try store.create(title: "VorÜbergabe handoff")
+        for index in 0..<129 {
+            _ = try store.create(title: "Unrelated newer task \(index)")
+        }
+
+        XCTAssertEqual(
+            try store.searchOpenTasks(matching: ["üb"], limit: 1).map(\.id),
+            [task.id]
+        )
+        XCTAssertEqual(
+            try store.searchOpenTasksByContent(text: "üb", limit: 1).map(\.id),
+            [task.id]
+        )
+    }
+
+    func testTaskShortUnicodeSearchFailsClosedBeyondCandidateBudget() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+        _ = try store.create(title: "VorÜbergabe handoff")
+        for index in 0..<1024 {
+            _ = try store.create(title: "Unrelated newer task \(index)")
+        }
+
+        XCTAssertEqual(try store.searchOpenTasks(matching: ["üb"], limit: 1).map(\.id), [])
+        XCTAssertEqual(try store.searchOpenTasksByContent(text: "üb", limit: 1).map(\.id), [])
+        XCTAssertEqual(try store.searchOpenTasks(matching: ["税"], limit: 1).map(\.id), [])
+        XCTAssertEqual(try store.searchOpenTasksByContent(text: "税", limit: 1).map(\.id), [])
+    }
+
+    func testTaskTokenSearchFiltersDiacriticFTSFalseHitBeforeFillingLimit() throws {
+        let connection = try currentConnection()
+        let store = SQLiteTaskStore(connection: connection)
+        _ = try store.create(title: "résumé archive")
+        let literalTask = try store.create(title: "resume handoff")
+
+        XCTAssertEqual(
+            try store.searchOpenTasks(matching: ["resume"], limit: 1).map(\.id),
+            [literalTask.id]
+        )
+    }
+
+    func testKnowledgeSearchFindsUnicodeCaseInsensitiveSubstringInsideFTSToken() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let frame = try store.create(name: "VorÜbergabe notes", body: "handoff details")
+
+        XCTAssertEqual(
+            try store.search(query: "übe", limit: 1).map(\.id),
+            [frame.id]
+        )
+        XCTAssertEqual(
+            try store.search(matching: ["übe"], limit: 1).map(\.id),
+            [frame.id]
+        )
+        XCTAssertEqual(
+            try store.search(query: "übe", limit: 1).map(\.id),
+            [frame.id]
+        )
+    }
+
+    func testKnowledgeCJKSearchPrefersCompleteWordBeforeOlderBigramMatches() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        for index in 0..<8 {
+            _ = try store.create(name: "リリース候補\(index)", body: "details")
+        }
+        let exact = try store.create(name: "リリース", body: "details")
+
+        let frames = try store.search(
+            matching: WorkspaceQuestionRetriever.matchTokens(for: "リリース"),
+            limit: 8
+        )
+
+        XCTAssertEqual(frames.first?.id, exact.id)
+    }
+
+    func testKnowledgeSearchFindsCanonicalUnicodeSubstringAcrossNFCAndNFD() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let frame = try store.create(name: "VorU\u{0308}bergabe notes", body: "handoff details")
+
+        XCTAssertEqual(
+            try store.search(query: "über", limit: 1).map(\.id),
+            [frame.id]
+        )
+        XCTAssertEqual(
+            try store.search(matching: ["über"], limit: 1).map(\.id),
+            [frame.id]
+        )
+    }
+
+    func testKnowledgeSearchFindsQuotedUnicodePunctuationInsideFTSToken() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let frame = try store.create(name: "VorÜbe?rgabe notes", body: "handoff details")
+
+        XCTAssertEqual(
+            try store.search(query: "Übe?", limit: 1).map(\.id),
+            [frame.id]
+        )
+    }
+
+    func testKnowledgeSearchFindsUnicodeInternalSubstringBeyondOlderRows() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        for index in 0..<129 {
+            _ = try store.create(name: "Unrelated frame \(index)", body: "No matching text")
+        }
+        let frame = try store.create(name: "VorÜbergabe notes", body: "handoff details")
+
+        XCTAssertEqual(
+            try store.search(matching: ["übe"], limit: 1).map(\.id),
+            [frame.id]
+        )
+    }
+
+    func testKnowledgeSearchPagesShortUnicodeSubstringBeyondOlderRows() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        for index in 0..<129 {
+            _ = try store.create(name: "Unrelated frame \(index)", body: "No matching text")
+        }
+        let frame = try store.create(name: "VorÜbergabe notes", body: "handoff details")
+
+        XCTAssertEqual(
+            try store.search(matching: ["üb"], limit: 1).map(\.id),
+            [frame.id]
+        )
+        XCTAssertEqual(
+            try store.search(query: "üb", limit: 1).map(\.id),
+            [frame.id]
+        )
+    }
+
+    func testKnowledgeShortUnicodeSearchFailsClosedBeyondCandidateBudget() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        for index in 0..<1024 {
+            _ = try store.create(name: "Unrelated frame \(index)", body: "No matching text")
+        }
+        _ = try store.create(name: "VorÜbergabe notes", body: "handoff details")
+
+        XCTAssertEqual(try store.search(matching: ["üb"], limit: 1).map(\.id), [])
+        XCTAssertEqual(try store.search(query: "üb", limit: 1).map(\.id), [])
+        XCTAssertEqual(try store.search(matching: ["税"], limit: 1).map(\.id), [])
+        XCTAssertEqual(try store.search(query: "税", limit: 1).map(\.id), [])
+    }
+
+    func testKnowledgeSearchCompletesLiteralSubstringsAlongsideFTSHits() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let substringFrame = try store.create(name: "Billing", body: "Prepare invoice report")
+        let ftsFrame = try store.create(name: "Notes", body: "Record voice memo")
+
+        XCTAssertEqual(
+            try store.search(matching: ["voice"], limit: 2).map(\.id),
+            [ftsFrame.id, substringFrame.id]
+        )
+    }
+
+    func testKnowledgeSearchExcludesEarlierFTSHitBeforeCompletingAnotherTokenSubstring() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let ftsFrame = try store.create(name: "Voice notes", body: "Record the voice memo")
+        let substringFrame = try store.create(name: "Meetings", body: "Prepare the premeeting checklist")
+
+        XCTAssertEqual(
+            try store.search(matching: ["voice", "meet"], limit: 2).map(\.id),
+            [ftsFrame.id, substringFrame.id]
+        )
+    }
+
+    func testKnowledgeSearchFiltersTokenizedFTSCandidatesToLiteralQuery() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let literalFrame = try store.create(
+            name: "Migration",
+            body: "Roughly 50% done as of Friday"
+        )
+        _ = try store.create(name: "Shortcut", body: "Roughly 50 done as of Friday")
+
+        XCTAssertEqual(try store.search(query: "50% done").map(\.id), [literalFrame.id])
+    }
+
+    func testKnowledgeCompatibilitySearchRecoversTriggerLiteralFromFTSFalseCandidate() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let triggerLiteral = try store.create(
+            name: "résumé",
+            body: "FTS tokenized source candidate",
+            triggers: ["resume"]
+        )
+
+        XCTAssertEqual(
+            try connection.queryRows(
+                "SELECT rowid FROM knowledge_frames_fts WHERE knowledge_frames_fts MATCH ?;",
+                parameters: [.text("\"resume\"")]
+            ).count,
+            1
+        )
+        XCTAssertEqual(try store.search(query: "resume").map(\.id), [triggerLiteral.id])
+    }
+
+    func testKnowledgeBoundedSearchCompletesAfterManyFalseFTSCandidates() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        for index in 0..<160 {
+            _ = try store.create(
+                name: "Shortcut \(index)",
+                body: "50 done 50 done 50 done"
+            )
+        }
+        let literalFrame = try store.create(
+            name: "Migration",
+            body: "Roughly 50% done as of Friday"
+        )
+
+        XCTAssertEqual(
+            try store.search(query: "50% done", limit: 1).map(\.id),
+            [literalFrame.id]
+        )
+    }
+
+    func testKnowledgeBoundedSearchCapsSQLiteBindSet() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        for index in 0..<129 {
+            _ = try store.create(name: "Bounded \(index)", body: "bounded literal result")
+        }
+
+        XCTAssertEqual(try store.search(query: "bounded literal", limit: 10_000).count, 128)
+    }
+
+    func testKnowledgeCompatibilitySearchKeepsAllFTSAndFallbackResultsWithoutDynamicExclusions() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        for index in 0..<1_024 {
+            _ = try store.create(name: "Compatibility \(index)", body: "compatibility literal result")
+        }
+        var fallbackIDs: [Int64] = []
+        for index in 0..<130 {
+            let fallback = try store.create(
+                name: "Fallback \(index)",
+                body: "Trigger-only result",
+                triggers: ["compatibility literal"]
+            )
+            fallbackIDs.append(fallback.id)
+        }
+
+        let results = try store.search(query: "compatibility literal")
+
+        XCTAssertEqual(results.count, 1_154)
+        XCTAssertEqual(results.suffix(fallbackIDs.count).map(\.id), fallbackIDs)
+    }
+
+    func testKnowledgeLiteralSearchUsesDecodedTriggersInsteadOfJSONSyntax() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        _ = try store.create(name: "Default", body: "No special syntax", triggers: ["release"])
+        let quoted = try store.create(name: "Quoted", body: "No special syntax", triggers: ["say \"yes\""])
+
+        XCTAssertTrue(try store.search(query: "[]").isEmpty)
+        XCTAssertEqual(try store.search(query: "\"").map(\.id), [quoted.id])
+        XCTAssertTrue(try store.search(query: "\\").isEmpty)
+
+        let escaped = try store.create(name: "Escaped", body: "No special syntax", triggers: ["path\\name"])
+        let bracketed = try store.create(name: "Bracketed", body: "No special syntax", triggers: ["[ship]"])
+
+        XCTAssertEqual(try store.search(query: "\\").map(\.id), [escaped.id])
+        XCTAssertEqual(try store.search(query: "[ship]").map(\.id), [bracketed.id])
+    }
+
+    func testKnowledgeTokenSearchKeepsFTSOrderWhileDecodedTriggerFallbackFillsLimit() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        _ = try store.create(name: "Default", body: "No special syntax")
+        let ftsFrame = try store.create(name: "Release", body: "Exact release guidance")
+        let triggerFrame = try store.create(name: "Ship", body: "No special syntax", triggers: ["[]"])
+
+        let results = try store.search(matching: ["release", "[]"], limit: 2)
+
+        XCTAssertEqual(results.map(\.id), [ftsFrame.id, triggerFrame.id])
+        XCTAssertEqual(Set(results.map(\.id)).count, results.count)
+    }
+
     func testTaskStoreRejectsCorruptedProjectIDInsteadOfDetachingTask() throws {
         let connection = try migratedConnection()
         let projects = SQLiteProjectStore(connection: connection)
@@ -538,6 +1048,82 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(results.map(\.name), ["QZT article"])
     }
 
+    func testKnowledgeFrameFTSIndexesTriggersAndTracksTheirUpdates() throws {
+        let connection = try migratedConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let frame = try store.create(
+            name: "Release checklist",
+            body: "Verify signing before upload",
+            triggers: ["shiproom"]
+        )
+
+        XCTAssertEqual(try store.search(query: "shiproom").map(\.id), [frame.id])
+
+        _ = try store.update(id: frame.id, triggers: ["launchpad"])
+
+        XCTAssertTrue(try store.search(query: "shiproom").isEmpty)
+        XCTAssertEqual(try store.search(query: "launchpad").map(\.id), [frame.id])
+    }
+
+    func testKnowledgeExternalFTSRebuildKeepsTriggerSearchAndIntegrity() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let frame = try store.create(
+            name: "Release checklist",
+            body: "Verify signing",
+            triggers: ["shiproom"]
+        )
+
+        try connection.execute("INSERT INTO knowledge_frames_fts(knowledge_frames_fts) VALUES ('integrity-check');")
+        try connection.execute("INSERT INTO knowledge_frames_fts(knowledge_frames_fts) VALUES ('rebuild');")
+        XCTAssertEqual(try store.search(query: "shiproom").map(\.id), [frame.id])
+
+        _ = try store.update(id: frame.id, triggers: ["launchpad"])
+        try connection.execute("INSERT INTO knowledge_frames_fts(knowledge_frames_fts) VALUES ('integrity-check');")
+        try connection.execute("INSERT INTO knowledge_frames_fts(knowledge_frames_fts) VALUES ('rebuild');")
+        XCTAssertTrue(try store.search(query: "shiproom").isEmpty)
+        XCTAssertEqual(try store.search(query: "launchpad").map(\.id), [frame.id])
+
+        try store.delete(id: frame.id)
+        try connection.execute("INSERT INTO knowledge_frames_fts(knowledge_frames_fts) VALUES ('integrity-check');")
+        XCTAssertTrue(try store.search(query: "launchpad").isEmpty)
+    }
+
+    func testKnowledgeTrigramIndexTracksUpdateAndDelete() throws {
+        let connection = try currentConnection()
+        let store = SQLiteKnowledgeFrameStore(connection: connection)
+        let frame = try store.create(name: "VorÜbe?rgabe notes", body: "handoff details")
+
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT rowid FROM knowledge_frames_trigram_fts WHERE knowledge_frames_trigram_fts MATCH '\"übe?\"';"
+            ),
+            [String(frame.id)]
+        )
+
+        _ = try store.update(id: frame.id, name: "Neue handoff notes")
+
+        XCTAssertTrue(
+            try connection.queryStrings(
+                "SELECT rowid FROM knowledge_frames_trigram_fts WHERE knowledge_frames_trigram_fts MATCH '\"übe?\"';"
+            ).isEmpty
+        )
+        XCTAssertEqual(
+            try connection.queryStrings(
+                "SELECT rowid FROM knowledge_frames_trigram_fts WHERE knowledge_frames_trigram_fts MATCH '\"neu\"';"
+            ),
+            [String(frame.id)]
+        )
+
+        try store.delete(id: frame.id)
+
+        XCTAssertTrue(
+            try connection.queryStrings(
+                "SELECT rowid FROM knowledge_frames_trigram_fts WHERE knowledge_frames_trigram_fts MATCH '\"neu\"';"
+            ).isEmpty
+        )
+    }
+
     func testKnowledgeFrameCreateRollsBackBaseRowWhenFTSWriteFails() throws {
         let connection = try migratedConnection()
         let store = SQLiteKnowledgeFrameStore(connection: connection)
@@ -599,6 +1185,12 @@ final class LocalStoreTests: XCTestCase {
         let connection = try SQLiteConnection(path: ":memory:")
         let database = TestDatabaseClient(connection: connection)
         try database.migrate(CoreMigrations.phase2)
+        return connection
+    }
+
+    private func currentConnection() throws -> SQLiteConnection {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         return connection
     }
 

@@ -65,6 +65,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-swift-6-
 
+      # run-full.sh validates both Rust crates, so reuse the dedicated Rust
+      # gate's bounded cache instead of recompiling them inside the 40m limit.
+      - name: Restore bounded Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            rust/kokoro-helper/target
+            rust/embedding-helper/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-rust-boundaries-${{ hashFiles('rust/kokoro-helper/Cargo.lock', 'rust/embedding-helper/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-rust-boundaries-
+
       - name: Show toolchain
         run: |
           swift --version
@@ -163,6 +177,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-swift-6-
 
+      # run-full.sh validates both Rust crates, so reuse the dedicated Rust
+      # gate's bounded cache instead of recompiling them inside the 40m limit.
+      - name: Restore bounded Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            rust/kokoro-helper/target
+            rust/embedding-helper/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-rust-boundaries-${{ hashFiles('rust/kokoro-helper/Cargo.lock', 'rust/embedding-helper/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-rust-boundaries-
+
       - name: Show toolchain
         run: |
           swift --version
@@ -192,9 +220,14 @@ jobs:
           retention-days: 14
 
   kokoro-rust-poc:
-    name: Kokoro Rust boundary checks
+    name: Rust boundary checks
+    needs:
+      - test_strategy
+    # run-full already validates both crates. The dedicated job is needed only
+    # for selective PRs, where run-pr-ci intentionally skips that full runner.
+    if: ${{ always() && github.event_name == 'pull_request' && needs.test_strategy.outputs.strategy != 'full' }}
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout tested revision
         uses: actions/checkout@v4
@@ -204,18 +237,15 @@ jobs:
         with:
           path: |
             rust/kokoro-helper/target
+            rust/embedding-helper/target
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-${{ runner.arch }}-kokoro-rust-${{ hashFiles('rust/kokoro-helper/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-rust-boundaries-${{ hashFiles('rust/kokoro-helper/Cargo.lock', 'rust/embedding-helper/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-kokoro-rust-
+            ${{ runner.os }}-${{ runner.arch }}-rust-boundaries-
 
-      - name: Verify Rust Kokoro boundary
-        run: |
-          rustc --version
-          cargo fmt --manifest-path rust/kokoro-helper/Cargo.toml --check
-          cargo test --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features
-          cargo clippy --manifest-path rust/kokoro-helper/Cargo.toml --locked --all-targets --all-features -- -D warnings
+      - name: Verify isolated Rust boundaries
+        run: ./ci/verify-rust-boundaries.sh --require-cargo
 
   ui-runtime:
     name: UI Runtime (production route)
@@ -312,8 +342,8 @@ jobs:
 
   ui-visual:
     # Preserve the established required-check context while the locale matrix
-    # provides independent evidence. It also carries the isolated Rust result
-    # so a broken helper cannot pass an established product gate.
+    # provides independent evidence. It also carries the event's single Rust
+    # owner so a broken helper cannot pass an established product gate.
     name: UI Visual (live baseline)
     needs:
       - test_strategy
@@ -327,11 +357,23 @@ jobs:
       - name: Aggregate locale visual gates
         env:
           EVENT_NAME: ${{ github.event_name }}
-          KOKORO_RUST_RESULT: ${{ needs.kokoro-rust-poc.result }}
+          TEST_STRATEGY_RESULT: ${{ needs.test_strategy.result }}
+          TEST_STRATEGY: ${{ needs.test_strategy.outputs.strategy }}
+          FULL_VALIDATION_RESULT: ${{ needs.full_validation.result }}
+          RUST_BOUNDARY_RESULT: ${{ needs.kokoro-rust-poc.result }}
           VISUAL_SELECTION_STATE: ${{ needs.test_strategy.outputs.ui_visual_state }}
           LOCALE_VISUAL_RESULT: ${{ needs.ui-visual-locales.result }}
         run: |
-          if [[ "$KOKORO_RUST_RESULT" != "success" ]]; then
+          # Select the single Rust owner for this event: full_validation on
+          # pushes/releases, test_strategy for PR full fallback, or the
+          # dedicated job for selective PRs.
+          rust_result="$RUST_BOUNDARY_RESULT"
+          if [[ "$EVENT_NAME" != "pull_request" ]]; then
+            rust_result="$FULL_VALIDATION_RESULT"
+          elif [[ "$TEST_STRATEGY" == "full" || "$TEST_STRATEGY_RESULT" != "success" ]]; then
+            rust_result="$TEST_STRATEGY_RESULT"
+          fi
+          if [[ "$rust_result" != "success" ]]; then
             echo "failure_category=rust" >&2
             echo "failure_reason=rust-boundary-gate-did-not-succeed" >&2
             exit 1
@@ -422,6 +464,11 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 30
     steps:
+      - name: Disable Spotlight indexing for launch measurement
+        # The hosted runner can otherwise index checkout and app artifacts in
+        # the background, making runner load—not product latency—fail the SLO.
+        run: sudo /usr/bin/mdutil -a -i off
+
       - name: Checkout tested revision
         uses: actions/checkout@v4
 

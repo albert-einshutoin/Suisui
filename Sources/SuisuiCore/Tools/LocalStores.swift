@@ -819,10 +819,8 @@ public final class SQLiteTaskStore: @unchecked Sendable {
     }
 
     /// Command-palette content search over open task titles and details.
-    /// Tasks have no FTS table (only knowledge frames do), so this is the
-    /// documented fallback: a LIKE scan with bound parameters. The user text
-    /// is escaped with `SQL.escapeLike` so `%`/`_` wildcards and backslashes
-    /// match literally instead of acting as pattern syntax.
+    /// The quoted FTS phrase keeps non-CJK input literal: FTS operators and
+    /// wildcards are never interpreted as part of a command-palette query.
     public func searchOpenTasksByContent(text: String, limit: Int) throws -> [TaskRecord] {
         lock.lock()
         defer { lock.unlock() }
@@ -832,19 +830,100 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             return []
         }
 
-        let pattern = "%\(SQL.escapeLike(trimmed))%"
-        return try connection.queryRows(
+        if Self.containsCJK(trimmed) {
+            return try searchOpenTasksByContainsLocked(text: trimmed, limit: limit)
+        }
+
+        let ftsCandidates = try connection.queryRows(
             """
             SELECT tasks.* FROM tasks
+            JOIN tasks_fts ON tasks_fts.rowid = tasks.id
             LEFT JOIN projects ON projects.id = tasks.project_id
-            WHERE tasks.status != 'completed'
-              AND (tasks.project_id IS NULL OR projects.status != 'archived')
-              AND (tasks.title LIKE ? ESCAPE '\\' OR tasks.detail LIKE ? ESCAPE '\\')
+            WHERE tasks_fts MATCH ?
+              AND tasks.status != 'completed'
+              AND COALESCE(projects.status, 'active') != 'archived'
             ORDER BY tasks.id DESC
             LIMIT ?;
             """,
-            parameters: [.text(pattern), .text(pattern), .integer(Int64(limit))]
+            parameters: [.text("\"\(SQL.escapeFTS(trimmed))\""), .integer(Int64(limit))]
         ).map(TaskRecord.init(row:))
+        // FTS tokenization drops punctuation (for example, `%` in `50%`).
+        // Confirm the original literal against source fields before its rows
+        // consume the palette limit, then let the bounded fallback fill gaps.
+        var matches = ftsCandidates.filter { Self.matchesLiteral($0, text: trimmed) }
+        if matches.count < limit {
+            // FTS tokenizes "invoice", so it cannot return the historical
+            // literal substring query "voice". Complete the bounded result in
+            // SQLite even when FTS already found whole-word matches.
+            matches += try searchOpenTasksByContainsLocked(
+                tokens: [trimmed],
+                excludingIDs: Set(matches.map(\.id)),
+                limit: limit - matches.count
+            )
+        }
+        return matches
+    }
+
+    /// Workspace answers historically match any normalized token. Keep that
+    /// behavior in SQLite so a large task history is never materialized only
+    /// to discard most rows in Swift.
+    func searchOpenTasks(matching tokens: [String], limit: Int) throws -> [TaskRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard limit > 0 else {
+            return []
+        }
+        let boundedTokens = Self.boundedSearchTokens(tokens)
+        guard !boundedTokens.isEmpty else {
+            return []
+        }
+
+        let ftsTerms = boundedTokens
+            .filter { !Self.containsCJK($0) }
+            .map { "\"\(SQL.escapeFTS($0))\"" }
+        var records: [TaskRecord] = []
+        var seenIDs = Set<Int64>()
+
+        if !ftsTerms.isEmpty {
+            // unicode61 removes diacritics, so FTS can broaden a literal
+            // token. Confirm source fields before a false hit consumes a
+            // workspace slot; the existing fallback fills the remainder.
+            for record in try connection.queryRows(
+                """
+                SELECT tasks.* FROM tasks
+                JOIN tasks_fts ON tasks_fts.rowid = tasks.id
+                LEFT JOIN projects ON projects.id = tasks.project_id
+                WHERE tasks_fts MATCH ?
+                  AND tasks.status != 'completed'
+                  AND COALESCE(projects.status, 'active') != 'archived'
+                ORDER BY tasks.id ASC
+                LIMIT ?;
+                """,
+                parameters: [.text(ftsTerms.joined(separator: " OR ")), .integer(Int64(limit))]
+            ).map(TaskRecord.init(row:)) {
+                guard boundedTokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
+                      seenIDs.insert(record.id).inserted else {
+                    continue
+                }
+                records.append(record)
+            }
+        }
+
+        if records.count < limit {
+            // Keep FTS-ranked exact hits first, then recover CJK and ASCII
+            // substrings inside bounded SQLite queries; never materialize the
+            // task history in Swift just to filter it.
+            for record in try searchOpenTasksByContainsLocked(
+                tokens: boundedTokens,
+                excludingIDs: seenIDs,
+                limit: limit - records.count
+            ) where seenIDs.insert(record.id).inserted {
+                records.append(record)
+            }
+        }
+
+        return Array(records.prefix(limit))
     }
 
     public func createMany(_ drafts: [TaskCreateDraft]) throws -> [TaskRecord] {
@@ -1414,6 +1493,168 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             .map(TaskRecord.init(row:))
     }
 
+    private func searchOpenTasksByContainsLocked(text: String, limit: Int) throws -> [TaskRecord] {
+        try searchOpenTasksByContainsLocked(tokens: [text], excludingIDs: [], limit: limit)
+    }
+
+    private func searchOpenTasksByContainsLocked(
+        tokens: [String],
+        excludingIDs: Set<Int64>,
+        limit: Int
+    ) throws -> [TaskRecord] {
+        guard limit > 0 else {
+            return []
+        }
+        let predicate = tokens.map { _ in
+            """
+            (instr(lower(tasks.title), ?) > 0
+             OR instr(lower(COALESCE(tasks.detail, '')), ?) > 0)
+            """
+        }.joined(separator: " OR ")
+        let exclusion = excludingIDs.isEmpty
+            ? ""
+            : " AND tasks.id NOT IN (\(Array(repeating: "?", count: excludingIDs.count).joined(separator: ", ")))"
+        var parameters: [SQLiteValue] = []
+        for token in tokens {
+            let lowered = token.lowercased()
+            parameters.append(.text(lowered))
+            parameters.append(.text(lowered))
+        }
+        parameters.append(contentsOf: excludingIDs.sorted().map { .integer($0) })
+        parameters.append(.integer(Int64(limit)))
+        let candidates = try connection.queryRows(
+            """
+            SELECT tasks.* FROM tasks
+            LEFT JOIN projects ON projects.id = tasks.project_id
+            WHERE (\(predicate))
+              AND tasks.status != 'completed'
+              AND COALESCE(projects.status, 'active') != 'archived'\(exclusion)
+            ORDER BY tasks.id DESC
+            LIMIT ?;
+            """,
+            parameters: parameters
+        ).map(TaskRecord.init(row:))
+        // SQLite `lower()` is ASCII-only. Swift confirms the original
+        // case-insensitive contains contract over this bounded result set;
+        // Unicode case-folded prefix candidates are added below.
+        var records = candidates.filter { record in
+            tokens.contains { Self.matchesLiteral(record, text: $0) }
+        }
+        var seenIDs = excludingIDs
+        seenIDs.formUnion(records.map(\.id))
+        if records.count < limit, let prefixMatch = Self.unicodePrefixMatch(for: tokens) {
+            // unicode61 case-folds Unicode prefix terms. Keep this candidate
+            // window bounded, excluding already-selected FTS rows so they
+            // cannot consume the caller's remaining result slots before Swift
+            // restores literal contains semantics.
+            let prefixPlaceholders = seenIDs.map { _ in "?" }.joined(separator: ", ")
+            let prefixExclusion = prefixPlaceholders.isEmpty
+                ? ""
+                : " AND tasks.id NOT IN (\(prefixPlaceholders))"
+            var prefixParameters: [SQLiteValue] = [.text(prefixMatch)]
+            prefixParameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
+            prefixParameters.append(.integer(Int64(Self.maximumUnicodePrefixCandidates)))
+            let prefixCandidates = try connection.queryRows(
+                """
+                SELECT tasks.* FROM tasks
+                JOIN tasks_fts ON tasks_fts.rowid = tasks.id
+                LEFT JOIN projects ON projects.id = tasks.project_id
+                WHERE tasks_fts MATCH ?
+                  AND tasks.status != 'completed'
+                  AND COALESCE(projects.status, 'active') != 'archived'
+                  \(prefixExclusion)
+                ORDER BY tasks.id DESC
+                LIMIT ?;
+                """,
+                parameters: prefixParameters
+            ).map(TaskRecord.init(row:))
+            for record in prefixCandidates {
+                guard tokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
+                      seenIDs.insert(record.id).inserted else {
+                    continue
+                }
+                records.append(record)
+            }
+        }
+        if records.count < limit, let trigramMatch = Self.unicodeTrigramMatch(for: tokens) {
+            let placeholders = Array(repeating: "?", count: seenIDs.count).joined(separator: ", ")
+            let exclusion = placeholders.isEmpty ? "" : " AND tasks.id NOT IN (\(placeholders))"
+            var parameters: [SQLiteValue] = [.text(trigramMatch)]
+            parameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
+            parameters.append(.integer(Int64(limit - records.count)))
+            // Trigrams index Unicode infixes in SQLite, so the source literal
+            // check can find an old `VorÜbergabe` without a fixed Swift window.
+            let trigramCandidates = try connection.queryRows(
+                """
+                SELECT tasks.* FROM tasks
+                JOIN tasks_trigram_fts ON tasks_trigram_fts.rowid = tasks.id
+                LEFT JOIN projects ON projects.id = tasks.project_id
+                WHERE tasks_trigram_fts MATCH ?
+                  AND tasks.status != 'completed'
+                  AND COALESCE(projects.status, 'active') != 'archived'\(exclusion)
+                ORDER BY tasks.id DESC
+                LIMIT ?;
+                """,
+                parameters: parameters
+            ).map(TaskRecord.init(row:))
+            for record in trigramCandidates {
+                guard tokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
+                      seenIDs.insert(record.id).inserted else {
+                    continue
+                }
+                records.append(record)
+            }
+        }
+        if records.count < limit, Self.needsUnicodeLiteralPaging(for: tokens) {
+            var cursor: Int64?
+            var remainingCandidates = Self.maximumUnicodeLiteralCandidates
+            while records.count < limit, remainingCandidates > 0 {
+                let pageLimit = min(Self.unicodeLiteralCandidatePageSize, remainingCandidates)
+                let candidates = try unicodeLiteralCandidatePageLocked(beforeID: cursor, limit: pageLimit)
+                guard let lastID = candidates.last?.id else {
+                    break
+                }
+                cursor = lastID
+                remainingCandidates -= candidates.count
+                for record in candidates {
+                    guard tokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
+                          seenIDs.insert(record.id).inserted else {
+                        continue
+                    }
+                    records.append(record)
+                }
+                guard candidates.count == pageLimit else {
+                    break
+                }
+            }
+        }
+        return Array(records.sorted { $0.id > $1.id }.prefix(limit))
+    }
+
+    private func unicodeLiteralCandidatePageLocked(beforeID: Int64?, limit: Int) throws -> [TaskRecord] {
+        let cursorPredicate = beforeID.map { _ in " AND tasks.id < ?" } ?? ""
+        var parameters: [SQLiteValue] = []
+        if let beforeID {
+            parameters.append(.integer(beforeID))
+        }
+        parameters.append(.integer(Int64(limit)))
+        // ponytail: FTS5 trigrams cannot index one- or two-scalar literals.
+        // Cap keyset work so a no-match does not decode the whole history while
+        // holding this store lock; add a bigram index if profiling needs deeper
+        // short-Unicode recall.
+        return try connection.queryRows(
+            """
+            SELECT tasks.* FROM tasks
+            LEFT JOIN projects ON projects.id = tasks.project_id
+            WHERE tasks.status != 'completed'
+              AND COALESCE(projects.status, 'active') != 'archived'\(cursorPredicate)
+            ORDER BY tasks.id DESC
+            LIMIT ?;
+            """,
+            parameters: parameters
+        ).map(TaskRecord.init(row:))
+    }
+
     private static func sortForProjectBoard(_ lhs: TaskRecord, _ rhs: TaskRecord) -> Bool {
         switch (lhs.projectID, rhs.projectID) {
         case let (lhsProject?, rhsProject?):
@@ -1428,6 +1669,111 @@ public final class SQLiteTaskStore: @unchecked Sendable {
             break
         }
         return lhs.id < rhs.id
+    }
+
+    static func containsCJK(_ text: String) -> Bool {
+        text.unicodeScalars.contains { scalar in
+            switch scalar.value {
+            case 0x3040...0x30FF,
+                 0x3400...0x4DBF,
+                 0x4E00...0x9FFF,
+                 0xF900...0xFAFF,
+                 0xFF66...0xFF9D:
+                return true
+            default:
+                return false
+            }
+        }
+    }
+
+    private static func matchesLiteral(_ record: TaskRecord, text: String) -> Bool {
+        // Normalize canonical equivalents before folding case: SQLite FTS and
+        // lower() cannot bridge NFC/NFD Unicode literals. This preserves the
+        // former Swift literal contract without making accents equivalent.
+        let normalizedText = text.precomposedStringWithCanonicalMapping
+        return record.title.precomposedStringWithCanonicalMapping.range(of: normalizedText, options: .caseInsensitive) != nil
+            || record.detail?.precomposedStringWithCanonicalMapping.range(of: normalizedText, options: .caseInsensitive) != nil
+    }
+
+    private static let maximumUnicodePrefixCandidates = 128
+    private static let unicodeLiteralCandidatePageSize = 128
+    static let maximumUnicodeLiteralCandidates = 1_024
+
+    private static func needsUnicodeLiteralPaging(for tokens: [String]) -> Bool {
+        tokens.contains { token in
+            guard token.unicodeScalars.contains(where: { $0.value > 0x7F }) else {
+                return false
+            }
+            // Trigrams compare scalar sequences, so NFC/NFD equivalents need
+            // the same bounded keyset path as literals below three scalars.
+            return token.unicodeScalars.count < 3
+                || Array(token.precomposedStringWithCanonicalMapping.unicodeScalars)
+                    != Array(token.decomposedStringWithCanonicalMapping.unicodeScalars)
+        }
+    }
+
+    private static func unicodePrefixMatch(for tokens: [String]) -> String? {
+        let prefixes = tokens.compactMap { token -> String? in
+            let leadingWord = token.drop(while: { !$0.isLetter && !$0.isNumber })
+            let prefix = String(leadingWord.prefix(while: { $0.isLetter || $0.isNumber }))
+            guard !prefix.isEmpty,
+                  prefix.unicodeScalars.contains(where: { $0.value > 0x7F }) else {
+                return nil
+            }
+            return "\"\(SQL.escapeFTS(prefix))\"*"
+        }
+        guard !prefixes.isEmpty else {
+            return nil
+        }
+        return prefixes.joined(separator: " OR ")
+    }
+
+    private static func unicodeTrigramMatch(for tokens: [String]) -> String? {
+        let terms = tokens.compactMap { token -> String? in
+            guard token.unicodeScalars.count >= 3,
+                  token.unicodeScalars.contains(where: { $0.value > 0x7F }) else {
+                return nil
+            }
+            // The quoted phrase keeps punctuation literal, while source
+            // revalidation prevents FTS tokenization from widening a match.
+            return "\"\(SQL.escapeFTS(token))\""
+        }
+        guard !terms.isEmpty else {
+            return nil
+        }
+        return terms.joined(separator: " OR ")
+    }
+
+    static func boundedSearchTokens(_ tokens: [String]) -> [String] {
+        let maximumTokenCount = 32
+        let maximumTokenLength = 128
+        let half = maximumTokenCount / 2
+        var prefixTokens: [String] = []
+        var suffixTokens: [String] = []
+        for token in tokens {
+            let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                continue
+            }
+            let bounded = String(trimmed.prefix(maximumTokenLength))
+            if prefixTokens.count < half {
+                guard !prefixTokens.contains(bounded) else {
+                    continue
+                }
+                prefixTokens.append(bounded)
+                continue
+            }
+            guard !prefixTokens.contains(bounded), !suffixTokens.contains(bounded) else {
+                continue
+            }
+            if suffixTokens.count == half {
+                suffixTokens.removeFirst()
+            }
+            suffixTokens.append(bounded)
+        }
+        // Natural-language questions often place their subject at either end.
+        // Keep a stable half from each side without widening SQLite bind sets.
+        return prefixTokens + suffixTokens
     }
 }
 
@@ -1723,21 +2069,343 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
+        return try searchLocked(query: query, limit: nil)
+    }
+
+    /// Bounded literal search for interactive callers such as the command palette.
+    /// At most 128 rows are returned to keep SQLite bind counts bounded.
+    /// The compatibility overload above intentionally remains unbounded for
+    /// existing read-only tools that render every matching knowledge frame.
+    public func search(query: String, limit: Int) throws -> [KnowledgeFrameRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard limit > 0 else {
+            return []
+        }
+        return try searchLocked(
+            query: query,
+            limit: min(limit, Self.maximumBoundedSearchResults)
+        )
+    }
+
+    private func searchLocked(query: String, limit: Int?) throws -> [KnowledgeFrameRecord] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return []
         }
 
         let match = "\"\(SQL.escapeFTS(trimmed))\""
-        return try connection.queryRows(
+        let ftsLimit = limit.map { _ in "LIMIT ?" } ?? ""
+        var ftsParameters: [SQLiteValue] = [.text(match)]
+        if let limit {
+            ftsParameters.append(.integer(Int64(limit)))
+        }
+        let ftsCandidates = try connection.queryRows(
             """
             SELECT knowledge_frames.*
             FROM knowledge_frames_fts
             JOIN knowledge_frames ON knowledge_frames_fts.rowid = knowledge_frames.id
             WHERE knowledge_frames_fts MATCH ?
-            ORDER BY rank;
+            ORDER BY rank
+            \(ftsLimit);
             """,
-            parameters: [.text(match)]
+            parameters: ftsParameters
+        ).map(KnowledgeFrameRecord.init(row:))
+        // FTS strips punctuation, so an FTS phrase alone can widen a literal
+        // palette query. Keep only source-confirmed rows and recover any FTS
+        // false negatives with the same SQLite `instr` semantics.
+        var records = ftsCandidates.filter { Self.matchesLiteral($0, text: trimmed) }
+        var seenIDs = Set(records.map(\.id))
+        let remaining = limit.map { $0 - records.count }
+        guard remaining != 0 else {
+            return records
+        }
+        let exclusion: String
+        let lowered = trimmed.lowercased()
+        var parameters: [SQLiteValue] = [.text(lowered), .text(lowered), .text(lowered)]
+        if limit == nil {
+            // The compatibility API returns every match. Avoid dynamically
+            // binding all FTS IDs; seenIDs below preserves FTS-first order.
+            exclusion = ""
+        } else {
+            exclusion = seenIDs.isEmpty
+                ? ""
+                : " AND id NOT IN (\(Array(repeating: "?", count: seenIDs.count).joined(separator: ", ")))"
+            parameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
+        }
+        let fallbackLimit = remaining.map { _ in "LIMIT ?" } ?? ""
+        if let remaining {
+            parameters.append(.integer(Int64(remaining)))
+        }
+        let fallbackCandidates = try connection.queryRows(
+            """
+            SELECT * FROM knowledge_frames
+            WHERE (instr(lower(name), ?) > 0
+                   OR instr(lower(body), ?) > 0
+                   OR EXISTS (
+                       SELECT 1 FROM json_each(knowledge_frames.triggers_json)
+                       WHERE instr(lower(json_each.value), ?) > 0
+                   ))\(exclusion)
+            ORDER BY id ASC
+            \(fallbackLimit);
+            """,
+            parameters: parameters
+        ).map(KnowledgeFrameRecord.init(row:))
+        for record in fallbackCandidates {
+            guard Self.matchesLiteral(record, text: trimmed), seenIDs.insert(record.id).inserted else {
+                continue
+            }
+            records.append(record)
+        }
+        if limit.map({ records.count < $0 }) ?? true,
+           let trigramMatch = Self.unicodeTrigramMatch(for: [trimmed]) {
+            let trigramLimit = limit.map { $0 - records.count }
+            let exclusion: String
+            var trigramParameters: [SQLiteValue] = [.text(trigramMatch)]
+            if limit == nil {
+                exclusion = ""
+            } else {
+                exclusion = seenIDs.isEmpty
+                    ? ""
+                    : " AND knowledge_frames.id NOT IN (\(Array(repeating: "?", count: seenIDs.count).joined(separator: ", ")))"
+                trigramParameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
+            }
+            let trigramLimitClause = trigramLimit.map { _ in "LIMIT ?" } ?? ""
+            if let trigramLimit {
+                trigramParameters.append(.integer(Int64(trigramLimit)))
+            }
+            // Trigrams locate Unicode infixes in SQLite before source fields
+            // reapply the literal contract, independent of table age.
+            let trigramCandidates = try connection.queryRows(
+                """
+                SELECT knowledge_frames.*
+                FROM knowledge_frames_trigram_fts
+                JOIN knowledge_frames ON knowledge_frames_trigram_fts.rowid = knowledge_frames.id
+                WHERE knowledge_frames_trigram_fts MATCH ?\(exclusion)
+                ORDER BY knowledge_frames.id ASC
+                \(trigramLimitClause);
+                """,
+                parameters: trigramParameters
+            ).map(KnowledgeFrameRecord.init(row:))
+            for record in trigramCandidates {
+                guard Self.matchesLiteral(record, text: trimmed), seenIDs.insert(record.id).inserted else {
+                    continue
+                }
+                records.append(record)
+            }
+        }
+        if limit.map({ records.count < $0 }) ?? true,
+           Self.needsUnicodeLiteralPaging(for: [trimmed]) {
+            var cursor: Int64?
+            var remainingCandidates = SQLiteTaskStore.maximumUnicodeLiteralCandidates
+            while (limit.map { records.count < $0 } ?? true), remainingCandidates > 0 {
+                let pageLimit = min(Self.unicodeLiteralCandidatePageSize, remainingCandidates)
+                let candidates = try unicodeLiteralCandidatePageLocked(afterID: cursor, limit: pageLimit)
+                guard let lastID = candidates.last?.id else {
+                    break
+                }
+                cursor = lastID
+                remainingCandidates -= candidates.count
+                for record in candidates {
+                    guard Self.matchesLiteral(record, text: trimmed), seenIDs.insert(record.id).inserted else {
+                        continue
+                    }
+                    records.append(record)
+                }
+                guard candidates.count == pageLimit else {
+                    break
+                }
+            }
+        }
+        return limit.map { Array(records.prefix($0)) } ?? records
+    }
+
+    func search(matching tokens: [String], limit: Int) throws -> [KnowledgeFrameRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard limit > 0 else {
+            return []
+        }
+        let boundedTokens = SQLiteTaskStore.boundedSearchTokens(tokens)
+        guard !boundedTokens.isEmpty else {
+            return []
+        }
+
+        let nonCJK = boundedTokens.filter { !SQLiteTaskStore.containsCJK($0) }
+        let completeCJK = boundedTokens.filter {
+            SQLiteTaskStore.containsCJK($0) && $0.unicodeScalars.count > 2
+        }
+        var records: [KnowledgeFrameRecord] = []
+        var seenIDs = Set<Int64>()
+
+        if !nonCJK.isEmpty {
+            let match = nonCJK
+                .map { "\"\(SQL.escapeFTS($0))\"" }
+                .joined(separator: " OR ")
+            let ftsCandidates = try connection.queryRows(
+                """
+                SELECT knowledge_frames.*
+                FROM knowledge_frames_fts
+                JOIN knowledge_frames ON knowledge_frames_fts.rowid = knowledge_frames.id
+                WHERE knowledge_frames_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?;
+                """,
+                parameters: [.text(match), .integer(Int64(limit))]
+            ).map(KnowledgeFrameRecord.init(row:))
+            for record in ftsCandidates {
+                guard boundedTokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
+                      seenIDs.insert(record.id).inserted else {
+                    continue
+                }
+                records.append(record)
+            }
+        }
+
+        if records.count < limit, !completeCJK.isEmpty {
+            let match = completeCJK
+                .map { "\"\(SQL.escapeFTS($0))\"" }
+                .joined(separator: " OR ")
+            let ftsCandidates = try connection.queryRows(
+                """
+                SELECT knowledge_frames.*
+                FROM knowledge_frames_fts
+                JOIN knowledge_frames ON knowledge_frames_fts.rowid = knowledge_frames.id
+                WHERE knowledge_frames_fts MATCH ?
+                ORDER BY knowledge_frames.id ASC
+                LIMIT ?;
+                """,
+                parameters: [.text(match), .integer(Int64(limit - records.count))]
+            ).map(KnowledgeFrameRecord.init(row:))
+            // unicode61 keeps an unsegmented CJK word intact. Search that
+            // complete word before the two-character fallback can spend the
+            // bounded workspace candidate window on older partial matches.
+            for record in ftsCandidates {
+                guard completeCJK.contains(where: { Self.matchesLiteral(record, text: $0) }),
+                      seenIDs.insert(record.id).inserted else {
+                    continue
+                }
+                records.append(record)
+            }
+        }
+
+        let containsTokens = boundedTokens
+        if !containsTokens.isEmpty, records.count < limit {
+            // unicode61 does not index arbitrary CJK or ASCII substrings. Run
+            // this only for the remaining slots so exact FTS hits stay first.
+            let predicate = containsTokens.map { _ in
+                """
+                (instr(lower(name), ?) > 0
+                 OR instr(lower(body), ?) > 0
+                 OR EXISTS (
+                     SELECT 1 FROM json_each(knowledge_frames.triggers_json)
+                     WHERE instr(lower(json_each.value), ?) > 0
+                 ))
+                """
+            }.joined(separator: " OR ")
+            let exclusion = seenIDs.isEmpty
+                ? ""
+                : " AND id NOT IN (\(Array(repeating: "?", count: seenIDs.count).joined(separator: ", ")))"
+            var parameters: [SQLiteValue] = []
+            for token in containsTokens {
+                let lowered = token.lowercased()
+                parameters.append(.text(lowered))
+                parameters.append(.text(lowered))
+                parameters.append(.text(lowered))
+            }
+            parameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
+            parameters.append(.integer(Int64(limit - records.count)))
+            let fallbackCandidates = try connection.queryRows(
+                """
+                SELECT * FROM knowledge_frames
+                WHERE (\(predicate))\(exclusion)
+                ORDER BY id ASC
+                LIMIT ?;
+                """,
+                parameters: parameters
+            ).map(KnowledgeFrameRecord.init(row:))
+            for record in fallbackCandidates {
+                guard boundedTokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
+                      seenIDs.insert(record.id).inserted else {
+                    continue
+                }
+                records.append(record)
+            }
+        }
+
+        if records.count < limit, let trigramMatch = Self.unicodeTrigramMatch(for: boundedTokens) {
+            let exclusion = seenIDs.isEmpty
+                ? ""
+                : " AND knowledge_frames.id NOT IN (\(Array(repeating: "?", count: seenIDs.count).joined(separator: ", ")))"
+            var trigramParameters: [SQLiteValue] = [.text(trigramMatch)]
+            trigramParameters.append(contentsOf: seenIDs.sorted().map { .integer($0) })
+            trigramParameters.append(.integer(Int64(limit - records.count)))
+            let trigramCandidates = try connection.queryRows(
+                """
+                SELECT knowledge_frames.*
+                FROM knowledge_frames_trigram_fts
+                JOIN knowledge_frames ON knowledge_frames_trigram_fts.rowid = knowledge_frames.id
+                WHERE knowledge_frames_trigram_fts MATCH ?\(exclusion)
+                ORDER BY knowledge_frames.id ASC
+                LIMIT ?;
+                """,
+                parameters: trigramParameters
+            ).map(KnowledgeFrameRecord.init(row:))
+            for record in trigramCandidates {
+                guard boundedTokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
+                      seenIDs.insert(record.id).inserted else {
+                    continue
+                }
+                records.append(record)
+            }
+        }
+
+        if records.count < limit, Self.needsUnicodeLiteralPaging(for: boundedTokens) {
+            var cursor: Int64?
+            var remainingCandidates = SQLiteTaskStore.maximumUnicodeLiteralCandidates
+            while records.count < limit, remainingCandidates > 0 {
+                let pageLimit = min(Self.unicodeLiteralCandidatePageSize, remainingCandidates)
+                let candidates = try unicodeLiteralCandidatePageLocked(afterID: cursor, limit: pageLimit)
+                guard let lastID = candidates.last?.id else {
+                    break
+                }
+                cursor = lastID
+                remainingCandidates -= candidates.count
+                for record in candidates {
+                    guard records.count < limit,
+                          boundedTokens.contains(where: { Self.matchesLiteral(record, text: $0) }),
+                          seenIDs.insert(record.id).inserted else {
+                        continue
+                    }
+                    records.append(record)
+                }
+                guard candidates.count == pageLimit else {
+                    break
+                }
+            }
+        }
+
+        return Array(records.prefix(limit))
+    }
+
+    private func unicodeLiteralCandidatePageLocked(afterID: Int64?, limit: Int) throws -> [KnowledgeFrameRecord] {
+        let cursorPredicate = afterID.map { _ in " WHERE id > ?" } ?? ""
+        var parameters: [SQLiteValue] = []
+        if let afterID {
+            parameters.append(.integer(afterID))
+        }
+        parameters.append(.integer(Int64(limit)))
+        // ponytail: see the task store. The shared cap bounds no-match lock
+        // time; add a bigram index if profiling requires deeper recall.
+        return try connection.queryRows(
+            """
+            SELECT * FROM knowledge_frames\(cursorPredicate)
+            ORDER BY id ASC
+            LIMIT ?;
+            """,
+            parameters: parameters
         ).map(KnowledgeFrameRecord.init(row:))
     }
 
@@ -1747,6 +2415,49 @@ public final class SQLiteKnowledgeFrameStore: @unchecked Sendable {
         }
 
         return try KnowledgeFrameRecord(row: row)
+    }
+
+    private static let maximumBoundedSearchResults = 128
+    private static let unicodeLiteralCandidatePageSize = 128
+
+    private static func needsUnicodeLiteralPaging(for tokens: [String]) -> Bool {
+        tokens.contains { token in
+            guard token.unicodeScalars.contains(where: { $0.value > 0x7F }) else {
+                return false
+            }
+            // Trigrams compare scalar sequences, so NFC/NFD equivalents need
+            // the same bounded keyset path as literals below three scalars.
+            return token.unicodeScalars.count < 3
+                || Array(token.precomposedStringWithCanonicalMapping.unicodeScalars)
+                    != Array(token.decomposedStringWithCanonicalMapping.unicodeScalars)
+        }
+    }
+
+    private static func unicodeTrigramMatch(for tokens: [String]) -> String? {
+        let terms = tokens.compactMap { token -> String? in
+            guard token.unicodeScalars.count >= 3,
+                  token.unicodeScalars.contains(where: { $0.value > 0x7F }) else {
+                return nil
+            }
+            // The quoted phrase keeps punctuation literal, while source
+            // revalidation prevents FTS tokenization from widening a match.
+            return "\"\(SQL.escapeFTS(token))\""
+        }
+        guard !terms.isEmpty else {
+            return nil
+        }
+        return terms.joined(separator: " OR ")
+    }
+
+    private static func matchesLiteral(_ record: KnowledgeFrameRecord, text: String) -> Bool {
+        // See the task matcher: this is literal, NFC-normalized comparison;
+        // it deliberately does not use diacritic-insensitive matching.
+        let normalizedText = text.precomposedStringWithCanonicalMapping
+        return record.name.precomposedStringWithCanonicalMapping.range(of: normalizedText, options: .caseInsensitive) != nil
+            || record.body.precomposedStringWithCanonicalMapping.range(of: normalizedText, options: .caseInsensitive) != nil
+            || record.triggers.contains {
+                $0.precomposedStringWithCanonicalMapping.range(of: normalizedText, options: .caseInsensitive) != nil
+            }
     }
 }
 
@@ -2084,12 +2795,4 @@ private enum SQL {
         value.replacingOccurrences(of: "\"", with: "\"\"")
     }
 
-    /// Escapes LIKE pattern metacharacters so user-entered search text matches
-    /// literally. Pair with `ESCAPE '\'` in the query.
-    static func escapeLike(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "%", with: "\\%")
-            .replacingOccurrences(of: "_", with: "\\_")
-    }
 }

@@ -8,6 +8,7 @@ STARTED_AT="$(date +%s)"
 SWIFTPM_STATUS=0
 ACCESSIBILITY_MARKER_STATUS=0
 SECURITY_STATUS=0
+RUST_BOUNDARY_STATUS=0
 COUNT_STATUS=0
 
 mkdir -p "$ARTIFACT_ROOT" "$(dirname "$REPORT_PATH")"
@@ -17,6 +18,7 @@ SUISUI_SWIFTPM_ARTIFACT_DIR="${SUISUI_SWIFTPM_ARTIFACT_DIR:-$ROOT_DIR/.tmp/ci-ar
   ./scripts/ci.sh swiftpm || SWIFTPM_STATUS=$?
 ./script/check_pseudo_voiceover_paths.sh || ACCESSIBILITY_MARKER_STATUS=$?
 ./script/check_security_regressions.sh || SECURITY_STATUS=$?
+./ci/verify-rust-boundaries.sh --require-cargo || RUST_BOUNDARY_STATUS=$?
 
 FINISHED_AT="$(date +%s)"
 DURATION_SECONDS=$((FINISHED_AT - STARTED_AT))
@@ -44,7 +46,7 @@ fi
 
 if ! python3 - "$REPORT_PATH" "$DURATION_SECONDS" "$DISCOVERED_TEST_COUNT" \
   "$EXECUTED_TEST_COUNT" "$SKIPPED_TEST_COUNT" "$SWIFTPM_STATUS" \
-  "$ACCESSIBILITY_MARKER_STATUS" "$SECURITY_STATUS" "$COUNT_STATUS" <<'PY'
+  "$ACCESSIBILITY_MARKER_STATUS" "$SECURITY_STATUS" "$RUST_BOUNDARY_STATUS" "$COUNT_STATUS" <<'PY'
 import json
 import os
 import sys
@@ -59,12 +61,14 @@ from pathlib import Path
     swiftpm_status,
     accessibility_marker_status,
     security_status,
+    rust_boundary_status,
     count_status,
 ) = sys.argv[1:]
 statuses = [
     int(swiftpm_status),
     int(accessibility_marker_status),
     int(security_status),
+    int(rust_boundary_status),
     int(count_status),
 ]
 report = {
@@ -84,6 +88,7 @@ report = {
         "swiftpm": int(swiftpm_status),
         "accessibilityMarkers": int(accessibility_marker_status),
         "security": int(security_status),
+        "rustBoundaries": int(rust_boundary_status),
         "testCountEvidence": int(count_status),
     },
 }
@@ -95,6 +100,6 @@ then
 fi
 
 if [[ "$SWIFTPM_STATUS" -ne 0 || "$ACCESSIBILITY_MARKER_STATUS" -ne 0 \
-  || "$SECURITY_STATUS" -ne 0 || "$COUNT_STATUS" -ne 0 ]]; then
+  || "$SECURITY_STATUS" -ne 0 || "$RUST_BOUNDARY_STATUS" -ne 0 || "$COUNT_STATUS" -ne 0 ]]; then
   exit 1
 fi

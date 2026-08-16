@@ -8,7 +8,7 @@ METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 ARTIFACT_ROOT="${SUISUI_VOICE_TASK_CONTINUITY_ARTIFACT_DIR:-$ROOT_DIR/.tmp/runtime-voice-task-continuity}"
 DRIVER="${SUISUI_VOICE_TASK_CONTINUITY_DRIVER:-$ROOT_DIR/script/drive_runtime_voice_task_continuity.sh}"
 KEEP_FIXTURE="${SUISUI_VOICE_TASK_CONTINUITY_KEEP_FIXTURE:-0}"
-SQLITE3="${SQLITE3:-sqlite3}"
+SQLITE3="${SQLITE3:-/usr/bin/sqlite3}"
 
 # Stable, non-user fixtures keep AX/SQLite evidence attributable to this run.
 FIXTURE_PROJECT_ID="1833801"

@@ -64,39 +64,69 @@ public final class WorkspaceQuestionRetriever: @unchecked Sendable {
 
         let tokens = Self.matchTokens(for: trimmedQuestion)
         if !tokens.isEmpty {
-            for task in try taskStore.listAll() where task.status != "completed" {
-                if Self.matches(tokens: tokens, in: [task.title, task.detail ?? ""]) {
+            var candidateLimit = Self.candidateLimit(for: limit)
+            while snippets.count < limit {
+                let tasks = try taskStore.searchOpenTasks(matching: tokens, limit: candidateLimit)
+                for task in tasks {
                     append(kind: "task", title: task.title, detail: task.detail.map(Self.bodyPreview))
                 }
+                guard tasks.count == candidateLimit,
+                      candidateLimit < Self.maximumDistinctCandidates,
+                      snippets.count < limit else {
+                    break
+                }
+                // Stores return a stable prefix. Grow the bounded prefix only
+                // when duplicate titles exhausted it, so a later distinct row
+                // can still fill the workspace limit without scanning history.
+                candidateLimit = min(Self.maximumDistinctCandidates, candidateLimit * 2)
             }
             for project in try projectStore.list() where Self.matches(tokens: tokens, in: [project.title]) {
                 append(kind: "project", title: project.title, detail: project.deadline.map { "deadline \($0)" })
             }
         }
 
-        // FTS syntax problems must degrade to "no knowledge context", never
-        // fail the whole question, so frame search errors are swallowed.
-        var frames = (try? knowledgeFrameStore.search(query: trimmedQuestion)) ?? []
-        if frames.isEmpty {
-            // The full question rarely matches as one FTS phrase, so fall back
-            // to individual word tokens (CJK 2-grams are skipped because the
-            // default FTS tokenizer cannot match CJK substrings).
-            var frameIDs = Set<Int64>()
-            for token in Self.wordTokens(for: trimmedQuestion) {
-                for frame in (try? knowledgeFrameStore.search(query: token)) ?? []
-                    where frameIDs.insert(frame.id).inserted {
-                    frames.append(frame)
-                }
+        let knowledgeTokens = tokens.isEmpty
+            ? Self.literalKnowledgeFallbackTokens(for: trimmedQuestion)
+            : tokens
+        // Search failures must degrade to no knowledge context, never fail the
+        // whole question. One-character questions skip task/project scans, but
+        // retain their literal in the bounded SQLite knowledge search path.
+        var knowledgeCandidateLimit = Self.candidateLimit(for: limit)
+        while snippets.count < limit {
+            let frames = (try? knowledgeFrameStore.search(
+                matching: knowledgeTokens,
+                limit: knowledgeCandidateLimit
+            )) ?? []
+            for frame in frames {
+                append(kind: "knowledge", title: frame.name, detail: Self.bodyPreview(frame.body))
             }
-        }
-        for frame in frames {
-            append(kind: "knowledge", title: frame.name, detail: Self.bodyPreview(frame.body))
+            guard frames.count == knowledgeCandidateLimit,
+                  knowledgeCandidateLimit < Self.maximumDistinctCandidates,
+                  snippets.count < limit else {
+                break
+            }
+            knowledgeCandidateLimit = min(
+                Self.maximumDistinctCandidates,
+                knowledgeCandidateLimit * 2
+            )
         }
 
         return snippets
     }
 
     // MARK: - Matching
+
+    private static let maximumDistinctCandidates = 128
+
+    private static func candidateLimit(for limit: Int) -> Int {
+        // Snippets dedupe by kind and title, unlike store rows. Overfetch a
+        // small fixed window so duplicate titles do not hide later distinct
+        // context, while keeping every SQLite search bounded.
+        guard limit <= maximumDistinctCandidates / 4 else {
+            return maximumDistinctCandidates
+        }
+        return min(maximumDistinctCandidates, limit * 4)
+    }
 
     static func matchTokens(for question: String) -> [String] {
         var tokens = wordTokens(for: question)
@@ -128,6 +158,17 @@ public final class WorkspaceQuestionRetriever: @unchecked Sendable {
             .split { !$0.isLetter && !$0.isNumber }
             .map(String.init)
             .filter { $0.count >= 2 }
+    }
+
+    private static func literalKnowledgeFallbackTokens(for question: String) -> [String] {
+        // Only trim surrounding sentence punctuation: the remaining literal is bound into
+        // SQLite, while punctuation inside a knowledge query stays meaningful.
+        let punctuation = CharacterSet(charactersIn: "?？!！。．、，,.:：;；…")
+        let literal = question
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: punctuation)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return SQLiteTaskStore.boundedSearchTokens([literal])
     }
 
     private static func matches(tokens: [String], in fields: [String]) -> Bool {

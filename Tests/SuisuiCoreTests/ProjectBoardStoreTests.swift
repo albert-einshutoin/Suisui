@@ -2232,6 +2232,148 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDevelopmentRepositoryEditPreviewRejectsASIASessionCredential() throws {
+        let subject = try makeDevelopmentRepositoryEditPreviewSubject()
+        let credential = "ASIA" + "ABCDEFGHIJKLMNOP"
+
+        XCTAssertNil(subject.viewModel.developmentRepositoryEditPreview(
+            for: subject.project,
+            task: subject.task,
+            operation: .create,
+            relativePath: "Docs/Session.md",
+            contents: "temporary provider value \(credential)\n",
+            expectedSHA256: nil
+        ))
+    }
+
+    @MainActor
+    func testDevelopmentRepositoryEditPreviewRejectsPasswordAliasConfig() throws {
+        let subject = try makeDevelopmentRepositoryEditPreviewSubject()
+        let fixtures = [
+            ("Config/Database.json", #"{"db_pass":"db-pass-preview-marker"}"#),
+            ("Config/Auth.toml", "passwd = \"passwd-preview-marker\""),
+            ("Config/Encryption.yaml", "passphrase: passphrase-preview-marker"),
+        ]
+
+        for (path, contents) in fixtures {
+            XCTAssertNil(subject.viewModel.developmentRepositoryEditPreview(
+                for: subject.project,
+                task: subject.task,
+                operation: .create,
+                relativePath: path,
+                contents: contents,
+                expectedSHA256: nil
+            ), path)
+        }
+    }
+
+    @MainActor
+    func testDevelopmentRepositoryEditPreviewRejectsEscapedCredentialValueAliasesOnly() throws {
+        let subject = try makeDevelopmentRepositoryEditPreviewSubject()
+        let unsafeFixtures = [
+            ("Config/ProviderA.json", #"{"apiKey\u0056alue":"api-key-value-preview-marker"}"#),
+            ("Config/ProviderB.json", #"{"to\u006benValue":"token-value-preview-marker"}"#),
+            ("Config/ProviderC.json", #"{"accessKey\u0056alue":"access-key-value-preview-marker"}"#),
+        ]
+
+        for (path, contents) in unsafeFixtures {
+            XCTAssertNil(subject.viewModel.developmentRepositoryEditPreview(
+                for: subject.project,
+                task: subject.task,
+                operation: .create,
+                relativePath: path,
+                contents: contents,
+                expectedSHA256: nil
+            ), path)
+        }
+        XCTAssertNotNil(subject.viewModel.developmentRepositoryEditPreview(
+            for: subject.project,
+            task: subject.task,
+            operation: .create,
+            relativePath: "Config/Display.json",
+            contents: #"{"display\u0056alue":"harmless-value-preview-marker"}"#,
+            expectedSHA256: nil
+        ))
+    }
+
+    @MainActor
+    func testDevelopmentRepositoryEditPreviewRejectsSwiftCredentialAliasAssignment() throws {
+        let subject = try makeDevelopmentRepositoryEditPreviewSubject()
+        let cases: [(name: String, contents: String)] = [
+            (
+                "Alias",
+                "let value = \"opaquecredentialmaterialalias7X9Q\"\nlet password = value\n"
+            ),
+            (
+                "Tuple",
+                "let opaque = \"opaquecredentialmaterialtuple7X9Q\"\nlet (password) = (opaque)\n"
+            ),
+            (
+                "Compound",
+                """
+                let opaque = "opaquecredentialmaterialcompound7X9Q"
+                struct Holder {
+                    var password: String
+                    mutating func append() {
+                        password += opaque
+                    }
+                }
+                """
+            )
+        ]
+
+        for item in cases {
+            let preview = subject.viewModel.developmentRepositoryEditPreview(
+                for: subject.project,
+                task: subject.task,
+                operation: .create,
+                relativePath: "Sources/App/Credential\(item.name).swift",
+                contents: item.contents,
+                expectedSHA256: nil
+            )
+            XCTAssertNil(preview, "Credential assignment must not enter edit preview: \(item.name)")
+        }
+        XCTAssertNil(subject.viewModel.todayCommandFeedback)
+        XCTAssertNil(subject.viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testDevelopmentRepositoryEditPreviewAllowsSafeSwiftAuthorizationSourceButRejectsLiteral() throws {
+        let subject = try makeDevelopmentRepositoryEditPreviewSubject()
+        let safeSource = """
+        struct Tooling {
+            var authorization: ToolActionAuthorization?
+            func use(authorization: AuthorizationPolicy) {}
+        }
+        """
+
+        XCTAssertNotNil(subject.viewModel.developmentRepositoryEditPreview(
+            for: subject.project,
+            task: subject.task,
+            operation: .create,
+            relativePath: "Sources/App/Tooling.swift",
+            contents: safeSource,
+            expectedSHA256: nil
+        ))
+        XCTAssertNil(subject.viewModel.developmentRepositoryEditPreview(
+            for: subject.project,
+            task: subject.task,
+            operation: .create,
+            relativePath: "Sources/App/UnsafeCallLabel.swift",
+            contents: "request(authorization: authorizationStatus(), timeout: timeout)\n",
+            expectedSHA256: nil
+        ))
+        XCTAssertNil(subject.viewModel.developmentRepositoryEditPreview(
+            for: subject.project,
+            task: subject.task,
+            operation: .create,
+            relativePath: "Sources/App/Unsafe.swift",
+            contents: "request(authorization: \"Token edit-preview-secret-marker\", timeout: timeout)\n",
+            expectedSHA256: nil
+        ))
+    }
+
+    @MainActor
     func testDevelopmentRepositoryUpdateReviewRequiresExpectedSHA() throws {
         let stores = try makeStoreBundle()
         let assistantQueueStore = SQLiteAssistantQueueStore(connection: stores.connection)
@@ -2294,7 +2436,7 @@ final class ProjectBoardStoreTests: XCTestCase {
             task: currentTask,
             operation: .update,
             relativePath: "Sources/App/AuthCallback.swift",
-            contents: "func handleOAuthCallback() {}\n",
+            contents: "var authorization: ToolActionAuthorization?\nfunc use(authorization: AuthorizationPolicy) {}\n",
             expectedSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         ))
 

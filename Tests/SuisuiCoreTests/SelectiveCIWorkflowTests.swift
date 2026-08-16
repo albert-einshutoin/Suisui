@@ -65,6 +65,62 @@ final class SelectiveCIWorkflowTests: XCTestCase {
         XCTAssertTrue(orchestrator.contains("\"$ROOT_DIR/ci/run-full.sh\""))
     }
 
+    func testFullAndHostedValidationShareFailClosedRustBoundaryRunner() throws {
+        let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        let fullRunner = try readRepositoryFile("ci/run-full.sh")
+        let rustRunner = try readRepositoryFile("ci/verify-rust-boundaries.sh")
+
+        XCTAssertTrue(fullRunner.contains("./ci/verify-rust-boundaries.sh --require-cargo"))
+        XCTAssertFalse(fullRunner.contains("SUISUI_REQUIRE_RUST_BOUNDARIES"))
+        XCTAssertTrue(workflow.contains("./ci/verify-rust-boundaries.sh --require-cargo"))
+        XCTAssertFalse(workflow.contains("SUISUI_REQUIRE_RUST_BOUNDARIES"))
+        XCTAssertFalse(workflow.contains("cargo fmt --manifest-path rust/kokoro-helper/Cargo.toml --check"))
+        XCTAssertTrue(rustRunner.contains("rust/kokoro-helper/Cargo.toml"))
+        XCTAssertTrue(rustRunner.contains("rust/embedding-helper/Cargo.toml"))
+        XCTAssertTrue(rustRunner.contains("cargo fmt --manifest-path"))
+        XCTAssertTrue(rustRunner.contains("cargo test --manifest-path"))
+        XCTAssertTrue(rustRunner.contains("cargo clippy --manifest-path"))
+        XCTAssertTrue(rustRunner.contains("--require-cargo"))
+    }
+
+    func testDedicatedRustJobRunsOnlyForSelectivePullRequestValidation() throws {
+        let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        let rustStart = try XCTUnwrap(workflow.range(of: "\n  kokoro-rust-poc:"))
+        let visualStart = try XCTUnwrap(workflow.range(of: "\n  ui-runtime:", range: rustStart.upperBound..<workflow.endIndex))
+        let rustJob = String(workflow[rustStart.lowerBound..<visualStart.lowerBound])
+
+        XCTAssertTrue(rustJob.contains("needs:\n      - test_strategy"))
+        XCTAssertTrue(rustJob.contains("if: ${{ always() && github.event_name == 'pull_request' && needs.test_strategy.outputs.strategy != 'full' }}"))
+
+        XCTAssertTrue(workflow.contains("TEST_STRATEGY_RESULT: ${{ needs.test_strategy.result }}"))
+        XCTAssertTrue(workflow.contains("TEST_STRATEGY: ${{ needs.test_strategy.outputs.strategy }}"))
+        XCTAssertTrue(workflow.contains("FULL_VALIDATION_RESULT: ${{ needs.full_validation.result }}"))
+        XCTAssertTrue(workflow.contains("rust_result=\"$FULL_VALIDATION_RESULT\""))
+        XCTAssertTrue(workflow.contains("$TEST_STRATEGY_RESULT\" != \"success\""))
+        XCTAssertTrue(workflow.contains("rust_result=\"$TEST_STRATEGY_RESULT\""))
+        XCTAssertTrue(workflow.contains("rust_result=\"$RUST_BOUNDARY_RESULT\""))
+    }
+
+    func testCompleteValidationRoutesRestoreBothRustBoundaryCaches() throws {
+        let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        let selectedStart = try XCTUnwrap(workflow.range(of: "\n  test_strategy:"))
+        let fullStart = try XCTUnwrap(workflow.range(of: "\n  full_validation:"))
+        let rustStart = try XCTUnwrap(workflow.range(of: "\n  kokoro-rust-poc:"))
+        let completeValidationJobs = [
+            String(workflow[selectedStart.lowerBound..<fullStart.lowerBound]),
+            String(workflow[fullStart.lowerBound..<rustStart.lowerBound])
+        ]
+
+        for job in completeValidationJobs {
+            XCTAssertTrue(job.contains("name: Restore bounded Cargo cache"))
+            XCTAssertTrue(job.contains("rust/kokoro-helper/target"))
+            XCTAssertTrue(job.contains("rust/embedding-helper/target"))
+            XCTAssertTrue(job.contains("~/.cargo/registry"))
+            XCTAssertTrue(job.contains("~/.cargo/git"))
+            XCTAssertTrue(job.contains("hashFiles('rust/kokoro-helper/Cargo.lock', 'rust/embedding-helper/Cargo.lock')"))
+        }
+    }
+
     func testContributorDocumentationExplainsSafeOperationAndExtensionPoints() throws {
         let documentation = try readRepositoryFile("docs/quality/selective-ci.md")
 

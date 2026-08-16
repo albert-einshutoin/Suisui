@@ -14,6 +14,10 @@ CI_COMPLETE_RUNTIME="${SUISUI_CI_COMPLETE_RUNTIME:-0}"
 CI_LANE="${1:-${SUISUI_CI_LANE:-swiftpm}}"
 CI_LANE_WAS_EXPLICIT=0
 CI_ARTIFACT_ROOT="${SUISUI_CI_ARTIFACT_ROOT:-$ROOT_DIR/.tmp/ci-artifacts}"
+# UI child scripts seed databases after the app creates FTS5 triggers. Keep
+# their CLI on the system SQLite used by the app, unless a caller intentionally
+# supplies a compatible SQLite3 binary for a targeted test.
+export SQLITE3="${SQLITE3:-/usr/bin/sqlite3}"
 UI_GATE_LOCK_DIR="${SUISUI_UI_GATE_LOCK_DIR:-/tmp/suisui-ui-gate-${UID}.lock}"
 UI_GATE_LOCK_TIMEOUT_SECONDS="${SUISUI_UI_GATE_LOCK_TIMEOUT_SECONDS:-180}"
 UI_GATE_LOCK_ACQUIRED=0

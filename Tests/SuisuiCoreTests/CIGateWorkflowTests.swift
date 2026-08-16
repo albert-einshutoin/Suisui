@@ -118,6 +118,27 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertFalse(measureJob.contains("Restore Swift build cache"))
     }
 
+    func testPerformanceMeasurementDisablesSpotlightBeforeCheckoutAndArtifactExtraction() throws {
+        let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        let performanceScript = try readRepositoryFile("script/check_release_launch_performance_smoke.sh")
+        let measureStart = try XCTUnwrap(workflow.range(of: "\n  ui-performance:"))
+        let measureJob = String(workflow[measureStart.lowerBound...])
+        let isolation = try XCTUnwrap(
+            measureJob.range(of: "      - name: Disable Spotlight indexing for launch measurement\n")
+        )
+        let checkout = try XCTUnwrap(
+            measureJob.range(of: "      - name: Checkout tested revision\n")
+        )
+
+        XCTAssertLessThan(isolation.lowerBound, checkout.lowerBound)
+        XCTAssertTrue(measureJob.contains("    runs-on: macos-26\n"))
+        XCTAssertTrue(measureJob.contains("sudo /usr/bin/mdutil -a -i off"))
+        XCTAssertTrue(measureJob.contains("SUISUI_PERFORMANCE_MAX_COLD_LAUNCH_MS: 1000"))
+        XCTAssertTrue(performanceScript.contains("RUNNER_QUIESCENCE_MAX_WAIT_SECONDS=60"))
+        XCTAssertTrue(performanceScript.contains("RUNNER_QUIESCENCE_MIN_CPU_IDLE_PERCENT=80"))
+        XCTAssertTrue(performanceScript.contains("RUNNER_QUIESCENCE_REQUIRED_IDLE_SAMPLES=3"))
+    }
+
     func testVisualRequiredCheckAggregatorFailsClosedForUnknownSelectorResults() throws {
         let workflow = try readRepositoryFile(".github/workflows/ci.yml")
         let script = try visualAggregatorScript(from: workflow)
@@ -127,16 +148,21 @@ final class CIGateWorkflowTests: XCTestCase {
             selectionState: String,
             matrixResult: String,
             rustResult: String,
+            testStrategy: String,
+            testStrategyResult: String,
+            fullValidationResult: String,
             expectedExitCode: Int32,
             expectedOutput: String
         )] = [
-            ("pull_request", "0", "skipped", "success", 0, "status=not-required"),
-            ("pull_request", "1", "success", "success", 0, "status=passed"),
-            ("pull_request", "1", "failure", "success", 1, "locale-visual-gate-did-not-succeed"),
-            ("pull_request", "", "success", "success", 1, "visual-selection-result-invalid"),
-            ("pull_request", "2", "success", "success", 1, "visual-selection-result-invalid"),
-            ("push", "", "success", "success", 0, "status=passed"),
-            ("pull_request", "0", "skipped", "failure", 1, "rust-boundary-gate-did-not-succeed")
+            ("pull_request", "0", "skipped", "success", "selective", "success", "skipped", 0, "status=not-required"),
+            ("pull_request", "1", "success", "success", "selective", "success", "skipped", 0, "status=passed"),
+            ("pull_request", "1", "failure", "success", "selective", "success", "skipped", 1, "locale-visual-gate-did-not-succeed"),
+            ("pull_request", "", "success", "success", "selective", "success", "skipped", 1, "visual-selection-result-invalid"),
+            ("pull_request", "2", "success", "success", "selective", "success", "skipped", 1, "visual-selection-result-invalid"),
+            ("pull_request", "1", "success", "skipped", "full", "success", "skipped", 0, "status=passed"),
+            ("push", "", "success", "success", "", "skipped", "success", 0, "status=passed"),
+            ("pull_request", "0", "skipped", "success", "selective", "failure", "skipped", 1, "rust-boundary-gate-did-not-succeed"),
+            ("pull_request", "0", "skipped", "failure", "selective", "success", "skipped", 1, "rust-boundary-gate-did-not-succeed")
         ]
 
         for testCase in cases {
@@ -144,7 +170,10 @@ final class CIGateWorkflowTests: XCTestCase {
                 script,
                 environment: [
                     "EVENT_NAME": testCase.eventName,
-                    "KOKORO_RUST_RESULT": testCase.rustResult,
+                    "RUST_BOUNDARY_RESULT": testCase.rustResult,
+                    "TEST_STRATEGY": testCase.testStrategy,
+                    "TEST_STRATEGY_RESULT": testCase.testStrategyResult,
+                    "FULL_VALIDATION_RESULT": testCase.fullValidationResult,
                     "VISUAL_SELECTION_STATE": testCase.selectionState,
                     "LOCALE_VISUAL_RESULT": testCase.matrixResult
                 ]

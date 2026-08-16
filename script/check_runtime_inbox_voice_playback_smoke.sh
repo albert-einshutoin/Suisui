@@ -16,7 +16,7 @@ APP_NAME="${APP_NAME:?APP_NAME is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 TIMEOUT_SECONDS="${SUISUI_RUNTIME_INBOX_VOICE_PLAYBACK_TIMEOUT_SECONDS:-30}"
-SQLITE3="${SQLITE3:-sqlite3}"
+SQLITE3="${SQLITE3:-/usr/bin/sqlite3}"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
 AX_PRESS_HELPER_SOURCE="$ROOT_DIR/script/ui_evidence_ax_press_element.swift"
 

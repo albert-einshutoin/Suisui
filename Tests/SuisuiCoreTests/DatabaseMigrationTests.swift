@@ -1627,6 +1627,24 @@ final class DatabaseMigrationTests: XCTestCase {
         )
     }
 
+    func testCurrentMigrationsUsePortableDefaultTrigramTokenizerOptions() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+
+        let definitions = try connection.queryStrings(
+            """
+            SELECT sql FROM sqlite_master
+            WHERE type = 'table'
+              AND name IN ('tasks_trigram_fts', 'knowledge_frames_trigram_fts')
+            ORDER BY name ASC;
+            """
+        )
+
+        XCTAssertEqual(definitions.count, 2)
+        XCTAssertFalse(definitions.joined(separator: "\n").contains("remove_diacritics"))
+    }
+
     private func indexNames(on table: String, connection: SQLiteConnection) throws -> Set<String> {
         Set(try connection.queryRows("PRAGMA index_list(\(table));").compactMap { $0["name"] })
     }
