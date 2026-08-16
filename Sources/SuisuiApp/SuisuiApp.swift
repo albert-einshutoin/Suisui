@@ -200,8 +200,8 @@ private struct SuisuiWindowCommands: Commands {
             .keyboardShortcut("v", modifiers: [.command, .shift])
         }
 
-        CommandMenu("Project navigation") {
-            Button("Search") {
+        CommandMenu(localizedDisplay("Project navigation")) {
+            Button(localizedDisplay("Search")) {
                 projectBoardSceneCoordinator.requestShortcut(.commandPalette)
             }
             .keyboardShortcut("k", modifiers: [.command])
@@ -209,25 +209,25 @@ private struct SuisuiWindowCommands: Commands {
 
             Divider()
 
-            Button("Today") {
+            Button(localizedDisplay("Today")) {
                 projectBoardSceneCoordinator.requestShortcut(.destination(.today))
             }
             .keyboardShortcut("1", modifiers: [.command])
             .disabled(projectBoardSceneCoordinator.activeSceneID == nil)
 
-            Button("Inbox") {
+            Button(localizedDisplay("Inbox")) {
                 projectBoardSceneCoordinator.requestShortcut(.destination(.inbox))
             }
             .keyboardShortcut("2", modifiers: [.command])
             .disabled(projectBoardSceneCoordinator.activeSceneID == nil)
 
-            Button("Projects") {
+            Button(localizedDisplay("Projects")) {
                 projectBoardSceneCoordinator.requestShortcut(.destination(.projects))
             }
             .keyboardShortcut("3", modifiers: [.command])
             .disabled(projectBoardSceneCoordinator.activeSceneID == nil)
 
-            Button("Review") {
+            Button(localizedDisplay("Review")) {
                 projectBoardSceneCoordinator.requestShortcut(.destination(.review))
             }
             .keyboardShortcut("4", modifiers: [.command])

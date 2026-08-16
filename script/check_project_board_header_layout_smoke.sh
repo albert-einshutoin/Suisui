@@ -671,6 +671,7 @@ ensure_sidebar_visible() {
 press_keyboard_shortcut() {
   local key_code="$1"
   local modifier="$2"
+  local focus_board="${3:-focus-board}"
   local command_character
   case "$key_code" in
     9) command_character="V" ;;
@@ -682,8 +683,10 @@ press_keyboard_shortcut() {
     43) command_character="," ;;
     *) echo "unsupported shortcut key code: $key_code" >&2; return 2 ;;
   esac
-  restore_project_board_window
-  click_ax_identifier_center "project-board-detail"
+  if [[ "$focus_board" == "focus-board" ]]; then
+    restore_project_board_window
+    click_ax_identifier_center "project-board-detail"
+  fi
   /usr/bin/osascript - "$app_pid" "$key_code" "$modifier" "$command_character" <<'APPLESCRIPT' >/dev/null
 on run argv
   set targetPID to item 1 of argv as integer
@@ -728,17 +731,6 @@ end run
 APPLESCRIPT
 }
 
-exercise_primary_destination_shortcut() {
-  local key_code="$1"
-  local content_identifier="$2"
-  launch_header_layout_candidate
-  wait_for_project_detail_visible
-  click_sidebar_toggle
-  wait_for_ax_identifier_absent "project-board-sidebar"
-  press_keyboard_shortcut "$key_code" "command"
-  wait_for_process_ax_identifier "$content_identifier" "present"
-}
-
 # Utility windows can remain in SwiftUI's scene list after AX close. Keep the
 # keyboard contract independent from the preceding sidebar/voice contract.
 exercise_keyboard_entrypoints() {
@@ -749,26 +741,22 @@ exercise_keyboard_entrypoints() {
 
   press_keyboard_shortcut 40 "command"
   wait_for_process_ax_identifier "command-palette-input" "present"
-  exercise_primary_destination_shortcut 18 "today-workflow"
-  exercise_primary_destination_shortcut 19 "inbox-workflow"
-  exercise_primary_destination_shortcut 20 "projects-portfolio-overview"
-  exercise_primary_destination_shortcut 21 "review-hub"
-  launch_header_layout_candidate
-  wait_for_project_detail_visible
-  click_sidebar_toggle
-  wait_for_ax_identifier_absent "project-board-sidebar"
   press_keyboard_shortcut 9 "command-shift"
   wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
-
-  launch_header_layout_candidate
-  wait_for_project_detail_visible
-  click_sidebar_toggle
-  wait_for_ax_identifier_absent "project-board-sidebar"
-  press_keyboard_shortcut 43 "command"
+  press_keyboard_shortcut 18 "command" "skip-board-focus"
+  wait_for_process_ax_identifier "today-workflow" "present"
+  wait_for_process_ax_identifier "projects-portfolio-overview" "absent"
+  press_keyboard_shortcut 20 "command" "skip-board-focus"
+  wait_for_process_ax_identifier "projects-portfolio-overview" "present"
+  wait_for_process_ax_identifier "today-workflow" "absent"
+  press_keyboard_shortcut 19 "command" "skip-board-focus"
+  wait_for_process_ax_identifier "inbox-workflow" "present"
+  wait_for_process_ax_identifier "projects-portfolio-overview" "absent"
+  press_keyboard_shortcut 21 "command" "skip-board-focus"
+  wait_for_process_ax_identifier "review-hub" "present"
+  wait_for_process_ax_identifier "inbox-workflow" "absent"
+  press_keyboard_shortcut 43 "command" "skip-board-focus"
   wait_for_process_ax_identifier "settings-status-overview" "present"
-
-  launch_header_layout_candidate
-  wait_for_project_detail_visible
   printf "OK: hidden-sidebar keyboard shortcuts opened Search, Voice Command, and Settings\n"
 }
 
@@ -1639,9 +1627,9 @@ wait_for_project_detail_visible
 
 if [[ "${SUISUI_HEADER_LAYOUT_ENTRYPOINTS_ONLY:-0}" == "1" ]]; then
   exercise_sidebar_entrypoints
-  exercise_keyboard_entrypoints
   exercise_settings_utility
   exercise_runtime_crud_recovery_entrypoints
+  exercise_keyboard_entrypoints
   printf "OK: Project Board relocated entrypoint smoke passed\n"
   exit 0
 fi
@@ -1657,7 +1645,6 @@ assert_action_buttons_are_trailing "minimum-window"
 capture_window "minimum-window"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
 exercise_sidebar_entrypoints
-exercise_keyboard_entrypoints
 exercise_settings_utility
 exercise_toolbar_utilities
 
@@ -1675,5 +1662,6 @@ exercise_settings_utility
 exercise_toolbar_utilities
 
 exercise_runtime_crud_recovery_entrypoints
+exercise_keyboard_entrypoints
 
 printf "OK: Project Board header layout smoke passed\n"

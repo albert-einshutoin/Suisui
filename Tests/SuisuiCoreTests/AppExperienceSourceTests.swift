@@ -2741,6 +2741,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let keyboardShortcutSource = String(script[keyboardShortcutStart.lowerBound..<keyboardShortcutEnd.lowerBound])
         XCTAssertTrue(keyboardShortcutSource.contains("restore_project_board_window"))
         XCTAssertTrue(keyboardShortcutSource.contains("click_ax_identifier_center \"project-board-detail\""))
+        XCTAssertTrue(keyboardShortcutSource.contains("focus_board=\"${3:-focus-board}\""))
+        XCTAssertTrue(keyboardShortcutSource.contains("if [[ \"$focus_board\" == \"focus-board\" ]]"))
         XCTAssertTrue(keyboardShortcutSource.contains("AXMenuItemCmdChar"))
         XCTAssertTrue(keyboardShortcutSource.contains("PID-owned command menu item did not become enabled"))
         let clickCenterStart = try XCTUnwrap(script.range(of: "click_ax_identifier_center() {"))
@@ -2752,11 +2754,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(clickCenterSource.contains("repeat with candidateWindow in windows"))
         XCTAssertFalse(clickCenterSource.contains("window 1"))
         XCTAssertTrue(script.contains("press_keyboard_shortcut 40 \"command\""))
-        XCTAssertTrue(script.contains("exercise_primary_destination_shortcut 18 \"today-workflow\""))
-        XCTAssertTrue(script.contains("exercise_primary_destination_shortcut 19 \"inbox-workflow\""))
-        XCTAssertTrue(script.contains("exercise_primary_destination_shortcut 20 \"projects-portfolio-overview\""))
-        XCTAssertTrue(script.contains("exercise_primary_destination_shortcut 21 \"review-hub\""))
-        XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"command-palette-input\" \"present\"\n  launch_header_layout_candidate"))
+        XCTAssertFalse(script.contains("exercise_primary_destination_shortcut()"))
+        XCTAssertTrue(
+            script.contains(
+                "press_keyboard_shortcut 18 \"command\" \"skip-board-focus\"\n  wait_for_process_ax_identifier \"today-workflow\" \"present\"\n  wait_for_process_ax_identifier \"projects-portfolio-overview\" \"absent\"\n  press_keyboard_shortcut 20 \"command\" \"skip-board-focus\"\n  wait_for_process_ax_identifier \"projects-portfolio-overview\" \"present\"\n  wait_for_process_ax_identifier \"today-workflow\" \"absent\"\n  press_keyboard_shortcut 19 \"command\" \"skip-board-focus\"\n  wait_for_process_ax_identifier \"inbox-workflow\" \"present\"\n  wait_for_process_ax_identifier \"projects-portfolio-overview\" \"absent\"\n  press_keyboard_shortcut 21 \"command\" \"skip-board-focus\"\n  wait_for_process_ax_identifier \"review-hub\" \"present\"\n  wait_for_process_ax_identifier \"inbox-workflow\" \"absent\"\n  press_keyboard_shortcut 43 \"command\" \"skip-board-focus\"\n  wait_for_process_ax_identifier \"settings-status-overview\" \"present\""
+            )
+        )
+        XCTAssertTrue(
+            script.contains(
+                "press_keyboard_shortcut 40 \"command\"\n  wait_for_process_ax_identifier \"command-palette-input\" \"present\"\n  press_keyboard_shortcut 9 \"command-shift\"\n  wait_for_process_ax_identifier \"voice-command-quick-command-tab\" \"present\"\n  press_keyboard_shortcut 18 \"command\" \"skip-board-focus\""
+            )
+        )
         XCTAssertTrue(script.contains("press_keyboard_shortcut 9 \"command-shift\""))
         XCTAssertTrue(script.contains("press_keyboard_shortcut 43 \"command\""))
         XCTAssertTrue(script.contains("project-board-export-tasks"))
@@ -3429,8 +3437,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains(".suisuiProjectBoardShortcutRequested"))
         XCTAssertTrue(appSource.contains("@ObservedObject private var projectBoardSceneCoordinator"))
         XCTAssertTrue(appSource.contains("projectBoardSceneCoordinator.requestShortcut(.commandPalette)"))
-        XCTAssertTrue(appSource.contains("CommandMenu(\"Project navigation\")"))
+        XCTAssertTrue(appSource.contains("CommandMenu(localizedDisplay(\"Project navigation\"))"))
         XCTAssertFalse(appSource.contains("CommandMenu(\"Navigate\")"))
+        for title in ["Search", "Today", "Inbox", "Projects", "Review"] {
+            XCTAssertTrue(appSource.contains("Button(localizedDisplay(\"\(title)\"))"))
+        }
         XCTAssertTrue(coordinatorSource.contains("func requestShortcut(_ action: ProjectBoardShortcutAction)"))
         XCTAssertTrue(coordinatorSource.contains("if activeSceneID == nil"))
         XCTAssertTrue(windowBridgeSource.contains("NSWindow.didBecomeKeyNotification"))
