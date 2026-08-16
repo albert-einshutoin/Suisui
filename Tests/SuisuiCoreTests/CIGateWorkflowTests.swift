@@ -77,7 +77,7 @@ final class CIGateWorkflowTests: XCTestCase {
         let needsStart = try XCTUnwrap(performanceJob.range(of: "    needs:\n"))
         let conditionStart = try XCTUnwrap(
             performanceJob.range(
-                of: "    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}",
+                of: "    if: ${{ always() && needs.ui-performance-build.result == 'success' && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}",
                 range: needsStart.upperBound..<performanceJob.endIndex
             )
         )
@@ -108,11 +108,11 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(buildJob.contains("source_commit="))
         XCTAssertTrue(buildJob.contains("build_configuration=release"))
         XCTAssertTrue(buildJob.contains("uses: actions/upload-artifact@v4"))
-        XCTAssertTrue(buildJob.contains("name: ui-performance-app-${{ github.run_id }}\n"))
+        XCTAssertTrue(buildJob.contains("name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}"))
         XCTAssertTrue(buildJob.contains("overwrite: true"))
 
         XCTAssertTrue(measureJob.contains("uses: actions/download-artifact@v4"))
-        XCTAssertTrue(measureJob.contains("name: ui-performance-app-${{ github.run_id }}\n"))
+        XCTAssertTrue(measureJob.contains("name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}"))
         XCTAssertTrue(measureJob.contains("SUISUI_PERFORMANCE_ARTIFACT_DIR:"))
         XCTAssertTrue(measureJob.contains("SUISUI_PERFORMANCE_USE_PREBUILT_APP: 1"))
         XCTAssertFalse(measureJob.contains("Restore Swift build cache"))
