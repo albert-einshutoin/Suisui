@@ -778,7 +778,7 @@ wait_for_window_metadata() {
 }
 
 ensure_project_detail_visible() {
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 || true
+  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null 2>&1 || true
 on clickFirstMatching(uiElement)
   tell application "System Events"
     set identifierValue to ""
@@ -810,18 +810,21 @@ on clickFirstMatching(uiElement)
 end clickFirstMatching
 
 on run argv
-  set appName to item 1 of argv
+  set targetPID to (item 1 of argv) as integer
   tell application "System Events"
-    if not (exists process appName) then return "missing"
-    tell process appName
-      if not (exists window 1) then return "window missing"
+    set matchingProcesses to every process whose unix id is targetPID
+    if (count of matchingProcesses) is not 1 then return "missing"
+    tell item 1 of matchingProcesses
       set frontmost to true
-      try
-        perform action "AXRaise" of window 1
-      end try
-      my clickFirstMatching(window 1)
+      repeat with candidateWindow in windows
+        try
+          perform action "AXRaise" of candidateWindow
+        end try
+        if my clickFirstMatching(candidateWindow) then return true
+      end repeat
     end tell
   end tell
+  return false
 end run
 APPLESCRIPT
 }
@@ -1403,18 +1406,7 @@ click_project_sidebar_row() {
 }
 
 click_sidebar_toggle() {
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null
-on run argv
-  set appName to item 1 of argv
-  tell application "System Events"
-    tell process appName
-      tell toolbar 1 of window 1
-        click (first button whose value of attribute "AXIdentifier" is "project-board-sidebar-toggle")
-      end tell
-    end tell
-  end tell
-end run
-APPLESCRIPT
+  press_ax_button "project-board-sidebar-toggle"
 }
 
 click_project_display_mode() {
