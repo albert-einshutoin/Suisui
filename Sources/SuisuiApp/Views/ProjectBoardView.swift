@@ -350,6 +350,18 @@ struct ProjectBoardView: View {
             )
             restoreSelectedDestinationIfNeeded()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .suisuiProjectBoardShortcutRequested)) { notification in
+            guard let request = notification.object as? ProjectBoardShortcutRequest,
+                  request.sceneID == sceneID else {
+                return
+            }
+            switch request.action {
+            case .commandPalette:
+                isCommandPaletteVisible = true
+            case let .destination(destination):
+                boardRouteBinding.wrappedValue = .primary(destination)
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .suisuiVoiceDailyPlanningReviewRequested)) { notification in
             handleVoiceDailyPlanningReviewRequest(notification)
         }
@@ -453,14 +465,6 @@ struct ProjectBoardView: View {
                 onCancel: { isPresentingSmartListEditor = false }
             )
         }
-        .background(
-            ProjectBoardKeyboardShortcutBridge(
-                openCommandPalette: { isCommandPaletteVisible = true },
-                selectDestination: {
-                    boardRouteBinding.wrappedValue = .primary($0)
-                }
-            )
-        )
         .overlay {
             ZStack {
                 if isCommandPaletteVisible {
@@ -2253,31 +2257,6 @@ extension ProjectTaskStatus {
             return nil
         }
         return Self.allCases[nextIndex]
-    }
-}
-
-/// Non-rendering commands for shortcuts that must stay available regardless of
-/// sidebar focus. Explicit buttons keep every route statically auditable while
-/// isolating their generic types from the already-large board view body.
-private struct ProjectBoardKeyboardShortcutBridge: View {
-    let openCommandPalette: () -> Void
-    let selectDestination: (BoardPrimaryDestination) -> Void
-
-    var body: some View {
-        ZStack {
-            Button("", action: openCommandPalette)
-                .keyboardShortcut("k", modifiers: [.command])
-            Button("") { selectDestination(.today) }
-                .keyboardShortcut("1", modifiers: [.command])
-            Button("") { selectDestination(.inbox) }
-                .keyboardShortcut("2", modifiers: [.command])
-            Button("") { selectDestination(.projects) }
-                .keyboardShortcut("3", modifiers: [.command])
-            Button("") { selectDestination(.review) }
-                .keyboardShortcut("4", modifiers: [.command])
-        }
-        .hidden()
-        .accessibilityHidden(true)
     }
 }
 

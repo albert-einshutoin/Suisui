@@ -639,7 +639,7 @@ press_ax_button() {
 
 exercise_sidebar_entrypoints() {
   press_ax_button "sidebar-open-search"
-  wait_for_ax_identifier_present "command-palette-input"
+  wait_for_process_ax_identifier "command-palette-input" "present"
   launch_header_layout_candidate
   wait_for_project_detail_visible
   press_ax_button "sidebar-action-voice-command"
@@ -671,35 +671,88 @@ ensure_sidebar_visible() {
 press_keyboard_shortcut() {
   local key_code="$1"
   local modifier="$2"
-  /usr/bin/osascript - "$app_pid" "$key_code" "$modifier" <<'APPLESCRIPT' >/dev/null
+  local command_character
+  case "$key_code" in
+    9) command_character="V" ;;
+    18) command_character="1" ;;
+    19) command_character="2" ;;
+    20) command_character="3" ;;
+    21) command_character="4" ;;
+    40) command_character="K" ;;
+    43) command_character="," ;;
+    *) echo "unsupported shortcut key code: $key_code" >&2; return 2 ;;
+  esac
+  restore_project_board_window
+  click_ax_identifier_center "project-board-detail"
+  /usr/bin/osascript - "$app_pid" "$key_code" "$modifier" "$command_character" <<'APPLESCRIPT' >/dev/null
 on run argv
   set targetPID to item 1 of argv as integer
   set targetKeyCode to item 2 of argv as integer
   set modifierName to item 3 of argv
+  set targetCommandCharacter to item 4 of argv
   tell application "System Events"
     set matchingProcesses to application processes whose unix id is targetPID
     if (count of matchingProcesses) is not 1 then error "owned process missing"
-    tell item 1 of matchingProcesses
+    set targetProcess to item 1 of matchingProcesses
+    tell targetProcess
       set frontmost to true
-      if modifierName is "command" then
-        key code targetKeyCode using command down
-      else if modifierName is "command-shift" then
-        key code targetKeyCode using {command down, shift down}
-      else
-        error "unsupported shortcut modifier"
-      end if
     end tell
+    set commandReady to false
+    repeat 40 times
+      tell targetProcess
+        repeat with barItem in menu bar items of menu bar 1
+          repeat with commandItem in menu items of menu 1 of barItem
+            try
+              if enabled of commandItem and value of attribute "AXMenuItemCmdChar" of commandItem is targetCommandCharacter then
+                set commandReady to true
+                exit repeat
+              end if
+            end try
+          end repeat
+          if commandReady then exit repeat
+        end repeat
+      end tell
+      if commandReady then exit repeat
+      delay 0.05
+    end repeat
+    if not commandReady then error "PID-owned command menu item did not become enabled"
+    if modifierName is "command" then
+      key code targetKeyCode using command down
+    else if modifierName is "command-shift" then
+      key code targetKeyCode using {command down, shift down}
+    else
+      error "unsupported shortcut modifier"
+    end if
   end tell
 end run
 APPLESCRIPT
 }
 
+exercise_primary_destination_shortcut() {
+  local key_code="$1"
+  local content_identifier="$2"
+  launch_header_layout_candidate
+  wait_for_project_detail_visible
+  click_sidebar_toggle
+  wait_for_ax_identifier_absent "project-board-sidebar"
+  press_keyboard_shortcut "$key_code" "command"
+  wait_for_process_ax_identifier "$content_identifier" "present"
+}
+
+# Utility windows can remain in SwiftUI's scene list after AX close. Keep the
+# keyboard contract independent from the preceding sidebar/voice contract.
 exercise_keyboard_entrypoints() {
+  launch_header_layout_candidate
+  wait_for_project_detail_visible
   click_sidebar_toggle
   wait_for_ax_identifier_absent "project-board-sidebar"
 
   press_keyboard_shortcut 40 "command"
-  wait_for_ax_identifier_present "command-palette-input"
+  wait_for_process_ax_identifier "command-palette-input" "present"
+  exercise_primary_destination_shortcut 18 "today-workflow"
+  exercise_primary_destination_shortcut 19 "inbox-workflow"
+  exercise_primary_destination_shortcut 20 "projects-portfolio-overview"
+  exercise_primary_destination_shortcut 21 "review-hub"
   launch_header_layout_candidate
   wait_for_project_detail_visible
   click_sidebar_toggle
@@ -1288,7 +1341,7 @@ APPLESCRIPT
 
 click_ax_identifier_center() {
   local target_identifier="$1"
-  /usr/bin/osascript - "$APP_NAME" "$target_identifier" <<'APPLESCRIPT' >/dev/null
+  /usr/bin/osascript - "$app_pid" "$target_identifier" <<'APPLESCRIPT' >/dev/null
 on clickIdentifierCenter(uiElement, targetIdentifier)
   tell application "System Events"
     set identifierValue to ""
@@ -1312,14 +1365,17 @@ on clickIdentifierCenter(uiElement, targetIdentifier)
 end clickIdentifierCenter
 
 on run argv
-  set appName to item 1 of argv
+  set targetPID to item 1 of argv as integer
   set targetIdentifier to item 2 of argv
   tell application "System Events"
-    tell process appName
+    set matchingProcesses to application processes whose unix id is targetPID
+    if (count of matchingProcesses) is not 1 then error "owned process missing"
+    tell item 1 of matchingProcesses
       set frontmost to true
-      if not my clickIdentifierCenter(window 1, targetIdentifier) then
-        error "BLOCKER: AX identifier center was not clickable: " & targetIdentifier
-      end if
+      repeat with candidateWindow in windows
+        if my clickIdentifierCenter(candidateWindow, targetIdentifier) then return true
+      end repeat
+      error "BLOCKER: AX identifier center was not clickable: " & targetIdentifier
     end tell
   end tell
 end run

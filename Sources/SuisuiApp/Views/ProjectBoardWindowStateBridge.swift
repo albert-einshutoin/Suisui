@@ -84,6 +84,9 @@ struct ProjectBoardWindowStateBridge: NSViewRepresentable {
             window = nextWindow
             restoreFrameIfAvailable(on: nextWindow)
             observe(nextWindow)
+            if nextWindow.isKeyWindow {
+                ProjectBoardSceneCoordinator.shared.markActive(sceneID: sceneID)
+            }
         }
 
         func detach(savingCurrentFrame: Bool) {
@@ -136,6 +139,16 @@ struct ProjectBoardWindowStateBridge: NSViewRepresentable {
                     }
                 })
             }
+            observers.append(center.addObserver(
+                forName: NSWindow.didBecomeKeyNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    ProjectBoardSceneCoordinator.shared.markActive(sceneID: self.sceneID)
+                }
+            })
             observers.append(center.addObserver(
                 forName: NSWindow.willCloseNotification,
                 object: window,
