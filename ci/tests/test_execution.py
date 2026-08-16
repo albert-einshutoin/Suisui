@@ -211,7 +211,7 @@ class ExecutionContractTests(unittest.TestCase):
             "ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}"
         )
         self.assertEqual(workflow.count(performance_artifact), 2)
-        self.assertIn("needs.ui-performance-build.result == 'success'", workflow)
+        self.assertIn("needs.ui-performance-build.result != 'success'", workflow)
 
     def test_release_evidence_generators_pin_short_commit_length(self) -> None:
         generators = (
