@@ -688,6 +688,12 @@ private struct ProjectBoardFallbackRootView: View {
                     appSettings: appSettings,
                     developmentAutomationReviewSession: AppRuntimeFactory.makeReviewSessionViewModel
                 )
+                .background(
+                    ProjectBoardWindowStateBridge(
+                        sceneID: sceneID,
+                        restoresPrimaryWindow: false
+                    )
+                )
             } else {
                 ProjectBoardFallbackLoadingView()
             }

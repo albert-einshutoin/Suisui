@@ -3449,6 +3449,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(windowBridgeSource.contains(".suisuiProjectBoardShortcutRequested"))
         XCTAssertTrue(windowBridgeSource.contains("window.deminiaturize(nil)"))
         XCTAssertTrue(windowBridgeSource.contains("window.makeKeyAndOrderFront(nil)"))
+        let fallbackStart = try XCTUnwrap(appSource.range(of: "private struct ProjectBoardFallbackRootView"))
+        let fallbackEnd = try XCTUnwrap(
+            appSource.range(of: "private struct ProjectBoardFallbackLoadingView", range: fallbackStart.upperBound..<appSource.endIndex)
+        )
+        let fallbackSource = String(appSource[fallbackStart.lowerBound..<fallbackEnd.lowerBound])
+        XCTAssertTrue(fallbackSource.contains("ProjectBoardWindowStateBridge("))
         XCTAssertTrue(appSource.contains(".keyboardShortcut(\"k\", modifiers: [.command])"))
         XCTAssertTrue(appSource.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
         XCTAssertTrue(appSource.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
