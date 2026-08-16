@@ -40,11 +40,7 @@ trusted_config=(
   -c core.abbrev=8
   -c core.hooksPath=/dev/null
 )
-git_arguments=("${trusted_config[@]}")
-if [[ -n "$work_tree" ]]; then
-  git_arguments=(--work-tree="$work_tree" "${git_arguments[@]}")
-fi
-git_arguments+=("$@")
+git_arguments=("${trusted_config[@]}" "$@")
 
 trusted_environment=(
   /usr/bin/env -i
@@ -56,6 +52,21 @@ trusted_environment=(
 )
 
 filter_probe_arguments=(-C "${work_tree:-$(/bin/pwd -P)}")
+local_bare="$(
+  "${trusted_environment[@]}" /usr/bin/git \
+    "${filter_probe_arguments[@]}" \
+    "${trusted_config[@]}" \
+    config --local --includes --bool --get core.bare \
+    2>/dev/null || true
+)"
+if [[ "$local_bare" == "true" ]] || "${trusted_environment[@]}" /usr/bin/git \
+  "${filter_probe_arguments[@]}" \
+  "${trusted_config[@]}" \
+  config --local --includes --get core.worktree \
+  >/dev/null 2>&1; then
+  printf 'trusted git rejects repository-local work tree overrides\n' >&2
+  exit 2
+fi
 if "${trusted_environment[@]}" /usr/bin/git \
   "${filter_probe_arguments[@]}" \
   "${trusted_config[@]}" \

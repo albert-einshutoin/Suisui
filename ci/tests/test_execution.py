@@ -469,10 +469,6 @@ class ExecutionContractTests(unittest.TestCase):
                 check=True,
                 capture_output=True,
             )
-            subprocess.run(
-                ["/usr/bin/git", "-C", str(root), "config", "core.bare", "true"],
-                check=True,
-            )
             tracked.write_text("after\n", encoding="utf-8")
 
             result = subprocess.run(
@@ -493,6 +489,26 @@ class ExecutionContractTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0)
             self.assertIn("tracked.txt", result.stdout)
+
+    def test_trusted_git_rejects_repository_local_work_tree_overrides(self) -> None:
+        for key, value in (("core.bare", "true"), ("core.worktree", "/tmp/forged")):
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                subprocess.run(["/usr/bin/git", "init", "-q", str(root)], check=True)
+                subprocess.run(
+                    ["/usr/bin/git", "-C", str(root), "config", key, value],
+                    check=True,
+                )
+
+                result = subprocess.run(
+                    [str(TRUSTED_GIT), "-C", str(root), "status", "--porcelain=v1"],
+                    check=False,
+                    text=True,
+                    capture_output=True,
+                )
+
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn("repository-local work tree overrides", result.stderr)
 
     def test_trusted_git_rejects_repository_local_content_filters(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -592,6 +608,59 @@ class ExecutionContractTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertRegex(result.stdout, r"^git version ")
+
+    def test_trusted_git_initializes_a_new_work_tree(self) -> None:
+        repository_head = subprocess.run(
+            ["/usr/bin/git", "-C", str(REPOSITORY_ROOT), "rev-parse", "HEAD"],
+            check=True,
+            text=True,
+            capture_output=True,
+        ).stdout.strip()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result = subprocess.run(
+                [str(TRUSTED_GIT), "-C", str(root), "init", "-q"],
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertTrue((root / ".git").is_dir())
+            (root / "tracked.txt").write_text("fixture\n", encoding="utf-8")
+            for arguments in (
+                ("config", "user.name", "CI Test"),
+                ("config", "user.email", "ci@example.invalid"),
+                ("add", "tracked.txt"),
+                ("commit", "-qm", "fixture"),
+            ):
+                command_result = subprocess.run(
+                    [str(TRUSTED_GIT), "-C", str(root), *arguments],
+                    check=False,
+                    text=True,
+                    capture_output=True,
+                )
+                self.assertEqual(
+                    command_result.returncode,
+                    0,
+                    command_result.stdout + command_result.stderr,
+                )
+
+            fixture_head = subprocess.run(
+                ["/usr/bin/git", "-C", str(root), "rev-parse", "HEAD"],
+                check=True,
+                text=True,
+                capture_output=True,
+            ).stdout.strip()
+            self.assertNotEqual(fixture_head, repository_head)
+
+        current_repository_head = subprocess.run(
+            ["/usr/bin/git", "-C", str(REPOSITORY_ROOT), "rev-parse", "HEAD"],
+            check=True,
+            text=True,
+            capture_output=True,
+        ).stdout.strip()
+        self.assertEqual(current_repository_head, repository_head)
 
     def test_trusted_git_does_not_parse_subcommand_context_as_global_chdir(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
