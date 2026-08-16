@@ -126,6 +126,19 @@ else
     echo "BLOCKER: trusted node is unavailable beside $NPX_BIN" >&2
     exit 2
   fi
+fi
+NODE_BIN="${NODE_BIN:-$(command -v node)}"
+
+initialize_mcp_evidence_destination
+mkdir -p "$ROOT_DIR/.tmp"
+WORK_DIR="$(mktemp -d "$ROOT_DIR/.tmp/suisui-mcp-compliance.XXXXXX")"
+EVIDENCE_FILE="$WORK_DIR/evidence.md"
+trap 'rm -rf "$WORK_DIR"' EXIT
+
+if [[ "$CUSTOM_INSPECTOR" == "0" ]]; then
+  printf '{"private":true}\n' >"$WORK_DIR/package.json"
+  : >"$WORK_DIR/npm-globalconfig"
+  mkdir -p "$WORK_DIR/npm-cache" "$WORK_DIR/npm-prefix"
   INSPECTOR_COMMAND=(
     /usr/bin/env
     -u npm_config_registry
@@ -148,18 +161,18 @@ else
     -u NODE_PATH
     NPM_CONFIG_REGISTRY=https://registry.npmjs.org/
     NPM_CONFIG_USERCONFIG=/dev/null
+    NPM_CONFIG_GLOBALCONFIG="$WORK_DIR/npm-globalconfig"
+    NPM_CONFIG_CACHE="$WORK_DIR/npm-cache"
+    NPM_CONFIG_PREFIX="$WORK_DIR/npm-prefix"
+    NPM_CONFIG_IGNORE_SCRIPTS=true
+    NPM_CONFIG_OFFLINE=false
+    NPM_CONFIG_PREFER_OFFLINE=false
+    NPM_CONFIG_UPDATE_NOTIFIER=false
     NPM_CONFIG_STRICT_SSL=true
     PATH="${NODE_BIN%/*}:/usr/bin:/bin"
     "$NODE_BIN" "$NPX_BIN" --loglevel error -y "$INSPECTOR_PACKAGE"
   )
 fi
-NODE_BIN="${NODE_BIN:-$(command -v node)}"
-
-initialize_mcp_evidence_destination
-mkdir -p "$ROOT_DIR/.tmp"
-WORK_DIR="$(mktemp -d "$ROOT_DIR/.tmp/suisui-mcp-compliance.XXXXXX")"
-EVIDENCE_FILE="$WORK_DIR/evidence.md"
-trap 'rm -rf "$WORK_DIR"' EXIT
 
 run_and_record() {
   local title="$1"
@@ -200,6 +213,13 @@ run_and_record() {
     return 1
   fi
   return 0
+}
+
+run_inspector_and_record() {
+  (
+    cd "$WORK_DIR"
+    run_and_record "$@"
+  )
 }
 
 validate_inspector_list_output() {
@@ -283,21 +303,21 @@ Success path: \`initialize -> tools/list -> tools/call\`
 
 EOF
 
-run_and_record \
+run_inspector_and_record \
   "MCP Inspector CLI tools/list" \
   success \
   "${INSPECTOR_COMMAND[@]}" \
   --cli \
-  "$NODE_BIN" "$FIXTURE_SERVER" \
+  "$NODE_BIN" "$ROOT_DIR/$FIXTURE_SERVER" \
   --method tools/list
 validate_inspector_list_output
 
-run_and_record \
+run_inspector_and_record \
   "MCP Inspector CLI tools/call" \
   success \
   "${INSPECTOR_COMMAND[@]}" \
   --cli \
-  "$NODE_BIN" "$FIXTURE_SERVER" \
+  "$NODE_BIN" "$ROOT_DIR/$FIXTURE_SERVER" \
   --method tools/call \
   --tool-name read_status \
   --tool-arg project=suisui
