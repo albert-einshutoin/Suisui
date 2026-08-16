@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CI_ARTIFACT_ROOT="$ROOT_DIR/.tmp/ci-artifacts"
+CI_IMPACT_ROOT="$ROOT_DIR/.tmp/ci-impact"
 
 cd "$ROOT_DIR"
 
@@ -39,6 +40,31 @@ unset \
   GIT_DIFF_OPTS
 export GIT_NO_REPLACE_OBJECTS=1
 export PATH="$ROOT_DIR/ci/trusted-bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+# Invalidate every lane before starting so an early failure cannot leave a
+# previous complete run's passed evidence visible as the current result.
+if [[ -L "$ROOT_DIR/.tmp" || ( -e "$ROOT_DIR/.tmp" && ! -d "$ROOT_DIR/.tmp" ) ]]; then
+  echo "BLOCKER: unsafe complete CI artifact root: .tmp" >&2
+  exit 2
+fi
+mkdir -p "$ROOT_DIR/.tmp"
+for evidence_root in "$CI_ARTIFACT_ROOT" "$CI_IMPACT_ROOT"; do
+  if [[ -L "$evidence_root" || ( -e "$evidence_root" && ! -d "$evidence_root" ) ]]; then
+    echo "BLOCKER: unsafe complete CI evidence root: $evidence_root" >&2
+    exit 2
+  fi
+  mkdir -p "$evidence_root"
+  if [[ "$(cd "$evidence_root" && pwd -P)" != "$evidence_root" ]]; then
+    echo "BLOCKER: unsafe complete CI evidence root: $evidence_root" >&2
+    exit 2
+  fi
+done
+/bin/rm -rf \
+  "$CI_ARTIFACT_ROOT/swiftpm" \
+  "$CI_ARTIFACT_ROOT/ui-runtime" \
+  "$CI_ARTIFACT_ROOT/ui-visual" \
+  "$CI_ARTIFACT_ROOT/ui-performance"
+/bin/rm -f "$CI_IMPACT_ROOT/full-execution.json"
 
 env \
   -u SUISUI_SWIFTPM_TEST_BASELINE_FILE \

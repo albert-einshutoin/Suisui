@@ -207,6 +207,65 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn("./scripts/ci.sh ui-performance", contents)
         self.assertNotIn("impact/analyze", contents)
 
+    def test_all_runner_invalidates_stale_lane_evidence_before_an_early_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = (Path(directory) / "repo").resolve()
+            runner = root / "ci/run-all.sh"
+            full_runner = root / "ci/run-full.sh"
+            runner.parent.mkdir(parents=True)
+            shutil.copy2(ALL_RUNNER, runner)
+            full_runner.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+            full_runner.chmod(0o755)
+
+            artifact_root = root / ".tmp/ci-artifacts"
+            for lane in ("swiftpm", "ui-runtime", "ui-visual", "ui-performance"):
+                lane_directory = artifact_root / lane
+                lane_directory.mkdir(parents=True, exist_ok=True)
+                (lane_directory / "gate-summary.txt").write_text(
+                    "status=passed\n", encoding="utf-8"
+                )
+            execution_report = root / ".tmp/ci-impact/full-execution.json"
+            execution_report.parent.mkdir(parents=True)
+            execution_report.write_text('{"status":"passed"}\n', encoding="utf-8")
+
+            result = subprocess.run(
+                [str(runner)],
+                cwd=str(root),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            for lane in ("swiftpm", "ui-runtime", "ui-visual", "ui-performance"):
+                self.assertFalse((artifact_root / lane).exists())
+            self.assertFalse(execution_report.exists())
+
+    def test_all_runner_does_not_invalidate_evidence_through_a_symlinked_root(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = (Path(directory) / "repo").resolve()
+            outside = (Path(directory) / "outside").resolve()
+            runner = root / "ci/run-all.sh"
+            runner.parent.mkdir(parents=True)
+            shutil.copy2(ALL_RUNNER, runner)
+            stale_summary = outside / "swiftpm/gate-summary.txt"
+            stale_summary.parent.mkdir(parents=True)
+            stale_summary.write_text("status=passed\n", encoding="utf-8")
+            (root / ".tmp").mkdir()
+            (root / ".tmp/ci-artifacts").symlink_to(outside, target_is_directory=True)
+
+            result = subprocess.run(
+                [str(runner)],
+                cwd=str(root),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("unsafe complete CI evidence root", result.stderr)
+            self.assertEqual(stale_summary.read_text(encoding="utf-8"), "status=passed\n")
+
     def test_release_preflight_pins_complete_evidence_inputs(self) -> None:
         contents = RELEASE_PREFLIGHT.read_text(encoding="utf-8")
 
@@ -606,6 +665,37 @@ class ExecutionContractTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("unsafe MCP evidence destination", result.stderr)
             self.assertEqual(target.read_text(encoding="utf-8"), "protected\n")
+
+    def test_mcp_verifier_rejects_canonical_escape_between_trusted_roots(self) -> None:
+        (REPOSITORY_ROOT / ".tmp").mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=REPOSITORY_ROOT / ".tmp") as directory:
+            root = Path(directory)
+            escape = root / "release"
+            escape.symlink_to(REPOSITORY_ROOT / "docs/release", target_is_directory=True)
+            target = REPOSITORY_ROOT / "docs/release/evidence" / f".mcp-test-{os.getpid()}.md"
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "SUISUI_MCP_INSPECTOR_BIN": "/usr/bin/true",
+                    "SUISUI_MCP_EVIDENCE_FILE": str(escape / "evidence" / target.name),
+                }
+            )
+
+            try:
+                result = subprocess.run(
+                    [str(MCP_VERIFIER)],
+                    cwd=str(REPOSITORY_ROOT),
+                    env=environment,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("unsafe MCP evidence destination", result.stderr)
+                self.assertFalse(target.exists())
+            finally:
+                target.unlink(missing_ok=True)
 
     def test_release_mcp_evidence_cannot_use_custom_inspector(self) -> None:
         environment = os.environ.copy()

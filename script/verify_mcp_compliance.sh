@@ -47,7 +47,7 @@ unsafe_mcp_evidence_destination() {
 
 initialize_mcp_evidence_destination() {
   local evidence_file="$TARGET_EVIDENCE_FILE"
-  local evidence_parent existing_ancestor ancestor_canonical parent_canonical basename trusted_root
+  local evidence_parent existing_ancestor ancestor_canonical parent_canonical basename trusted_root trusted_root_canonical
 
   if [[ "$evidence_file" != /* ]]; then
     evidence_file="$ROOT_CANONICAL/$evidence_file"
@@ -61,16 +61,13 @@ initialize_mcp_evidence_destination() {
     "$ROOT_CANONICAL/.build/"*) trusted_root="$ROOT_CANONICAL/.build" ;;
     *) unsafe_mcp_evidence_destination; return 2 ;;
   esac
-  if [[ "$CUSTOM_INSPECTOR" == "1" && "$evidence_file" == "$ROOT_CANONICAL/docs/release/evidence/"* ]]; then
-    echo "BLOCKER: custom MCP Inspector may write test evidence only below .tmp or .build" >&2
-    return 2
-  fi
   if [[ -L "$trusted_root" || ( -e "$trusted_root" && ! -d "$trusted_root" ) ]]; then
     unsafe_mcp_evidence_destination
     return 2
   fi
   mkdir -p "$trusted_root"
-  if [[ "$(cd "$trusted_root" && pwd -P)" != "$trusted_root" ]]; then
+  trusted_root_canonical="$(cd "$trusted_root" && pwd -P)"
+  if [[ "$trusted_root_canonical" != "$trusted_root" ]]; then
     unsafe_mcp_evidence_destination
     return 2
   fi
@@ -91,7 +88,7 @@ initialize_mcp_evidence_destination() {
   fi
   ancestor_canonical="$(cd "$existing_ancestor" && pwd -P)"
   case "$ancestor_canonical/" in
-    "$ROOT_CANONICAL/docs/release/evidence/"*|"$ROOT_CANONICAL/.tmp/"*|"$ROOT_CANONICAL/.build/"*) ;;
+    "$trusted_root_canonical/"*) ;;
     *) unsafe_mcp_evidence_destination; return 2 ;;
   esac
 
@@ -102,9 +99,13 @@ initialize_mcp_evidence_destination() {
   fi
   parent_canonical="$(cd "$evidence_parent" && pwd -P)"
   case "$parent_canonical/" in
-    "$ROOT_CANONICAL/docs/release/evidence/"*|"$ROOT_CANONICAL/.tmp/"*|"$ROOT_CANONICAL/.build/"*) ;;
+    "$trusted_root_canonical/"*) ;;
     *) unsafe_mcp_evidence_destination; return 2 ;;
   esac
+  if [[ "$CUSTOM_INSPECTOR" == "1" && "$parent_canonical/$basename" == "$ROOT_CANONICAL/docs/release/evidence/"* ]]; then
+    echo "BLOCKER: custom MCP Inspector may write test evidence only below .tmp or .build" >&2
+    return 2
+  fi
   if [[ -L "$evidence_file" || ( -e "$evidence_file" && ! -f "$evidence_file" ) ]]; then
     unsafe_mcp_evidence_destination
     return 2
