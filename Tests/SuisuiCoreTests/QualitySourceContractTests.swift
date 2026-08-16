@@ -618,7 +618,7 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(status.contains("## Open Risk Items"))
         XCTAssertTrue(status.contains("## Verification Commands"))
         XCTAssertTrue(status.contains("`./script/check_automated_release_preflight.sh`"))
-        XCTAssertTrue(status.contains("git rev-parse --short HEAD"))
+        XCTAssertTrue(status.contains("git rev-parse --short=8 HEAD"))
         XCTAssertNil(status.range(of: #"automated-release-preflight-[[:xdigit:]]{7,}\.md"#, options: .regularExpression))
         XCTAssertTrue(status.range(of: #"SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.* ./script/release_readiness_report\.sh"#, options: .regularExpression) != nil)
         XCTAssertNil(status.range(of: #"SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.* ./script/check_automated_release_preflight\.sh"#, options: .regularExpression))

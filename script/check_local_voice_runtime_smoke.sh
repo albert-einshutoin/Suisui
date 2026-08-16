@@ -70,7 +70,7 @@ local_voice_evidence_source_commit() {
   # The evidence is tied only to local voice runtime inputs so unrelated
   # release-document edits do not stale a valid STT/TTS runtime capture.
   commit="$(
-    git -C "$ROOT_DIR" log -1 --format=%h -- \
+    git -C "$ROOT_DIR" -c core.abbrev=8 log -1 --format=%h -- \
       Sources/SuisuiCore/Voice \
       Sources/SuisuiCore/App/AppSettings.swift \
       Sources/SuisuiCore/App/DailyPlanningReviewReadout.swift \
@@ -84,7 +84,7 @@ local_voice_evidence_source_commit() {
   if [[ -n "$commit" ]]; then
     printf '%s' "$commit"
   else
-    git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf 'unknown'
+    git -C "$ROOT_DIR" rev-parse --short=8 HEAD 2>/dev/null || printf 'unknown'
   fi
 }
 

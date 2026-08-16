@@ -8,7 +8,7 @@ Source commit: 07ad23c
 - Phase14 completion: 255/255 checked, 0 remaining (`tasks/Phase14-QualityRegressionHardening.md`)
 - Open risk items: 0 (`docs/quality/regression-risk-map.md`)
 - Manual-only risk items: 3 (`docs/quality/regression-risk-map.md`)
-- Automated preflight evidence: current HEAD after a clean `./script/check_automated_release_preflight.sh` run (`.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md`)
+- Automated preflight evidence: current HEAD after a clean `./script/check_automated_release_preflight.sh` run (`.tmp/automated-release-preflight-$(git rev-parse --short=8 HEAD).md`)
 
 ## Unfinished Phase14 Items
 
@@ -62,7 +62,7 @@ Source commit: 07ad23c
 - `docs/quality/test-triage.md`
 - `docs/quality/flake-quarantine.md`
 - `./script/check_automated_release_preflight.sh`
-- `SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md ./script/release_readiness_report.sh`
+- `SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-$(git rev-parse --short=8 HEAD).md ./script/release_readiness_report.sh`
 
 ## Notes
 

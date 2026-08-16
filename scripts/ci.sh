@@ -10,6 +10,7 @@ CI_VISUAL_GATES="${SUISUI_CI_VISUAL_GATES:-0}"
 CI_RELEASE_GATES="${SUISUI_CI_RELEASE_GATES:-0}"
 CI_PERFORMANCE_GATES="${SUISUI_CI_PERFORMANCE_GATES:-0}"
 CI_STRESS_GATES="${SUISUI_CI_STRESS_GATES:-0}"
+CI_COMPLETE_RUNTIME="${SUISUI_CI_COMPLETE_RUNTIME:-0}"
 CI_LANE="${1:-${SUISUI_CI_LANE:-swiftpm}}"
 CI_LANE_WAS_EXPLICIT=0
 CI_ARTIFACT_ROOT="${SUISUI_CI_ARTIFACT_ROOT:-$ROOT_DIR/.tmp/ci-artifacts}"
@@ -250,6 +251,7 @@ run_layout_stability_gate() {
     set +e
     SUISUI_LAYOUT_STABILITY_OUTPUT_DIR="$layout_dir" \
     SUISUI_LAYOUT_STABILITY_RUNTIME_DIR="$CI_TMPDIR/layout-stability-runtime" \
+    SUISUI_LAYOUT_STABILITY_DATABASE_PATH="$layout_dir/Suisui-layout-stability.sqlite" \
     SUISUI_LAYOUT_STABILITY_VISIBLE_FRAME_WIDTH="$visible_frame_width" \
     SUISUI_LAYOUT_STABILITY_VISIBLE_FRAME_HEIGHT="$visible_frame_height" \
       ./script/check_layout_stability_smoke.sh
@@ -280,9 +282,13 @@ run_layout_stability_gate() {
 run_runtime_gates() {
   local artifact_dir="$CI_ARTIFACT_ROOT/ui-runtime"
   local capability_summary="$artifact_dir/runner-capability/ui-runner-capability-summary.env"
+  local accessible_crud_recoverable_only="${SUISUI_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY:-0}"
   local visible_frame_dimensions
   local visible_frame_width
   local visible_frame_height
+  if [[ "$CI_COMPLETE_RUNTIME" == "1" ]]; then
+    accessible_crud_recoverable_only=0
+  fi
   SUISUI_UI_RUNNER_CAPABILITY_ARTIFACT_DIR="$artifact_dir/runner-capability" \
     ./script/check_macos_ui_runner_capabilities.sh runtime
   if ! visible_frame_dimensions="$(read_layout_visible_frame_dimensions "$capability_summary")"; then
@@ -290,14 +296,23 @@ run_runtime_gates() {
   fi
   read -r visible_frame_width visible_frame_height <<<"$visible_frame_dimensions"
   run_build_and_run_verify "$artifact_dir"
-  SUISUI_RUNTIME_ACCESSIBLE_CRUD_ARTIFACT_DIR="$artifact_dir/runtime-accessible-crud" \
+  SUISUI_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY="$accessible_crud_recoverable_only" \
+    SUISUI_RUNTIME_ACCESSIBLE_CRUD_ARTIFACT_DIR="$artifact_dir/runtime-accessible-crud" \
     ./script/check_runtime_accessible_crud_smoke.sh
   run_layout_stability_gate "$artifact_dir" "$visible_frame_width" "$visible_frame_height"
   SUISUI_RUNTIME_TODAY_PRODUCTION_ROUTE_ARTIFACT_DIR="$artifact_dir/today-production-route" \
     ./script/check_runtime_today_production_route_smoke.sh
-  SUISUI_HEADER_LAYOUT_ENTRYPOINTS_ONLY=1 \
-    SUISUI_HEADER_LAYOUT_SMOKE_OUTPUT_DIR="$artifact_dir/header-layout" \
-    ./script/check_project_board_header_layout_smoke.sh
+  if [[ "$CI_COMPLETE_RUNTIME" == "1" ]]; then
+    SUISUI_HEADER_LAYOUT_ENTRYPOINTS_ONLY=0 \
+      SUISUI_HEADER_LAYOUT_DATABASE_PATH="$artifact_dir/header-layout/Suisui-header-layout.sqlite" \
+      SUISUI_HEADER_LAYOUT_SMOKE_OUTPUT_DIR="$artifact_dir/header-layout" \
+      ./script/check_project_board_header_layout_smoke.sh
+  else
+    SUISUI_HEADER_LAYOUT_ENTRYPOINTS_ONLY=1 \
+      SUISUI_HEADER_LAYOUT_DATABASE_PATH="$artifact_dir/header-layout/Suisui-header-layout.sqlite" \
+      SUISUI_HEADER_LAYOUT_SMOKE_OUTPUT_DIR="$artifact_dir/header-layout" \
+      ./script/check_project_board_header_layout_smoke.sh
+  fi
 }
 
 run_visual_gates() {
@@ -402,11 +417,19 @@ run_lane_with_artifacts() {
   return "$status"
 }
 
+require_fully_exercised_runtime() {
+  if ! grep -Fxq 'status=passed' "$CI_ARTIFACT_ROOT/ui-runtime/gate-summary.txt"; then
+    echo "BLOCKER: complete runtime validation was not fully exercised" >&2
+    return 1
+  fi
+}
+
 validate_ci_flag "SUISUI_CI_RUNTIME_GATES" "$CI_RUNTIME_GATES"
 validate_ci_flag "SUISUI_CI_VISUAL_GATES" "$CI_VISUAL_GATES"
 validate_ci_flag "SUISUI_CI_RELEASE_GATES" "$CI_RELEASE_GATES"
 validate_ci_flag "SUISUI_CI_PERFORMANCE_GATES" "$CI_PERFORMANCE_GATES"
 validate_ci_flag "SUISUI_CI_STRESS_GATES" "$CI_STRESS_GATES"
+validate_ci_flag "SUISUI_CI_COMPLETE_RUNTIME" "$CI_COMPLETE_RUNTIME"
 validate_positive_integer "SUISUI_UI_GATE_LOCK_TIMEOUT_SECONDS" "$UI_GATE_LOCK_TIMEOUT_SECONDS"
 
 case "$CI_LANE" in
@@ -419,6 +442,9 @@ case "$CI_LANE" in
   ui-runtime)
     acquire_ui_gate_lock
     run_lane_with_artifacts "ui-runtime" run_runtime_gates
+    if [[ "$CI_COMPLETE_RUNTIME" == "1" ]]; then
+      require_fully_exercised_runtime
+    fi
     ;;
   ui-visual)
     acquire_ui_gate_lock
@@ -450,6 +476,9 @@ if [[ "$CI_LANE_WAS_EXPLICIT" == "0" ]]; then
   if [[ "$CI_RUNTIME_GATES" == "1" ]]; then
     acquire_ui_gate_lock
     run_lane_with_artifacts "ui-runtime" run_runtime_gates
+    if [[ "$CI_COMPLETE_RUNTIME" == "1" ]]; then
+      require_fully_exercised_runtime
+    fi
   fi
   if [[ "$CI_VISUAL_GATES" == "1" ]]; then
     acquire_ui_gate_lock

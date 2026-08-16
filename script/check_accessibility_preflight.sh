@@ -152,13 +152,13 @@ REQUIRED_FUNCTIONAL_SURFACE_ANCHORS=(
   "project-board::.keyboardShortcut(.delete, modifiers: [.command])"
   "project-board::.keyboardShortcut(.return, modifiers: [.command])"
   "project-board::.keyboardShortcut(.escape, modifiers: [])"
-  "project-board::.keyboardShortcut(\"1\", modifiers: [.command])"
-  "project-board::.keyboardShortcut(\"2\", modifiers: [.command])"
-  "project-board::.keyboardShortcut(\"3\", modifiers: [.command])"
-  "project-board::.keyboardShortcut(\"4\", modifiers: [.command])"
 )
 REQUIRED_SOURCE_OWNER_ASSERTIONS=(
   "Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\",\", modifiers: [.command])"
+  "Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\"1\", modifiers: [.command])"
+  "Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\"2\", modifiers: [.command])"
+  "Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\"3\", modifiers: [.command])"
+  "Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\"4\", modifiers: [.command])"
   "Sources/SuisuiApp/Views/MenuBarPanel.swift::.keyboardShortcut(.return, modifiers: [.command])"
 )
 

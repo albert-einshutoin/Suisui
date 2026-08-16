@@ -50,7 +50,7 @@ fail() {
 }
 
 current_product_source_commit() {
-  git -C "$ROOT_DIR" log -1 --format=%h -- \
+  git -C "$ROOT_DIR" -c core.abbrev=8 log -1 --format=%h -- \
     Sources/SuisuiCore \
     Sources/SuisuiApp \
     Sources/SuisuiGoogleCalendarRuntime \

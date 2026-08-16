@@ -65,19 +65,20 @@ plannerのfixture:
 python3 -m unittest discover -s ci/tests -v
 ```
 
-完全検証:
+UI・Rust境界を含むローカル完全検証:
 
 ```bash
-./ci/run-full.sh
+./ci/run-all.sh
 ```
 
-手動GitHub Actionsは常に完全検証になる。ローカルで明示的に完全検証へ固定する場合:
+UIを必要としない完全SwiftPM・source contract・securityの確認だけを行う場合は
+`./ci/run-full.sh` を使う。これは `ci` 完了の代替ではない。
+
+手動GitHub Actionsはselective判定を使わず、hosted runnerで実行可能な全laneを検証する。
+ただし1024x676のhosted画面ではwide layoutを完遂できないため、UIの完全検証はローカルで次の入口を使う:
 
 ```bash
-./ci/run-pr-ci.sh \
-  --base-revision HEAD \
-  --head-revision HEAD \
-  --force-full-reason "manual complete validation"
+./ci/run-all.sh
 ```
 
 JSON planは `.tmp/ci-impact/test-plan.json`、実行履歴は `.tmp/ci-impact/execution.json` に出る。CIログではbase/head、project、adapter、変更file、影響module、unit/integration/E2E/smoke件数、strategy、fallback reasonを確認する。executionの`targetCount`はfilter数、`executedTestCount`はSwiftPM出力から検証した実テスト件数である。

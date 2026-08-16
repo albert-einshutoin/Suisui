@@ -5,7 +5,7 @@ Date: 2026-06-21
 Current automated evidence is derived from the current HEAD:
 
 ```bash
-current_commit="$(git rev-parse --short HEAD)"
+current_commit="$(git rev-parse --short=8 HEAD)"
 automated_evidence=".tmp/automated-release-preflight-${current_commit}.md"
 ```
 
