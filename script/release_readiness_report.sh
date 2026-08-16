@@ -433,7 +433,7 @@ check_manual_unblocker_runbook_freshness() {
 
   if grep -Eq 'automated-release-preflight-[[:xdigit:]]{7,}\.md' "$runbook"; then
     freshness_blockers=$((freshness_blockers + 1))
-    blocker "manual unblocker runbook hardcodes automated preflight evidence; derive it from git rev-parse --short HEAD"
+    blocker "manual unblocker runbook hardcodes automated preflight evidence; derive it from git rev-parse --short=8 HEAD"
   fi
 
   if grep -Eq 'Current release-candidate source commit: `[[:xdigit:]]{7,}`' "$runbook"; then
