@@ -56,7 +56,7 @@ manual_release_evidence_source_commit() {
   # define the release candidate and flag stale manual observations after those
   # inputs move.
   commit="$(
-    git -C "$ROOT_DIR" log -1 --format=%h -- \
+    git -C "$ROOT_DIR" -c core.abbrev=8 log -1 --format=%h -- \
       Sources/SuisuiApp \
       Sources/SuisuiCore \
       Sources/SuisuiCLI \
@@ -67,7 +67,7 @@ manual_release_evidence_source_commit() {
   if [[ -n "$commit" ]]; then
     printf "%s" "$commit"
   else
-    git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
+    git -C "$ROOT_DIR" rev-parse --short=8 HEAD 2>/dev/null || printf "unknown"
   fi
 }
 
@@ -171,7 +171,7 @@ automated_preflight_guidance() {
   # HEAD-specific evidence filename, the act of committing the snapshot makes
   # that filename stale. Keep the command derived from the reader's current
   # release candidate instead.
-  printf 'current HEAD after a clean `./script/check_automated_release_preflight.sh` run (`.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md`)'
+  printf 'current HEAD after a clean `./script/check_automated_release_preflight.sh` run (`.tmp/automated-release-preflight-$(git rev-parse --short=8 HEAD).md`)'
 }
 
 phase_item_status() {
@@ -336,7 +336,7 @@ write_next_quality_gaps() {
 
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 
-source_commit="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
+source_commit="$(git -C "$ROOT_DIR" rev-parse --short=8 HEAD 2>/dev/null || printf "unknown")"
 generated_at="$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
 phase_total="$(count_pattern "$PHASE14_FILE" '^- \[[ x]\]')"
 phase_done="$(count_pattern "$PHASE14_FILE" '^- \[x\]')"
@@ -394,7 +394,7 @@ expected_manual_commit="$(manual_release_evidence_source_commit)"
   printf -- '- `docs/quality/test-triage.md`\n'
   printf -- '- `docs/quality/flake-quarantine.md`\n'
   printf -- '- `./script/check_automated_release_preflight.sh`\n'
-  printf -- '- `SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md ./script/release_readiness_report.sh`\n\n'
+  printf -- '- `SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.tmp/automated-release-preflight-$(git rev-parse --short=8 HEAD).md ./script/release_readiness_report.sh`\n\n'
 
   printf "## Notes\n\n"
   printf -- "- This dashboard is a quality triage aid, not release evidence.\n"

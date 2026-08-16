@@ -207,6 +207,31 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn("./scripts/ci.sh ui-performance", contents)
         self.assertNotIn("impact/analyze", contents)
 
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        performance_artifact = (
+            "ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}"
+        )
+        self.assertEqual(workflow.count(performance_artifact), 2)
+        self.assertIn("needs.ui-performance-build.result == 'success'", workflow)
+
+    def test_release_evidence_generators_pin_short_commit_length(self) -> None:
+        generators = (
+            "create_competitor_hands_on_evidence.sh",
+            "create_google_calendar_live_evidence.sh",
+            "quality_status_report.sh",
+            "check_local_voice_runtime_smoke.sh",
+            "create_voiceover_evidence.sh",
+            "prepare_release_manual_helpers.sh",
+            "prepare_release_machine_evidence.sh",
+            "capture_ui_evidence.sh",
+            "prepare_voiceover_review_candidate.sh",
+        )
+        for name in generators:
+            contents = (REPOSITORY_ROOT / "script" / name).read_text(encoding="utf-8")
+            self.assertNotIn("rev-parse --short HEAD", contents, name)
+            if "--format=%h" in contents:
+                self.assertIn("core.abbrev=8", contents, name)
+
     def test_all_runner_invalidates_stale_lane_evidence_before_an_early_failure(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = (Path(directory) / "repo").resolve()

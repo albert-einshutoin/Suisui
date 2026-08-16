@@ -444,7 +444,7 @@ jobs:
       - name: Upload immutable release performance app
         uses: actions/upload-artifact@v4
         with:
-          name: ui-performance-app-${{ github.run_id }}
+          name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}
           path: .tmp/ui-performance-app
           if-no-files-found: error
           include-hidden-files: true
@@ -460,7 +460,7 @@ jobs:
       - ui-runtime
       - ui-visual
       - ui-performance-build
-    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}
+    if: ${{ always() && needs.ui-performance-build.result == 'success' && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}
     runs-on: macos-26
     timeout-minutes: 30
     steps:
@@ -475,7 +475,7 @@ jobs:
       - name: Download immutable release performance app
         uses: actions/download-artifact@v4
         with:
-          name: ui-performance-app-${{ github.run_id }}
+          name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}
           path: .tmp/ui-performance-app
 
       - name: Measure production runtime

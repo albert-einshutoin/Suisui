@@ -52,7 +52,7 @@ source "$METADATA_FILE"
 APP_NAME="${APP_NAME:?APP_NAME is required}"
 MARKETING_VERSION="${MARKETING_VERSION:?MARKETING_VERSION is required}"
 CURRENT_PROJECT_VERSION="${CURRENT_PROJECT_VERSION:?CURRENT_PROJECT_VERSION is required}"
-SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
+SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short=8 HEAD 2>/dev/null || printf "unknown")"
 ARTIFACT_SHA256_FILE="dist/releases/$APP_NAME-$MARKETING_VERSION+$CURRENT_PROJECT_VERSION.dmg.sha256"
 
 display_path() {
@@ -184,7 +184,7 @@ write_command() {
     printf '%s\n' 'fi'
     printf '\n'
     printf 'EXPECTED_SOURCE_COMMIT=%q\n' "$SOURCE_COMMIT"
-    printf '%s\n' 'CURRENT_SOURCE_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || printf unknown)"'
+    printf '%s\n' 'CURRENT_SOURCE_COMMIT="$(git rev-parse --short=8 HEAD 2>/dev/null || printf unknown)"'
     printf '%s\n' 'if [[ "$CURRENT_SOURCE_COMMIT" != "$EXPECTED_SOURCE_COMMIT" ]]; then'
     printf '%s\n' '  printf "BLOCKER: release evidence command was generated for source commit %s but current source commit is %s. Rerun ./script/prepare_release_machine_evidence.sh for this release candidate.\n" "$EXPECTED_SOURCE_COMMIT" "$CURRENT_SOURCE_COMMIT" >&2'
     printf '%s\n' '  exit 2'

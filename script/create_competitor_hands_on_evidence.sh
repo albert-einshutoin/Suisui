@@ -30,7 +30,7 @@ release_candidate_source_commit() {
   # evidence to the release-candidate product source instead of the evidence
   # commit itself.
   commit="$(
-    git -C "$ROOT_DIR" log -1 --format=%h -- \
+    git -C "$ROOT_DIR" -c core.abbrev=8 log -1 --format=%h -- \
       Sources/SuisuiApp \
       Sources/SuisuiCore \
       Sources/SuisuiCLI \
@@ -41,7 +41,7 @@ release_candidate_source_commit() {
   if [[ -n "$commit" ]]; then
     printf "%s" "$commit"
   else
-    git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
+    git -C "$ROOT_DIR" rev-parse --short=8 HEAD 2>/dev/null || printf "unknown"
   fi
 }
 
@@ -636,8 +636,8 @@ write_competitor_evidence_command() {
     printf 'EXPECTED_SOURCE_COMMIT=%q\n' "$SOURCE_COMMIT"
     printf '%s\n' 'release_candidate_source_commit() {'
     printf '%s\n' '  local commit'
-    printf '%s\n' '  commit="$(git log -1 --format=%h -- Sources/SuisuiApp Sources/SuisuiCore Sources/SuisuiCLI Sources/SuisuiExternalConnectors Package.swift packaging/app_metadata.env 2>/dev/null || true)"'
-    printf '%s\n' '  if [[ -n "$commit" ]]; then printf "%s" "$commit"; else git rev-parse --short HEAD 2>/dev/null || printf unknown; fi'
+    printf '%s\n' '  commit="$(git -c core.abbrev=8 log -1 --format=%h -- Sources/SuisuiApp Sources/SuisuiCore Sources/SuisuiCLI Sources/SuisuiExternalConnectors Package.swift packaging/app_metadata.env 2>/dev/null || true)"'
+    printf '%s\n' '  if [[ -n "$commit" ]]; then printf "%s" "$commit"; else git rev-parse --short=8 HEAD 2>/dev/null || printf unknown; fi'
     printf '%s\n' '}'
     printf '%s\n' 'CURRENT_SOURCE_COMMIT="$(release_candidate_source_commit)"'
     printf '%s\n' 'if [[ "$CURRENT_SOURCE_COMMIT" != "$EXPECTED_SOURCE_COMMIT" ]]; then'

@@ -401,12 +401,12 @@ relative_path() {
 ui_evidence_source_commit() {
   local commit
   commit="$(
-    git -C "$ROOT_DIR" log -1 --format=%h -- Sources Package.swift script/capture_ui_evidence.sh 2>/dev/null || true
+    git -C "$ROOT_DIR" -c core.abbrev=8 log -1 --format=%h -- Sources Package.swift script/capture_ui_evidence.sh 2>/dev/null || true
   )"
   if [[ -n "$commit" ]]; then
     printf "%s" "$commit"
   else
-    git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
+    git -C "$ROOT_DIR" rev-parse --short=8 HEAD 2>/dev/null || printf "unknown"
   fi
 }
 
