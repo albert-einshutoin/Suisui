@@ -177,6 +177,7 @@ fi
 run_and_record() {
   local title="$1"
   local expected_status="$2"
+  local argument recorded_argument
   shift 2
 
   local output_file="$WORK_DIR/output.log"
@@ -186,7 +187,12 @@ run_and_record() {
     printf '## %s\n\n' "$title"
     printf '```console\n'
     printf '$'
-    printf ' %q' "$@"
+    for argument in "$@"; do
+      # Evidence records stable trust-boundary labels, not machine-local paths.
+      recorded_argument="${argument//$WORK_DIR/<mcp-work-dir>}"
+      recorded_argument="${recorded_argument//$ROOT_DIR/<repository-root>}"
+      printf ' %q' "$recorded_argument"
+    done
     printf '\n'
   } >>"$EVIDENCE_FILE"
 

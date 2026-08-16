@@ -771,6 +771,8 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn("run_inspector_and_record", contents)
         self.assertIn('cd "$WORK_DIR"', contents)
         self.assertIn('"$ROOT_DIR/$FIXTURE_SERVER"', contents)
+        self.assertIn("<mcp-work-dir>", contents)
+        self.assertIn("<repository-root>", contents)
         provenance = MCP_PROVENANCE.read_text(encoding="utf-8")
         self.assertIn("mcp_git()", provenance)
         self.assertIn("ci/trusted-bin/git", provenance)
