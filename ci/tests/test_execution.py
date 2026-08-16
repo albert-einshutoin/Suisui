@@ -593,6 +593,11 @@ class ExecutionContractTests(unittest.TestCase):
         provenance = MCP_PROVENANCE.read_text(encoding="utf-8")
 
         self.assertIn("release_git()", readiness)
+        self.assertIn("is_production_release_checkout()", readiness)
+        self.assertIn('[[ -e "$ROOT_DIR/.git" ||', readiness)
+        self.assertIn('[[ "$expected_commit" == "unknown" ]]', readiness)
+        self.assertIn("release checkout Git root could not be verified", readiness)
+        self.assertNotIn('is_report_root_git_checkout_root && [[ "$(tracked_source_tree_status)"', readiness)
         self.assertNotRegex(readiness, r'(?m)^\s*git -C "\$ROOT_DIR"')
         self.assertIn('PATH="$ROOT_DIR/ci/trusted-bin:$PATH"', readiness)
         self.assertIn("ci/trusted-bin/git", provenance)

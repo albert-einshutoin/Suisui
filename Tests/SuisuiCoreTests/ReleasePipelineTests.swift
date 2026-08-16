@@ -9301,6 +9301,7 @@ final class ReleasePipelineTests: XCTestCase {
         }
 
         let currentShortCommit = try currentShortGitCommit()
+        let currentProductSourceCommit = try manualReleaseEvidenceSourceCommit()
         try """
         # Automated Release Preflight Evidence
 
@@ -9314,7 +9315,7 @@ final class ReleasePipelineTests: XCTestCase {
         Xcode scheme: Suisui
         Xcode configuration: Release
         Xcode destination: platform=macOS
-        VoiceOver candidate source commit: \(currentShortCommit)
+        VoiceOver candidate source commit: \(currentProductSourceCommit)
         VoiceOver candidate project ID: 42
         VoiceOver candidate database: /tmp/Suisui-voiceover-review.sqlite
         VoiceOver candidate selected destination: project:42
@@ -9456,7 +9457,6 @@ final class ReleasePipelineTests: XCTestCase {
             ]
         )
         let actionSummary = try String(contentsOf: actionSummaryURL, encoding: .utf8)
-
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("== Automated preflight evidence =="))
         XCTAssertTrue(result.output.contains("OK: automated preflight evidence covers current commit and all local proof gates"))
@@ -9480,7 +9480,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("- [x] Automated preflight evidence accepted: `.tmp/automated-release-preflight.md`"))
         XCTAssertTrue(actionSummary.contains("- [x] Release launch performance smoke: passed"))
         XCTAssertTrue(actionSummary.contains("- Source commit: `\(currentShortCommit)`"))
-        XCTAssertTrue(actionSummary.contains("- Release candidate product source commit: `\(currentShortCommit)`"))
+        XCTAssertTrue(actionSummary.contains("- Release candidate product source commit: `\(currentProductSourceCommit)`"))
         XCTAssertTrue(actionSummary.contains("- Generated at: `2026-06-19T12:30:44Z`"))
         XCTAssertTrue(actionSummary.contains("- Runtime AX smoke: `OK: runtime AX smoke visible, windows=1, window=1 name=Suisui, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1`"))
         XCTAssertTrue(actionSummary.contains("- [x] Release CI: passed"))
@@ -9495,7 +9495,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("Local product gates"))
         XCTAssertTrue(actionSummary.contains("The generated VoiceOver evidence command is pinned to a clean tracked source tree and the release-candidate source commit it was created for."))
         XCTAssertTrue(actionSummary.contains("The generated competitor hands-on evidence command is pinned to a clean tracked source tree and the release-candidate source commit it was created for."))
-        XCTAssertTrue(actionSummary.contains("The generated competitor hands-on evidence command also refuses to run until `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/competitor-benchmark-pending-\(currentShortCommit).md` are `Status: completed`, pinned to the same source commit, free of pending/unchecked/template markers, and filled."))
+        XCTAssertTrue(actionSummary.contains("The generated competitor hands-on evidence command also refuses to run until `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/competitor-benchmark-pending-\(currentProductSourceCommit).md` are `Status: completed`, pinned to the same source commit, free of pending/unchecked/template markers, and filled."))
         XCTAssertTrue(actionSummary.contains("The generated release-machine evidence command is pinned to a clean tracked source tree and the release evidence source commit it was created for."))
         XCTAssertTrue(actionSummary.contains("The generated release-machine evidence command also refuses to run until `.tmp/release-machine/release-machine-worksheet.md` is `Status: completed`, pinned to the same source commit, free of pending/unchecked/template markers, and filled."))
         XCTAssertTrue(actionSummary.contains("## Manual Evidence Source Hygiene"))
@@ -9517,6 +9517,7 @@ final class ReleasePipelineTests: XCTestCase {
         let accessibilityURL = scriptDirectory.appendingPathComponent("check_accessibility_preflight.sh")
         let actionSummaryURL = fixtureRoot.appendingPathComponent("release-actions.md")
         let currentShortCommit = try currentShortGitCommit()
+        let currentProductSourceCommit = try manualReleaseEvidenceSourceCommit()
         let evidenceURL = tmpDirectory.appendingPathComponent("automated-release-preflight-\(currentShortCommit).md")
 
         try? FileManager.default.removeItem(at: fixtureRoot)
@@ -9546,7 +9547,7 @@ final class ReleasePipelineTests: XCTestCase {
         Xcode scheme: Suisui
         Xcode configuration: Release
         Xcode destination: platform=macOS
-        VoiceOver candidate source commit: \(currentShortCommit)
+        VoiceOver candidate source commit: \(currentProductSourceCommit)
         VoiceOver candidate project ID: 42
         VoiceOver candidate database: /tmp/Suisui-voiceover-review.sqlite
         VoiceOver candidate selected destination: project:42
@@ -9617,8 +9618,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("- [x] Automated preflight evidence accepted: `.tmp/automated-release-preflight-\(currentShortCommit).md`"))
         XCTAssertTrue(actionSummary.contains("- [x] Release launch performance smoke: passed"))
         XCTAssertTrue(actionSummary.contains("- Runtime AX smoke: `OK: runtime AX smoke visible, windows=1, window=1 name=Suisui, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1`"))
-        XCTAssertTrue(actionSummary.contains("- Release candidate product source commit: `\(currentShortCommit)`"))
-        XCTAssertTrue(actionSummary.contains("- VoiceOver candidate: source `\(currentShortCommit)`, project `42`, destination `project:42`"))
+        XCTAssertTrue(actionSummary.contains("- Release candidate product source commit: `\(currentProductSourceCommit)`"))
+        XCTAssertTrue(actionSummary.contains("- VoiceOver candidate: source `\(currentProductSourceCommit)`, project `42`, destination `project:42`"))
         XCTAssertTrue(actionSummary.contains("- VoiceOver candidate database: `/tmp/Suisui-voiceover-review.sqlite`"))
         XCTAssertFalse(actionSummary.contains("- Run: `SUISUI_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh`"))
     }
@@ -9647,6 +9648,7 @@ final class ReleasePipelineTests: XCTestCase {
         }
 
         let currentShortCommit = try currentShortGitCommit()
+        let currentProductSourceCommit = try manualReleaseEvidenceSourceCommit()
         try """
         # Automated Release Preflight Evidence
 
@@ -9660,7 +9662,7 @@ final class ReleasePipelineTests: XCTestCase {
         Xcode scheme: Suisui
         Xcode configuration: Debug
         Xcode destination: platform=macOS
-        VoiceOver candidate source commit: \(currentShortCommit)
+        VoiceOver candidate source commit: \(currentProductSourceCommit)
         VoiceOver candidate project ID: 42
         VoiceOver candidate database: /tmp/Suisui-voiceover-review.sqlite
         VoiceOver candidate selected destination: project:42
@@ -9729,6 +9731,7 @@ final class ReleasePipelineTests: XCTestCase {
         }
 
         let currentShortCommit = try currentShortGitCommit()
+        let currentProductSourceCommit = try manualReleaseEvidenceSourceCommit()
         try """
         # Automated Release Preflight Evidence
 
@@ -9742,7 +9745,7 @@ final class ReleasePipelineTests: XCTestCase {
         Xcode scheme: Suisui
         Xcode configuration: Debug
         Xcode destination: platform=macOS
-        VoiceOver candidate source commit: \(currentShortCommit)
+        VoiceOver candidate source commit: \(currentProductSourceCommit)
         VoiceOver candidate project ID: 42
         VoiceOver candidate database: /tmp/Suisui-voiceover-review.sqlite
         VoiceOver candidate selected destination: project:42

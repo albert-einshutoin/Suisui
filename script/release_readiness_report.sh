@@ -2342,6 +2342,13 @@ is_report_root_git_checkout_root() {
   [[ -n "$git_root" && "$git_root" == "$ROOT_DIR" ]]
 }
 
+is_production_release_checkout() {
+  [[ -e "$ROOT_DIR/.git" ||
+    -f "$ROOT_DIR/Package.swift" ||
+    -x "$ROOT_DIR/ci/trusted-bin/git" ||
+    -f "$ROOT_DIR/script/mcp_source_provenance.sh" ]]
+}
+
 resolve_automated_preflight_evidence_path() {
   local evidence_file="$AUTOMATED_PREFLIGHT_EVIDENCE_FILE"
 
@@ -2441,11 +2448,15 @@ validate_automated_preflight_evidence() {
     return 1
   fi
 
-  local evidence_commit expected_commit
+  local evidence_commit expected_commit tracked_status
   evidence_commit="$(automated_preflight_context_value "Source commit")"
   expected_commit="$(source_commit)"
   if [[ -z "$(tr -d '[:space:]' <<<"$evidence_commit")" ]]; then
     set_automated_preflight_evidence_reason "missing source commit"
+    return 1
+  fi
+  if is_production_release_checkout && [[ "$expected_commit" == "unknown" ]]; then
+    set_automated_preflight_evidence_reason "current source commit could not be resolved"
     return 1
   fi
   if [[ "$expected_commit" != "unknown" && "$evidence_commit" != "$expected_commit" ]]; then
@@ -2453,9 +2464,16 @@ validate_automated_preflight_evidence() {
     return 1
   fi
 
-  if is_report_root_git_checkout_root && [[ "$(tracked_source_tree_status)" != "clean" ]]; then
-    set_automated_preflight_evidence_reason "current tracked source tree is not clean"
-    return 1
+  if is_production_release_checkout; then
+    if ! is_report_root_git_checkout_root; then
+      set_automated_preflight_evidence_reason "release checkout Git root could not be verified"
+      return 1
+    fi
+    tracked_status="$(tracked_source_tree_status)"
+    if [[ "$tracked_status" != "clean" ]]; then
+      set_automated_preflight_evidence_reason "current tracked source tree is not clean: $tracked_status"
+      return 1
+    fi
   fi
 
   local evidence_app evidence_workspace evidence_scheme evidence_configuration evidence_destination
