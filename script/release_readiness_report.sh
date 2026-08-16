@@ -2,9 +2,41 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+unset \
+  GIT_DIR \
+  GIT_WORK_TREE \
+  GIT_COMMON_DIR \
+  GIT_INDEX_FILE \
+  GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES \
+  GIT_SHALLOW_FILE \
+  GIT_NAMESPACE \
+  GIT_REPLACE_REF_BASE \
+  GIT_CONFIG_PARAMETERS \
+  GIT_CONFIG_COUNT \
+  GIT_EXEC_PATH \
+  GIT_EXTERNAL_DIFF \
+  GIT_DIFF_OPTS
+export GIT_NO_REPLACE_OBJECTS=1
+export GIT_CONFIG_GLOBAL=/dev/null
+export GIT_CONFIG_SYSTEM=/dev/null
+export GIT_CONFIG_NOSYSTEM=1
+export PATH="$ROOT_DIR/ci/trusted-bin:$PATH"
+
 if [[ -f "$ROOT_DIR/script/mcp_source_provenance.sh" ]]; then
   source "$ROOT_DIR/script/mcp_source_provenance.sh"
 fi
+
+release_git() {
+  if declare -F mcp_git >/dev/null; then
+    mcp_git "$@"
+  else
+    # Isolated report fixtures copy only this script; retain the same closed
+    # environment there without trusting the caller's Git configuration.
+    /usr/bin/env -i PATH=/usr/bin:/bin GIT_NO_REPLACE_OBJECTS=1 /usr/bin/git "$@"
+  fi
+}
+
 STRICT_PRODUCT_RESEARCH=0
 CLASSIFY_ONLY=0
 CLASSIFY_BLOCKING_COUNT=""
@@ -418,13 +450,13 @@ check_manual_unblocker_runbook_freshness() {
 }
 
 source_commit() {
-  git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
+  release_git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
 }
 
 ui_evidence_source_commit() {
   local commit
   commit="$(
-    git -C "$ROOT_DIR" log -1 --format=%h -- \
+    release_git -C "$ROOT_DIR" log -1 --format=%h -- \
       Sources \
       Package.swift \
       script/capture_ui_evidence.sh 2>/dev/null || true
@@ -441,7 +473,7 @@ ui_evidence_source_commit_full() {
   # The capture harness defines the visible state and audit landmarks, so its
   # latest committed change must invalidate both locales just like app source.
   commit="$(
-    git -C "$ROOT_DIR" log -1 --format=%H -- \
+    release_git -C "$ROOT_DIR" log -1 --format=%H -- \
       Sources \
       Package.swift \
       script/capture_ui_evidence.sh 2>/dev/null || true
@@ -449,7 +481,7 @@ ui_evidence_source_commit_full() {
   if [[ -n "$commit" ]]; then
     printf "%s" "$commit"
   else
-    git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || printf "unknown"
+    release_git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || printf "unknown"
   fi
 }
 
@@ -473,7 +505,7 @@ manual_release_evidence_source_commit() {
   # evidence invalidate itself. Bind it to the runtime/app metadata paths that
   # define the release candidate while still failing closed on product changes.
   commit="$(
-    git -C "$ROOT_DIR" log -1 --format=%h -- \
+    release_git -C "$ROOT_DIR" log -1 --format=%h -- \
       Sources/SuisuiApp \
       Sources/SuisuiCore \
       Sources/SuisuiCLI \
@@ -493,7 +525,7 @@ local_voice_evidence_source_commit() {
   # Match the smoke script's scoped source hash so release docs can change
   # without invalidating otherwise-current STT/TTS runtime evidence.
   commit="$(
-    git -C "$ROOT_DIR" log -1 --format=%h -- \
+    release_git -C "$ROOT_DIR" log -1 --format=%h -- \
       Sources/SuisuiCore/Voice \
       Sources/SuisuiCore/App/AppSettings.swift \
       Sources/SuisuiCore/App/DailyPlanningReviewReadout.swift \
@@ -546,12 +578,12 @@ normalize_markdown_context_value() {
 tracked_source_tree_status() {
   local tracked_changes
 
-  if ! git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if ! release_git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     printf "unavailable"
     return 0
   fi
 
-  tracked_changes="$(git -C "$ROOT_DIR" status --porcelain --untracked-files=no 2>/dev/null || true)"
+  tracked_changes="$(release_git -C "$ROOT_DIR" status --porcelain --untracked-files=no 2>/dev/null || true)"
   if [[ -n "$tracked_changes" ]]; then
     printf "dirty"
   else
@@ -2282,7 +2314,7 @@ PY
 
 is_report_root_git_checkout_root() {
   local git_root
-  git_root="$(git -C "$ROOT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+  git_root="$(release_git -C "$ROOT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
   [[ -n "$git_root" && "$git_root" == "$ROOT_DIR" ]]
 }
 
@@ -3764,11 +3796,32 @@ mcp_compliance_script="$ROOT_DIR/$MCP_COMPLIANCE_RELATIVE"
 if [[ ! -x "$mcp_compliance_script" ]]; then
   blocker "missing executable MCP compliance verifier: $MCP_COMPLIANCE_RELATIVE"
 else
-  mcp_runtime_evidence_file="$(mktemp)"
-  set +e
-  mcp_compliance_output="$(SUISUI_MCP_EVIDENCE_FILE="$mcp_runtime_evidence_file" "$mcp_compliance_script" 2>&1)"
-  mcp_compliance_status=$?
-  set -e
+  if [[ -L "$ROOT_DIR/.tmp" || ( -e "$ROOT_DIR/.tmp" && ! -d "$ROOT_DIR/.tmp" ) ]]; then
+    blocker "unsafe MCP runtime evidence directory: .tmp"
+    mcp_runtime_evidence_file=""
+  else
+    mkdir -p "$ROOT_DIR/.tmp"
+    if [[ "$(cd "$ROOT_DIR/.tmp" && pwd -P)" != "$ROOT_DIR/.tmp" ]]; then
+      blocker "unsafe MCP runtime evidence directory: .tmp"
+      mcp_runtime_evidence_file=""
+    else
+      mcp_runtime_evidence_file="$(mktemp "$ROOT_DIR/.tmp/mcp-runtime-evidence.XXXXXX.md")"
+    fi
+  fi
+  if [[ -z "$mcp_runtime_evidence_file" ]]; then
+    mcp_compliance_status=2
+    mcp_compliance_output="MCP compliance verifier skipped because its runtime evidence destination is unsafe"
+  else
+    set +e
+    mcp_compliance_output="$(env \
+      -u SUISUI_MCP_INSPECTOR_BIN \
+      -u SUISUI_MCP_NPX_BIN \
+      SUISUI_MCP_SOURCE_REF=HEAD \
+      SUISUI_MCP_EVIDENCE_FILE="$mcp_runtime_evidence_file" \
+      "$mcp_compliance_script" 2>&1)"
+    mcp_compliance_status=$?
+    set -e
+  fi
 
   printf "%s\n" "$mcp_compliance_output"
   if [[ "$mcp_compliance_status" -ne 0 ]]; then

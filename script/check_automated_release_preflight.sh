@@ -25,10 +25,13 @@ fi
 
 APP_NAME="${APP_NAME:-Suisui}"
 cd "$ROOT_DIR"
+ROOT_CANONICAL="$(pwd -P)"
+TRUSTED_GIT="$ROOT_DIR/ci/trusted-bin/git"
 
 # Release evidence must use repository-owned probes. Local helper overrides
 # remain available to focused scripts but cannot produce reusable proof here.
 unset \
+  SQLITE3 \
   AX_HELPERS \
   AX_TEXT_INPUT_HELPER \
   AX_SCROLL_HELPER \
@@ -38,18 +41,103 @@ unset \
   AX_PRESS_ELEMENT_HELPER \
   AX_RESIZE_WINDOW_HELPER \
   AX_IDENTIFIER_COUNT_HELPER \
-  WINDOW_CONTENT_SIZE_HELPER
-export SQLITE3="/usr/bin/sqlite3"
+  WINDOW_CONTENT_SIZE_HELPER \
+  GIT_DIR \
+  GIT_WORK_TREE \
+  GIT_COMMON_DIR \
+  GIT_INDEX_FILE \
+  GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES \
+  GIT_SHALLOW_FILE \
+  GIT_NAMESPACE \
+  GIT_REPLACE_REF_BASE \
+  GIT_CONFIG_PARAMETERS \
+  GIT_CONFIG_COUNT \
+  GIT_EXEC_PATH \
+  GIT_EXTERNAL_DIFF \
+  GIT_DIFF_OPTS
+export GIT_NO_REPLACE_OBJECTS=1
+export GIT_CONFIG_GLOBAL=/dev/null
+export GIT_CONFIG_SYSTEM=/dev/null
+export GIT_CONFIG_NOSYSTEM=1
+export PATH="$ROOT_DIR/ci/trusted-bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 default_automated_preflight_evidence_file() {
   local commit
-  commit="$(git rev-parse --short HEAD 2>/dev/null || true)"
+  commit="$("$TRUSTED_GIT" rev-parse --short HEAD 2>/dev/null || true)"
 
   if [[ -z "${commit//[[:space:]]/}" ]]; then
     printf ".tmp/automated-release-preflight.md"
   else
     printf ".tmp/automated-release-preflight-${commit}.md"
   fi
+}
+
+unsafe_automated_preflight_evidence_destination() {
+  echo "BLOCKER: unsafe automated preflight evidence destination; use a regular file below the repository .tmp directory" >&2
+  return 2
+}
+
+initialize_automated_preflight_evidence_destination() {
+  local evidence_file="$AUTOMATED_PREFLIGHT_EVIDENCE_FILE"
+  local evidence_parent existing_ancestor ancestor_canonical parent_canonical basename
+
+  if [[ "$evidence_file" != /* ]]; then
+    evidence_file="$ROOT_CANONICAL/$evidence_file"
+  fi
+  case "$evidence_file" in
+    */../*|*/./*) unsafe_automated_preflight_evidence_destination; return 2 ;;
+  esac
+  case "$evidence_file" in
+    "$ROOT_CANONICAL/.tmp/"*) ;;
+    *) unsafe_automated_preflight_evidence_destination; return 2 ;;
+  esac
+
+  if [[ -L "$TMP_ROOT" || ( -e "$TMP_ROOT" && ! -d "$TMP_ROOT" ) ]]; then
+    unsafe_automated_preflight_evidence_destination
+    return 2
+  fi
+  mkdir -p "$TMP_ROOT"
+  if [[ "$(cd "$TMP_ROOT" && pwd -P)" != "$ROOT_CANONICAL/.tmp" ]]; then
+    unsafe_automated_preflight_evidence_destination
+    return 2
+  fi
+
+  evidence_parent="$(dirname "$evidence_file")"
+  basename="$(basename "$evidence_file")"
+  if [[ -z "$basename" || "$basename" == "." || "$basename" == ".." ]]; then
+    unsafe_automated_preflight_evidence_destination
+    return 2
+  fi
+  existing_ancestor="$evidence_parent"
+  while [[ ! -e "$existing_ancestor" && ! -L "$existing_ancestor" ]]; do
+    existing_ancestor="$(dirname "$existing_ancestor")"
+  done
+  if [[ ! -d "$existing_ancestor" || -L "$existing_ancestor" ]]; then
+    unsafe_automated_preflight_evidence_destination
+    return 2
+  fi
+  ancestor_canonical="$(cd "$existing_ancestor" && pwd -P)"
+  case "$ancestor_canonical/" in
+    "$ROOT_CANONICAL/.tmp/"*) ;;
+    *) unsafe_automated_preflight_evidence_destination; return 2 ;;
+  esac
+
+  mkdir -p "$evidence_parent"
+  if [[ ! -d "$evidence_parent" || -L "$evidence_parent" ]]; then
+    unsafe_automated_preflight_evidence_destination
+    return 2
+  fi
+  parent_canonical="$(cd "$evidence_parent" && pwd -P)"
+  case "$parent_canonical/" in
+    "$ROOT_CANONICAL/.tmp/"*) ;;
+    *) unsafe_automated_preflight_evidence_destination; return 2 ;;
+  esac
+  if [[ -L "$evidence_file" || ( -e "$evidence_file" && ! -f "$evidence_file" ) ]]; then
+    unsafe_automated_preflight_evidence_destination
+    return 2
+  fi
+  AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$parent_canonical/$basename"
 }
 
 if [[ -z "$AUTOMATED_PREFLIGHT_EVIDENCE_FILE" ]]; then
@@ -59,7 +147,7 @@ if [[ -z "$AUTOMATED_PREFLIGHT_EVIDENCE_FILE" ]]; then
   AUTOMATED_PREFLIGHT_EVIDENCE_FILE="$(default_automated_preflight_evidence_file)"
 fi
 
-mkdir -p "$TMP_ROOT"
+initialize_automated_preflight_evidence_destination
 TMP_DIR="$(mktemp -d "$TMP_ROOT/suisui-automated-release-preflight.XXXXXX")"
 MCP_EVIDENCE_FILE="$TMP_DIR/mcp-inspector.md"
 
@@ -72,21 +160,21 @@ require_clean_source_tree_for_evidence() {
     return 0
   fi
 
-  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if ! "$TRUSTED_GIT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     echo "BLOCKER: automated preflight evidence requires a git worktree" >&2
     exit 2
   fi
 
-  if ! git diff --quiet -- . || ! git diff --cached --quiet -- .; then
+  if ! "$TRUSTED_GIT" diff --quiet -- . || ! "$TRUSTED_GIT" diff --cached --quiet -- .; then
     echo "BLOCKER: automated preflight evidence requires a clean tracked source tree" >&2
     exit 2
   fi
 }
 
 tracked_source_tree_is_clean() {
-  git rev-parse --is-inside-work-tree >/dev/null 2>&1 &&
-    git diff --quiet -- . &&
-    git diff --cached --quiet -- .
+  "$TRUSTED_GIT" rev-parse --is-inside-work-tree >/dev/null 2>&1 &&
+    "$TRUSTED_GIT" diff --quiet -- . &&
+    "$TRUSTED_GIT" diff --cached --quiet -- .
 }
 
 refresh_manual_release_helpers() {
@@ -109,17 +197,15 @@ write_automated_preflight_evidence() {
   fi
 
   local evidence_file="$AUTOMATED_PREFLIGHT_EVIDENCE_FILE"
-  if [[ "$evidence_file" != /* ]]; then
-    evidence_file="$ROOT_DIR/$evidence_file"
-  fi
-
-  local evidence_dir generated_at source_commit
+  local evidence_dir generated_at source_commit private_dir private_file parent_canonical
   evidence_dir="$(dirname "$evidence_file")"
-  mkdir -p "$evidence_dir"
   generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-  source_commit="$(git rev-parse --short HEAD 2>/dev/null || printf "unknown")"
+  source_commit="$("$TRUSTED_GIT" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
+  private_dir="$(mktemp -d "$evidence_dir/.automated-release-preflight.XXXXXX")"
+  private_file="$private_dir/evidence.md"
+  umask 077
 
-  cat > "$evidence_file" <<EOF
+  cat > "$private_file" <<EOF
 # Automated Release Preflight Evidence
 
 Status: passed
@@ -162,6 +248,18 @@ Runtime AX smoke: $RUNTIME_AX_SMOKE_OUTPUT
 - Developer ID signing, notarization, Sparkle, Gatekeeper, and clean-environment evidence remain separate.
 EOF
 
+  if [[ ! -d "$evidence_dir" || -L "$evidence_dir" ]]; then
+    unsafe_automated_preflight_evidence_destination
+    return 2
+  fi
+  parent_canonical="$(cd "$evidence_dir" && pwd -P)"
+  if [[ "$parent_canonical" != "$evidence_dir" || -L "$evidence_file" || ( -e "$evidence_file" && ! -f "$evidence_file" ) ]]; then
+    unsafe_automated_preflight_evidence_destination
+    return 2
+  fi
+  /bin/mv -fh "$private_file" "$evidence_file"
+  rmdir "$private_dir"
+
   printf "Automated release preflight evidence written to %s\n" "$evidence_file"
 }
 
@@ -202,7 +300,7 @@ run_xcodebuild_with_timeout() {
     # Xcode materializes `.swiftpm/xcode/package.xcworkspace` when it opens a
     # Swift package. Invoking from the package root keeps this gate valid on a
     # pristine checkout instead of requiring an untracked local derivative.
-    exec xcodebuild \
+    exec /usr/bin/xcodebuild \
       -scheme "$XCODE_SCHEME" \
       -configuration "$XCODE_CONFIGURATION" \
       -destination "$XCODE_DESTINATION" \
@@ -254,7 +352,12 @@ if ! [[ "$XCODE_PREFLIGHT_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || [[ "$XCODE_PREFLIGH
 fi
 
 section "Release CI"
-env -u SUISUI_CI_LANE SUISUI_CI_RELEASE_GATES=1 ./scripts/ci.sh
+env \
+  -u SUISUI_CI_LANE \
+  -u SUISUI_SWIFTPM_TEST_BASELINE_FILE \
+  -u SUISUI_SWIFTPM_MAX_SKIPPED_FILE \
+  SUISUI_CI_RELEASE_GATES=1 \
+  ./scripts/ci.sh
 
 section "Local CRUD smoke"
 ./script/check_local_crud_smoke.sh
@@ -287,7 +390,7 @@ env \
   ./scripts/ci.sh ui-runtime
 
 section "Xcode build preflight"
-if ! command -v xcodebuild >/dev/null 2>&1; then
+if [[ ! -x /usr/bin/xcodebuild ]]; then
   echo "BLOCKER: xcodebuild is required for the automated release preflight" >&2
   exit 2
 fi
@@ -297,6 +400,20 @@ section "Real visual regression"
 env \
   -u SUISUI_CI_VISUAL_GATE_LOCALE \
   -u SUISUI_VISUAL_SOURCE_REF \
+  -u SUISUI_VISUAL_FIXTURE_SEEDER_BIN \
+  -u SUISUI_AX_AUDIT_RESULT \
+  -u SUISUI_VISUAL_CURRENT_SOURCE_COMMIT \
+  -u SUISUI_VISUAL_BASELINE_VIEWPORT \
+  -u SUISUI_SETTINGS_VISUAL_BASELINE_VIEWPORT \
+  -u SUISUI_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT \
+  -u SUISUI_VISUAL_EVIDENCE_REFERENCE_INSTANT \
+  -u SUISUI_VISUAL_EVIDENCE_TIME_ZONE \
+  -u SUISUI_VISUAL_EVIDENCE_LOCALE_IDENTIFIER \
+  -u SUISUI_VISUAL_EVIDENCE_SCHEDULE_MODE \
+  -u SUISUI_VISUAL_EVIDENCE_STABLE_BACKDROP \
+  -u SUISUI_VISUAL_EVIDENCE_SYSTEM_APPEARANCE \
+  -u SUISUI_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS \
+  -u SUISUI_UI_EVIDENCE_AX_MAX_NODES \
   SUISUI_CI_VISUAL_BASELINE_PROFILE=local-display \
   SUISUI_RUNTIME_POLICY=public-alpha \
   SUISUI_CI_ARTIFACT_ROOT="$TMP_DIR/ui-gates" \
@@ -346,6 +463,7 @@ fi
 section "MCP compliance preflight"
 env \
   -u SUISUI_MCP_INSPECTOR_BIN \
+  -u SUISUI_MCP_NPX_BIN \
   SUISUI_MCP_SOURCE_REF=HEAD \
   SUISUI_MCP_EVIDENCE_FILE="$MCP_EVIDENCE_FILE" \
   ./script/verify_mcp_compliance.sh

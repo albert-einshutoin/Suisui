@@ -138,13 +138,15 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         let temporaryDirectory = packageRoot()
             .appendingPathComponent(".build/test-mcp-tracked-evidence-\(UUID().uuidString)", isDirectory: true)
         let generatedEvidenceURL = temporaryDirectory.appendingPathComponent("mcp-inspector.md")
+        let fakeInspector = temporaryDirectory.appendingPathComponent("fake-mcp-inspector.sh")
         try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+        try writeFakeInspector(to: fakeInspector)
 
         let result = try runScript(
             "script/verify_mcp_compliance.sh",
             environment: [
-                "SUISUI_MCP_INSPECTOR_BIN": "/usr/bin/true",
+                "SUISUI_MCP_INSPECTOR_BIN": fakeInspector.path,
                 "SUISUI_MCP_EVIDENCE_FILE": generatedEvidenceURL.path
             ]
         )
@@ -286,14 +288,7 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
 
-        try """
-        #!/usr/bin/env bash
-        set -euo pipefail
-        printf '{"fakeInspector":true,"args":'
-        printf '%s\\n' "$*" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().strip().split()))'
-        printf '}\\n'
-        """.write(to: fakeInspector, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fakeInspector.path)
+        try writeFakeInspector(to: fakeInspector)
 
         let result = try runScript(
             "script/verify_mcp_compliance.sh",
@@ -305,7 +300,8 @@ final class MCPInspectorEvidenceTests: XCTestCase {
 
         XCTAssertEqual(result.exitCode, 0, result.output)
         let generatedEvidence = try String(contentsOf: evidence, encoding: .utf8)
-        XCTAssertTrue(generatedEvidence.contains("fakeInspector"))
+        XCTAssertTrue(generatedEvidence.contains("\"name\":\"read_status\""))
+        XCTAssertTrue(generatedEvidence.contains("status: ok project=suisui"))
         XCTAssertTrue(generatedEvidence.contains("- Source commit: `"))
         XCTAssertTrue(generatedEvidence.contains("success"))
         XCTAssertTrue(generatedEvidence.contains("malformed-json"))
@@ -317,6 +313,26 @@ final class MCPInspectorEvidenceTests: XCTestCase {
     private func readPackageFile(_ relativePath: String) throws -> String {
         let url = packageRoot().appendingPathComponent(relativePath)
         return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func writeFakeInspector(to url: URL) throws {
+        try """
+        #!/usr/bin/env bash
+        set -euo pipefail
+        case " $* " in
+          *" --method tools/list "*)
+            printf '%s\\n' '{"tools":[{"name":"read_status"}]}'
+            ;;
+          *" --method tools/call "*)
+            printf '%s\\n' '{"content":[{"type":"text","text":"status: ok project=suisui"}],"isError":false}'
+            ;;
+          *)
+            echo "unexpected fake Inspector arguments: $*" >&2
+            exit 2
+            ;;
+        esac
+        """.write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
     }
 
     private func allSwiftFiles(under relativePath: String) throws -> [URL] {

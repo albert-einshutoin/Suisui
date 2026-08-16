@@ -9,6 +9,13 @@ MCP_SOURCE_PATHS=(
   Package.swift
 )
 
+mcp_git() {
+  /usr/bin/env -i \
+    PATH=/usr/bin:/bin \
+    GIT_NO_REPLACE_OBJECTS=1 \
+    /usr/bin/git "$@"
+}
+
 mcp_content_source_ref() {
   local root_dir="$1"
   local source_ref="$2"
@@ -27,12 +34,12 @@ mcp_content_source_ref() {
     followed_parent=false
     for parent_suffix in ^2 ^1; do
       if ! candidate_parent="$(
-        git -C "$root_dir" rev-parse \
+        mcp_git -C "$root_dir" rev-parse \
           --verify "${content_source_ref}${parent_suffix}^{commit}" 2>/dev/null
       )"; then
         continue
       fi
-      if git -C "$root_dir" diff --quiet "$candidate_parent" "$content_source_ref" -- \
+      if mcp_git -C "$root_dir" diff --quiet "$candidate_parent" "$content_source_ref" -- \
         "${MCP_SOURCE_PATHS[@]}"; then
         content_source_ref="$candidate_parent"
         followed_parent=true
@@ -53,19 +60,19 @@ mcp_evidence_source_commit_for_ref() {
   local commit
   local content_source_ref
 
-  if ! git -C "$root_dir" rev-parse --verify "${source_ref}^{commit}" >/dev/null 2>&1; then
+  if ! mcp_git -C "$root_dir" rev-parse --verify "${source_ref}^{commit}" >/dev/null 2>&1; then
     printf "Invalid SUISUI_MCP_SOURCE_REF: %s\n" "$source_ref" >&2
     return 1
   fi
 
   content_source_ref="$(mcp_content_source_ref "$root_dir" "$source_ref")"
   commit="$(
-    git -C "$root_dir" log -1 --format=%h "$content_source_ref" -- \
+    mcp_git -C "$root_dir" log -1 --format=%h "$content_source_ref" -- \
       "${MCP_SOURCE_PATHS[@]}"
   )"
   if [[ -n "$commit" ]]; then
     printf "%s" "$commit"
   else
-    git -C "$root_dir" rev-parse --short "$content_source_ref"
+    mcp_git -C "$root_dir" rev-parse --short "$content_source_ref"
   fi
 }

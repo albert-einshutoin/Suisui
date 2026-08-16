@@ -611,7 +611,8 @@ final class ReleasePipelineTests: XCTestCase {
             try XCTUnwrap(script.range(of: "run_runtime_gates")).lowerBound
         )
 
-        XCTAssertTrue(automatedPreflight.contains("SUISUI_CI_RELEASE_GATES=1 ./scripts/ci.sh"))
+        XCTAssertTrue(automatedPreflight.contains("SUISUI_CI_RELEASE_GATES=1"))
+        XCTAssertTrue(automatedPreflight.contains("./scripts/ci.sh"))
         XCTAssertTrue(automatedPreflight.contains("./scripts/ci.sh ui-runtime"))
         XCTAssertTrue(automatedPreflight.contains("./scripts/ci.sh ui-visual"))
         XCTAssertTrue(automatedPreflight.contains("./scripts/ci.sh ui-performance"))
@@ -3742,7 +3743,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("Notion -> Todoist -> Linear -> Motion"))
         XCTAssertTrue(checklist.contains("./script/check_automated_release_preflight.sh"))
         XCTAssertTrue(checklist.contains("A standard run writes `.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md`"))
-        XCTAssertTrue(checklist.contains("Override `SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE` only when a release operator needs to write or reuse a non-standard evidence path."))
+        XCTAssertTrue(checklist.contains("Override `SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE` only for a non-standard regular-file path below the repository `.tmp` directory"))
         XCTAssertTrue(checklist.contains("The release readiness report auto-discovers `.tmp/automated-release-preflight-<commit>.md` for the current source commit when the environment variable is omitted."))
         XCTAssertTrue(checklist.contains("requires a clean tracked source tree"))
         XCTAssertTrue(checklist.contains("When the final report reuses this evidence, it verifies the generator identity, UTC timestamp, source commit, clean-tree marker, app name, Xcode workspace/scheme/configuration/destination, every automated proof gate, the runtime AX smoke OK line with `unlabeledButtons=0`, `genericButtons=0`, `crudSignals=8/8`, `focusPathSignals=6/6`, and `destructiveCancelSignals=1/1`, and the manual-evidence boundary text."))

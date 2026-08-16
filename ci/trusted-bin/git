@@ -1,0 +1,5 @@
+#!/bin/sh
+exec /usr/bin/env -i \
+  PATH=/usr/bin:/bin \
+  GIT_NO_REPLACE_OBJECTS=1 \
+  /usr/bin/git "$@"

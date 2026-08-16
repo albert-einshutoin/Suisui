@@ -13,6 +13,10 @@ ALL_RUNNER = REPOSITORY_ROOT / "ci" / "run-all.sh"
 CI_SCRIPT = REPOSITORY_ROOT / "scripts" / "ci.sh"
 WORKFLOW = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
 RELEASE_PREFLIGHT = REPOSITORY_ROOT / "script" / "check_automated_release_preflight.sh"
+RELEASE_READINESS = REPOSITORY_ROOT / "script" / "release_readiness_report.sh"
+MCP_VERIFIER = REPOSITORY_ROOT / "script" / "verify_mcp_compliance.sh"
+MCP_PROVENANCE = REPOSITORY_ROOT / "script" / "mcp_source_provenance.sh"
+TRUSTED_GIT = REPOSITORY_ROOT / "ci" / "trusted-bin" / "git"
 ORCHESTRATOR = REPOSITORY_ROOT / "ci" / "run-pr-ci.sh"
 PLAN_EXPORTER = REPOSITORY_ROOT / "ci" / "export-plan.py"
 PLAN_ESCALATOR = REPOSITORY_ROOT / "ci" / "escalate-plan.py"
@@ -112,8 +116,8 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertNotIn("cargo fmt --manifest-path", contents)
         self.assertNotIn("cargo test --manifest-path", contents)
         self.assertNotIn("cargo clippy --manifest-path", contents)
-        self.assertIn('export SQLITE3="/usr/bin/sqlite3"', contents)
         for variable in (
+            "SQLITE3",
             "AX_HELPERS",
             "AX_TEXT_INPUT_HELPER",
             "AX_SCROLL_HELPER",
@@ -126,6 +130,8 @@ class ExecutionContractTests(unittest.TestCase):
             "WINDOW_CONTENT_SIZE_HELPER",
         ):
             self.assertIn(variable, contents)
+        self.assertIn("GIT_NO_REPLACE_OBJECTS=1", contents)
+        self.assertIn('PATH="$ROOT_DIR/ci/trusted-bin:/usr/bin:/bin:', contents)
         for variable in (
             "SUISUI_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY",
             "SUISUI_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX",
@@ -159,7 +165,8 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn("SUISUI_CI_VISUAL_BASELINE_PROFILE=local-display", release_contents)
         self.assertIn("SUISUI_RUNTIME_POLICY=public-alpha", contents)
         self.assertIn("-u SUISUI_CI_VISUAL_GATE_LOCALE", contents)
-        self.assertIn("-u SUISUI_VISUAL_SOURCE_REF", contents)
+        for variable in self._visual_proof_overrides():
+            self.assertIn(f"-u {variable}", contents)
         self.assertIn("SUISUI_CI_VISUAL_BASELINE_PROFILE=local-display", contents)
         self.assertIn("./scripts/ci.sh ui-visual", contents)
         for variable in (
@@ -183,9 +190,14 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertNotIn('XCODE_SCHEME="${SUISUI_XCODE_SCHEME', contents)
         self.assertNotIn('XCODE_DESTINATION="${SUISUI_XCODE_DESTINATION', contents)
         self.assertNotIn('XCODE_CONFIGURATION="${SUISUI_XCODE_CONFIGURATION', contents)
-        self.assertIn('env -u SUISUI_CI_LANE SUISUI_CI_RELEASE_GATES=1 ./scripts/ci.sh', contents)
-        self.assertIn('export SQLITE3="/usr/bin/sqlite3"', contents)
         for variable in (
+            "SUISUI_CI_LANE",
+            "SUISUI_SWIFTPM_TEST_BASELINE_FILE",
+            "SUISUI_SWIFTPM_MAX_SKIPPED_FILE",
+        ):
+            self.assertIn(f"-u {variable}", contents)
+        for variable in (
+            "SQLITE3",
             "AX_HELPERS",
             "AX_TEXT_INPUT_HELPER",
             "AX_SCROLL_HELPER",
@@ -198,8 +210,217 @@ class ExecutionContractTests(unittest.TestCase):
             "WINDOW_CONTENT_SIZE_HELPER",
         ):
             self.assertIn(variable, contents)
+        for variable in self._visual_proof_overrides():
+            self.assertIn(f"-u {variable}", contents)
+        for variable in (
+            "GIT_DIR",
+            "GIT_WORK_TREE",
+            "GIT_COMMON_DIR",
+            "GIT_INDEX_FILE",
+            "GIT_OBJECT_DIRECTORY",
+            "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+            "GIT_SHALLOW_FILE",
+        ):
+            self.assertIn(variable, contents)
+        self.assertIn("GIT_NO_REPLACE_OBJECTS=1", contents)
+        self.assertIn('TRUSTED_GIT="$ROOT_DIR/ci/trusted-bin/git"', contents)
+        self.assertIn("/usr/bin/xcodebuild", contents)
         self.assertIn("-u SUISUI_MCP_INSPECTOR_BIN", contents)
         self.assertIn("SUISUI_MCP_SOURCE_REF=HEAD", contents)
+        self.assertIn("-u SUISUI_MCP_NPX_BIN", contents)
+        self.assertIn("initialize_automated_preflight_evidence_destination", contents)
+        self.assertIn("unsafe automated preflight evidence destination", contents)
+        self.assertIn("/bin/mv -fh", contents)
+
+    def test_trusted_git_ignores_caller_diff_configuration(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["/usr/bin/git", "init", "-q", str(root)], check=True)
+            tracked = root / "tracked.txt"
+            tracked.write_text("before\n", encoding="utf-8")
+            subprocess.run(["/usr/bin/git", "-C", str(root), "add", "tracked.txt"], check=True)
+            subprocess.run(
+                [
+                    "/usr/bin/git",
+                    "-C",
+                    str(root),
+                    "-c",
+                    "user.name=CI Test",
+                    "-c",
+                    "user.email=ci@example.invalid",
+                    "commit",
+                    "-qm",
+                    "baseline",
+                ],
+                check=True,
+            )
+            tracked.write_text("after\n", encoding="utf-8")
+            environment = os.environ.copy()
+            environment["GIT_CONFIG_PARAMETERS"] = (
+                "'diff.external=/usr/bin/true' 'diff.trustExitCode=true'"
+            )
+
+            result = subprocess.run(
+                [str(TRUSTED_GIT), "-C", str(root), "diff", "--quiet", "--", "."],
+                env=environment,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+
+    def test_release_preflight_rejects_external_and_symlink_evidence_paths_early(self) -> None:
+        (REPOSITORY_ROOT / ".tmp").mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory() as outside_directory:
+            outside = Path(outside_directory)
+            external_result = self._run_release_preflight_with_evidence(outside / "evidence.md")
+            self.assertNotEqual(external_result.returncode, 0)
+            self.assertIn("unsafe automated preflight evidence destination", external_result.stderr)
+
+            with tempfile.TemporaryDirectory(dir=REPOSITORY_ROOT / ".tmp") as trusted_directory:
+                trusted = Path(trusted_directory)
+                ancestor_link = trusted / "ancestor"
+                ancestor_link.symlink_to(outside, target_is_directory=True)
+                ancestor_result = self._run_release_preflight_with_evidence(
+                    ancestor_link / "evidence.md"
+                )
+                self.assertNotEqual(ancestor_result.returncode, 0)
+                self.assertIn(
+                    "unsafe automated preflight evidence destination",
+                    ancestor_result.stderr,
+                )
+                self.assertFalse((outside / "evidence.md").exists())
+
+                protected_target = outside / "protected.md"
+                protected_target.write_text("protected\n", encoding="utf-8")
+                leaf_link = trusted / "leaf.md"
+                leaf_link.symlink_to(protected_target)
+                leaf_result = self._run_release_preflight_with_evidence(leaf_link)
+                self.assertNotEqual(leaf_result.returncode, 0)
+                self.assertIn(
+                    "unsafe automated preflight evidence destination",
+                    leaf_result.stderr,
+                )
+                self.assertEqual(protected_target.read_text(encoding="utf-8"), "protected\n")
+
+    def test_mcp_verifier_rejects_empty_successful_inspector_output(self) -> None:
+        with tempfile.TemporaryDirectory(dir=REPOSITORY_ROOT / ".tmp") as directory:
+            root = Path(directory)
+            evidence = root / "mcp-inspector.md"
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            git_marker = root / "fake-git-invoked"
+            fake_git = fake_bin / "git"
+            fake_git.write_text(
+                "#!/bin/sh\n"
+                f"printf invoked > {git_marker}\n"
+                "exec /usr/bin/git \"$@\"\n",
+                encoding="utf-8",
+            )
+            fake_git.chmod(0o755)
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "PATH": str(fake_bin) + os.pathsep + environment["PATH"],
+                    "GIT_DIR": str(root / "forged.git"),
+                    "GIT_WORK_TREE": str(root / "forged-worktree"),
+                    "SUISUI_MCP_INSPECTOR_BIN": "/usr/bin/true",
+                    "SUISUI_MCP_EVIDENCE_FILE": str(evidence),
+                }
+            )
+            result = subprocess.run(
+                [str(MCP_VERIFIER)],
+                cwd=str(REPOSITORY_ROOT),
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("Inspector tools/list output is invalid", result.stderr)
+            self.assertFalse(git_marker.exists(), "MCP provenance must use /usr/bin/git")
+
+    def test_mcp_verifier_resolves_npx_without_caller_path(self) -> None:
+        contents = MCP_VERIFIER.read_text(encoding="utf-8")
+
+        for path in ("/opt/homebrew/bin/npx", "/usr/local/bin/npx", "/usr/bin/npx"):
+            self.assertIn(path, contents)
+        self.assertIn('SUISUI_MCP_NPX_BIN:-', contents)
+        self.assertNotIn("INSPECTOR_COMMAND=(npx ", contents)
+        self.assertIn('@modelcontextprotocol/inspector@2.2.0', contents)
+        self.assertIn("NPM_CONFIG_REGISTRY=https://registry.npmjs.org/", contents)
+        self.assertIn("NPM_CONFIG_USERCONFIG=/dev/null", contents)
+        self.assertIn("-u NODE_OPTIONS", contents)
+        provenance = MCP_PROVENANCE.read_text(encoding="utf-8")
+        self.assertIn("mcp_git()", provenance)
+        self.assertIn('/usr/bin/git "$@"', provenance)
+        self.assertNotIn('/usr/bin/git -C "$root_dir"', provenance)
+
+    def test_mcp_verifier_rejects_symlink_evidence_destination_early(self) -> None:
+        (REPOSITORY_ROOT / ".tmp").mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=REPOSITORY_ROOT / ".tmp") as directory:
+            root = Path(directory)
+            target = root / "protected.md"
+            target.write_text("protected\n", encoding="utf-8")
+            link = root / "evidence.md"
+            link.symlink_to(target)
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "SUISUI_MCP_INSPECTOR_BIN": "/usr/bin/true",
+                    "SUISUI_MCP_EVIDENCE_FILE": str(link),
+                }
+            )
+
+            result = subprocess.run(
+                [str(MCP_VERIFIER)],
+                cwd=str(REPOSITORY_ROOT),
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("unsafe MCP evidence destination", result.stderr)
+            self.assertEqual(target.read_text(encoding="utf-8"), "protected\n")
+
+    def test_release_mcp_evidence_cannot_use_custom_inspector(self) -> None:
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "SUISUI_MCP_INSPECTOR_BIN": "/usr/bin/true",
+                "SUISUI_MCP_EVIDENCE_FILE": str(
+                    REPOSITORY_ROOT / "docs/release/evidence/mcp-inspector.md"
+                ),
+            }
+        )
+        result = subprocess.run(
+            [str(MCP_VERIFIER)],
+            cwd=str(REPOSITORY_ROOT),
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("custom MCP Inspector may write test evidence only", result.stderr)
+        readiness = RELEASE_READINESS.read_text(encoding="utf-8")
+        self.assertIn("-u SUISUI_MCP_INSPECTOR_BIN", readiness)
+        self.assertIn("-u SUISUI_MCP_NPX_BIN", readiness)
+        self.assertIn("SUISUI_MCP_SOURCE_REF=HEAD", readiness)
+        self.assertIn('$ROOT_DIR/.tmp/mcp-runtime-evidence.XXXXXX.md', readiness)
+
+    def test_release_readiness_uses_sanitized_git_for_all_provenance(self) -> None:
+        readiness = RELEASE_READINESS.read_text(encoding="utf-8")
+        provenance = MCP_PROVENANCE.read_text(encoding="utf-8")
+
+        self.assertIn("release_git()", readiness)
+        self.assertNotRegex(readiness, r'(?m)^\s*git -C "\$ROOT_DIR"')
+        self.assertIn('PATH="$ROOT_DIR/ci/trusted-bin:$PATH"', readiness)
+        self.assertIn("/usr/bin/env -i", provenance)
+        self.assertIn("PATH=/usr/bin:/bin", provenance)
 
     def test_orchestrator_self_test_proves_fail_closed_state_transitions(self) -> None:
         self.assertTrue(ORCHESTRATOR.exists(), "PR orchestrator must exist")
@@ -360,6 +581,38 @@ class ExecutionContractTests(unittest.TestCase):
             )
             self.assertTrue(report_path.exists(), result.stdout + result.stderr)
             return result, json.loads(report_path.read_text(encoding="utf-8"))
+
+    def _run_release_preflight_with_evidence(self, evidence_path: Path):
+        environment = os.environ.copy()
+        environment["SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE"] = str(evidence_path)
+        return subprocess.run(
+            [str(RELEASE_PREFLIGHT)],
+            cwd=str(REPOSITORY_ROOT),
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    @staticmethod
+    def _visual_proof_overrides() -> tuple[str, ...]:
+        return (
+            "SUISUI_VISUAL_SOURCE_REF",
+            "SUISUI_VISUAL_FIXTURE_SEEDER_BIN",
+            "SUISUI_AX_AUDIT_RESULT",
+            "SUISUI_VISUAL_CURRENT_SOURCE_COMMIT",
+            "SUISUI_VISUAL_BASELINE_VIEWPORT",
+            "SUISUI_SETTINGS_VISUAL_BASELINE_VIEWPORT",
+            "SUISUI_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT",
+            "SUISUI_VISUAL_EVIDENCE_REFERENCE_INSTANT",
+            "SUISUI_VISUAL_EVIDENCE_TIME_ZONE",
+            "SUISUI_VISUAL_EVIDENCE_LOCALE_IDENTIFIER",
+            "SUISUI_VISUAL_EVIDENCE_SCHEDULE_MODE",
+            "SUISUI_VISUAL_EVIDENCE_STABLE_BACKDROP",
+            "SUISUI_VISUAL_EVIDENCE_SYSTEM_APPEARANCE",
+            "SUISUI_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS",
+            "SUISUI_UI_EVIDENCE_AX_MAX_NODES",
+        )
 
     def _run_selected_with_fake_toolchain(
         self,
