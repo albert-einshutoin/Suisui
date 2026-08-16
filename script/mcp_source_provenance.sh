@@ -7,6 +7,8 @@ MCP_SOURCE_PATHS=(
   Sources/SuisuiApp/Views/SettingsView.swift
   fixtures/mcp
   script/verify_mcp_compliance.sh
+  script/mcp_source_provenance.sh
+  ci/trusted-bin/git
   Package.swift
 )
 

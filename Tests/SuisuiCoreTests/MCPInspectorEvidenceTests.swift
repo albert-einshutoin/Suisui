@@ -31,6 +31,8 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         XCTAssertTrue(script.contains("mcp_evidence_source_commit()"))
         XCTAssertTrue(provenance.contains("Sources/SuisuiApp/Composition"))
         XCTAssertTrue(provenance.contains("script/verify_mcp_compliance.sh"))
+        XCTAssertTrue(provenance.contains("script/mcp_source_provenance.sh"))
+        XCTAssertTrue(provenance.contains("ci/trusted-bin/git"))
         XCTAssertFalse(provenance.contains("Sources/SuisuiCore/ExternalMCP/ExternalMCPTestKit"))
     }
 
