@@ -13357,7 +13357,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.name", "Release Tests"]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "."]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "baseline local voice runtime source"]).exitCode, 0)
-        let baselineCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+        let baselineCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short=8", "HEAD"])
             .output.trimmingCharacters(in: .whitespacesAndNewlines)
 
         try """
@@ -13391,7 +13391,7 @@ final class ReleasePipelineTests: XCTestCase {
             .write(to: wrapperURL, atomically: true, encoding: .utf8)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "script/kokoro_tts_runtime.py"]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "change kokoro runtime wrapper"]).exitCode, 0)
-        let wrapperCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+        let wrapperCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short=8", "HEAD"])
             .output.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let result = try runTool(["bash", reportURL.path])
