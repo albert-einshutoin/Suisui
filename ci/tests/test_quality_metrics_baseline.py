@@ -30,6 +30,8 @@ class QualityMetricsBaselineTests(unittest.TestCase):
     def test_parse_workflow_runs_rejects_missing_or_invalid_identity_fields(self) -> None:
         for fixture in (
             '{"workflow_runs":[{"run_attempt":1,"status":"completed","conclusion":"success"}]}',
+            '{"workflow_runs":[{"id":0,"run_attempt":1,"status":"completed","conclusion":"success"}]}',
+            '{"workflow_runs":[{"id":-1,"run_attempt":1,"status":"completed","conclusion":"success"}]}',
             '{"workflow_runs":[{"id":1,"run_attempt":"2","status":"completed","conclusion":"success"}]}',
             '{"workflow_runs":[{"id":1,"run_attempt":1,"conclusion":"success"}]}',
         ):
@@ -170,6 +172,19 @@ class QualityMetricsBaselineTests(unittest.TestCase):
                 METRICS.write_output(link, "replacement\n")
 
             self.assertEqual(target.read_text(encoding="utf-8"), "protected")
+
+    def test_write_output_rejects_symbolic_link_ancestor(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "target"
+            target.mkdir()
+            link = root / "output-dir"
+            link.symlink_to(target, target_is_directory=True)
+
+            with self.assertRaisesRegex(ValueError, "symbolic link"):
+                METRICS.write_output(link / "output.json", "replacement\n")
+
+            self.assertFalse((target / "output.json").exists())
 
 
 if __name__ == "__main__":

@@ -29,8 +29,8 @@ def parse_workflow_runs(payload: str) -> list[dict[str, Any]]:
     if not isinstance(runs, list) or not all(isinstance(run, dict) for run in runs):
         raise ValueError("workflow_runs must be a list of objects")
     for run in runs:
-        if type(run.get("id")) is not int:
-            raise ValueError("workflow run id must be an integer")
+        if type(run.get("id")) is not int or run["id"] <= 0:
+            raise ValueError("workflow run id must be a positive integer")
         if type(run.get("run_attempt")) is not int or run["run_attempt"] <= 0:
             raise ValueError("workflow run run_attempt must be a positive integer")
         if not isinstance(run.get("status"), str):
@@ -177,7 +177,8 @@ def load_live_runs(repository: str, workflow: str, branch: str, limit: int) -> l
 
 def write_output(path: Path, content: str) -> None:
     """Replace a regular output file atomically without following a symlink."""
-    if path.is_symlink():
+    # `mkdir` follows existing parent symlinks, so reject every path component first.
+    if any(component.is_symlink() for component in (path, *path.parents)):
         raise ValueError("output path must not be a symbolic link")
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
