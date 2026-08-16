@@ -17135,7 +17135,10 @@ final class ReleasePipelineTests: XCTestCase {
     private func currentShortGitCommit() throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["git", "-C", packageRoot().path, "rev-parse", "--short", "HEAD"]
+        process.arguments = [
+            "git", "-c", "core.abbrev=8", "-C", packageRoot().path,
+            "rev-parse", "--short=8", "HEAD"
+        ]
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
@@ -17183,7 +17186,10 @@ final class ReleasePipelineTests: XCTestCase {
 
     private func scopedSourceCommit(paths: [String]) throws -> String {
         let result = try runTool(
-            ["git", "-C", packageRoot().path, "log", "-1", "--format=%h", "--"] + paths
+            [
+                "git", "-c", "core.abbrev=8", "-C", packageRoot().path,
+                "log", "-1", "--format=%h", "--"
+            ] + paths
         )
         XCTAssertEqual(result.exitCode, 0, result.output)
         let output = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
