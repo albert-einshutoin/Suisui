@@ -122,6 +122,12 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn("-u SUISUI_SWIFTPM_TEST_BASELINE_FILE", contents)
         self.assertIn("-u SUISUI_SWIFTPM_MAX_SKIPPED_FILE", contents)
         self.assertIn('SUISUI_SWIFTPM_ARTIFACT_DIR="$CI_ARTIFACT_ROOT/swiftpm"', contents)
+        self.assertIn(
+            'SUISUI_SWIFTPM_ARTIFACT_DIR="$CI_ARTIFACT_ROOT/swiftpm" \\\n'
+            '  SUISUI_CI_ARTIFACT_ROOT="$CI_ARTIFACT_ROOT" \\\n'
+            '  SUISUI_CI_IMPACT_ARTIFACT_DIR="$ROOT_DIR/.tmp/ci-impact"',
+            contents,
+        )
         self.assertIn('SUISUI_CI_IMPACT_ARTIFACT_DIR="$ROOT_DIR/.tmp/ci-impact"', contents)
         self.assertIn(
             'SUISUI_CI_EXECUTION_REPORT="$ROOT_DIR/.tmp/ci-impact/full-execution.json"',
