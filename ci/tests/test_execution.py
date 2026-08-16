@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+AGENT_ENTRYPOINT = REPOSITORY_ROOT / "AGENTS.md"
 SELECTED_RUNNER = REPOSITORY_ROOT / "ci" / "run-selected.py"
 FULL_RUNNER = REPOSITORY_ROOT / "ci" / "run-full.sh"
 ALL_RUNNER = REPOSITORY_ROOT / "ci" / "run-all.sh"
@@ -23,6 +24,13 @@ PLAN_ESCALATOR = REPOSITORY_ROOT / "ci" / "escalate-plan.py"
 
 
 class ExecutionContractTests(unittest.TestCase):
+    def test_repository_agent_entrypoint_records_model_routing(self) -> None:
+        contents = AGENT_ENTRYPOINT.read_text(encoding="utf-8")
+
+        for model in ("Sol xhigh/max", "Terra high/xhigh", "Luna high/max"):
+            self.assertIn(model, contents)
+        self.assertIn("黙って代替せず", contents)
+
     def test_selected_runner_dry_run_emits_allowlisted_argv_and_counts(self) -> None:
         plan = {
             "strategy": "selective",
@@ -305,6 +313,7 @@ class ExecutionContractTests(unittest.TestCase):
                 self.assertEqual(protected_target.read_text(encoding="utf-8"), "protected\n")
 
     def test_mcp_verifier_rejects_empty_successful_inspector_output(self) -> None:
+        (REPOSITORY_ROOT / ".tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=REPOSITORY_ROOT / ".tmp") as directory:
             root = Path(directory)
             evidence = root / "mcp-inspector.md"
