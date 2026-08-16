@@ -1299,7 +1299,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(command.contains("REPO_ROOT="))
         XCTAssertTrue(command.contains("cd \"$REPO_ROOT\""))
         XCTAssertTrue(command.contains("EXPECTED_SOURCE_COMMIT=\(currentShortCommit)"))
-        XCTAssertTrue(command.contains("CURRENT_SOURCE_COMMIT=\"$(git rev-parse --short HEAD 2>/dev/null || printf unknown)\""))
+        XCTAssertTrue(command.contains("CURRENT_SOURCE_COMMIT=\"$(git rev-parse --short=8 HEAD 2>/dev/null || printf unknown)\""))
         XCTAssertTrue(command.contains("TRACKED_SOURCE_STATUS=\"$(git status --porcelain --untracked-files=no)\""))
         XCTAssertTrue(command.contains("release evidence command requires a clean tracked source tree"))
         XCTAssertTrue(command.contains("release evidence command was generated for source commit"))
@@ -4278,7 +4278,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.name", "Release Tests"]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "Sources/SuisuiApp/App.swift", "Package.swift"]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "product source"]).exitCode, 0)
-        let currentShortCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+        let currentShortCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short=8", "HEAD"])
             .output
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let voiceOverDirectory = fixtureRoot
@@ -4432,7 +4432,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "."]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "product source"]).exitCode, 0)
         let productSourceCommit = String(
-            try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+            try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short=8", "HEAD"])
                 .output
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         )
@@ -4445,7 +4445,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "."]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "release helper docs"]).exitCode, 0)
         let releaseEvidenceCommit = String(
-            try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+            try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short=8", "HEAD"])
                 .output
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         )
@@ -12519,7 +12519,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(report.contains("script/capture_ui_evidence.sh --doctor"))
         XCTAssertTrue(report.contains("script/release_readiness_report.sh"))
         XCTAssertTrue(report.contains("`./script/check_automated_release_preflight.sh`"))
-        XCTAssertTrue(report.contains("git rev-parse --short HEAD"))
+        XCTAssertTrue(report.contains("git rev-parse --short=8 HEAD"))
         XCTAssertNil(report.range(of: #"automated-release-preflight-[[:xdigit:]]{7,}\.md"#, options: .regularExpression))
         XCTAssertTrue(report.range(of: #"SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.* ./script/release_readiness_report\.sh"#, options: .regularExpression) != nil)
         XCTAssertNil(report.range(of: #"SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.* ./script/check_automated_release_preflight\.sh"#, options: .regularExpression))
@@ -12612,7 +12612,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.name", "Quality Tests"]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "."]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "initial quality fixture"]).exitCode, 0)
-        let currentShortCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+        let currentShortCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short=8", "HEAD"])
             .output
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
