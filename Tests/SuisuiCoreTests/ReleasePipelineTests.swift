@@ -9309,7 +9309,7 @@ final class ReleasePipelineTests: XCTestCase {
         App: Suisui
         Xcode workspace: .swiftpm/xcode/package.xcworkspace
         Xcode scheme: Suisui
-        Xcode configuration: Release
+        Xcode configuration: Debug
         Xcode destination: platform=macOS
         VoiceOver candidate source commit: \(currentProductSourceCommit)
         VoiceOver candidate project ID: 42
@@ -9541,7 +9541,7 @@ final class ReleasePipelineTests: XCTestCase {
         App: Suisui
         Xcode workspace: .swiftpm/xcode/package.xcworkspace
         Xcode scheme: Suisui
-        Xcode configuration: Release
+        Xcode configuration: Debug
         Xcode destination: platform=macOS
         VoiceOver candidate source commit: \(currentProductSourceCommit)
         VoiceOver candidate project ID: 42
