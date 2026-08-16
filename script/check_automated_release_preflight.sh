@@ -5,9 +5,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 TMP_ROOT="$ROOT_DIR/.tmp"
 XCODE_WORKSPACE_RELATIVE=".swiftpm/xcode/package.xcworkspace"
-XCODE_SCHEME="${SUISUI_XCODE_SCHEME:-Suisui}"
-XCODE_DESTINATION="${SUISUI_XCODE_DESTINATION:-platform=macOS}"
-XCODE_CONFIGURATION="${SUISUI_XCODE_CONFIGURATION:-Debug}"
+XCODE_SCHEME="Suisui"
+XCODE_DESTINATION="platform=macOS"
+XCODE_CONFIGURATION="Debug"
 XCODE_PREFLIGHT_TIMEOUT_SECONDS="${SUISUI_XCODE_PREFLIGHT_TIMEOUT_SECONDS:-600}"
 AUTOMATED_PREFLIGHT_EVIDENCE_FILE="${SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE:-}"
 REFRESH_MANUAL_HELPERS="${SUISUI_REFRESH_MANUAL_HELPERS:-1}"
@@ -25,6 +25,21 @@ fi
 
 APP_NAME="${APP_NAME:-Suisui}"
 cd "$ROOT_DIR"
+
+# Release evidence must use repository-owned probes. Local helper overrides
+# remain available to focused scripts but cannot produce reusable proof here.
+unset \
+  AX_HELPERS \
+  AX_TEXT_INPUT_HELPER \
+  AX_SCROLL_HELPER \
+  AX_BUTTON_HELPER \
+  AX_MARKER_HELPER \
+  AX_FRAME_HELPER \
+  AX_PRESS_ELEMENT_HELPER \
+  AX_RESIZE_WINDOW_HELPER \
+  AX_IDENTIFIER_COUNT_HELPER \
+  WINDOW_CONTENT_SIZE_HELPER
+export SQLITE3="/usr/bin/sqlite3"
 
 default_automated_preflight_evidence_file() {
   local commit
@@ -239,7 +254,7 @@ if ! [[ "$XCODE_PREFLIGHT_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || [[ "$XCODE_PREFLIGH
 fi
 
 section "Release CI"
-SUISUI_CI_RELEASE_GATES=1 ./scripts/ci.sh
+env -u SUISUI_CI_LANE SUISUI_CI_RELEASE_GATES=1 ./scripts/ci.sh
 
 section "Local CRUD smoke"
 ./script/check_local_crud_smoke.sh
@@ -329,7 +344,11 @@ if [[ -z "${RUNTIME_AX_SMOKE_OUTPUT//[[:space:]]/}" ]]; then
 fi
 
 section "MCP compliance preflight"
-SUISUI_MCP_EVIDENCE_FILE="$MCP_EVIDENCE_FILE" ./script/verify_mcp_compliance.sh
+env \
+  -u SUISUI_MCP_INSPECTOR_BIN \
+  SUISUI_MCP_SOURCE_REF=HEAD \
+  SUISUI_MCP_EVIDENCE_FILE="$MCP_EVIDENCE_FILE" \
+  ./script/verify_mcp_compliance.sh
 
 section "Refresh manual release helpers"
 refresh_manual_release_helpers

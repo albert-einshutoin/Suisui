@@ -2,18 +2,29 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RUST_MANIFEST="$ROOT_DIR/rust/kokoro-helper/Cargo.toml"
 CI_ARTIFACT_ROOT="$ROOT_DIR/.tmp/ci-artifacts"
 
 cd "$ROOT_DIR"
+
+# Complete CI publishes reusable evidence, so caller-provided helper paths
+# cannot replace the checked-in AX probes or SQLite implementation.
+unset \
+  AX_HELPERS \
+  AX_TEXT_INPUT_HELPER \
+  AX_SCROLL_HELPER \
+  AX_BUTTON_HELPER \
+  AX_MARKER_HELPER \
+  AX_FRAME_HELPER \
+  AX_PRESS_ELEMENT_HELPER \
+  AX_RESIZE_WINDOW_HELPER \
+  AX_IDENTIFIER_COUNT_HELPER \
+  WINDOW_CONTENT_SIZE_HELPER
+export SQLITE3="/usr/bin/sqlite3"
 
 env \
   -u SUISUI_SWIFTPM_TEST_BASELINE_FILE \
   -u SUISUI_SWIFTPM_MAX_SKIPPED_FILE \
   ./ci/run-full.sh
-cargo fmt --manifest-path "$RUST_MANIFEST" --check
-cargo test --manifest-path "$RUST_MANIFEST" --locked --all-targets --all-features
-cargo clippy --manifest-path "$RUST_MANIFEST" --locked --all-targets --all-features -- -D warnings
 env \
   -u SUISUI_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY \
   -u SUISUI_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX \

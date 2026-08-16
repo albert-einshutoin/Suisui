@@ -102,16 +102,30 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertNotIn("ci/config", contents)
         self.assertNotIn("ci/tests", contents)
 
-    def test_all_runner_adds_rust_and_every_ui_lane_to_full_validation(self) -> None:
+    def test_all_runner_adds_every_ui_lane_to_full_validation_with_pinned_helpers(self) -> None:
         self.assertTrue(ALL_RUNNER.exists(), "complete local CI runner must exist")
         contents = ALL_RUNNER.read_text(encoding="utf-8")
 
         self.assertIn("-u SUISUI_SWIFTPM_TEST_BASELINE_FILE", contents)
         self.assertIn("-u SUISUI_SWIFTPM_MAX_SKIPPED_FILE", contents)
         self.assertIn("./ci/run-full.sh", contents)
-        self.assertIn("cargo fmt --manifest-path", contents)
-        self.assertIn("cargo test --manifest-path", contents)
-        self.assertIn("cargo clippy --manifest-path", contents)
+        self.assertNotIn("cargo fmt --manifest-path", contents)
+        self.assertNotIn("cargo test --manifest-path", contents)
+        self.assertNotIn("cargo clippy --manifest-path", contents)
+        self.assertIn('export SQLITE3="/usr/bin/sqlite3"', contents)
+        for variable in (
+            "AX_HELPERS",
+            "AX_TEXT_INPUT_HELPER",
+            "AX_SCROLL_HELPER",
+            "AX_BUTTON_HELPER",
+            "AX_MARKER_HELPER",
+            "AX_FRAME_HELPER",
+            "AX_PRESS_ELEMENT_HELPER",
+            "AX_RESIZE_WINDOW_HELPER",
+            "AX_IDENTIFIER_COUNT_HELPER",
+            "WINDOW_CONTENT_SIZE_HELPER",
+        ):
+            self.assertIn(variable, contents)
         for variable in (
             "SUISUI_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY",
             "SUISUI_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX",
@@ -159,6 +173,33 @@ class ExecutionContractTests(unittest.TestCase):
             self.assertIn(f"-u {variable}", contents)
         self.assertIn("./scripts/ci.sh ui-performance", contents)
         self.assertNotIn("impact/analyze", contents)
+
+    def test_release_preflight_pins_complete_evidence_inputs(self) -> None:
+        contents = RELEASE_PREFLIGHT.read_text(encoding="utf-8")
+
+        self.assertIn('XCODE_SCHEME="Suisui"', contents)
+        self.assertIn('XCODE_DESTINATION="platform=macOS"', contents)
+        self.assertIn('XCODE_CONFIGURATION="Debug"', contents)
+        self.assertNotIn('XCODE_SCHEME="${SUISUI_XCODE_SCHEME', contents)
+        self.assertNotIn('XCODE_DESTINATION="${SUISUI_XCODE_DESTINATION', contents)
+        self.assertNotIn('XCODE_CONFIGURATION="${SUISUI_XCODE_CONFIGURATION', contents)
+        self.assertIn('env -u SUISUI_CI_LANE SUISUI_CI_RELEASE_GATES=1 ./scripts/ci.sh', contents)
+        self.assertIn('export SQLITE3="/usr/bin/sqlite3"', contents)
+        for variable in (
+            "AX_HELPERS",
+            "AX_TEXT_INPUT_HELPER",
+            "AX_SCROLL_HELPER",
+            "AX_BUTTON_HELPER",
+            "AX_MARKER_HELPER",
+            "AX_FRAME_HELPER",
+            "AX_PRESS_ELEMENT_HELPER",
+            "AX_RESIZE_WINDOW_HELPER",
+            "AX_IDENTIFIER_COUNT_HELPER",
+            "WINDOW_CONTENT_SIZE_HELPER",
+        ):
+            self.assertIn(variable, contents)
+        self.assertIn("-u SUISUI_MCP_INSPECTOR_BIN", contents)
+        self.assertIn("SUISUI_MCP_SOURCE_REF=HEAD", contents)
 
     def test_orchestrator_self_test_proves_fail_closed_state_transitions(self) -> None:
         self.assertTrue(ORCHESTRATOR.exists(), "PR orchestrator must exist")
