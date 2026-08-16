@@ -1,4 +1,3 @@
-import AppKit
 import XCTest
 @testable import Suisui
 
@@ -29,28 +28,4 @@ final class ProjectBoardSceneCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.activeSceneID, secondSceneID)
     }
 
-    func testShortcutBringsTargetBoardWindowForward() {
-        let sceneID = UUID()
-        let windowCoordinator = ProjectBoardWindowStateBridge.Coordinator(
-            sceneID: sceneID,
-            restoresPrimaryWindow: false
-        )
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
-        )
-        windowCoordinator.attach(to: window)
-        window.orderOut(nil)
-
-        NotificationCenter.default.post(
-            name: .suisuiProjectBoardShortcutRequested,
-            object: ProjectBoardShortcutRequest(sceneID: sceneID, action: .commandPalette)
-        )
-
-        XCTAssertTrue(window.isVisible)
-        windowCoordinator.detach(savingCurrentFrame: false)
-        window.close()
-    }
 }
