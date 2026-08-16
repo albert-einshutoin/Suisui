@@ -173,7 +173,7 @@ class QualityMetricsBaselineTests(unittest.TestCase):
 
             self.assertEqual(target.read_text(encoding="utf-8"), "protected")
 
-    def test_write_output_rejects_symbolic_link_ancestor(self) -> None:
+    def test_write_output_canonicalizes_a_symbolic_link_ancestor(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             target = root / "target"
@@ -181,10 +181,48 @@ class QualityMetricsBaselineTests(unittest.TestCase):
             link = root / "output-dir"
             link.symlink_to(target, target_is_directory=True)
 
-            with self.assertRaisesRegex(ValueError, "symbolic link"):
-                METRICS.write_output(link / "output.json", "replacement\n")
+            METRICS.write_output(link / "output.json", "replacement\n")
 
-            self.assertFalse((target / "output.json").exists())
+            self.assertEqual((target / "output.json").read_text(encoding="utf-8"), "replacement\n")
+
+    def test_write_output_succeeds_under_tmp(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/tmp") as directory:
+            output = Path(directory) / "baseline.json"
+
+            METRICS.write_output(output, "replacement\n")
+
+            self.assertEqual(output.read_text(encoding="utf-8"), "replacement\n")
+
+    def test_write_output_creates_a_missing_canonical_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "missing" / "parent" / "baseline.json"
+
+            METRICS.write_output(output, "replacement\n")
+
+            self.assertEqual(output.read_text(encoding="utf-8"), "replacement\n")
+
+    def test_write_output_stays_in_open_parent_after_path_is_replaced(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output_parent = root / "output"
+            output_parent.mkdir()
+            redirect = root / "redirect"
+            redirect.mkdir()
+            archived_parent = root / "output-before-swap"
+            output = output_parent / "baseline.json"
+            open_parent = METRICS._open_output_parent
+
+            def open_then_replace_parent(path: Path) -> tuple[int, str]:
+                descriptor, name = open_parent(path)
+                output_parent.rename(archived_parent)
+                output_parent.symlink_to(redirect, target_is_directory=True)
+                return descriptor, name
+
+            with patch.object(METRICS, "_open_output_parent", side_effect=open_then_replace_parent):
+                METRICS.write_output(output, "replacement\n")
+
+            self.assertEqual((archived_parent / "baseline.json").read_text(encoding="utf-8"), "replacement\n")
+            self.assertFalse((redirect / "baseline.json").exists())
 
 
 if __name__ == "__main__":

@@ -3,9 +3,11 @@
 
 import argparse
 import json
+import os
+import secrets
+import stat
 import subprocess
 import sys
-import tempfile
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, Optional
@@ -175,20 +177,75 @@ def load_live_runs(repository: str, workflow: str, branch: str, limit: int) -> l
     return latest_runs + first_attempts
 
 
+def _open_output_parent(path: Path) -> tuple[int, str]:
+    """Open the canonical output parent, creating missing directories safely."""
+    name = path.name
+    if name in {"", ".", ".."}:
+        raise ValueError("output path must name a file")
+
+    # Canonicalize established aliases such as /tmp, then pin every later lookup to a directory FD.
+    canonical_parent = path.parent.resolve(strict=False)
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    descriptor = os.open(canonical_parent.anchor, flags)
+    try:
+        for component in canonical_parent.parts[1:]:
+            try:
+                child_descriptor = os.open(component, flags, dir_fd=descriptor)
+            except FileNotFoundError:
+                try:
+                    os.mkdir(component, dir_fd=descriptor)
+                except FileExistsError:
+                    pass
+                child_descriptor = os.open(component, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child_descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+    return descriptor, name
+
+
 def write_output(path: Path, content: str) -> None:
     """Replace a regular output file atomically without following a symlink."""
-    # `mkdir` follows existing parent symlinks, so reject every path component first.
-    if any(component.is_symlink() for component in (path, *path.parents)):
-        raise ValueError("output path must not be a symbolic link")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
-    temporary_path = Path(name)
+    parent_descriptor, name = _open_output_parent(path)
+    temporary_name: Optional[str] = None
+    temporary_descriptor: Optional[int] = None
     try:
-        with open(descriptor, mode="w", encoding="utf-8", closefd=True) as temporary:
+        try:
+            mode = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False).st_mode
+        except FileNotFoundError:
+            mode = None
+        if mode is not None and stat.S_ISLNK(mode):
+            raise ValueError("output path must not be a symbolic link")
+
+        # Keep every name operation relative to this FD so a later path swap cannot redirect output.
+        temporary_name = f".{name}.{secrets.token_hex(16)}"
+        temporary_descriptor = os.open(
+            temporary_name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=parent_descriptor,
+        )
+        temporary = os.fdopen(temporary_descriptor, mode="w", encoding="utf-8")
+        temporary_descriptor = None
+        with temporary:
             temporary.write(content)
-        temporary_path.replace(path)
+        os.replace(
+            temporary_name,
+            name,
+            src_dir_fd=parent_descriptor,
+            dst_dir_fd=parent_descriptor,
+        )
+        temporary_name = None
     finally:
-        temporary_path.unlink(missing_ok=True)
+        if temporary_descriptor is not None:
+            os.close(temporary_descriptor)
+        if temporary_name is not None:
+            try:
+                os.unlink(temporary_name, dir_fd=parent_descriptor)
+            except FileNotFoundError:
+                pass
+        os.close(parent_descriptor)
 
 
 def main() -> int:
