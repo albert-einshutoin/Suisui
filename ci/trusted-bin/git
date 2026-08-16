@@ -30,7 +30,7 @@ for argument in "$@"; do
   esac
 done
 
-git_arguments=(
+trusted_config=(
   -c core.bare=false
   -c core.fsmonitor=false
   -c core.ignoreStat=false
@@ -40,12 +40,29 @@ git_arguments=(
   -c core.abbrev=8
   -c core.hooksPath=/dev/null
 )
+git_arguments=("${trusted_config[@]}")
 if [[ -n "$work_tree" ]]; then
   git_arguments=(--work-tree="$work_tree" "${git_arguments[@]}")
 fi
 git_arguments+=("$@")
 
-exec /usr/bin/env -i \
-  PATH=/usr/bin:/bin \
-  GIT_NO_REPLACE_OBJECTS=1 \
-  /usr/bin/git "${git_arguments[@]}"
+trusted_environment=(
+  /usr/bin/env -i
+  PATH=/usr/bin:/bin
+  HOME=/dev/null
+  XDG_CONFIG_HOME=/dev/null
+  GIT_CONFIG_NOSYSTEM=1
+  GIT_NO_REPLACE_OBJECTS=1
+)
+
+filter_probe_arguments=(-C "${work_tree:-$(/bin/pwd -P)}")
+if "${trusted_environment[@]}" /usr/bin/git \
+  "${filter_probe_arguments[@]}" \
+  "${trusted_config[@]}" \
+  config --includes --get-regexp '^filter\..*\.(clean|process)$' \
+  >/dev/null 2>&1; then
+  printf 'trusted git rejects repository-local content filters\n' >&2
+  exit 2
+fi
+
+exec "${trusted_environment[@]}" /usr/bin/git "${git_arguments[@]}"

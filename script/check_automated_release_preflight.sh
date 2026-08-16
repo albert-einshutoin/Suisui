@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
 TMP_ROOT="$ROOT_DIR/.tmp"
 XCODE_WORKSPACE_RELATIVE=".swiftpm/xcode/package.xcworkspace"

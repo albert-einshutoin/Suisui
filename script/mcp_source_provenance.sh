@@ -14,7 +14,7 @@ MCP_SOURCE_PATHS=(
 
 mcp_git() {
   local trusted_git
-  trusted_git="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/ci/trusted-bin/git"
+  trusted_git="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/ci/trusted-bin/git"
   "$trusted_git" "$@"
 }
 

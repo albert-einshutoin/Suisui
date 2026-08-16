@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+ROOT_DIR="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 CI_ARTIFACT_ROOT="$ROOT_DIR/.tmp/ci-artifacts"
 CI_IMPACT_ROOT="$ROOT_DIR/.tmp/ci-impact"
 

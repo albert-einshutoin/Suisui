@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin"
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$ROOT_DIR"
 source "$ROOT_DIR/script/mcp_source_provenance.sh"
 
@@ -120,7 +121,7 @@ else
   if ! NPX_BIN="$(trusted_npx_path)"; then
     exit 2
   fi
-  NODE_BIN="$(dirname "$NPX_BIN")/node"
+  NODE_BIN="${NPX_BIN%/*}/node"
   if [[ ! -f "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
     echo "BLOCKER: trusted node is unavailable beside $NPX_BIN" >&2
     exit 2
@@ -148,7 +149,8 @@ else
     NPM_CONFIG_REGISTRY=https://registry.npmjs.org/
     NPM_CONFIG_USERCONFIG=/dev/null
     NPM_CONFIG_STRICT_SSL=true
-    "$NPX_BIN" --loglevel error -y "$INSPECTOR_PACKAGE"
+    PATH="${NODE_BIN%/*}:/usr/bin:/bin"
+    "$NODE_BIN" "$NPX_BIN" --loglevel error -y "$INSPECTOR_PACKAGE"
   )
 fi
 NODE_BIN="${NODE_BIN:-$(command -v node)}"

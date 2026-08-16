@@ -469,6 +469,105 @@ class ExecutionContractTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0)
             self.assertIn("tracked.txt", result.stdout)
 
+    def test_trusted_git_rejects_repository_local_content_filters(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["/usr/bin/git", "init", "-q", str(root)], check=True)
+            tracked = root / "tracked.txt"
+            tracked.write_text("before\n", encoding="utf-8")
+            subprocess.run(["/usr/bin/git", "-C", str(root), "add", "tracked.txt"], check=True)
+            subprocess.run(
+                [
+                    "/usr/bin/git",
+                    "-C",
+                    str(root),
+                    "-c",
+                    "user.name=CI Test",
+                    "-c",
+                    "user.email=ci@example.invalid",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "-c",
+                    "core.hooksPath=/dev/null",
+                    "commit",
+                    "-qm",
+                    "baseline",
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "/usr/bin/git",
+                    "-C",
+                    str(root),
+                    "config",
+                    "filter.evil.clean",
+                    "printf 'before\\n'",
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "/usr/bin/git",
+                    "-C",
+                    str(root),
+                    "config",
+                    "filter.evil.required",
+                    "true",
+                ],
+                check=True,
+            )
+            attributes = root / ".git/info/attributes"
+            attributes.write_text("tracked.txt filter=evil\n", encoding="utf-8")
+            tracked.write_text("after!\n", encoding="utf-8")
+            untrusted_result = subprocess.run(
+                [
+                    "/usr/bin/git",
+                    "-C",
+                    str(root),
+                    "status",
+                    "--porcelain=v1",
+                    "--untracked-files=no",
+                    "--",
+                    ".",
+                ],
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(untrusted_result.returncode, 0)
+            self.assertEqual(untrusted_result.stdout, "")
+
+            result = subprocess.run(
+                [
+                    str(TRUSTED_GIT),
+                    "-C",
+                    str(root),
+                    "status",
+                    "--porcelain=v1",
+                    "--untracked-files=no",
+                    "--",
+                    ".",
+                ],
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("repository-local content filters", result.stderr)
+
+    def test_trusted_git_supports_commands_without_a_chdir_option(self) -> None:
+        result = subprocess.run(
+            [str(TRUSTED_GIT), "--version"],
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertRegex(result.stdout, r"^git version ")
+
     def test_trusted_git_does_not_parse_subcommand_context_as_global_chdir(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -658,9 +757,15 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn("NPM_CONFIG_REGISTRY=https://registry.npmjs.org/", contents)
         self.assertIn("NPM_CONFIG_USERCONFIG=/dev/null", contents)
         self.assertIn("-u NODE_OPTIONS", contents)
+        self.assertIn('export PATH="/usr/bin:/bin:/usr/sbin:/sbin:', contents)
+        self.assertIn('PATH="${NODE_BIN%/*}:/usr/bin:/bin"', contents)
+        self.assertIn('"$NODE_BIN" "$NPX_BIN" --loglevel', contents)
+        self.assertNotIn('dirname "$NPX_BIN"', contents)
+        self.assertNotIn('dirname "$NODE_BIN"', contents)
         provenance = MCP_PROVENANCE.read_text(encoding="utf-8")
         self.assertIn("mcp_git()", provenance)
         self.assertIn("ci/trusted-bin/git", provenance)
+        self.assertNotIn('$(dirname ', provenance)
         self.assertIn("diff --no-ext-diff --no-textconv", provenance)
         self.assertNotIn('/usr/bin/git -C "$root_dir"', provenance)
 
