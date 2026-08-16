@@ -11,6 +11,7 @@ SMOKE_CLIENT="fixtures/mcp/stdio-smoke-client.mjs"
 TARGET_EVIDENCE_FILE="${SUISUI_MCP_EVIDENCE_FILE:-$ROOT_DIR/docs/release/evidence/mcp-inspector.md}"
 MCP_SOURCE_REF="${SUISUI_MCP_SOURCE_REF:-HEAD}"
 ROOT_CANONICAL="$(pwd -P)"
+MCP_TEMP_ROOT="$ROOT_CANONICAL/.tmp"
 INSPECTOR_PACKAGE="@modelcontextprotocol/inspector@2.2.0"
 CUSTOM_INSPECTOR=0
 
@@ -130,8 +131,16 @@ fi
 NODE_BIN="${NODE_BIN:-$(command -v node)}"
 
 initialize_mcp_evidence_destination
-mkdir -p "$ROOT_DIR/.tmp"
-WORK_DIR="$(mktemp -d "$ROOT_DIR/.tmp/suisui-mcp-compliance.XXXXXX")"
+if [[ -L "$MCP_TEMP_ROOT" || ( -e "$MCP_TEMP_ROOT" && ! -d "$MCP_TEMP_ROOT" ) ]]; then
+  echo "BLOCKER: unsafe MCP temporary root" >&2
+  exit 2
+fi
+mkdir -p "$MCP_TEMP_ROOT"
+if [[ "$(cd "$MCP_TEMP_ROOT" && pwd -P)" != "$MCP_TEMP_ROOT" ]]; then
+  echo "BLOCKER: unsafe MCP temporary root" >&2
+  exit 2
+fi
+WORK_DIR="$(mktemp -d "$MCP_TEMP_ROOT/suisui-mcp-compliance.XXXXXX")"
 EVIDENCE_FILE="$WORK_DIR/evidence.md"
 trap 'rm -rf "$WORK_DIR"' EXIT
 mkdir -p "$WORK_DIR/home" "$WORK_DIR/tmp"
