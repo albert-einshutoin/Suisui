@@ -1,8 +1,8 @@
 # MCP Inspector Evidence
 
-Generated: 2026-08-16T08:16:53Z
+Generated: 2026-08-16T08:23:07Z
 
-- Source commit: `216cd6ce`
+- Source commit: `94481a24`
 - Inspector identity: @modelcontextprotocol/inspector@2.2.0
 
 Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and Suisui's local JSON-RPC smoke checks.
@@ -60,7 +60,7 @@ Success path: `initialize -> tools/list -> tools/call`
 ## MCP Inspector CLI tools/list
 
 ```console
-$ /usr/bin/env -u npm_config_registry -u NPM_CONFIG_REGISTRY -u npm_config_userconfig -u NPM_CONFIG_USERCONFIG -u npm_config_globalconfig -u NPM_CONFIG_GLOBALCONFIG -u npm_config_cache -u NPM_CONFIG_CACHE -u npm_config_prefix -u NPM_CONFIG_PREFIX -u npm_config_offline -u NPM_CONFIG_OFFLINE -u npm_config_prefer_offline -u NPM_CONFIG_PREFER_OFFLINE -u npm_config_strict_ssl -u NPM_CONFIG_STRICT_SSL -u NODE_OPTIONS -u NODE_PATH NPM_CONFIG_REGISTRY=https://registry.npmjs.org/ NPM_CONFIG_USERCONFIG=/dev/null NPM_CONFIG_STRICT_SSL=true PATH=/opt/homebrew/bin:/usr/bin:/bin /opt/homebrew/bin/node /opt/homebrew/bin/npx --loglevel error -y @modelcontextprotocol/inspector@2.2.0 --cli /opt/homebrew/bin/node fixtures/mcp/stdio-fixture-server.mjs --method tools/list
+$ /usr/bin/env -u npm_config_registry -u NPM_CONFIG_REGISTRY -u npm_config_userconfig -u NPM_CONFIG_USERCONFIG -u npm_config_globalconfig -u NPM_CONFIG_GLOBALCONFIG -u npm_config_cache -u NPM_CONFIG_CACHE -u npm_config_prefix -u NPM_CONFIG_PREFIX -u npm_config_offline -u NPM_CONFIG_OFFLINE -u npm_config_prefer_offline -u NPM_CONFIG_PREFER_OFFLINE -u npm_config_strict_ssl -u NPM_CONFIG_STRICT_SSL -u NODE_OPTIONS -u NODE_PATH NPM_CONFIG_REGISTRY=https://registry.npmjs.org/ NPM_CONFIG_USERCONFIG=/dev/null NPM_CONFIG_GLOBALCONFIG=\<mcp-work-dir\>/npm-globalconfig NPM_CONFIG_CACHE=\<mcp-work-dir\>/npm-cache NPM_CONFIG_PREFIX=\<mcp-work-dir\>/npm-prefix NPM_CONFIG_IGNORE_SCRIPTS=true NPM_CONFIG_OFFLINE=false NPM_CONFIG_PREFER_OFFLINE=false NPM_CONFIG_UPDATE_NOTIFIER=false NPM_CONFIG_STRICT_SSL=true PATH=/opt/homebrew/bin:/usr/bin:/bin /opt/homebrew/bin/node /opt/homebrew/bin/npx --loglevel error -y @modelcontextprotocol/inspector@2.2.0 --cli /opt/homebrew/bin/node \<repository-root\>/fixtures/mcp/stdio-fixture-server.mjs --method tools/list
 {
   "tools": [
     {
@@ -90,7 +90,7 @@ exit: 0
 ## MCP Inspector CLI tools/call
 
 ```console
-$ /usr/bin/env -u npm_config_registry -u NPM_CONFIG_REGISTRY -u npm_config_userconfig -u NPM_CONFIG_USERCONFIG -u npm_config_globalconfig -u NPM_CONFIG_GLOBALCONFIG -u npm_config_cache -u NPM_CONFIG_CACHE -u npm_config_prefix -u NPM_CONFIG_PREFIX -u npm_config_offline -u NPM_CONFIG_OFFLINE -u npm_config_prefer_offline -u NPM_CONFIG_PREFER_OFFLINE -u npm_config_strict_ssl -u NPM_CONFIG_STRICT_SSL -u NODE_OPTIONS -u NODE_PATH NPM_CONFIG_REGISTRY=https://registry.npmjs.org/ NPM_CONFIG_USERCONFIG=/dev/null NPM_CONFIG_STRICT_SSL=true PATH=/opt/homebrew/bin:/usr/bin:/bin /opt/homebrew/bin/node /opt/homebrew/bin/npx --loglevel error -y @modelcontextprotocol/inspector@2.2.0 --cli /opt/homebrew/bin/node fixtures/mcp/stdio-fixture-server.mjs --method tools/call --tool-name read_status --tool-arg project=suisui
+$ /usr/bin/env -u npm_config_registry -u NPM_CONFIG_REGISTRY -u npm_config_userconfig -u NPM_CONFIG_USERCONFIG -u npm_config_globalconfig -u NPM_CONFIG_GLOBALCONFIG -u npm_config_cache -u NPM_CONFIG_CACHE -u npm_config_prefix -u NPM_CONFIG_PREFIX -u npm_config_offline -u NPM_CONFIG_OFFLINE -u npm_config_prefer_offline -u NPM_CONFIG_PREFER_OFFLINE -u npm_config_strict_ssl -u NPM_CONFIG_STRICT_SSL -u NODE_OPTIONS -u NODE_PATH NPM_CONFIG_REGISTRY=https://registry.npmjs.org/ NPM_CONFIG_USERCONFIG=/dev/null NPM_CONFIG_GLOBALCONFIG=\<mcp-work-dir\>/npm-globalconfig NPM_CONFIG_CACHE=\<mcp-work-dir\>/npm-cache NPM_CONFIG_PREFIX=\<mcp-work-dir\>/npm-prefix NPM_CONFIG_IGNORE_SCRIPTS=true NPM_CONFIG_OFFLINE=false NPM_CONFIG_PREFER_OFFLINE=false NPM_CONFIG_UPDATE_NOTIFIER=false NPM_CONFIG_STRICT_SSL=true PATH=/opt/homebrew/bin:/usr/bin:/bin /opt/homebrew/bin/node /opt/homebrew/bin/npx --loglevel error -y @modelcontextprotocol/inspector@2.2.0 --cli /opt/homebrew/bin/node \<repository-root\>/fixtures/mcp/stdio-fixture-server.mjs --method tools/call --tool-name read_status --tool-arg project=suisui
 {
   "content": [
     {
