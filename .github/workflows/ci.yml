@@ -460,10 +460,17 @@ jobs:
       - ui-runtime
       - ui-visual
       - ui-performance-build
-    if: ${{ always() && needs.ui-performance-build.result == 'success' && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}
+    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}
     runs-on: macos-26
     timeout-minutes: 30
     steps:
+      - name: Require successful performance artifact build
+        if: ${{ needs.ui-performance-build.result != 'success' }}
+        run: |
+          echo "failure_category=dependency" >&2
+          echo "failure_reason=ui-performance-build-did-not-succeed" >&2
+          exit 1
+
       - name: Disable Spotlight indexing for launch measurement
         # The hosted runner can otherwise index checkout and app artifacts in
         # the background, making runner load—not product latency—fail the SLO.

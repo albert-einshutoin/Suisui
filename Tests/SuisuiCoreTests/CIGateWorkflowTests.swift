@@ -77,7 +77,7 @@ final class CIGateWorkflowTests: XCTestCase {
         let needsStart = try XCTUnwrap(performanceJob.range(of: "    needs:\n"))
         let conditionStart = try XCTUnwrap(
             performanceJob.range(
-                of: "    if: ${{ always() && needs.ui-performance-build.result == 'success' && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}",
+                of: "    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}",
                 range: needsStart.upperBound..<performanceJob.endIndex
             )
         )
@@ -90,6 +90,38 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(dependencies.contains("      - ui-runtime\n"))
         XCTAssertTrue(dependencies.contains("      - ui-visual\n"))
         XCTAssertTrue(dependencies.contains("      - ui-performance-build\n"))
+    }
+
+    func testPerformanceRouteFailsExplicitlyWhenReleaseArtifactBuildFails() throws {
+        let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        let performanceStart = try XCTUnwrap(workflow.range(of: "\n  ui-performance:"))
+        let performanceJob = String(workflow[performanceStart.lowerBound...])
+        let producerGuard = try XCTUnwrap(
+            performanceJob.range(of: "      - name: Require successful performance artifact build\n")
+        )
+        let artifactDownload = try XCTUnwrap(
+            performanceJob.range(
+                of: "      - name: Download immutable release performance app\n",
+                range: producerGuard.upperBound..<performanceJob.endIndex
+            )
+        )
+        let guardSource = String(performanceJob[producerGuard.lowerBound..<artifactDownload.lowerBound])
+
+        XCTAssertTrue(
+            performanceJob.contains(
+                "    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}"
+            )
+        )
+        XCTAssertFalse(
+            performanceJob.contains("if: ${{ always() && needs.ui-performance-build.result == 'success'")
+        )
+        XCTAssertTrue(guardSource.contains("if: ${{ needs.ui-performance-build.result != 'success' }}"))
+        XCTAssertTrue(guardSource.contains("failure_reason=ui-performance-build-did-not-succeed"))
+        XCTAssertTrue(guardSource.contains("exit 1"))
+        XCTAssertTrue(
+            performanceJob.contains("name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}"),
+            "The producer/consumer artifact must remain scoped to the current workflow attempt"
+        )
     }
 
     func testPerformanceMeasurementUsesVerifiedReleaseArtifactOnAFreshRunner() throws {
