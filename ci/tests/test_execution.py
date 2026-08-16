@@ -266,6 +266,33 @@ class ExecutionContractTests(unittest.TestCase):
             self.assertIn("unsafe complete CI evidence root", result.stderr)
             self.assertEqual(stale_summary.read_text(encoding="utf-8"), "status=passed\n")
 
+    def test_all_runner_accepts_a_checkout_reached_through_a_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = (Path(directory) / "repo").resolve()
+            linked_root = Path(directory) / "linked-repo"
+            runner = root / "ci/run-all.sh"
+            full_runner = root / "ci/run-full.sh"
+            runner.parent.mkdir(parents=True)
+            shutil.copy2(ALL_RUNNER, runner)
+            full_runner.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+            full_runner.chmod(0o755)
+            linked_root.symlink_to(root, target_is_directory=True)
+            stale_summary = root / ".tmp/ci-artifacts/swiftpm/gate-summary.txt"
+            stale_summary.parent.mkdir(parents=True)
+            stale_summary.write_text("status=passed\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [str(linked_root / "ci/run-all.sh")],
+                cwd=str(linked_root),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertNotIn("unsafe complete CI evidence root", result.stderr)
+            self.assertFalse(stale_summary.exists())
+
     def test_release_preflight_pins_complete_evidence_inputs(self) -> None:
         contents = RELEASE_PREFLIGHT.read_text(encoding="utf-8")
 
