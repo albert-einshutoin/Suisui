@@ -74,7 +74,7 @@ esac
 if "${trusted_environment[@]}" /usr/bin/git \
   "${filter_probe_arguments[@]}" \
   "${trusted_config[@]}" \
-  config --includes --get-regexp '^filter\..*\.(clean|process)$' \
+  config --includes --get-regexp '^filter\..*\.(clean|process|smudge)$' \
   >/dev/null 2>&1; then
   printf 'trusted git rejects repository-local content filters\n' >&2
   exit 2

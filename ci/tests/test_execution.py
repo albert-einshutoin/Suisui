@@ -610,6 +610,38 @@ class ExecutionContractTests(unittest.TestCase):
             self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
             self.assertIn("repository-local content filters", result.stderr)
 
+    def test_trusted_git_rejects_repository_local_smudge_filter_from_include(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["/usr/bin/git", "init", "-q", str(root)], check=True)
+            included_config = root / ".git/filters.config"
+            included_config.write_text(
+                '[filter "evil"]\n\tsmudge = /usr/bin/true\n',
+                encoding="utf-8",
+            )
+            subprocess.run(
+                [
+                    "/usr/bin/git",
+                    "-C",
+                    str(root),
+                    "config",
+                    "--local",
+                    "include.path",
+                    "filters.config",
+                ],
+                check=True,
+            )
+
+            result = subprocess.run(
+                [str(TRUSTED_GIT), "-C", str(root), "status", "--porcelain=v1"],
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("repository-local content filters", result.stderr)
+
     def test_trusted_git_supports_commands_without_a_chdir_option(self) -> None:
         result = subprocess.run(
             [str(TRUSTED_GIT), "--version"],
