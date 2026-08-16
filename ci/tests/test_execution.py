@@ -132,6 +132,7 @@ class ExecutionContractTests(unittest.TestCase):
             self.assertIn(variable, contents)
         self.assertIn("GIT_NO_REPLACE_OBJECTS=1", contents)
         self.assertIn('PATH="$ROOT_DIR/ci/trusted-bin:/usr/bin:/bin:', contents)
+        self.assertNotIn("export GIT_CONFIG_GLOBAL=", contents)
         for variable in (
             "SUISUI_RUNTIME_ACCESSIBLE_CRUD_RECOVERABLE_ONLY",
             "SUISUI_LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX",
@@ -224,6 +225,7 @@ class ExecutionContractTests(unittest.TestCase):
             self.assertIn(variable, contents)
         self.assertIn("GIT_NO_REPLACE_OBJECTS=1", contents)
         self.assertIn('TRUSTED_GIT="$ROOT_DIR/ci/trusted-bin/git"', contents)
+        self.assertNotIn("export GIT_CONFIG_GLOBAL=", contents)
         self.assertIn("/usr/bin/xcodebuild", contents)
         self.assertIn("-u SUISUI_MCP_INSPECTOR_BIN", contents)
         self.assertIn("SUISUI_MCP_SOURCE_REF=HEAD", contents)

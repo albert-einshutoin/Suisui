@@ -31,13 +31,13 @@ unset \
   GIT_REPLACE_REF_BASE \
   GIT_CONFIG_PARAMETERS \
   GIT_CONFIG_COUNT \
+  GIT_CONFIG_GLOBAL \
+  GIT_CONFIG_SYSTEM \
+  GIT_CONFIG_NOSYSTEM \
   GIT_EXEC_PATH \
   GIT_EXTERNAL_DIFF \
   GIT_DIFF_OPTS
 export GIT_NO_REPLACE_OBJECTS=1
-export GIT_CONFIG_GLOBAL=/dev/null
-export GIT_CONFIG_SYSTEM=/dev/null
-export GIT_CONFIG_NOSYSTEM=1
 export PATH="$ROOT_DIR/ci/trusted-bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 env \
