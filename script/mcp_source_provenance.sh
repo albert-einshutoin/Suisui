@@ -13,7 +13,14 @@ mcp_git() {
   /usr/bin/env -i \
     PATH=/usr/bin:/bin \
     GIT_NO_REPLACE_OBJECTS=1 \
-    /usr/bin/git "$@"
+    /usr/bin/git \
+    -c core.fsmonitor=false \
+    -c core.ignoreStat=false \
+    -c core.abbrev=8 \
+    -c core.hooksPath=/dev/null \
+    -c diff.external= \
+    -c diff.trustExitCode=false \
+    "$@"
 }
 
 mcp_content_source_ref() {

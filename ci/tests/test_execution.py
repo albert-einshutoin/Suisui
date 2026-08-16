@@ -278,6 +278,56 @@ class ExecutionContractTests(unittest.TestCase):
 
             self.assertNotEqual(result.returncode, 0)
 
+    def test_trusted_git_ignores_repository_fsmonitor_configuration(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["/usr/bin/git", "init", "-q", str(root)], check=True)
+            tracked = root / "tracked.txt"
+            tracked.write_text("before\n", encoding="utf-8")
+            subprocess.run(["/usr/bin/git", "-C", str(root), "add", "tracked.txt"], check=True)
+            subprocess.run(
+                [
+                    "/usr/bin/git",
+                    "-C",
+                    str(root),
+                    "-c",
+                    "user.name=CI Test",
+                    "-c",
+                    "user.email=ci@example.invalid",
+                    "commit",
+                    "-qm",
+                    "baseline",
+                ],
+                check=True,
+            )
+            fake_monitor = root / "fake-fsmonitor.sh"
+            fake_monitor.write_text("#!/bin/sh\nprintf 'token\\0'\n", encoding="utf-8")
+            fake_monitor.chmod(0o755)
+            subprocess.run(
+                [
+                    "/usr/bin/git",
+                    "-C",
+                    str(root),
+                    "config",
+                    "core.fsmonitor",
+                    str(fake_monitor),
+                ],
+                check=True,
+            )
+            subprocess.run(
+                ["/usr/bin/git", "-C", str(root), "status", "--porcelain=v1"],
+                check=True,
+                capture_output=True,
+            )
+            tracked.write_text("after\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [str(TRUSTED_GIT), "-C", str(root), "diff", "--quiet", "--", "."],
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+
     def test_release_preflight_rejects_external_and_symlink_evidence_paths_early(self) -> None:
         (REPOSITORY_ROOT / ".tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory() as outside_directory:
