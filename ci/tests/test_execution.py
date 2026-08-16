@@ -149,7 +149,6 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertIn('PATH="$ROOT_DIR/ci/trusted-bin:/usr/bin:/bin:', contents)
         trusted_git = TRUSTED_GIT.read_text(encoding="utf-8")
         for setting in (
-            "core.bare=false",
             "core.fsmonitor=false",
             "core.ignoreStat=false",
             "core.trustctime=true",
@@ -509,6 +508,19 @@ class ExecutionContractTests(unittest.TestCase):
 
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
                 self.assertIn("repository-local work tree overrides", result.stderr)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["/usr/bin/git", "init", "--bare", "-q", str(root)], check=True)
+            result = subprocess.run(
+                [str(TRUSTED_GIT), "-C", str(root), "rev-parse", "--is-bare-repository"],
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(result.stdout.strip(), "true")
 
     def test_trusted_git_rejects_repository_local_content_filters(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
