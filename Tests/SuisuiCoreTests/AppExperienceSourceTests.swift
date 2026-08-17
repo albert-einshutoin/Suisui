@@ -2107,9 +2107,11 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardUsesOneNativeContextualToolbarLayer() throws {
+        let appSource = try readAppShellSource()
         let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
         let toolbarSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardToolbarContent.swift")
 
+        XCTAssertTrue(appSource.contains(".windowStyle(.hiddenTitleBar)"))
         XCTAssertFalse(boardSource.contains("projectBoardHeaderBar"))
         XCTAssertFalse(boardSource.contains(".frame(height: 44)"))
         XCTAssertFalse(boardSource.contains(".background(.bar)"))

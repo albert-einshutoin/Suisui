@@ -51,6 +51,7 @@ struct Suisui: App {
             .environment(\.locale, effectiveLanguagePreference.locale)
         }
         .defaultSize(width: ProjectBoardWindowMetrics.defaultWidth, height: ProjectBoardWindowMetrics.defaultHeight)
+        .windowStyle(.hiddenTitleBar)
         // ProjectBoardWindowStateBridge owns the explicit 960x572 minimum.
         // SwiftUI's content-derived minimum can lock the hydrated split view
         // near its 1180pt ideal and reject compact/manual AX resizing.
@@ -768,6 +769,9 @@ private final class SuisuiProjectBoardWindowFallback {
             defer: false
         )
         window.title = "Suisui"
+        window.styleMask.insert(.fullSizeContentView)
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
         window.contentViewController = hostingController
         // The loading view is temporary. Pin only the supported compact
         // minimum so its initial fitting size cannot become a permanent

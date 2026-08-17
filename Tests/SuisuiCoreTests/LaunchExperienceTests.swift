@@ -164,6 +164,11 @@ final class LaunchExperienceTests: XCTestCase {
     func testWindowlessSavedStateStillShowsProjectBoardOnLaunch() throws {
         let script = try readPackageFile("script/build_and_run.sh")
         let source = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
+        let fallbackStart = try XCTUnwrap(source.range(of: "private final class SuisuiProjectBoardWindowFallback"))
+        let fallbackEnd = try XCTUnwrap(
+            source.range(of: "private final class SuisuiAppDelegate", range: fallbackStart.upperBound..<source.endIndex)
+        )
+        let fallback = source[fallbackStart.lowerBound..<fallbackEnd.lowerBound]
 
         XCTAssertTrue(script.contains("<key>NSQuitAlwaysKeepsWindows</key>"))
         XCTAssertTrue(script.contains("<false/>"))
@@ -179,6 +184,9 @@ final class LaunchExperienceTests: XCTestCase {
         )
         XCTAssertTrue(source.contains("window.makeKeyAndOrderFront(nil)"))
         XCTAssertTrue(source.contains("window.orderFrontRegardless()"))
+        XCTAssertTrue(fallback.contains("window.styleMask.insert(.fullSizeContentView)"))
+        XCTAssertTrue(fallback.contains("window.titlebarAppearsTransparent = true"))
+        XCTAssertTrue(fallback.contains("window.titleVisibility = .hidden"))
     }
 
     func testBundleDisablesWindowRestorationForPrimaryBoardLaunch() throws {
