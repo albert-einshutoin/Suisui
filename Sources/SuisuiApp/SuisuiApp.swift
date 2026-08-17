@@ -51,6 +51,7 @@ struct Suisui: App {
             .environment(\.locale, effectiveLanguagePreference.locale)
         }
         .defaultSize(width: ProjectBoardWindowMetrics.defaultWidth, height: ProjectBoardWindowMetrics.defaultHeight)
+        .windowStyle(.hiddenTitleBar)
         // ProjectBoardWindowStateBridge owns the explicit 960x572 minimum.
         // SwiftUI's content-derived minimum can lock the hydrated split view
         // near its 1180pt ideal and reject compact/manual AX resizing.
