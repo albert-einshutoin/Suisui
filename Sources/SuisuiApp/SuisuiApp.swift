@@ -769,6 +769,9 @@ private final class SuisuiProjectBoardWindowFallback {
             defer: false
         )
         window.title = "Suisui"
+        window.styleMask.insert(.fullSizeContentView)
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
         window.contentViewController = hostingController
         // The loading view is temporary. Pin only the supported compact
         // minimum so its initial fitting size cannot become a permanent
