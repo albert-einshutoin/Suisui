@@ -427,6 +427,29 @@ private struct ProjectPortfolioSummaryRail: View {
     let nextMilestoneTitle: String?
     let onOpen: () -> Void
 
+    private var localizedRiskReason: String {
+        var reasons: [String] = []
+        if summary.blockedTaskCount > 0 {
+            reasons.append(String(format: String(localized: "%d blocked"), summary.blockedTaskCount))
+        }
+        if summary.overdueTaskCount > 0 {
+            reasons.append(String(format: String(localized: "%d overdue"), summary.overdueTaskCount))
+        }
+        if !reasons.isEmpty {
+            return reasons.joined(separator: ", ")
+        }
+        switch summary.health {
+        case .completed:
+            return String(localized: "All tracked tasks are done.")
+        case .attention:
+            return String(localized: "Progress is below 25% with open work.")
+        case .onTrack:
+            return String(localized: "No blocked or overdue open tasks.")
+        case .atRisk:
+            return String(localized: "Local risk rule detected schedule pressure.")
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
             Label("Selected project", systemImage: "sidebar.right")
@@ -447,7 +470,7 @@ private struct ProjectPortfolioSummaryRail: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Label(summary.nextDueAt ?? String(localized: "No due date"), systemImage: "calendar")
                     Label(summary.nextActionTitle, systemImage: "arrow.right.circle")
-                    Label(summary.riskReason, systemImage: "heart.text.square")
+                    Label(localizedRiskReason, systemImage: "heart.text.square")
                     if todayDueTaskCount > 0 {
                         Label {
                             Text(localizedCount(todayDueTaskCount, one: "%d task due today", other: "%d tasks due today"))

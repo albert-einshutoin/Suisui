@@ -6749,7 +6749,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             }
 
         let focusHours = Self.doneFocusHours(tasks: historyTasks)
-        let onTimeRate = Self.doneOnTimeRate(tasks: historyTasks)
+        let onTimeRate = Self.doneOnTimeRate(tasks: historyTasks, calendar: calendar)
         let weeklyTrendBuckets = Self.doneWeeklyTrendBuckets(
             from: completedCountsByDayStart,
             on: referenceDate,
@@ -9758,10 +9758,9 @@ public final class ProjectBoardViewModel: ObservableObject {
         Double(tasks.count) * 1.5
     }
 
-    private static func doneOnTimeRate(tasks: [ProjectBoardTask]) -> Double? {
+    private static func doneOnTimeRate(tasks: [ProjectBoardTask], calendar: Calendar) -> Double? {
         let tasksWithDue = tasks.filter { $0.dueAt != nil && $0.completedAt != nil }
         guard !tasksWithDue.isEmpty else { return nil }
-        let calendar = Calendar.autoupdatingCurrent
         let onTime = tasksWithDue.filter { task in
             guard let dueAt = task.dueAt,
                   let dueParsed = SuisuiTimestampDisplay.parse(dueAt),

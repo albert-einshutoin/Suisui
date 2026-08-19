@@ -2306,9 +2306,10 @@
 "No due items" = "No due items";
 "Timeline day %@" = "Timeline day %@";
 "week suffix" = "w";
-" days" = " days";
 "Monthly Trend" = "Monthly Trend";
 "Not enough data yet." = "Not enough data yet.";
 "Planning & commands" = "Planning & commands";
-"Focus Time" = "Focus Time";
+"Total Work" = "Total Work";
 "On-Time Rate" = "On-Time Rate";
+"%d day" = "%d day";
+"%d days" = "%d days";

@@ -48,17 +48,17 @@ struct DoneWorkflowView: View {
                     spacing: 10
                 ) {
                     DoneStatTile(title: "Completed Tasks", value: "\(analytics.completedTaskCount)", systemImage: "checkmark.square")
-                    DoneStatValueTile(
-                        title: "Focus Time",
-                        value: String(format: "%.1fh", analytics.focusHours),
-                        systemImage: "timer"
-                    )
+                    DoneStatTile(title: "Total Work", value: String(format: "%.1fh", analytics.focusHours), systemImage: "timer")
                     DoneStatValueTile(
                         title: "On-Time Rate",
                         value: analytics.onTimeRate.map { "\(Int($0 * 100))%" } ?? "—",
                         systemImage: "clock.badge.checkmark"
                     )
-                    DoneStatTile(title: "Streak", value: "\(analytics.streakDays)\(String(localized: " days"))", systemImage: "flame")
+                    DoneStatTile(
+                        title: "Streak",
+                        value: localizedCount(analytics.streakDays, one: "%d day", other: "%d days"),
+                        systemImage: "flame"
+                    )
                 }
 
                 if isWide {

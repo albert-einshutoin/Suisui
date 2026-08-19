@@ -120,8 +120,14 @@ extension AppRuntimeFactory {
         connection: SQLiteConnection
     ) -> (any ExternalScheduleEventSource)? {
         guard isGoogleCalendarRuntimeEnabled() else { return nil }
+        let secretStore = makeSecretStore()
+        let credentialStore = GoogleCalendarOAuthCredentialStore(
+            secretStore: secretStore,
+            metadataStore: SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection)
+        )
+        guard (try? credentialStore.loadMetadata()) != nil else { return nil }
         let reader = GoogleCalendarAppRuntimeFactory.makeEventsReader(
-            secretStore: makeSecretStore(),
+            secretStore: secretStore,
             connection: connection,
             oauthClientID: googleCalendarOAuthClientID()
         )

@@ -2306,9 +2306,10 @@
 "No due items" = "期限付きの項目はありません";
 "Timeline day %@" = "タイムラインの日 %@";
 "week suffix" = "週";
-" days" = "日";
 "Monthly Trend" = "今月の推移";
 "Not enough data yet." = "データがまだ足りません。";
 "Planning & commands" = "プランニング & コマンド";
-"Focus Time" = "集中作業時間";
+"Total Work" = "推定作業時間";
 "On-Time Rate" = "期限内完了率";
+"%d day" = "%d日";
+"%d days" = "%d日";
