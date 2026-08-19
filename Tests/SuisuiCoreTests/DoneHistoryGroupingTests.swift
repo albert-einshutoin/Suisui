@@ -37,6 +37,29 @@ final class DoneHistoryGroupingTests: XCTestCase {
         XCTAssertEqual(grouped.map(\.section), [.today])
     }
 
+    func testLastSevenDaysCoversSevenCalendarDatesIncludingToday() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = Date(timeIntervalSince1970: 1_783_670_400) // 2026-07-10 12:00 UTC
+
+        XCTAssertEqual(
+            DoneHistoryGrouping.section(
+                completedAt: ISO8601DateFormatter().date(from: "2026-07-04T00:00:00Z"),
+                now: now,
+                calendar: calendar
+            ),
+            .lastSevenDays
+        )
+        XCTAssertEqual(
+            DoneHistoryGrouping.section(
+                completedAt: ISO8601DateFormatter().date(from: "2026-07-03T23:59:59Z"),
+                now: now,
+                calendar: calendar
+            ),
+            .older
+        )
+    }
+
     private func task(_ title: String, completedAt: String) -> ProjectBoardTask {
         ProjectBoardTask(
             id: Int64(abs(title.hashValue)),

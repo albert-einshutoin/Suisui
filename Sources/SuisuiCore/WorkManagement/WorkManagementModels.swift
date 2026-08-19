@@ -576,7 +576,6 @@ public struct DoneAnalyticsSummary: Equatable, Sendable {
     public var completedTodayCount: Int
     public var completedThisWeekCount: Int
     public var streakDays: Int
-    public var focusHours: Double
     public var onTimeRate: Double?
     public var weeklyTrendBuckets: [DoneAnalyticsWeekBucket]
     public var completionHeatmapBuckets: [DoneAnalyticsDayBucket]
@@ -591,7 +590,6 @@ public struct DoneAnalyticsSummary: Equatable, Sendable {
         completedTodayCount: Int,
         completedThisWeekCount: Int,
         streakDays: Int,
-        focusHours: Double = 0,
         onTimeRate: Double? = nil,
         weeklyTrendBuckets: [DoneAnalyticsWeekBucket] = [],
         completionHeatmapBuckets: [DoneAnalyticsDayBucket] = [],
@@ -605,7 +603,6 @@ public struct DoneAnalyticsSummary: Equatable, Sendable {
         self.completedTodayCount = completedTodayCount
         self.completedThisWeekCount = completedThisWeekCount
         self.streakDays = streakDays
-        self.focusHours = focusHours
         self.onTimeRate = onTimeRate
         self.weeklyTrendBuckets = weeklyTrendBuckets
         self.completionHeatmapBuckets = completionHeatmapBuckets

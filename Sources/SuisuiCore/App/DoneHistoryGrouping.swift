@@ -29,7 +29,7 @@ public enum DoneHistoryGrouping {
 
         let startOfToday = calendar.startOfDay(for: now)
         let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday) ?? startOfToday
-        let startOfLastSevenDays = calendar.date(byAdding: .day, value: -6, to: startOfYesterday) ?? startOfToday
+        let startOfLastSevenDays = calendar.date(byAdding: .day, value: -6, to: startOfToday) ?? startOfToday
 
         if completedAt >= startOfToday {
             return .today

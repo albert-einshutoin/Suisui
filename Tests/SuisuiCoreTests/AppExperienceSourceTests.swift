@@ -3337,6 +3337,20 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("public func todayTasks("))
     }
 
+    func testCockpitReviewFixesKeepTodayCalendarAndDoneContractsHonest() throws {
+        let dashboardSource = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardView.swift")
+        let calendarFactorySource = try readPackageFile("Sources/SuisuiApp/Composition/GoogleCalendarRuntimeCompositionFactory.swift")
+        let doneWorkflowSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift")
+        let boardSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+
+        XCTAssertTrue(dashboardSource.contains("today-briefing-panel"))
+        XCTAssertTrue(dashboardSource.contains("@State private var isWideReviewActionsExpanded = true"))
+        XCTAssertFalse(calendarFactorySource.contains("guard (try? credentialStore.loadMetadata()) != nil else { return nil }"))
+        XCTAssertTrue(doneWorkflowSource.contains("DoneStatTile(title: \"Completed Projects\""))
+        XCTAssertFalse(doneWorkflowSource.contains("DoneStatTile(title: \"Total Work\""))
+        XCTAssertFalse(boardSource.contains("doneFocusHours"))
+    }
+
     func testPhase12SidebarDestinationRawValuesStayBackwardCompatible() throws {
         let persistenceSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoardSelectionPersistence.swift")
 

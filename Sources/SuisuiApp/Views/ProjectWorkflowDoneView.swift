@@ -48,7 +48,7 @@ struct DoneWorkflowView: View {
                     spacing: 10
                 ) {
                     DoneStatTile(title: "Completed Tasks", value: "\(analytics.completedTaskCount)", systemImage: "checkmark.square")
-                    DoneStatTile(title: "Total Work", value: String(format: "%.1fh", analytics.focusHours), systemImage: "timer")
+                    DoneStatTile(title: "Completed Projects", value: "\(analytics.completedProjectCount)", systemImage: "folder.badge.checkmark")
                     DoneStatValueTile(
                         title: "On-Time Rate",
                         value: analytics.onTimeRate.map { "\(Int($0 * 100))%" } ?? "—",

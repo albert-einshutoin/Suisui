@@ -6748,7 +6748,6 @@ public final class ProjectBoardViewModel: ObservableObject {
                 }
             }
 
-        let focusHours = Self.doneFocusHours(tasks: historyTasks)
         let onTimeRate = Self.doneOnTimeRate(tasks: historyTasks, calendar: calendar)
         let weeklyTrendBuckets = Self.doneWeeklyTrendBuckets(
             from: completedCountsByDayStart,
@@ -6762,7 +6761,6 @@ public final class ProjectBoardViewModel: ObservableObject {
             completedTodayCount: completedTodayCount,
             completedThisWeekCount: completedThisWeekCount,
             streakDays: streakDays,
-            focusHours: focusHours,
             onTimeRate: onTimeRate,
             weeklyTrendBuckets: weeklyTrendBuckets,
             completionHeatmapBuckets: completionHeatmapBuckets,
@@ -9750,12 +9748,6 @@ public final class ProjectBoardViewModel: ObservableObject {
         default:
             return .night
         }
-    }
-
-    private static func doneFocusHours(tasks: [ProjectBoardTask]) -> Double {
-        // Approximate focus hours: 1.5h per completed task as a local heuristic
-        // until actual focus session duration tracking is available.
-        Double(tasks.count) * 1.5
     }
 
     private static func doneOnTimeRate(tasks: [ProjectBoardTask], calendar: Calendar) -> Double? {

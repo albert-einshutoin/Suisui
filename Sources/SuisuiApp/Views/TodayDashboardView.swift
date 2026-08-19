@@ -62,7 +62,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
     @AccessibilityFocusState private var isReviewFocused: Bool
     @AccessibilityFocusState private var isReviewActionsFocused: Bool
     @State private var focusTaskPendingReplacement: Int64?
-    @State private var isWideReviewActionsExpanded = false
+    @State private var isWideReviewActionsExpanded = true
     private func makeDashboard(now: Date, calendar: Calendar, locale: Locale) -> TodayDashboardSnapshot {
         TodayDashboardSnapshotBuilder.make(
             today: snapshot,
@@ -122,6 +122,9 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                             )
                         }
                     }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("today-briefing-panel")
+                    .accessibilityLabel("Today briefing")
                     .padding(.horizontal, 18)
                     .padding(.vertical, 18)
                 }

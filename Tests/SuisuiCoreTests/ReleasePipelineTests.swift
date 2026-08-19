@@ -6801,7 +6801,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("payload_json LIKE '%\\\"requiresApproval\\\":true%'"))
         XCTAssertTrue(script.contains("status='planned' AND due_at IS NULL"))
         XCTAssertTrue(script.contains("status='planned' AND due_at='$runtime_day_key'"))
-        XCTAssertTrue(script.contains("OK: runtime schedule cockpit smoke covered overview-to-timeline navigation, unscheduled add-to-draft, and approval-gated Calendar apply"))
+        XCTAssertTrue(script.contains("OK: runtime schedule cockpit smoke covered overview-to-day-to-agenda navigation, unscheduled add-to-draft, and approval-gated Calendar apply"))
         XCTAssertFalse(script.contains(":memory:"))
         XCTAssertFalse(script.contains("not implemented yet"))
         XCTAssertFalse(script.contains("fake success"))
