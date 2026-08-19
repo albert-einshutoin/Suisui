@@ -57,12 +57,7 @@ struct Suisui: App {
         // near its 1180pt ideal and reject compact/manual AX resizing.
         .windowResizability(.automatic)
         .commands {
-            CommandGroup(replacing: .appSettings) {
-                SettingsLink {
-                    Label("Settings...", systemImage: "gearshape")
-                }
-                .keyboardShortcut(",", modifiers: [.command])
-            }
+            OpenBoardSettingsCommand()
             SuisuiWindowCommands()
             SuisuiProjectBoardUndoCommands()
         }
@@ -173,6 +168,23 @@ private struct MenuBarExtraLabel: View {
 
     private var overdueTaskCount: Int {
         controller.viewModel.summary.overdueTaskCount
+    }
+}
+
+/// App-menu Settings opens the in-board workspace instead of a detached window.
+private struct OpenBoardSettingsCommand: Commands {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button {
+                openWindow(id: "project-board")
+                ProjectBoardSceneCoordinator.shared.requestOpen(route: .settings)
+            } label: {
+                Label("Settings...", systemImage: "gearshape")
+            }
+            .keyboardShortcut(",", modifiers: [.command])
+        }
     }
 }
 
@@ -402,6 +414,8 @@ private struct ProjectBoardWindowRootView: View {
         } else {
             ProjectBoardView(
                 viewModel: viewModel,
+                settingsViewModel: settingsViewModel,
+                shortcutSettingsViewModel: GlobalShortcutRuntime.shared.settingsViewModel,
                 sceneID: sceneID,
                 restoresPrimaryPresentationState: isPrimaryOnboardingWindow,
                 sceneCoordinator: sceneCoordinator,
@@ -625,6 +639,7 @@ private enum SuisuiWindowlessFallbackEnvironment {
 private struct ProjectBoardFallbackRootView: View {
     private let taskAutomationSettings: () -> TaskAutoExecutionSettings
     private let appSettings: () -> AppSettings
+    @StateObject private var settingsViewModel: AppSettingsViewModel
     @State private var viewModel: ProjectBoardViewModel?
     @State private var isProjectBoardReady = false
     @State private var sceneID = UUID()
@@ -635,6 +650,11 @@ private struct ProjectBoardFallbackRootView: View {
     ) {
         self.taskAutomationSettings = taskAutomationSettings
         self.appSettings = appSettings
+        _settingsViewModel = StateObject(
+            wrappedValue: AppRuntimeFactory.makeAppSettingsViewModel(
+                refreshProviderSecretStatusesOnInit: false
+            )
+        )
     }
 
     var body: some View {
@@ -647,6 +667,8 @@ private struct ProjectBoardFallbackRootView: View {
             } else if let viewModel, isProjectBoardReady {
                 ProjectBoardView(
                     viewModel: viewModel,
+                    settingsViewModel: settingsViewModel,
+                    shortcutSettingsViewModel: GlobalShortcutRuntime.shared.settingsViewModel,
                     sceneID: sceneID,
                     restoresPrimaryPresentationState: false,
                     sceneCoordinator: ProjectBoardSceneCoordinator.shared,

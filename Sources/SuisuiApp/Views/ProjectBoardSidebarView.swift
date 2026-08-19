@@ -40,7 +40,6 @@ struct ProjectBoardSidebarView: View {
     private let counts: ProjectBoardSidebarCounts
     private let onOpenSearch: () -> Void
     private let onOpenVoiceCommand: () -> Void
-    private let onOpenSettings: () -> Void
     private let onAddTask: () -> Void
     private let onAddByVoice: () -> Void
     private let onBlockTime: () -> Void
@@ -50,7 +49,6 @@ struct ProjectBoardSidebarView: View {
         counts: ProjectBoardSidebarCounts,
         onOpenSearch: @escaping () -> Void,
         onOpenVoiceCommand: @escaping () -> Void,
-        onOpenSettings: @escaping () -> Void,
         onAddTask: @escaping () -> Void,
         onAddByVoice: @escaping () -> Void,
         onBlockTime: @escaping () -> Void
@@ -59,7 +57,6 @@ struct ProjectBoardSidebarView: View {
         self.counts = counts
         self.onOpenSearch = onOpenSearch
         self.onOpenVoiceCommand = onOpenVoiceCommand
-        self.onOpenSettings = onOpenSettings
         self.onAddTask = onAddTask
         self.onAddByVoice = onAddByVoice
         self.onBlockTime = onBlockTime
@@ -142,7 +139,7 @@ struct ProjectBoardSidebarView: View {
         switch item.behavior {
         case .route:
             destinationSidebarRow(item)
-        case .openVoiceCommand, .openSettings:
+        case .openVoiceCommand:
             utilitySidebarRow(item)
         }
     }
@@ -259,8 +256,6 @@ struct ProjectBoardSidebarView: View {
             route = destination
         case .openVoiceCommand:
             onOpenVoiceCommand()
-        case .openSettings:
-            onOpenSettings()
         }
     }
 
@@ -289,8 +284,6 @@ struct ProjectBoardSidebarView: View {
             nil
         case .openVoiceCommand:
             "Opens Voice Command."
-        case .openSettings:
-            "Opens Settings."
         }
     }
 

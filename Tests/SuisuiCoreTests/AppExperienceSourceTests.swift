@@ -27,7 +27,8 @@ final class AppExperienceSourceTests: XCTestCase {
     func testSettingsWindowSupportsHostedCompactHeight() throws {
         let source = try readPackageFile("Sources/SuisuiApp/Views/SettingsView.swift")
 
-        XCTAssertTrue(source.contains(".frame(width: 680, height: 584)"))
+        XCTAssertTrue(source.contains(".frame(width: presentation == .window ? 680 : nil, height: presentation == .window ? 584 : nil)"))
+        XCTAssertTrue(source.contains("case board"))
     }
 
     func testProjectBoardSidebarMatchesApprovedTodaySampleStructure() throws {
@@ -166,7 +167,6 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("schedule: sidebarMetrics.scheduleCount"))
         XCTAssertTrue(boardSource.contains("completed: sidebarMetrics.doneCount"))
         XCTAssertTrue(boardSource.contains("onOpenSearch: { isCommandPaletteVisible = true }"))
-        XCTAssertTrue(boardSource.contains("onOpenSettings: { openSettings() }"))
         XCTAssertTrue(boardSource.contains("onAddTask: beginInboxQuickAddFromSidebar"))
         XCTAssertTrue(boardSource.contains("onBlockTime: prepareScheduleDraftFromSidebar"))
         XCTAssertTrue(boardSource.contains("private func prepareScheduleDraftFromSidebar()"))
@@ -1564,10 +1564,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(boardSource.contains("Section(\"Appearance\")"))
         XCTAssertFalse(boardSource.contains("Picker(\"Theme\""))
         XCTAssertFalse(boardSource.contains("Picker(\"Appearance\""))
-        XCTAssertFalse(boardSource.contains("@AppStorage(SuisuiAppearancePreference.storageKey)"))
-        XCTAssertFalse(boardSource.contains("SuisuiAppearancePreference"))
-        XCTAssertFalse(boardSource.contains("Theme"))
-        XCTAssertFalse(boardSource.contains("appearancePreference: $appearancePreference"))
+        XCTAssertTrue(boardSource.contains("presentation: .board"))
+        XCTAssertTrue(boardSource.contains("appearancePreference: $appearancePreference"))
+        XCTAssertTrue(boardSource.contains("@AppStorage(SuisuiAppearancePreference.storageKey)"))
     }
 
     func testLanguageSelectionSupportsJapaneseAndEnglishFromSettings() throws {
@@ -1618,8 +1617,8 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertFalse(boardSource.contains("settings-language-picker"))
         XCTAssertFalse(boardSource.contains("Picker(\"Language\""))
-        XCTAssertFalse(boardSource.contains("AppLanguagePreference"))
-        XCTAssertFalse(boardSource.contains("@AppStorage(AppLanguagePreference.storageKey)"))
+        XCTAssertTrue(boardSource.contains("@AppStorage(AppLanguagePreference.storageKey)"))
+        XCTAssertTrue(boardSource.contains("languagePreference: $languagePreference"))
 
         XCTAssertTrue(buildScript.contains("copy_app_localizations"))
         XCTAssertTrue(buildScript.contains("Sources/SuisuiApp/Resources"))
@@ -1975,8 +1974,8 @@ final class AppExperienceSourceTests: XCTestCase {
             "Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift"
         )
 
-        XCTAssertTrue(sidebarSource.contains("case .openSettings:"))
-        XCTAssertTrue(sidebarSource.contains("onOpenSettings()"))
+        XCTAssertTrue(sidebarSource.contains("case .settings: \"sidebar-action-settings\""))
+        XCTAssertFalse(sidebarSource.contains("onOpenSettings()"))
         XCTAssertTrue(sidebarSource.contains("\"sidebar-action-settings\""))
         XCTAssertFalse(sidebarSource.contains("SettingsLink"))
         XCTAssertFalse(sidebarSource.contains("Theme"))
@@ -2774,15 +2773,13 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testMenuBarPanelHostsSettingsLinkWithoutThemeControls() throws {
-        let appSource = try readAppShellSource()
-        let panelStart = try XCTUnwrap(appSource.range(of: "struct MenuBarPanel"))
-        let panelEnd = try XCTUnwrap(appSource.range(of: "private struct SummaryRow"))
-        let panelSource = String(appSource[panelStart.lowerBound..<panelEnd.lowerBound])
+        let panelSource = try readPackageFile("Sources/SuisuiApp/Views/MenuBarPanel.swift")
 
-        XCTAssertTrue(panelSource.contains("SettingsLink"))
+        XCTAssertTrue(panelSource.contains("sceneCoordinator.requestOpen(route: .settings)"))
         XCTAssertTrue(panelSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
         XCTAssertTrue(panelSource.contains(".help(\"Open Settings\")"))
         XCTAssertTrue(panelSource.contains(".accessibilityIdentifier(\"menu-bar-settings-link\")"))
+        XCTAssertFalse(panelSource.contains("SettingsLink"))
         XCTAssertFalse(panelSource.contains("Theme"))
         XCTAssertFalse(panelSource.contains("Appearance"))
         XCTAssertFalse(panelSource.contains("SuisuiAppearancePreference"))
@@ -2923,7 +2920,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("appearancePreference: $appearancePreference,"))
         XCTAssertTrue(appSource.contains("@Binding private var appearancePreference: SuisuiAppearancePreference"))
         XCTAssertTrue(appSource.contains("SettingsAppearanceSection(appearancePreference: context.$appearancePreference, languagePreference: context.$languagePreference)"))
-        XCTAssertFalse(boardSource.contains("@AppStorage(SuisuiAppearancePreference.storageKey)"))
+        XCTAssertTrue(boardSource.contains("@AppStorage(SuisuiAppearancePreference.storageKey)"))
         XCTAssertFalse(boardSource.contains(".preferredColorScheme(appearancePreference.colorScheme)"))
     }
 
@@ -3130,10 +3127,10 @@ final class AppExperienceSourceTests: XCTestCase {
 
         let settingsCommand = try sourceBlock(
             in: appSource,
-            from: "CommandGroup(replacing: .appSettings)",
-            to: "Window(\"Voice Command\", id: \"voice-capture\")"
+            from: "private struct OpenBoardSettingsCommand: Commands",
+            to: "private struct SuisuiWindowCommands: Commands"
         )
-        XCTAssertTrue(settingsCommand.contains("SettingsLink"))
+        XCTAssertTrue(settingsCommand.contains("requestOpen(route: .settings)"))
         XCTAssertTrue(settingsCommand.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
 
         let addProjectButton = try sourceBlock(
@@ -8313,7 +8310,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(boardSource.contains("makeTodayIntegrationStates"))
         XCTAssertTrue(railSource.contains("today-calendar-card"))
         XCTAssertTrue(railSource.contains("today-slack-card"))
-        XCTAssertTrue(railSource.contains("SettingsLink"))
+        XCTAssertTrue(railSource.contains("suisuiOpenBoardSettings"))
         XCTAssertTrue(railSource.contains("It does not start sync or send messages."))
         XCTAssertFalse(railSource.contains("URLSession"))
     }

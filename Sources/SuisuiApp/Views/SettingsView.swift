@@ -17,6 +17,11 @@ enum SettingsTab: String {
     case privacy = "Privacy"
 }
 
+enum SettingsPresentationStyle: Equatable {
+    case window
+    case board
+}
+
 extension VoiceModelID {
     var voiceModelSystemImage: String {
         switch self {
@@ -98,6 +103,7 @@ struct SettingsView: View {
     let googleCalendarListProviderFactory: () -> (any GoogleCalendarListProviding)?
     let textToSpeechPreviewerFactory: (AppSettings) -> any TextToSpeechPreviewing
     let onboardingRerunRequest: () -> Void
+    let presentation: SettingsPresentationStyle
     @StateObject private var settingsViewModel: AppSettingsViewModel
     @ObservedObject private var shortcutSettingsViewModel: ShortcutSettingsViewModel
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
@@ -142,6 +148,7 @@ struct SettingsView: View {
         appearancePreference: Binding<SuisuiAppearancePreference>,
         languagePreference: Binding<AppLanguagePreference>,
         initialTab: SettingsTab = .overview,
+        presentation: SettingsPresentationStyle = .window,
         onboardingRerunRequest: @escaping () -> Void = {}
     ) {
         self.integrationPermissionSnapshot = integrationPermissionSnapshot
@@ -152,6 +159,7 @@ struct SettingsView: View {
         self.googleCalendarListProviderFactory = googleCalendarListProviderFactory
         self.textToSpeechPreviewerFactory = textToSpeechPreviewerFactory
         self.onboardingRerunRequest = onboardingRerunRequest
+        self.presentation = presentation
         _settingsViewModel = StateObject(wrappedValue: settingsViewModel)
         _shortcutSettingsViewModel = ObservedObject(wrappedValue: shortcutSettingsViewModel)
         _launchAtLoginViewModel = StateObject(wrappedValue: launchAtLoginViewModel)
@@ -401,7 +409,8 @@ SettingsPrivacyFeatureView(
                 .tabItem { Label("Privacy", systemImage: "lock.shield") }
                 .tag(SettingsTab.privacy)
         }
-        .frame(width: 680, height: 584)
+        .frame(width: presentation == .window ? 680 : nil, height: presentation == .window ? 584 : nil)
+        .frame(maxWidth: presentation == .board ? .infinity : nil, maxHeight: presentation == .board ? .infinity : nil, alignment: .topLeading)
         .scenePadding()
         .onAppear {
             launchAtLoginViewModel.refresh()

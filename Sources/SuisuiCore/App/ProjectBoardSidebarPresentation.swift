@@ -13,7 +13,6 @@ public enum ProjectBoardSidebarItemID: String, CaseIterable, Hashable, Sendable 
 public enum ProjectBoardSidebarItemBehavior: Equatable, Sendable {
     case route(BoardRoute)
     case openVoiceCommand
-    case openSettings
 }
 
 public struct ProjectBoardSidebarItemPresentation: Equatable, Sendable {
@@ -65,7 +64,7 @@ public enum ProjectBoardSidebarPresentation {
         .init(id: .schedule, title: "Schedule", systemImage: "calendar", behavior: .route(.review(.schedule))),
         .init(id: .completed, title: "Completed", systemImage: "checkmark.circle", behavior: .route(.review(.completed))),
         .init(id: .voiceCommand, title: "Voice Command", systemImage: "mic", behavior: .openVoiceCommand),
-        .init(id: .settings, title: "Settings", systemImage: "gearshape", behavior: .openSettings),
+        .init(id: .settings, title: "Settings", systemImage: "gearshape", behavior: .route(.settings)),
     ]
 
     public static func selectedItemID(for route: BoardRoute) -> ProjectBoardSidebarItemID? {
@@ -75,6 +74,7 @@ public enum ProjectBoardSidebarPresentation {
         case .primary(.projects), .project, .smartList: .projects
         case .review(.schedule): .schedule
         case .review(.completed): .completed
+        case .settings: .settings
         // These routes have no dedicated sidebar row; selecting a nearby row
         // would falsely imply the user is viewing that destination.
         case .primary(.review), .review(.automationActivity), .review(.assistantQueue): nil

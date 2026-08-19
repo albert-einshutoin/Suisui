@@ -102,7 +102,9 @@ struct TodayIntegrationCard: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            SettingsLink {
+            Button {
+                NotificationCenter.default.post(name: .suisuiOpenBoardSettings, object: nil)
+            } label: {
                 Label("Open Settings", systemImage: "gearshape")
             }
             .buttonStyle(.borderless)

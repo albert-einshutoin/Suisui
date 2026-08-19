@@ -85,7 +85,8 @@ struct ProjectBoardMissedTaskFollowUpDateProvider: DateProvider {
 
 struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
-    @Environment(\.openSettings) private var openSettings
+    @ObservedObject private var settingsViewModel: AppSettingsViewModel
+    @ObservedObject private var shortcutSettingsViewModel: ShortcutSettingsViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var viewModel: ProjectBoardViewModel
     @ObservedObject private var sceneCoordinator: ProjectBoardSceneCoordinator
@@ -97,6 +98,8 @@ struct ProjectBoardView: View {
     private let commandPaletteContentSearch: CommandPaletteContentSearch?
     private let developmentAutomationReviewSession: (ActionPlan) -> ReviewSessionViewModel
     @AppStorage(ProjectBoardSelectionPersistence.storageKey) private var initialRouteRawValue = ProjectBoardSelectionPersistence.defaultRawValue
+    @AppStorage(SuisuiAppearancePreference.storageKey) private var appearancePreference: SuisuiAppearancePreference = .system
+    @AppStorage(AppLanguagePreference.storageKey) private var languagePreference: AppLanguagePreference = .system
     @SceneStorage(ProjectBoardScenePersistence.routeStorageKey) private var currentSceneRouteRawValue = ""
     @SceneStorage("projectBoard.userRequestedInspector") private var userRequestedInspector = false
     @SceneStorage("projectBoard.sidebarHidden") private var storedSidebarHidden = false
@@ -132,6 +135,8 @@ struct ProjectBoardView: View {
 
     init(
         viewModel: ProjectBoardViewModel,
+        settingsViewModel: AppSettingsViewModel,
+        shortcutSettingsViewModel: ShortcutSettingsViewModel,
         sceneID: UUID,
         restoresPrimaryPresentationState: Bool,
         sceneCoordinator: ProjectBoardSceneCoordinator = .shared,
@@ -142,6 +147,8 @@ struct ProjectBoardView: View {
         developmentAutomationReviewSession: @escaping (ActionPlan) -> ReviewSessionViewModel
     ) {
         _viewModel = StateObject(wrappedValue: viewModel)
+        _settingsViewModel = ObservedObject(wrappedValue: settingsViewModel)
+        _shortcutSettingsViewModel = ObservedObject(wrappedValue: shortcutSettingsViewModel)
         _sceneCoordinator = ObservedObject(wrappedValue: sceneCoordinator)
         self.sceneID = sceneID
         self.restoresPrimaryPresentationState = restoresPrimaryPresentationState
@@ -166,7 +173,6 @@ struct ProjectBoardView: View {
                 ),
                 onOpenSearch: { isCommandPaletteVisible = true },
                 onOpenVoiceCommand: openVoiceCommandFromBoardContext,
-                onOpenSettings: { openSettings() },
                 onAddTask: beginInboxQuickAddFromSidebar,
                 onAddByVoice: openVoiceCommandFromBoardContext,
                 onBlockTime: prepareScheduleDraftFromSidebar
@@ -248,6 +254,9 @@ struct ProjectBoardView: View {
         .inspector(isPresented: wideInspectorBinding) {
             inspectorContent
                 .inspectorColumnWidth(min: 240, ideal: 280, max: 420)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .suisuiOpenBoardSettings)) { _ in
+            navigateWithinScene(to: .settings)
         }
         .sheet(isPresented: $isCompactInspectorSheetPresented, onDismiss: {
             // A user-dismissed compact sheet must clear the persisted intent.
@@ -628,6 +637,8 @@ struct ProjectBoardView: View {
             ) {
                 reviewHubContent
             }
+        case .settings:
+            embeddedSettingsWorkspace
         }
     }
 
@@ -664,7 +675,7 @@ struct ProjectBoardView: View {
             } else {
                 ContentUnavailableView("Smart List Not Found", systemImage: "line.3.horizontal.decrease.circle")
             }
-        case .primary, .review:
+        case .primary, .review, .settings:
             EmptyView()
         }
     }
@@ -690,9 +701,37 @@ struct ProjectBoardView: View {
             )
         case .review(.assistantQueue):
             AssistantQueueWorkflowView(viewModel: viewModel)
-        case .primary, .project, .smartList:
+        case .primary, .project, .smartList, .settings:
             EmptyView()
         }
+    }
+
+    private var embeddedSettingsWorkspace: some View {
+        SettingsView(
+            settingsViewModel: settingsViewModel,
+            shortcutSettingsViewModel: shortcutSettingsViewModel,
+            launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
+            integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),
+            watcherDiagnosticsSnapshotFactory: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot,
+            externalMCPSettingsViewModelFactory: AppRuntimeFactory.makeExternalMCPSettingsViewModel,
+            syncSettingsViewModelFactory: AppRuntimeFactory.makeSyncSettingsViewModel,
+            isGoogleCalendarRuntimeEnabled: AppRuntimeFactory.isGoogleCalendarRuntimeEnabled(),
+            googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
+            googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
+            googleCalendarOAuthDisconnecter: AppRuntimeFactory.makeGoogleCalendarOAuthDisconnecter(),
+            googleCalendarListProviderFactory: AppRuntimeFactory.makeGoogleCalendarListProvider,
+            textToSpeechPreviewerFactory: AppRuntimeFactory.makeTextToSpeechPreviewer,
+            appearancePreference: $appearancePreference,
+            languagePreference: $languagePreference,
+            presentation: .board,
+            onboardingRerunRequest: {
+                OnboardingRerunCoordinator.shared.requestRerun()
+            }
+        )
+        .task {
+            await settingsViewModel.refreshProviderReadiness()
+        }
+        .accessibilityIdentifier("board-settings-workspace")
     }
 
     private func openVoiceCommandFromBoardContext() {
@@ -751,7 +790,7 @@ struct ProjectBoardView: View {
         case .openVoiceCommandWindow:
             openWindow(id: "voice-capture")
         case .openSettingsWindow:
-            openSettings()
+            navigateWithinScene(to: .settings)
         case .revealTask(let taskID, let projectID, _):
             revealTaskFromCommandPalette(taskID: taskID, projectID: projectID)
         case .openKnowledgeFrame:
@@ -1043,6 +1082,8 @@ struct ProjectBoardView: View {
             .project
         case .smartList:
             .smartList
+        case .settings:
+            .settings
         }
     }
 
@@ -1164,7 +1205,7 @@ struct ProjectBoardView: View {
             return allSmartLists.contains(where: { $0.id == smartListID })
                 ? route
                 : .primary(.today)
-        case .primary, .review:
+        case .primary, .review, .settings:
             return route
         }
     }
@@ -1202,6 +1243,9 @@ struct ProjectBoardView: View {
             smartListID = nil
         case .review(.automationActivity), .review(.assistantQueue):
             destination = .assistantQueue
+            smartListID = nil
+        case .settings:
+            destination = nil
             smartListID = nil
         }
         selectedSmartListID = smartListID
@@ -1255,7 +1299,7 @@ struct ProjectBoardView: View {
         case .review(.assistantQueue):
             consumePendingVoiceDailyPlanningReviewRequestIfNeeded(id: request.id)
             consumePendingAssistantQueueRequestIfNeeded(id: request.id)
-        case .primary, .project, .smartList, .review:
+        case .primary, .project, .smartList, .review, .settings:
             break
         }
         // Acknowledge only after route state and any feature payload are
@@ -2057,6 +2101,7 @@ extension Notification.Name {
     static let suisuiVoiceDailyPlanningReviewRequested = Notification.Name("dev.suisui.voiceDailyPlanningReviewRequested")
     static let suisuiVoiceInboxTriageRequested = Notification.Name("dev.suisui.voiceInboxTriageRequested")
     static let suisuiAssistantQueueRequested = Notification.Name("dev.suisui.assistantQueueRequested")
+    static let suisuiOpenBoardSettings = Notification.Name("dev.suisui.openBoardSettings")
 }
 
 @MainActor

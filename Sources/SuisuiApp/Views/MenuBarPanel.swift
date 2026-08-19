@@ -52,7 +52,10 @@ struct MenuBarPanel: View {
 
             Spacer()
 
-            SettingsLink {
+            Button {
+                openWindow(id: "project-board")
+                sceneCoordinator.requestOpen(route: .settings)
+            } label: {
                 Label("Settings", systemImage: "gearshape")
                     .labelStyle(.iconOnly)
             }

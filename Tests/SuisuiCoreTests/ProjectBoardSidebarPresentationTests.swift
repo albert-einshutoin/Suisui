@@ -17,7 +17,7 @@ final class ProjectBoardSidebarPresentationTests: XCTestCase {
                 .init(id: .schedule, title: "Schedule", systemImage: "calendar", behavior: .route(.review(.schedule))),
                 .init(id: .completed, title: "Completed", systemImage: "checkmark.circle", behavior: .route(.review(.completed))),
                 .init(id: .voiceCommand, title: "Voice Command", systemImage: "mic", behavior: .openVoiceCommand),
-                .init(id: .settings, title: "Settings", systemImage: "gearshape", behavior: .openSettings),
+                .init(id: .settings, title: "Settings", systemImage: "gearshape", behavior: .route(.settings)),
             ]
         )
     }
@@ -43,6 +43,7 @@ final class ProjectBoardSidebarPresentationTests: XCTestCase {
         XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .smartList("urgent")), .projects)
         XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .review(.schedule)), .schedule)
         XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .review(.completed)), .completed)
+        XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .settings), .settings)
     }
 
     func testUnrepresentedReviewRoutesFailClosedWithoutSelection() {

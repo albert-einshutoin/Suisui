@@ -273,7 +273,7 @@ struct ProjectBoardProjectsHubView<Content: View>: View {
                 switch route {
                 case .primary(.projects), .project, .smartList:
                     return route
-                case .primary, .review:
+                case .primary, .review, .settings:
                     return nil
                 }
             },

@@ -76,7 +76,7 @@ public enum InspectorPresentationPolicy {
             guard selection == .task, allowsCompactPresentation else {
                 return false
             }
-        case .primary, .smartList, .review:
+        case .primary, .smartList, .review, .settings:
             return false
         }
 

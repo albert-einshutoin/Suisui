@@ -33,7 +33,7 @@ public struct ProjectBoardCompactNavigationPresentation: Equatable, Sendable {
                     badgeCount: assistantQueueCount > 0 ? assistantQueueCount : nil
                 )
             }
-        case .primary, .project, .smartList:
+        case .primary, .project, .smartList, .settings:
             return ProjectBoardCompactNavigationPresentation(label: .localized("Review"))
         }
     }
