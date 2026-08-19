@@ -109,50 +109,59 @@ struct InboxWorkflowView: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { timeline in
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 0) {
-                    // The wide reference keeps its title row fixed while the
-                    // tabs and list begin 10px lower; compact keeps natural flow.
-                    mainSurface(referenceContentTopPadding: 10)
-                    Divider()
-                        .padding(.vertical, 18)
-                    InboxTriageRail(
-                        task: viewModel.selectedTask,
-                        viewModel: viewModel,
-                        memoDraft: $voiceMemoDraft,
-                        memoCaptureID: $voiceMemoCaptureID,
-                        voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail",
-                        fillsAvailableHeight: true
-                    )
-                        .frame(minWidth: 340, idealWidth: 400, maxWidth: 420)
-                        .padding(.top, -12)
-                        .padding(.bottom, 18)
-                        .padding(.trailing, 30)
-                }
-                // The wide and compact branches contain AppKit-backed controls.
-                // Distinct identities prevent SwiftUI from reusing their native
-                // frames when a live resize moves the triage rail across columns.
-                .id("inbox-wide-workflow")
-
-                ScrollView(.vertical) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        mainSurface(referenceContentTopPadding: 0)
-                        InboxTriageRail(
-                            task: viewModel.selectedTask,
-                            viewModel: viewModel,
-                            memoDraft: $voiceMemoDraft,
-                            memoCaptureID: $voiceMemoCaptureID,
-                            voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail",
-                            fillsAvailableHeight: false
-                        )
-                            .padding(.horizontal, 18)
-                            .padding(.bottom, 18)
+            GeometryReader { proxy in
+                let isWide = CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(proxy.size.width))
+                Group {
+                    if isWide {
+                        VStack(alignment: .leading, spacing: 14) {
+                            inboxHeader(referenceContentTopPadding: 10)
+                                .padding(.horizontal, 18)
+                                .padding(.top, -12)
+                            HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
+                                inboxTaskList()
+                                    .padding(.leading, 18)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                InboxTriageRail(
+                                    task: viewModel.selectedTask,
+                                    viewModel: viewModel,
+                                    memoDraft: $voiceMemoDraft,
+                                    memoCaptureID: $voiceMemoCaptureID,
+                                    voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail",
+                                    fillsAvailableHeight: true
+                                )
+                                .frame(width: CGFloat(CockpitLayoutPolicy.railWidth))
+                                .frame(maxHeight: .infinity, alignment: .topLeading)
+                                .padding(.trailing, 18)
+                                .padding(.bottom, 18)
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        // Distinct identities prevent SwiftUI from reusing AppKit-backed
+                        // frames when a live resize moves the triage rail across columns.
+                        .id("inbox-wide-workflow")
+                    } else {
+                        ScrollView(.vertical) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                mainSurface(referenceContentTopPadding: 0)
+                                InboxTriageRail(
+                                    task: viewModel.selectedTask,
+                                    viewModel: viewModel,
+                                    memoDraft: $voiceMemoDraft,
+                                    memoCaptureID: $voiceMemoCaptureID,
+                                    voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail",
+                                    fillsAvailableHeight: false
+                                )
+                                .padding(.horizontal, 18)
+                                .padding(.bottom, 18)
+                            }
+                        }
+                        .defaultScrollAnchor(.top)
+                        .scrollIndicators(.visible)
+                        .id("inbox-compact-workflow")
+                        .accessibilityIdentifier("inbox-compact-workflow-scroll")
                     }
                 }
-                .defaultScrollAnchor(.top)
-                .scrollIndicators(.visible)
-                .id("inbox-compact-workflow")
-                .accessibilityIdentifier("inbox-compact-workflow-scroll")
             }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inbox-workflow")
@@ -203,28 +212,36 @@ struct InboxWorkflowView: View {
 
     private func mainSurface(referenceContentTopPadding: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            InboxReferenceHeader(
-                sortOrder: $sortOrder,
-                viewModel: viewModel,
-                referenceFilter: $referenceFilter,
-                showUnprocessedOnly: $showUnprocessedOnly,
-                referenceContentTopPadding: referenceContentTopPadding
-            )
-            InboxReferenceTaskList(
-                tasks: tasks,
-                viewModel: viewModel,
-                referenceDate: Date(),
-                onSelectTask: selectInboxTask,
-                quickTitle: $quickTitle,
-                isQuickAddExpanded: $isQuickAddExpanded,
-                isQuickAddFocused: $isQuickAddFocused,
-                addInboxTask: addInboxTask
-            )
+            inboxHeader(referenceContentTopPadding: referenceContentTopPadding)
+            inboxTaskList()
         }
         .padding(.horizontal, 18)
         .padding(.top, -12)
         .padding(.bottom, 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func inboxHeader(referenceContentTopPadding: CGFloat) -> some View {
+        InboxReferenceHeader(
+            sortOrder: $sortOrder,
+            viewModel: viewModel,
+            referenceFilter: $referenceFilter,
+            showUnprocessedOnly: $showUnprocessedOnly,
+            referenceContentTopPadding: referenceContentTopPadding
+        )
+    }
+
+    private func inboxTaskList() -> some View {
+        InboxReferenceTaskList(
+            tasks: tasks,
+            viewModel: viewModel,
+            referenceDate: Date(),
+            onSelectTask: selectInboxTask,
+            quickTitle: $quickTitle,
+            isQuickAddExpanded: $isQuickAddExpanded,
+            isQuickAddFocused: $isQuickAddFocused,
+            addInboxTask: addInboxTask
+        )
     }
 
     private func addInboxTask() {
@@ -279,7 +296,7 @@ private struct InboxReferenceHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("Inbox")
                     .font(.system(size: 28, weight: .bold))
 

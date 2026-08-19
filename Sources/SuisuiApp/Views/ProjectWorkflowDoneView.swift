@@ -16,8 +16,26 @@ struct DoneWorkflowView: View {
         viewModel.derivedReadModels.doneAnalytics
     }
 
+    private var historyGroups: [DoneHistoryGroup] {
+        DoneHistoryGrouping.grouped(
+            tasks: analytics.recentTasks,
+            now: VisualEvidenceRuntimeContext.referenceDate(),
+            calendar: VisualEvidenceRuntimeContext.runtimeCalendar()
+        )
+    }
+
+    private func historySectionTitle(_ section: DoneHistorySection) -> LocalizedStringKey {
+        switch section {
+        case .today: "Today"
+        case .yesterday: "Yesterday"
+        case .lastSevenDays: "Last 7 days"
+        case .older: "Older"
+        }
+    }
+
     var body: some View {
-        ScrollView {
+        GeometryReader { proxy in
+            let isWide = CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(proxy.size.width))
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 10) {
                     Label("Completed", systemImage: "checkmark.circle")
@@ -25,53 +43,105 @@ struct DoneWorkflowView: View {
                     Spacer()
                 }
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 10)], spacing: 10) {
-                    DoneStatTile(title: "Completed Tasks", value: analytics.completedTaskCount, systemImage: "checkmark.square")
-                    DoneStatTile(title: "Completed Projects", value: analytics.completedProjectCount, systemImage: "folder.badge.checkmark")
-                    DoneStatTile(title: "Today", value: analytics.completedTodayCount, systemImage: "sun.max")
-                    DoneStatTile(title: "7 Days", value: analytics.completedThisWeekCount, systemImage: "calendar")
-                    DoneStatTile(title: "Streak", value: analytics.streakDays, systemImage: "flame")
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 100), spacing: 10)],
+                    spacing: 10
+                ) {
+                    DoneStatTile(title: "Completed Tasks", value: "\(analytics.completedTaskCount)", systemImage: "checkmark.square")
+                    DoneStatValueTile(
+                        title: "Focus Time",
+                        value: String(format: "%.1fh", analytics.focusHours),
+                        systemImage: "timer"
+                    )
+                    DoneStatValueTile(
+                        title: "On-Time Rate",
+                        value: analytics.onTimeRate > 0
+                            ? "\(Int(analytics.onTimeRate * 100))%"
+                            : "—",
+                        systemImage: "clock.badge.checkmark"
+                    )
+                    DoneStatTile(title: "Streak", value: "\(analytics.streakDays)\(String(localized: " days"))", systemImage: "flame")
                 }
 
-                DoneCompletionHeatmapView(buckets: analytics.completionHeatmapBuckets)
-                DoneProductivityInsightView(
-                    bestWeekdaySummary: analytics.bestWeekdaySummary,
-                    bestHourSummary: analytics.bestHourSummary
-                )
-
-                Label {
-                    Text(LocalizedStringKey(analytics.localRuleInsight))
-                } icon: {
-                    Image(systemName: "lock.doc")
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .accessibilityIdentifier("done-local-rule-insight")
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Label("Recent Completed", systemImage: "clock.arrow.circlepath")
-                        .font(.headline)
-                    if analytics.recentTasks.isEmpty {
-                        ContentUnavailableView(
-                            "No completed tasks yet",
-                            systemImage: "checkmark.circle",
-                            description: Text("Tasks appear here after they are completed.")
-                        )
-                    } else {
-                        ForEach(analytics.recentTasks) { task in
-                            DoneTaskHistoryRow(task: task, viewModel: viewModel)
+                if isWide {
+                    HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
+                        DoneWeeklyTrendChartView(buckets: analytics.weeklyTrendBuckets)
+                        DoneCompletionHeatmapView(buckets: analytics.completionHeatmapBuckets)
+                    }
+                    HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
+                        ScrollView {
+                            historyContent
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        VStack(alignment: .leading, spacing: 12) {
+                            DoneProductivityInsightView(
+                                bestWeekdaySummary: analytics.bestWeekdaySummary,
+                                bestHourSummary: analytics.bestHourSummary
+                            )
+                            localRuleInsight
+                        }
+                        .frame(width: CGFloat(CockpitLayoutPolicy.railWidth), alignment: .topLeading)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 14) {
+                            DoneWeeklyTrendChartView(buckets: analytics.weeklyTrendBuckets)
+                            DoneCompletionHeatmapView(buckets: analytics.completionHeatmapBuckets)
+                            DoneProductivityInsightView(
+                                bestWeekdaySummary: analytics.bestWeekdaySummary,
+                                bestHourSummary: analytics.bestHourSummary
+                            )
+                            localRuleInsight
+                            historyContent
                         }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
-
             }
             .padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("done-workflow")
         .accessibilityLabel("Completed")
         .accessibilityHint("Reviews completed tasks, completed projects, and local recap.")
+    }
+
+    private var localRuleInsight: some View {
+        Label {
+            Text(LocalizedStringKey(analytics.localRuleInsight))
+        } icon: {
+            Image(systemName: "lock.doc")
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .accessibilityIdentifier("done-local-rule-insight")
+    }
+
+    private var historyContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Recent Completed", systemImage: "clock.arrow.circlepath")
+                .font(.headline)
+            if analytics.recentTasks.isEmpty {
+                ContentUnavailableView(
+                    "No completed tasks yet",
+                    systemImage: "checkmark.circle",
+                    description: Text("Tasks appear here after they are completed.")
+                )
+            } else {
+                ForEach(historyGroups, id: \.section) { group in
+                    Text(historySectionTitle(group.section))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityAddTraits(.isHeader)
+                    ForEach(group.tasks) { task in
+                        DoneTaskHistoryRow(task: task, viewModel: viewModel)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -235,7 +305,7 @@ struct ExecutionReceiptHistoryFileDocument: FileDocument {
 
 private struct DoneStatTile: View {
     let title: LocalizedStringKey
-    let value: Int
+    let value: String
     let systemImage: String
 
     var body: some View {
@@ -244,13 +314,85 @@ private struct DoneStatTile: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-            Text("\(value)")
+            Text(value)
                 .font(.title3.weight(.semibold))
                 .monospacedDigit()
         }
-        .frame(minWidth: 112, maxWidth: .infinity, alignment: .leading)
+        .frame(minWidth: 100, maxWidth: .infinity, minHeight: 72, maxHeight: .infinity, alignment: .leading)
         .padding(10)
         .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card))
+    }
+}
+
+private struct DoneStatValueTile: View {
+    let title: LocalizedStringKey
+    let value: String
+    let systemImage: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(title, systemImage: systemImage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Text(value)
+                .font(.title3.weight(.semibold))
+                .monospacedDigit()
+        }
+        .frame(minWidth: 100, maxWidth: .infinity, minHeight: 72, maxHeight: .infinity, alignment: .leading)
+        .padding(10)
+        .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card))
+    }
+}
+
+private struct DoneWeeklyTrendChartView: View {
+    let buckets: [DoneAnalyticsWeekBucket]
+
+    private var maxCount: Int {
+        max(buckets.map(\.completedCount).max() ?? 1, 1)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Monthly Trend", systemImage: "chart.bar")
+                .font(.headline)
+
+            if buckets.isEmpty {
+                Text("Not enough data yet.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 100, alignment: .center)
+            } else {
+                HStack(alignment: .bottom, spacing: 12) {
+                    ForEach(buckets, id: \.weekLabel) { bucket in
+                        VStack(spacing: 6) {
+                            Text("\(bucket.completedCount)")
+                                .font(.caption2.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(.secondary)
+                            RoundedRectangle(cornerRadius: SuisuiRadius.control)
+                                .fill(SuisuiBrand.soloBlue)
+                                .frame(
+                                    maxWidth: .infinity,
+                                    minHeight: 8,
+                                    maxHeight: max(8, CGFloat(bucket.completedCount) / CGFloat(maxCount) * 80)
+                                )
+                            Text(bucket.weekLabel)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel(bucket.weekLabel)
+                        .accessibilityValue("\(bucket.completedCount) tasks")
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 120, alignment: .bottom)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("done-weekly-trend")
     }
 }
 
@@ -316,7 +458,9 @@ private struct DoneCompletionHeatmapView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 2)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("done-completion-heatmap")
     }
@@ -484,7 +628,7 @@ private struct DoneInsightTile: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
         .padding(10)
         .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card))
     }

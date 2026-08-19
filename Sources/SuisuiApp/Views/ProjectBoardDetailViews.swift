@@ -47,66 +47,156 @@ struct ProjectsPortfolioOverview: View {
     let onOpenProject: (Int64) -> Void
     @State private var filter: ProjectPortfolioFilter = .all
     @State private var sort: ProjectPortfolioSort = .risk
+    @State private var selectedProjectID: Int64?
 
     private var summaries: [ProjectPortfolioSummary] {
         sorted(filtered(viewModel.derivedReadModels.projectPortfolioSummaries))
     }
 
+    private var selectedSummary: ProjectPortfolioSummary? {
+        summaries.first { $0.projectID == selectedProjectID } ?? summaries.first
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: 12) {
-                    ProjectPortfolioHeader(
-                        title: "Projects",
-                        subtitle: localizedCount(summaries.count, one: "%d project compared", other: "%d projects compared"),
-                        systemImage: "folder.circle",
-                        rankingRuleDescription: portfolioRankingRuleDescription
-                    )
-                    Spacer(minLength: 12)
-                    controls
+        GeometryReader { proxy in
+            let isWide = CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(proxy.size.width))
+            VStack(alignment: .leading, spacing: 14) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .center, spacing: 12) {
+                        ProjectPortfolioHeader(
+                            title: "Projects",
+                            subtitle: localizedCount(summaries.count, one: "%d project compared", other: "%d projects compared"),
+                            systemImage: "folder.circle",
+                            rankingRuleDescription: portfolioRankingRuleDescription
+                        )
+                        Spacer(minLength: 12)
+                        controls
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        ProjectPortfolioHeader(
+                            title: "Projects",
+                            subtitle: localizedCount(summaries.count, one: "%d project compared", other: "%d projects compared"),
+                            systemImage: "folder.circle",
+                            rankingRuleDescription: portfolioRankingRuleDescription
+                        )
+                        controls
+                    }
                 }
 
-                VStack(alignment: .leading, spacing: 10) {
-                    ProjectPortfolioHeader(
-                        title: "Projects",
-                        subtitle: localizedCount(summaries.count, one: "%d project compared", other: "%d projects compared"),
-                        systemImage: "folder.circle",
-                        rankingRuleDescription: portfolioRankingRuleDescription
+                if summaries.isEmpty {
+                    ContentUnavailableView(
+                        "No Projects",
+                        systemImage: "folder",
+                        description: Text("Create a project to compare progress, risk, and next due work.")
                     )
-                    controls
-                }
-            }
-
-            if summaries.isEmpty {
-                ContentUnavailableView(
-                    "No Projects",
-                    systemImage: "folder",
-                    description: Text("Create a project to compare progress, risk, and next due work.")
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 260, maximum: 360), spacing: 12)],
-                        alignment: .leading,
-                        spacing: 12
-                    ) {
-                        ForEach(summaries) { summary in
-                            ProjectPortfolioCard(summary: summary) {
-                                onOpenProject(summary.projectID)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if isWide {
+                    HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
+                        projectGrid
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        if let selectedSummary {
+                            ProjectPortfolioSummaryRail(
+                                summary: selectedSummary,
+                                recentTaskTitle: recentTaskTitle(for: selectedSummary),
+                                todayDueTaskCount: todayDueTaskCount(for: selectedSummary),
+                                nextMilestoneTitle: nextMilestone(for: selectedSummary)?.title,
+                                onOpen: { onOpenProject(selectedSummary.projectID) }
+                            )
+                            .frame(width: CGFloat(CockpitLayoutPolicy.railWidth))
+                        }
+                    }
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 12) {
+                            projectGridContent
+                            if let selectedSummary {
+                                ProjectPortfolioSummaryRail(
+                                    summary: selectedSummary,
+                                    recentTaskTitle: recentTaskTitle(for: selectedSummary),
+                                    todayDueTaskCount: todayDueTaskCount(for: selectedSummary),
+                                    nextMilestoneTitle: nextMilestone(for: selectedSummary)?.title,
+                                    onOpen: { onOpenProject(selectedSummary.projectID) }
+                                )
                             }
                         }
                     }
-                    .padding(.vertical, 2)
                 }
             }
+            .padding(18)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("projects-portfolio-overview")
         .accessibilityLabel("Projects portfolio overview")
         .accessibilityHint("Compares local project progress, risk, due dates, and next actions.")
+        .onAppear {
+            reconcileSelectedProject()
+        }
+        .onChange(of: summaries.map(\.projectID)) { _, _ in
+            reconcileSelectedProject()
+        }
+    }
+
+    private var projectGrid: some View {
+        ScrollView {
+            projectGridContent
+        }
+    }
+
+    private var projectGridContent: some View {
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 260, maximum: 360), spacing: 12)],
+            alignment: .leading,
+            spacing: 12
+        ) {
+            ForEach(summaries) { summary in
+                ProjectPortfolioCard(
+                    summary: summary,
+                    isSelected: summary.projectID == selectedSummary?.projectID,
+                    onSelect: { selectedProjectID = summary.projectID },
+                    onOpen: { onOpenProject(summary.projectID) }
+                )
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func reconcileSelectedProject() {
+        if let selectedProjectID, summaries.contains(where: { $0.projectID == selectedProjectID }) {
+            return
+        }
+        selectedProjectID = summaries.first?.projectID
+    }
+
+    private func projectTasks(for summary: ProjectPortfolioSummary) -> [ProjectBoardTask] {
+        viewModel.snapshot.projects.first { $0.id == summary.projectID }?.tasks ?? []
+    }
+
+    private func recentTaskTitle(for summary: ProjectPortfolioSummary) -> String? {
+        guard let taskID = summary.recentTaskID else { return nil }
+        return projectTasks(for: summary).first { $0.id == taskID }?.title
+    }
+
+    private func todayDueTaskCount(for summary: ProjectPortfolioSummary) -> Int {
+        let calendar = VisualEvidenceRuntimeContext.runtimeCalendar()
+        let today = calendar.startOfDay(for: VisualEvidenceRuntimeContext.referenceDate())
+        return projectTasks(for: summary).filter { task in
+            guard task.status != .done,
+                  let dueAt = task.dueAt,
+                  let dueDate = SuisuiTimestampDisplay.parse(dueAt)?.date else {
+                return false
+            }
+            return calendar.isDate(dueDate, inSameDayAs: today)
+        }.count
+    }
+
+    private func nextMilestone(for summary: ProjectPortfolioSummary) -> ProjectBoardMilestone? {
+        viewModel.snapshot.projects.first { $0.id == summary.projectID }?
+            .milestones
+            .filter { !$0.isCompleted }
+            .sorted { ($0.dueAt ?? "9999") < ($1.dueAt ?? "9999") }
+            .first
     }
 
     private var portfolioRankingRuleDescription: String? {
@@ -211,6 +301,8 @@ private struct ProjectPortfolioHeader: View {
 
 private struct ProjectPortfolioCard: View {
     let summary: ProjectPortfolioSummary
+    let isSelected: Bool
+    let onSelect: () -> Void
     let onOpen: () -> Void
 
     var body: some View {
@@ -248,9 +340,6 @@ private struct ProjectPortfolioCard: View {
                 Label(summary.nextDueAt ?? String(localized: "No due date"), systemImage: "calendar")
                 Label(localizedRiskReason, systemImage: "heart.text.square")
                 Label(summary.nextActionTitle, systemImage: "arrow.right.circle")
-                // The ranking rule is identical on every card, so repeating it
-                // per card was pure noise in the densest cell on the screen. It
-                // now appears once, in the portfolio header's help.
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -269,15 +358,23 @@ private struct ProjectPortfolioCard: View {
         .padding(12)
         .frame(minHeight: ProjectBoardLayoutMetrics.portfolioCardMinHeight, alignment: .topLeading)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .background(
+            isSelected ? SuisuiSurface.elevatedSelection : AnyShapeStyle(.regularMaterial),
+            in: RoundedRectangle(cornerRadius: 8)
+        )
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(summary.health.tint.opacity(0.32), lineWidth: 1)
+                .stroke(isSelected ? SuisuiBrand.soloBlue : summary.health.tint.opacity(0.32), lineWidth: isSelected ? 1.5 : 1)
         }
+        .contentShape(RoundedRectangle(cornerRadius: 8))
+        .onTapGesture(perform: onSelect)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("projects-portfolio-card-\(summary.projectID)")
         .accessibilityLabel(String(format: String(localized: "Project %@"), summary.title))
         .accessibilityValue("\(localizedHealthTitle), \(percentLabel), \(localizedRiskReason)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityHint("Selects this project summary. Open Project opens the board.")
+        .accessibilityAction(named: "Select project", onSelect)
     }
 
     private var percentLabel: String {
@@ -320,6 +417,80 @@ private struct ProjectPortfolioCard: View {
         }
         .font(.caption)
         .foregroundStyle(.secondary)
+    }
+}
+
+private struct ProjectPortfolioSummaryRail: View {
+    let summary: ProjectPortfolioSummary
+    let recentTaskTitle: String?
+    let todayDueTaskCount: Int
+    let nextMilestoneTitle: String?
+    let onOpen: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+            Label("Selected project", systemImage: "sidebar.right")
+                .font(SuisuiTypography.sectionTitle)
+            Text(summary.title)
+                .font(.headline)
+                .fixedSize(horizontal: false, vertical: true)
+            summaryWidget {
+                Label(String(localized: String.LocalizationValue(summary.health.title)), systemImage: summary.health.systemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(summary.health.tint)
+                ProgressView(value: summary.progress)
+                    .tint(summary.health.tint)
+                    .accessibilityLabel("Project progress")
+                    .accessibilityValue("\(Int((summary.progress * 100).rounded()))%")
+            }
+            summaryWidget {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label(summary.nextDueAt ?? String(localized: "No due date"), systemImage: "calendar")
+                    Label(summary.nextActionTitle, systemImage: "arrow.right.circle")
+                    Label(summary.riskReason, systemImage: "heart.text.square")
+                    if todayDueTaskCount > 0 {
+                        Label {
+                            Text(localizedCount(todayDueTaskCount, one: "%d task due today", other: "%d tasks due today"))
+                        } icon: {
+                            Image(systemName: "sun.max")
+                        }
+                    }
+                    if let recentTaskTitle {
+                        Label(recentTaskTitle, systemImage: "clock.arrow.circlepath")
+                            .lineLimit(2)
+                    }
+                    if let nextMilestoneTitle {
+                        Label(nextMilestoneTitle, systemImage: "flag")
+                            .lineLimit(2)
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            Button(action: onOpen) {
+                Label("Open Project", systemImage: "arrow.right")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .accessibilityIdentifier("projects-portfolio-summary-open-\(summary.projectID)")
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("projects-portfolio-summary")
+        .accessibilityLabel(String(format: String(localized: "Selected project %@"), summary.title))
+    }
+
+    private func summaryWidget<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            content()
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(SuisuiTone.neutral.color.opacity(0.12), in: RoundedRectangle(cornerRadius: SuisuiRadius.control, style: .continuous))
     }
 }
 
@@ -435,30 +606,57 @@ private struct ProjectDetailOverview: View {
     ]
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                ProjectProgressOverview(project: project)
+        GeometryReader { proxy in
+            let isWide = CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(proxy.size.width))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ProjectProgressOverview(project: project)
 
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
-                    ProjectTaskSnapshotSection(
-                        project: project,
-                        onAddTask: onAddTask,
-                        onOpenTaskInspector: onOpenTaskInspector
-                    )
-                    ProjectMilestoneSection(project: project, viewModel: viewModel)
-                    ProjectArtifactSection(project: project, viewModel: viewModel)
-                    ProjectTimelineSection(project: project)
-                    ProjectAssistantPanel(project: project, viewModel: viewModel)
-                    ProjectLocalSuggestionPanel(
-                        project: project,
-                        viewModel: viewModel,
-                        onOpenTaskInspector: onOpenTaskInspector
-                    )
+                    if isWide {
+                        HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
+                            LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                                primaryOverviewPanels
+                            }
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                            VStack(alignment: .leading, spacing: 12) {
+                                ProjectAssistantPanel(project: project, viewModel: viewModel)
+                                ProjectLocalSuggestionPanel(
+                                    project: project,
+                                    viewModel: viewModel,
+                                    onOpenTaskInspector: onOpenTaskInspector
+                                )
+                            }
+                            .frame(width: CGFloat(CockpitLayoutPolicy.railWidth), alignment: .topLeading)
+                        }
+                    } else {
+                        LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                            primaryOverviewPanels
+                            ProjectAssistantPanel(project: project, viewModel: viewModel)
+                            ProjectLocalSuggestionPanel(
+                                project: project,
+                                viewModel: viewModel,
+                                onOpenTaskInspector: onOpenTaskInspector
+                            )
+                        }
+                    }
                 }
+                .padding(.bottom, 4)
             }
-            .padding(.bottom, 4)
+            .scrollIndicators(.visible)
         }
-        .scrollIndicators(.visible)
+    }
+
+    @ViewBuilder
+    private var primaryOverviewPanels: some View {
+        ProjectTaskSnapshotSection(
+            project: project,
+            onAddTask: onAddTask,
+            onOpenTaskInspector: onOpenTaskInspector
+        )
+        ProjectMilestoneSection(project: project, viewModel: viewModel)
+        ProjectArtifactSection(project: project, viewModel: viewModel)
+        ProjectTimelineSection(project: project)
     }
 }
 
@@ -625,6 +823,20 @@ private struct ProjectMilestoneSection: View {
     @State private var milestoneTitle = ""
     @State private var milestoneDueAt = ""
 
+    private var orderedMilestones: [ProjectBoardMilestone] {
+        project.milestones.sorted { lhs, rhs in
+            if lhs.isCompleted != rhs.isCompleted {
+                return !lhs.isCompleted && rhs.isCompleted
+            }
+            let lhsDue = lhs.dueAt ?? "9999"
+            let rhsDue = rhs.dueAt ?? "9999"
+            if lhsDue == rhsDue {
+                return lhs.id < rhs.id
+            }
+            return lhsDue < rhsDue
+        }
+    }
+
     var body: some View {
         ProjectOverviewPanel(title: "Milestones", systemImage: "flag.checkered") {
             ViewThatFits(in: .horizontal) {
@@ -641,22 +853,22 @@ private struct ProjectMilestoneSection: View {
                 }
             }
 
-            if project.milestones.isEmpty {
+            if orderedMilestones.isEmpty {
                 Text("No milestones yet")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(project.milestones.prefix(4)) { milestone in
+                ForEach(orderedMilestones.prefix(6)) { milestone in
                     HStack(spacing: 8) {
                         Image(systemName: milestone.isCompleted ? "checkmark.circle.fill" : "flag")
-                            .foregroundStyle(milestone.isCompleted ? .green : .teal)
+                            .foregroundStyle(milestone.isCompleted ? SuisuiTone.positive.color : SuisuiBrand.soloBlue)
                             .frame(width: 16)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(milestone.title)
                                 .font(.caption.weight(.medium))
                                 .lineLimit(1)
                                 .truncationMode(.tail)
-                            Text(milestone.dueAt ?? String(localized: "No due date"))
+                            Text(milestoneDueLabel(milestone.dueAt))
                                 .font(.caption2.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }
@@ -675,9 +887,17 @@ private struct ProjectMilestoneSection: View {
                         .accessibilityLabel("Complete milestone \(milestone.title)")
                         .accessibilityHint("Marks this local project milestone as complete.")
                     }
+                    .accessibilityIdentifier("project-milestone-row-\(milestone.id)")
                 }
             }
         }
+    }
+
+    private func milestoneDueLabel(_ dueAt: String?) -> String {
+        guard let dueAt else {
+            return String(localized: "No due date")
+        }
+        return SuisuiTimestampDisplay.dayLabel(dueAt)
     }
 
     private func addMilestone() {
@@ -819,6 +1039,14 @@ private struct ProjectArtifactSection: View {
 private struct ProjectTimelineSection: View {
     let project: ProjectBoardProject
 
+    private var calendar: Calendar {
+        VisualEvidenceRuntimeContext.runtimeCalendar()
+    }
+
+    private var referenceDate: Date {
+        VisualEvidenceRuntimeContext.referenceDate()
+    }
+
     private var timelineItems: [ProjectTimelineItem] {
         let taskItems = project.tasks
             .compactMap { task -> ProjectTimelineItem? in
@@ -842,8 +1070,19 @@ private struct ProjectTimelineSection: View {
         }
     }
 
+    private var weekDays: [ProjectTimelineWeekDay] {
+        ProjectTimelineWeekDay.make(
+            items: timelineItems,
+            from: referenceDate,
+            calendar: calendar
+        )
+    }
+
     var body: some View {
         ProjectOverviewPanel(title: "Timeline", systemImage: "calendar") {
+            ProjectTimelineWeekStrip(days: weekDays)
+                .accessibilityIdentifier("project-timeline-week")
+
             if timelineItems.isEmpty {
                 Text("No due dates yet")
                     .font(.caption)
@@ -859,18 +1098,157 @@ private struct ProjectTimelineSection: View {
                                 .font(.caption.weight(.medium))
                                 .lineLimit(1)
                                 .truncationMode(.tail)
-                            Text(item.dueAt)
+                            Text(item.displayDueLabel)
                                 .font(.caption2.monospacedDigit())
                                 .foregroundStyle(.secondary)
+                        }
+                        if item.isMilestone {
+                            Image(systemName: "flag")
+                                .font(.caption2)
+                                .foregroundStyle(SuisuiBrand.soloBlue)
+                                .accessibilityHidden(true)
                         }
                     }
                     .help(item.title)
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Project timeline item \(item.title)")
-                    .accessibilityValue(item.dueAt)
+                    .accessibilityValue(item.displayDueLabel)
+                    .accessibilityIdentifier("project-timeline-item-\(item.id)")
                 }
             }
         }
+    }
+}
+
+private struct ProjectTimelineWeekDay: Identifiable {
+    let date: Date
+    let dateKey: String
+    let weekdayLabel: String
+    let dayNumber: String
+    let isToday: Bool
+    let taskCount: Int
+    let milestoneCount: Int
+
+    var id: String { dateKey }
+
+    var itemCount: Int { taskCount + milestoneCount }
+
+    static func make(
+        items: [ProjectTimelineItem],
+        from referenceDate: Date,
+        calendar: Calendar,
+        dayCount: Int = 7
+    ) -> [ProjectTimelineWeekDay] {
+        let start = calendar.startOfDay(for: referenceDate)
+        let locale = localizedDisplayLocale()
+        return (0..<dayCount).compactMap { offset in
+            guard let date = calendar.date(byAdding: .day, value: offset, to: start) else {
+                return nil
+            }
+            let dateKey = SuisuiTimestampDisplay.dayKey(date, calendar: calendar)
+            let matching = items.filter { item in
+                guard let dueDate = SuisuiTimestampDisplay.parse(item.dueAt)?.date else {
+                    return false
+                }
+                return calendar.isDate(dueDate, inSameDayAs: date)
+            }
+            return ProjectTimelineWeekDay(
+                date: date,
+                dateKey: dateKey,
+                weekdayLabel: SuisuiTimestampDisplay.weekdayAndDay(
+                    date,
+                    calendar: calendar,
+                    locale: locale
+                ),
+                dayNumber: String(calendar.component(.day, from: date)),
+                isToday: offset == 0,
+                taskCount: matching.filter { !$0.isMilestone }.count,
+                milestoneCount: matching.filter(\.isMilestone).count
+            )
+        }
+    }
+}
+
+private struct ProjectTimelineWeekStrip: View {
+    let days: [ProjectTimelineWeekDay]
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(days) { day in
+                VStack(spacing: 4) {
+                    Text(shortWeekday(day.date))
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Text(day.dayNumber)
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(day.isToday ? Color.white : Color.primary)
+                        .frame(width: 24, height: 24)
+                        .background(
+                            day.isToday
+                                ? AnyShapeStyle(SuisuiBrand.soloBlue)
+                                : AnyShapeStyle(SuisuiSurface.groupedContent.opacity(0.001)),
+                            in: Circle()
+                        )
+                    HStack(spacing: 2) {
+                        if day.taskCount > 0 {
+                            Circle()
+                                .fill(SuisuiBrand.soloBlue)
+                                .frame(width: 5, height: 5)
+                        }
+                        if day.milestoneCount > 0 {
+                            Circle()
+                                .fill(SuisuiTone.caution.color)
+                                .frame(width: 5, height: 5)
+                        }
+                        if day.itemCount == 0 {
+                            Circle()
+                                .fill(SuisuiTone.neutral.color.opacity(0.35))
+                                .frame(width: 5, height: 5)
+                        }
+                    }
+                    .frame(height: 6)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+                .background(
+                    day.itemCount > 0
+                        ? AnyShapeStyle(SuisuiBrand.soloBlue.opacity(0.06))
+                        : AnyShapeStyle(SuisuiSurface.groupedContent.opacity(0.001)),
+                    in: RoundedRectangle(cornerRadius: SuisuiRadius.control, style: .continuous)
+                )
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(String(
+                    format: String(localized: "Timeline day %@"),
+                    day.weekdayLabel
+                ))
+                .accessibilityValue(weekDayAccessibilityValue(day))
+                .accessibilityIdentifier("project-timeline-week-day-\(day.dateKey)")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Next 7 days")
+    }
+
+    private func shortWeekday(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = VisualEvidenceRuntimeContext.runtimeCalendar()
+        formatter.locale = localizedDisplayLocale()
+        formatter.setLocalizedDateFormatFromTemplate("EEE")
+        return formatter.string(from: date)
+    }
+
+    private func weekDayAccessibilityValue(_ day: ProjectTimelineWeekDay) -> String {
+        var parts: [String] = []
+        if day.taskCount > 0 {
+            parts.append(localizedCount(day.taskCount, one: "%d task", other: "%d tasks"))
+        }
+        if day.milestoneCount > 0 {
+            parts.append(localizedCount(day.milestoneCount, one: "%d milestone", other: "%d milestones"))
+        }
+        if parts.isEmpty {
+            return String(localized: "No due items")
+        }
+        return parts.joined(separator: ", ")
     }
 }
 
@@ -903,12 +1281,23 @@ private enum ProjectTimelineItem: Identifiable {
         }
     }
 
+    var displayDueLabel: String {
+        SuisuiTimestampDisplay.dayLabel(dueAt)
+    }
+
+    var isMilestone: Bool {
+        if case .milestone = self {
+            return true
+        }
+        return false
+    }
+
     var tint: Color {
         switch self {
         case .task(let task, _):
             task.status.tint
         case .milestone(let milestone, _):
-            milestone.isCompleted ? .green : .teal
+            milestone.isCompleted ? SuisuiTone.positive.color : SuisuiBrand.soloBlue
         }
     }
 }

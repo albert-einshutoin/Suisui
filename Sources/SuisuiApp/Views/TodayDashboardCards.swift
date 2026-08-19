@@ -43,7 +43,7 @@ struct TodayDashboardRecommendationCards: View {
                                         .stroke(SuisuiBrand.soloBlue.opacity(0.28), lineWidth: 1)
                                 )
                         }
-                        .frame(maxWidth: .infinity, minHeight: 102, alignment: .topLeading)
+                        .frame(maxWidth: .infinity, minHeight: TodayDashboardLayoutMetrics.recommendationCardMinHeight, maxHeight: .infinity, alignment: .topLeading)
                     }
                     .buttonStyle(.plain)
                     .todayDashboardCard()
@@ -51,7 +51,9 @@ struct TodayDashboardRecommendationCards: View {
                     .accessibilityHint(accessibilityHint(for: recommendation))
                 }
             }
+            .frame(maxHeight: .infinity, alignment: .top)
         }
+        .frame(maxHeight: .infinity, alignment: .topLeading)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-recommendations")
     }

@@ -175,7 +175,7 @@ private enum VoiceTaskConversationWorkspaceLayout {
     case regular
 
     init(width: CGFloat) {
-        self = width < 840 ? .compact : .regular
+        self = CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(width)) ? .regular : .compact
     }
 }
 
@@ -310,8 +310,28 @@ private struct VoiceTaskConversationComposer: View {
         return false
     }
 
+    private var isTranscribing: Bool {
+        if case .transcribing = viewModel.phase { return true }
+        return false
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
+            if isRecording || isTranscribing {
+                HStack(spacing: SuisuiSpacing.sm) {
+                    VoiceConversationInputLevelMeter(meter: viewModel.inputLevelMeter)
+                    Label(
+                        isRecording ? "Recording" : "Transcribing",
+                        systemImage: isRecording ? "mic.fill" : "waveform"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("voice-conversation-recording-status")
+            }
+
             TextField(
                 viewModel.clarificationQuestion == nil
                     ? "Type a voice task request"
@@ -403,6 +423,41 @@ private struct VoiceTaskConversationComposer: View {
     private func recordingOutputURL() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("suisui-conversation-\(UUID().uuidString).m4a")
+    }
+}
+
+private struct VoiceConversationInputLevelMeter: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject var meter: MicrophoneInputLevelMeter
+
+    private static let barThresholds: [Double] = [0.05, 0.2, 0.4, 0.6, 0.8]
+
+    var body: some View {
+        Group {
+            if reduceMotion {
+                Text("Recording")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tint)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(SuisuiSurface.groupedContent, in: Capsule())
+            } else {
+                HStack(alignment: .bottom, spacing: 3) {
+                    ForEach(Array(Self.barThresholds.enumerated()), id: \.offset) { index, threshold in
+                        Capsule()
+                            .fill(meter.inputLevel >= threshold ? AnyShapeStyle(.tint) : SuisuiSurface.groupedContent)
+                            .frame(width: 4, height: 8 + CGFloat(index) * 3)
+                    }
+                }
+                .animation(
+                    SuisuiMotion.animation(duration: SuisuiMotion.quick, reduceMotion: reduceMotion),
+                    value: meter.inputLevel
+                )
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Microphone input level")
+        .accessibilityIdentifier("voice-conversation-input-level-meter")
     }
 }
 

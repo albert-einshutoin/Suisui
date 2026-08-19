@@ -2107,9 +2107,11 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardUsesOneNativeContextualToolbarLayer() throws {
+        let appSource = try readAppShellSource()
         let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
         let toolbarSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardToolbarContent.swift")
 
+        XCTAssertTrue(appSource.contains(".windowStyle(.hiddenTitleBar)"))
         XCTAssertFalse(boardSource.contains("projectBoardHeaderBar"))
         XCTAssertFalse(boardSource.contains(".frame(height: 44)"))
         XCTAssertFalse(boardSource.contains(".background(.bar)"))
@@ -3731,7 +3733,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(seederSource.contains("smoothedPeak += (targetPeak - smoothedPeak) * 0.35"))
         XCTAssertTrue(seederSource.contains("let easedBlend = blend * blend * (3 - 2 * blend)"))
         XCTAssertFalse(seederSource.contains("sin(progress *"))
-        XCTAssertTrue(source.contains("mainSurface(referenceContentTopPadding: 10)"))
+        XCTAssertTrue(source.contains("inboxHeader(referenceContentTopPadding: 10)"))
         XCTAssertTrue(source.contains("mainSurface(referenceContentTopPadding: 0)"))
         XCTAssertTrue(source.contains(".padding(.bottom, referenceContentTopPadding)"))
         XCTAssertTrue(source.contains("return \"waveform\""))
@@ -3765,8 +3767,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("onSelectTask: selectInboxTask"))
         XCTAssertTrue(workflowSource.contains("memoDraft: $voiceMemoDraft"))
         XCTAssertTrue(workflowSource.contains("memoCaptureID: $voiceMemoCaptureID"))
-        XCTAssertTrue(workflowSource.contains(".frame(minWidth: 340, idealWidth: 400, maxWidth: 420"))
-        XCTAssertTrue(workflowSource.contains(".padding(.trailing, 30)"))
+        XCTAssertTrue(workflowSource.contains(".frame(width: CGFloat(CockpitLayoutPolicy.railWidth))"))
+        XCTAssertTrue(workflowSource.contains(".padding(.trailing, 18)"))
         XCTAssertTrue(workflowSource.contains(".frame(maxWidth: .infinity, minHeight: 84"))
 
         let overrideStart = try XCTUnwrap(boardSource.range(of: "private func applySelectedTaskOverrideIfNeeded()"))
@@ -4055,6 +4057,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("viewModel.createProjectMilestone"))
         XCTAssertTrue(source.contains("viewModel.answerProjectAssistantQuestion"))
         XCTAssertTrue(source.contains("viewModel.prepareProjectAssistantSuggestedActionForReview"))
+        XCTAssertTrue(source.contains("CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(proxy.size.width))"))
+        XCTAssertTrue(source.contains("project-timeline-week"))
+        XCTAssertTrue(source.contains("ProjectTimelineWeekStrip"))
+        XCTAssertTrue(source.contains("orderedMilestones"))
         XCTAssertFalse(source.contains("moveTask(id: suggestedTask.id, to: .inProgress)"))
 
         XCTAssertTrue(modelSource.contains("public struct ProjectBoardMilestone"))
@@ -4641,8 +4647,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(dashboard.contains("VisualEvidenceRuntimeContext.runtimeCalendar()"))
         XCTAssertTrue(dashboard.contains("localizedDisplayLocale()"))
         XCTAssertFalse(dashboard.contains("now: Date()"))
-        XCTAssertTrue(dashboard.contains("mainContent(dashboard: dashboard, isWide: isWide)"))
-        XCTAssertTrue(dashboard.contains("rail(dashboard: dashboard, presentsCardsHorizontally:"))
+        XCTAssertTrue(dashboard.contains("mainContent(dashboard: dashboard, isWide: isWide, openReview: openReview)"))
+        XCTAssertTrue(dashboard.contains("presentsCardsHorizontally: presentsCompactRailCardsHorizontally"))
+        XCTAssertTrue(dashboard.contains("showsSecondaryIntegrations: isWide"))
         XCTAssertTrue(dashboard.contains("displayName: displayName"))
         XCTAssertTrue(dashboard.contains("dailyCapacityMinutes: dailyCapacityMinutes"))
         XCTAssertTrue(todayWorkflow.contains("dashboardDisplayName: String = \"\""))
@@ -4650,13 +4657,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(board.contains("dashboardDisplayName: todaySettings.profileDisplayName ?? \"\""))
         XCTAssertTrue(board.contains("dashboardDailyCapacityMinutes: todaySettings.dailyWorkCapacityMinutes"))
         XCTAssertTrue(dashboard.contains("GeometryReader"))
-        XCTAssertTrue(dashboard.contains("AnyLayout"))
-        XCTAssertTrue(dashboard.contains("HStackLayout"))
-        XCTAssertTrue(dashboard.contains("VStackLayout"))
+        XCTAssertTrue(dashboard.contains("TodayDashboardAlignedRow"))
+        XCTAssertTrue(dashboard.contains("wideBoard(dashboard: dashboard, openReview: openReview)"))
         XCTAssertTrue(dashboard.contains("compactRailCardsMinimumWidth"))
         XCTAssertTrue(dashboard.contains("presentsCompactRailCardsHorizontally"))
         XCTAssertTrue(dashboard.contains("static let twoColumnMinimumWidth = primaryMinimumWidth + railMinimumWidth + columnSpacing"))
-        XCTAssertTrue(dashboard.contains("let availableWidth = proxy.size.width - TodayDashboardLayoutMetrics.horizontalInsets"))
+        XCTAssertTrue(dashboard.contains("let availableWidth = proxy.size.width"))
         XCTAssertTrue(dashboard.contains("static func isWide(availableWidth: CGFloat) -> Bool"))
         XCTAssertTrue(dashboard.contains("TodayDashboardLayoutMetrics.isWide(availableWidth: availableWidth)"))
         XCTAssertTrue(dashboard.contains("TodayDashboardHeaderView"))
@@ -4775,9 +4781,10 @@ final class AppExperienceSourceTests: XCTestCase {
         let cardModifierScope = String(dashboard[cardModifierStart..<dashboardViewStart])
 
         XCTAssertTrue(dashboard.contains("func todayDashboardCard()"))
-        XCTAssertTrue(cardModifierScope.contains(".frame(maxWidth: .infinity, alignment: .topLeading)"))
+        XCTAssertTrue(cardModifierScope.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
         XCTAssertTrue(header.contains("Divider()"))
         XCTAssertTrue(header.contains("HStack(alignment: .firstTextBaseline"))
+        XCTAssertTrue(header.contains("TodayDashboardWeatherView(weather: weather)"))
         XCTAssertTrue(cards.contains("recommendationIcon(for:"))
         XCTAssertTrue(cards.contains("actionTitle(for:"))
         XCTAssertTrue(cards.contains(".todayDashboardCard()"))
@@ -4792,13 +4799,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(dashboard.contains(".padding(.top, isWide ? 124 : 0)"))
         XCTAssertTrue(taskList.contains(".frame(width: 280, alignment: .leading)"))
         XCTAssertTrue(taskList.contains("today-task-list-add"))
-        XCTAssertTrue(dashboard.contains("VStack(alignment: .leading, spacing: 32)"))
+        XCTAssertTrue(dashboard.contains("VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.sectionSpacing)"))
         XCTAssertTrue(dashboard.contains("width: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth"))
-        XCTAssertTrue(rail.contains("minHeight: 228"))
-        XCTAssertTrue(focusCard.contains("minHeight: 192"))
+        XCTAssertTrue(rail.contains("minHeight: TodayDashboardLayoutMetrics.railWidgetMinHeight"))
+        XCTAssertTrue(focusCard.contains("minHeight: TodayDashboardLayoutMetrics.railWidgetMinHeight"))
         XCTAssertTrue(rail.contains("assistantCard\n                .frame"))
         XCTAssertTrue(rail.contains("let cardWidth = presentsCardsHorizontally"))
         XCTAssertTrue(dashboard.contains("availableWidth: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth"))
+        XCTAssertTrue(dashboard.contains("TodayWorkloadCard(workload: dashboard.workload)"))
+        XCTAssertTrue(dashboard.contains("TodayAssistantCard("))
     }
 
     func testTodayWorkflowProvidesCommonQuickActionChipsAndLocalRailActions() throws {
@@ -4871,9 +4880,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(todayWorkflowScope.contains("GridItem(.adaptive"))
         XCTAssertTrue(todayWorkflowScope.contains("GeometryReader"))
         XCTAssertTrue(todayWorkflowScope.contains("TodayDashboardLayoutMetrics.isWide(availableWidth: availableWidth)"))
-        XCTAssertTrue(todayWorkflowScope.contains("AnyLayout"))
-        XCTAssertTrue(todayWorkflowScope.contains("HStackLayout(alignment: .top"))
-        XCTAssertTrue(todayWorkflowScope.contains("VStackLayout(alignment: .leading"))
+        XCTAssertTrue(todayWorkflowScope.contains("TodayDashboardAlignedRow"))
+        XCTAssertTrue(todayWorkflowScope.contains("HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing)"))
+        XCTAssertTrue(todayWorkflowScope.contains("VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.sectionSpacing)"))
         XCTAssertTrue(todayWorkflowScope.contains("ScrollView(.vertical)"))
         XCTAssertTrue(sharedSource.contains("else if fillsAvailableHeight {\n                ScrollView {\n                    taskRows"))
         XCTAssertTrue(sharedSource.contains("} else {\n                taskRows"))
@@ -4938,8 +4947,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(sharedSource.contains("maxHeight: fillsAvailableHeight ? .infinity : nil"))
 
         XCTAssertLessThan(
-            try XCTUnwrap(workflowScope.range(of: "mainContent(dashboard: dashboard, isWide: isWide)")).lowerBound,
-            try XCTUnwrap(workflowScope.range(of: "rail(dashboard: dashboard, presentsCardsHorizontally:")).lowerBound
+            try XCTUnwrap(workflowScope.range(of: "mainContent(dashboard: dashboard, isWide: isWide, openReview: openReview)")).lowerBound,
+            try XCTUnwrap(workflowScope.range(of: "presentsCardsHorizontally: presentsCompactRailCardsHorizontally")).lowerBound
         )
     }
 
@@ -5033,15 +5042,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-mini-calendar-next-week\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-mini-calendar-today\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-mini-calendar-day-\\(day.dateKey)\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-mini-calendar-selected-day\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityAddTraits(day.dateKey == selectedDay?.dateKey ? .isSelected : [])"))
+        XCTAssertTrue(workflowSource.contains("\"schedule-mini-calendar-selected-day\""))
+        XCTAssertTrue(workflowSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-grid\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-time-axis-grid\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-time-axis-slot-\\(day.dateKey)-\\(hour)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-time-axis-all-day-slot-\\(day.dateKey)\")"))
-        XCTAssertTrue(workflowSource.contains("WeeklyScheduleTimeAxisGrid(cockpit: cockpit)"))
+        XCTAssertTrue(workflowSource.contains("WeeklyScheduleTimeAxisGrid("))
         XCTAssertTrue(workflowSource.contains("WeeklyScheduleTimeAxisSlot("))
-        XCTAssertTrue(workflowSource.contains("block.startHour"))
+        XCTAssertTrue(workflowSource.contains("let startMinute = calendar.dateComponents([.minute], from: dayStart, to: item.startAt).minute ?? 0"))
+        XCTAssertTrue(workflowSource.contains("ScheduleTimelineGeometry.blockFrame("))
+        XCTAssertTrue(workflowSource.contains("viewModel.externalScheduleEvents"))
+        XCTAssertTrue(workflowSource.contains("ExternalSchedulePositionedEvent"))
+        XCTAssertTrue(workflowSource.contains("event.blocksAvailability"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-day-column-\\(day.dateKey)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-block-\\(block.id)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-completion-history-\\(day.dateKey)\")"))
@@ -5089,6 +5102,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("private enum ScheduleSurfaceMode"))
         XCTAssertTrue(source.contains("case overview"))
         XCTAssertTrue(source.contains("case timeline"))
+        XCTAssertTrue(source.contains("case agenda"))
         XCTAssertTrue(source.contains("case workload"))
         XCTAssertTrue(source.contains("ScheduleSurfaceMode.visualEvidenceInitialMode()"))
         XCTAssertTrue(source.contains("SUISUI_VISUAL_EVIDENCE_SCHEDULE_MODE"))
@@ -5099,11 +5113,120 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".accessibilityAddTraits(selectedMode == mode ? .isSelected : [])"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-mode-\\(selectedMode.rawValue)\")"))
         XCTAssertTrue(source.contains("WeeklyScheduleTimelinePanel("))
-        XCTAssertTrue(source.contains("WeeklyScheduleAgendaPanel(day: scheduleReadModel.weeklyCockpit.agendaDay)"))
+        XCTAssertTrue(source.contains("ScheduleAgendaPanel("))
+        XCTAssertTrue(source.contains("selectedDayCockpit(from:"))
+        XCTAssertTrue(source.contains("ScheduleAdjustmentPanel(cockpit: cockpit, itemLimit: itemLimit ?? 2, selectDay: selectDay)"))
+        XCTAssertTrue(source.contains("ScheduleAvailabilityPanel("))
+        XCTAssertTrue(source.contains("ScheduleSuggestionsPanel("))
         XCTAssertTrue(source.contains("WeeklyScheduleReminderPanel("))
         XCTAssertEqual(source.components(separatedBy: "ScheduleMiniCalendarPanel(").count - 1, 1)
         XCTAssertFalse(source.contains("schedule-workload-previous-week"))
         XCTAssertFalse(source.contains("schedule-workload-next-week"))
+    }
+
+    func testScheduleOverviewUsesGoogleStyleWeekGridWithoutHorizontalScrolling() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowScheduleView.swift")
+
+        XCTAssertTrue(source.contains("private enum ScheduleLayoutMetrics"))
+        XCTAssertTrue(source.contains("static let hourRowHeight: CGFloat = 52"))
+        XCTAssertTrue(source.contains("static let dayHeaderHeight: CGFloat = 44"))
+        XCTAssertTrue(source.contains("static let allDayRowHeight: CGFloat = 30"))
+        XCTAssertTrue(source.contains("ScheduleOverviewCalendar("))
+        XCTAssertTrue(source.contains(".frame(minWidth: ScheduleLayoutMetrics.calendarMinimumWidth, maxWidth: .infinity)"))
+        XCTAssertTrue(source.contains("private var dayHeaderRow: some View"))
+        XCTAssertTrue(source.contains("private func hourRow(_ hour: Int) -> some View"))
+        XCTAssertTrue(source.contains("private var initialScrollHour: Int"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-week-grid\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-week-time-axis-grid\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-current-time-line\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-adjustments\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-availability\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-suggestions\")"))
+        XCTAssertTrue(source.contains("viewModel.placeTaskInScheduleDraft("))
+        XCTAssertTrue(source.contains(".keyboardShortcut(.leftArrow, modifiers: [.command, .option])"))
+        XCTAssertTrue(source.contains(".keyboardShortcut(.rightArrow, modifiers: [.command, .option])"))
+        XCTAssertTrue(source.contains("selectDay(day)\n        } label"))
+
+        let gridStart = try XCTUnwrap(source.range(of: "private struct WeeklyScheduleTimeAxisGrid"))
+        let gridEnd = try XCTUnwrap(source.range(of: "private struct WeeklyScheduleTimeAxisSlot"))
+        let gridSource = source[gridStart.lowerBound..<gridEnd.lowerBound]
+        XCTAssertFalse(gridSource.contains("ScrollView(.horizontal"))
+    }
+
+    func testScheduleKeepsDaySeparatorsVisibleAndAdaptsAroundThirteenInchViewport() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowScheduleView.swift")
+
+        XCTAssertTrue(source.contains("static let standardViewportWidth = CGFloat(CockpitLayoutPolicy.splitMinimumContentWidth)"))
+        XCTAssertTrue(source.contains("static func visibleHourRowCount(for viewportHeight: CGFloat) -> Int"))
+        XCTAssertTrue(source.contains("GeometryReader { viewport in"))
+        XCTAssertTrue(source.contains("if CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(viewportWidth))"))
+        XCTAssertTrue(source.contains("rail(itemLimit: 1)"))
+        XCTAssertTrue(source.contains("@Environment(\\.displayScale) private var displayScale"))
+        XCTAssertTrue(source.contains("private var dayColumnSeparators: some View"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-day-column-separators\")"))
+
+        let slotStart = try XCTUnwrap(source.range(of: "private struct WeeklyScheduleTimeAxisSlot"))
+        let slotSource = source[slotStart.lowerBound...]
+        XCTAssertFalse(slotSource.contains(".overlay(alignment: .trailing)"))
+    }
+
+    func testScheduleSupportsDirectCalendarManipulationWithoutBypassingReview() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowScheduleView.swift")
+
+        XCTAssertTrue(source.contains("private struct ScheduleQuickDraftSelection"))
+        XCTAssertTrue(source.contains("private struct ScheduleQuickDraftComposer"))
+        XCTAssertTrue(source.contains("DragGesture(minimumDistance: 4)"))
+        XCTAssertTrue(source.contains("dragSelectionPreview"))
+        XCTAssertTrue(source.contains("ScheduleTimelineGeometry.blockFrame("))
+        XCTAssertTrue(source.contains("ScheduleTimelineGeometry.snappedDelta("))
+        XCTAssertTrue(source.contains(".draggable(String(block.task.id))"))
+        XCTAssertTrue(source.contains(".dropDestination(for: String.self)"))
+        XCTAssertTrue(source.contains("moveBy: nil"))
+        XCTAssertTrue(source.contains("resizeBy: nil"))
+        XCTAssertTrue(source.contains("let moveBy: ((Int) -> Void)?"))
+        XCTAssertTrue(source.contains("let resizeBy: ((Int) -> Void)?"))
+        XCTAssertTrue(source.contains(".accessibilityActions"))
+        XCTAssertTrue(source.contains("viewModel.placeTaskInScheduleDraft("))
+        XCTAssertTrue(source.contains("viewModel.removeTaskFromScheduleDraft("))
+        XCTAssertTrue(source.contains("DatePicker("))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-quick-create\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-quick-draft-composer\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-availability-slot-\\(slot.id.timeIntervalSince1970)\")"))
+        XCTAssertFalse(source.contains("applyScheduleDraftToCalendar"))
+    }
+
+    func testScheduleSupportsSearchRefreshAndReadOnlyExternalEventDetails() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowScheduleView.swift")
+
+        XCTAssertTrue(source.contains("@State private var scheduleSearchText"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-search\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-refresh-external-events\")"))
+        XCTAssertTrue(source.contains("ExternalScheduleEventDetails"))
+        XCTAssertTrue(source.contains("viewModel.refreshExternalScheduleEvents(around: workloadReferenceDate, force: true)"))
+        XCTAssertTrue(source.contains(".keyboardShortcut(mode.keyboardShortcut, modifiers: [.command, .option])"))
+        XCTAssertTrue(source.contains("private var currentTimeLine: some View"))
+        XCTAssertFalse(source.contains(".keyboardShortcut(mode.keyboardShortcut, modifiers: [])"))
+        XCTAssertTrue(source.contains("private enum ScheduleContentFilter"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-content-filter\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-search-clear\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-search-empty\")"))
+        XCTAssertTrue(source.contains("formatter.setLocalizedDateFormatFromTemplate(\"j\")"))
+        XCTAssertTrue(source.contains("@FocusState private var isScheduleSearchFocused: Bool"))
+        XCTAssertTrue(source.contains(".focused($isScheduleSearchFocused)"))
+        XCTAssertTrue(source.contains(".keyboardShortcut(\"f\", modifiers: .command)"))
+        XCTAssertTrue(source.contains(".onKeyPress(.escape)"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-search-focus\")"))
+        XCTAssertTrue(source.contains("private enum ScheduleAgendaItem"))
+        XCTAssertTrue(source.contains("ScheduleTimelineGeometry.eventOccurs("))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-agenda-external-event-\\(event.id)\")"))
+    }
+
+    func testScheduleUsesFullWidthReviewHubAtWideWindowSizes() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift")
+
+        XCTAssertTrue(source.contains("if case .review(.schedule) = route"))
+        XCTAssertTrue(source.contains("return .compact"))
+        XCTAssertTrue(source.contains("presentation(for: proxy.size.width)"))
     }
 
     func testAppAndCLIShareDefaultDatabaseLocation() throws {

@@ -116,6 +116,21 @@ extension AppRuntimeFactory {
         }
     }
 
+    static func makeGoogleCalendarScheduleEventSource(
+        connection: SQLiteConnection
+    ) -> (any ExternalScheduleEventSource)? {
+        guard isGoogleCalendarRuntimeEnabled() else { return nil }
+        let reader = GoogleCalendarAppRuntimeFactory.makeEventsReader(
+            secretStore: makeSecretStore(),
+            connection: connection,
+            oauthClientID: googleCalendarOAuthClientID()
+        )
+        return SettingsBackedGoogleCalendarScheduleEventSource(
+            settingsStore: UserDefaultsAppSettingsStore(),
+            reader: reader
+        )
+    }
+
     static func makeSettingsBackedGoogleCalendarSyncController(
         connection: SQLiteConnection,
         entitlementStore: any EntitlementStore,
@@ -244,6 +259,20 @@ private struct GoogleCalendarRuntimeCalendarListProvider: GoogleCalendarListProv
 
     func listWritableCalendars() throws -> [GoogleCalendarRuntimeCalendarListEntry] {
         try client.listWritableCalendars()
+    }
+}
+
+private struct SettingsBackedGoogleCalendarScheduleEventSource: ExternalScheduleEventSource {
+    let settingsStore: any AppSettingsStore
+    let reader: any GoogleCalendarRuntimeEventsReader
+
+    func listEvents(in interval: DateInterval) throws -> [ExternalScheduleEvent] {
+        let settings = try settingsStore.load()
+        return try reader.listEvents(
+            calendarID: settings.googleCalendarID,
+            timeZoneIdentifier: settings.timeZoneIdentifier,
+            in: interval
+        )
     }
 }
 

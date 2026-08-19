@@ -4845,6 +4845,91 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testScheduleTaskCanBePlacedAndMovedAtAnExactTimeWithoutWritingStoreOrCalendar() throws {
+        var changeCount = 0
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let firstStart = try isoDate("2026-06-24T13:15:00Z")
+        let firstEnd = try isoDate("2026-06-24T14:45:00Z")
+        let movedStart = try isoDate("2026-06-25T10:00:00Z")
+        let movedEnd = try isoDate("2026-06-25T10:30:00Z")
+        let calendarClient = InMemoryCalendarClient()
+        let viewModel = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            scheduleCalendarClient: calendarClient,
+            onChange: { changeCount += 1 }
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Schedule Draft"))
+        let task = try XCTUnwrap(viewModel.createTask(title: "Place precisely", projectID: project.id, status: .planned, dueAt: nil))
+        changeCount = 0
+
+        XCTAssertTrue(viewModel.placeTaskInScheduleDraft(taskID: task.id, startAt: firstStart, endAt: firstEnd, calendar: calendar))
+        XCTAssertEqual(viewModel.scheduleDraft?.timeBlocks.map(\.label), ["13:15-14:45"])
+        XCTAssertEqual(viewModel.scheduleDraft?.unscheduledTasks.map(\.id), [])
+
+        XCTAssertTrue(viewModel.placeTaskInScheduleDraft(taskID: task.id, startAt: movedStart, endAt: movedEnd, calendar: calendar))
+        XCTAssertEqual(viewModel.scheduleDraft?.timeBlocks.count, 1)
+        XCTAssertEqual(viewModel.scheduleDraft?.timeBlocks.map(\.label), ["10:00-10:30"])
+        XCTAssertNil(viewModel.todayScheduleDraft)
+        XCTAssertEqual(viewModel.weeklyScheduleCockpit(around: movedStart, calendar: calendar).days.flatMap(\.blocks).map(\.task.id), [task.id])
+        XCTAssertEqual(changeCount, 0)
+        XCTAssertNil(viewModel.snapshot.projects.flatMap(\.tasks).first { $0.id == task.id }?.dueAt)
+        XCTAssertTrue(try calendarClient.listEvents().isEmpty)
+    }
+
+    @MainActor
+    func testScheduleTaskPlacementRejectsInvalidRangeWithoutChangingDraft() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let start = try isoDate("2026-06-24T13:15:00Z")
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Schedule Draft"))
+        let task = try XCTUnwrap(viewModel.createTask(title: "Invalid range", projectID: project.id, status: .planned, dueAt: nil))
+
+        XCTAssertFalse(viewModel.placeTaskInScheduleDraft(taskID: task.id, startAt: start, endAt: start, calendar: calendar))
+        XCTAssertNil(viewModel.scheduleDraft)
+        XCTAssertEqual(viewModel.todayCommandFeedback, "End time must be later than start time.")
+    }
+
+    @MainActor
+    func testScheduleTaskCanBeRemovedFromLocalDraft() throws {
+        let start = try isoDate("2026-06-24T13:15:00Z")
+        let end = try isoDate("2026-06-24T13:45:00Z")
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Schedule Draft"))
+        let task = try XCTUnwrap(viewModel.createTask(title: "Remove me", projectID: project.id, status: .planned, dueAt: nil))
+        XCTAssertTrue(viewModel.placeTaskInScheduleDraft(taskID: task.id, startAt: start, endAt: end))
+
+        XCTAssertTrue(viewModel.removeTaskFromScheduleDraft(taskID: task.id, around: start))
+
+        XCTAssertEqual(viewModel.scheduleDraft?.timeBlocks, [])
+        XCTAssertEqual(viewModel.scheduleDraft?.unscheduledTasks.map(\.id), [task.id])
+        XCTAssertEqual(viewModel.weeklyScheduleCockpit(around: start).days.flatMap(\.blocks), [])
+    }
+
+    @MainActor
+    func testScheduleTaskPlacementDropsHiddenBlocksFromAnotherWeek() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let firstStart = try isoDate("2026-06-24T09:00:00Z")
+        let secondStart = try isoDate("2026-07-01T09:00:00Z")
+        let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Schedule Draft"))
+        let first = try XCTUnwrap(viewModel.createTask(title: "First week", projectID: project.id, status: .planned, dueAt: nil))
+        let second = try XCTUnwrap(viewModel.createTask(title: "Second week", projectID: project.id, status: .planned, dueAt: nil))
+        XCTAssertTrue(viewModel.placeTaskInScheduleDraft(taskID: first.id, startAt: firstStart, endAt: firstStart.addingTimeInterval(1_800), calendar: calendar))
+
+        XCTAssertTrue(viewModel.placeTaskInScheduleDraft(taskID: second.id, startAt: secondStart, endAt: secondStart.addingTimeInterval(1_800), calendar: calendar))
+
+        XCTAssertEqual(viewModel.scheduleDraft?.timeBlocks.map(\.task.id), [second.id])
+        XCTAssertEqual(viewModel.scheduleDraft?.unscheduledTasks.map(\.id).sorted(), [first.id])
+    }
+
+    @MainActor
     func testScheduleUnscheduledTaskDraftActionDoesNotDuplicateExistingDraftBlock() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!

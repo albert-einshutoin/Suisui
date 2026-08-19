@@ -41,7 +41,7 @@ struct TodayFocusCard: View {
                 .accessibilityIdentifier("today-focus-open-task")
             }
         }
-        .frame(minHeight: 192, alignment: .topLeading)
+        .frame(minHeight: TodayDashboardLayoutMetrics.railWidgetMinHeight, alignment: .topLeading)
         .todayDashboardCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-focus-card")

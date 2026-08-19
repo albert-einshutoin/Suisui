@@ -8,6 +8,7 @@ struct TodayDashboardRailView: View {
     @Binding var commandTitle: String
     let openInspector: (Int64) -> Void
     let presentsCardsHorizontally: Bool
+    let showsSecondaryIntegrations: Bool
     let availableWidth: CGFloat
 
     var body: some View {
@@ -30,13 +31,15 @@ struct TodayDashboardRailView: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
             assistantCard
                 .frame(width: availableWidth, alignment: .topLeading)
-            integrationLayout {
-                TodayIntegrationCard(integration: dashboard.integrations.calendar)
-                    .frame(width: cardWidth, alignment: .topLeading)
-                TodayIntegrationCard(integration: dashboard.integrations.slack)
-                    .frame(width: cardWidth, alignment: .topLeading)
+            if showsSecondaryIntegrations {
+                integrationLayout {
+                    TodayIntegrationCard(integration: dashboard.integrations.calendar)
+                        .frame(width: cardWidth, alignment: .topLeading)
+                    TodayIntegrationCard(integration: dashboard.integrations.slack)
+                        .frame(width: cardWidth, alignment: .topLeading)
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
@@ -56,6 +59,22 @@ struct TodayDashboardRailView: View {
     }
 
     private var assistantCard: some View {
+        TodayAssistantCard(
+            assistantContext: assistantContext,
+            viewModel: viewModel,
+            commandTitle: $commandTitle,
+            openInspector: openInspector
+        )
+    }
+}
+
+struct TodayAssistantCard: View {
+    let assistantContext: TodayAssistantRailContext
+    @ObservedObject var viewModel: TodayFeatureViewModel
+    @Binding var commandTitle: String
+    let openInspector: (Int64) -> Void
+
+    var body: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
             Label("Suisui Assistant", systemImage: "sparkles")
                 .font(SuisuiTypography.sectionTitle)
@@ -72,7 +91,7 @@ struct TodayDashboardRailView: View {
     }
 }
 
-private struct TodayIntegrationCard: View {
+struct TodayIntegrationCard: View {
     let integration: TodayIntegrationSnapshot
 
     var body: some View {
@@ -118,7 +137,7 @@ private struct TodayIntegrationCard: View {
     }
 }
 
-private struct TodayWorkloadCard: View {
+struct TodayWorkloadCard: View {
     let workload: TodayWorkloadSnapshot
 
     var body: some View {
@@ -159,7 +178,7 @@ private struct TodayWorkloadCard: View {
                 .foregroundStyle(.orange)
             }
         }
-        .frame(minHeight: 228, alignment: .topLeading)
+        .frame(minHeight: TodayDashboardLayoutMetrics.railWidgetMinHeight, alignment: .topLeading)
         .todayDashboardCard()
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("today-workload-card")

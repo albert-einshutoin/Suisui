@@ -576,6 +576,9 @@ public struct DoneAnalyticsSummary: Equatable, Sendable {
     public var completedTodayCount: Int
     public var completedThisWeekCount: Int
     public var streakDays: Int
+    public var focusHours: Double
+    public var onTimeRate: Double
+    public var weeklyTrendBuckets: [DoneAnalyticsWeekBucket]
     public var completionHeatmapBuckets: [DoneAnalyticsDayBucket]
     public var bestWeekdaySummary: DoneAnalyticsBestWeekdaySummary
     public var bestHourSummary: DoneAnalyticsBestHourSummary
@@ -588,6 +591,9 @@ public struct DoneAnalyticsSummary: Equatable, Sendable {
         completedTodayCount: Int,
         completedThisWeekCount: Int,
         streakDays: Int,
+        focusHours: Double = 0,
+        onTimeRate: Double = 0,
+        weeklyTrendBuckets: [DoneAnalyticsWeekBucket] = [],
         completionHeatmapBuckets: [DoneAnalyticsDayBucket] = [],
         bestWeekdaySummary: DoneAnalyticsBestWeekdaySummary = .empty,
         bestHourSummary: DoneAnalyticsBestHourSummary = .empty,
@@ -599,11 +605,24 @@ public struct DoneAnalyticsSummary: Equatable, Sendable {
         self.completedTodayCount = completedTodayCount
         self.completedThisWeekCount = completedThisWeekCount
         self.streakDays = streakDays
+        self.focusHours = focusHours
+        self.onTimeRate = onTimeRate
+        self.weeklyTrendBuckets = weeklyTrendBuckets
         self.completionHeatmapBuckets = completionHeatmapBuckets
         self.bestWeekdaySummary = bestWeekdaySummary
         self.bestHourSummary = bestHourSummary
         self.recentTasks = recentTasks
         self.localRuleInsight = localRuleInsight
+    }
+}
+
+public struct DoneAnalyticsWeekBucket: Equatable, Sendable {
+    public var weekLabel: String
+    public var completedCount: Int
+
+    public init(weekLabel: String, completedCount: Int) {
+        self.weekLabel = weekLabel
+        self.completedCount = completedCount
     }
 }
 

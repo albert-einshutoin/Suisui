@@ -107,6 +107,51 @@ public protocol CalendarClient: Sendable {
     func listEvents() throws -> [CalendarEventRecord]
 }
 
+public struct ExternalScheduleEvent: Equatable, Identifiable, Sendable {
+    public var id: String
+    public var title: String
+    public var startAt: Date
+    public var endAt: Date
+    public var isAllDay: Bool
+    public var blocksAvailability: Bool
+    public var location: String?
+    public var allDayStartDateKey: String?
+    public var allDayEndDateKey: String?
+
+    public init(
+        id: String,
+        title: String,
+        startAt: Date,
+        endAt: Date,
+        isAllDay: Bool,
+        blocksAvailability: Bool = true,
+        location: String? = nil,
+        allDayStartDateKey: String? = nil,
+        allDayEndDateKey: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.startAt = startAt
+        self.endAt = endAt
+        self.isAllDay = isAllDay
+        self.blocksAvailability = blocksAvailability
+        self.location = location
+        self.allDayStartDateKey = allDayStartDateKey
+        self.allDayEndDateKey = allDayEndDateKey
+    }
+}
+
+public protocol ExternalScheduleEventSource: Sendable {
+    func listEvents(in interval: DateInterval) throws -> [ExternalScheduleEvent]
+}
+
+public enum ExternalScheduleEventLoadState: Equatable, Sendable {
+    case unavailable
+    case loading
+    case loaded
+    case failed
+}
+
 public struct ReminderDraft: Equatable, Sendable {
     public var title: String
     public var dueAt: String?
