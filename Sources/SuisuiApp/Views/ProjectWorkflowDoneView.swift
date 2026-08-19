@@ -55,9 +55,7 @@ struct DoneWorkflowView: View {
                     )
                     DoneStatValueTile(
                         title: "On-Time Rate",
-                        value: analytics.onTimeRate > 0
-                            ? "\(Int(analytics.onTimeRate * 100))%"
-                            : "—",
+                        value: analytics.onTimeRate.map { "\(Int($0 * 100))%" } ?? "—",
                         systemImage: "clock.badge.checkmark"
                     )
                     DoneStatTile(title: "Streak", value: "\(analytics.streakDays)\(String(localized: " days"))", systemImage: "flame")

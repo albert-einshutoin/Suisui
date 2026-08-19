@@ -9758,17 +9758,24 @@ public final class ProjectBoardViewModel: ObservableObject {
         Double(tasks.count) * 1.5
     }
 
-    private static func doneOnTimeRate(tasks: [ProjectBoardTask]) -> Double {
-        let tasksWithDue = tasks.filter { $0.dueAt != nil }
-        guard !tasksWithDue.isEmpty else { return 0 }
+    private static func doneOnTimeRate(tasks: [ProjectBoardTask]) -> Double? {
+        let tasksWithDue = tasks.filter { $0.dueAt != nil && $0.completedAt != nil }
+        guard !tasksWithDue.isEmpty else { return nil }
+        let calendar = Calendar.autoupdatingCurrent
         let onTime = tasksWithDue.filter { task in
             guard let dueAt = task.dueAt,
-                  let dueDate = SuisuiTimestampDisplay.parse(dueAt)?.date,
+                  let dueParsed = SuisuiTimestampDisplay.parse(dueAt),
                   let completedAt = task.completedAt,
                   let completedDate = SuisuiTimestampDisplay.parse(completedAt)?.date else {
                 return false
             }
-            return completedDate <= dueDate
+            let dueDeadline: Date
+            if dueParsed.includesTime {
+                dueDeadline = dueParsed.date
+            } else {
+                dueDeadline = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: dueParsed.date)) ?? dueParsed.date
+            }
+            return completedDate < dueDeadline
         }
         return Double(onTime.count) / Double(tasksWithDue.count)
     }
