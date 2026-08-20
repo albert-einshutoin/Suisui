@@ -40,7 +40,11 @@ final class TodayDashboardLayoutMetricsTests: XCTestCase {
         XCTAssertFalse(source.contains("TodayDashboardAlignedRow"))
         XCTAssertTrue(
             source.contains("width: TodayDashboardLayoutMetrics.railMinimumWidth + 18")
+                || source.contains("let railSpan = TodayDashboardLayoutMetrics.railMinimumWidth + 18")
         )
+        XCTAssertTrue(source.contains("frame(minWidth: 0, maxWidth: .infinity"))
+        XCTAssertTrue(source.contains("width: availableWidth"))
+        XCTAssertTrue(source.contains("CGFloat(CockpitLayoutPolicy.standardContentWidth)"))
     }
 
     func testMinimumWindowMovesTheRailBelowTheMainSurface() {

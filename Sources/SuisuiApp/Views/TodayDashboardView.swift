@@ -92,11 +92,17 @@ struct TodayDashboardView<CatchUpContent: View>: View {
             locale: localizedDisplayLocale()
         )
         GeometryReader { proxy in
-            let availableWidth = max(proxy.size.width, 1)
+            let proposedWidth = max(proxy.size.width, 1)
+            // Recommendation cards publish a wide ideal size that can inflate the
+            // GeometryReader past the visible detail column and clip the rail.
+            let availableWidth = min(
+                proposedWidth,
+                CGFloat(CockpitLayoutPolicy.standardContentWidth)
+            )
             let measuredWide = TodayDashboardLayoutMetrics.isWide(availableWidth: availableWidth)
             let isWide = resolvedPrefersContinuousRail(measuredWide: measuredWide)
             let presentsCompactRailCardsHorizontally = !isWide
-                && availableWidth >= TodayDashboardLayoutMetrics.compactRailCardsMinimumWidth
+                && proposedWidth >= TodayDashboardLayoutMetrics.compactRailCardsMinimumWidth
             ScrollViewReader { scrollProxy in
                 let openReview = {
                     // These summaries come from Today planning and Catch Up,
@@ -113,6 +119,10 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                     if isWide {
                         // Keep the rail outside the primary ScrollView so vertical
                         // scrolling cannot let maxWidth: .infinity children clip it.
+                        // Pin the HStack to the GeometryReader proposal: recommendation
+                        // cards otherwise publish a ~1050pt ideal width that expands the
+                        // reader and clips Workload/Focus/Assistant off the visible desk.
+                        let railSpan = TodayDashboardLayoutMetrics.railMinimumWidth + 18
                         HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
                             ScrollView(.vertical) {
                                 VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.sectionSpacing) {
@@ -131,7 +141,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                                 .padding(.vertical, 18)
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
                             }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
                             ScrollView(.vertical) {
                                 rail(
@@ -147,12 +157,14 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                                     alignment: .topLeading
                                 )
                             }
-                            .frame(
-                                width: TodayDashboardLayoutMetrics.railMinimumWidth + 18,
-                                alignment: .topLeading
-                            )
+                            .frame(width: railSpan, alignment: .topLeading)
+                            .layoutPriority(1)
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .frame(
+                            width: availableWidth,
+                            height: proxy.size.height,
+                            alignment: .topLeading
+                        )
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("today-wide-board")
                     } else {
@@ -175,6 +187,8 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                             .frame(maxWidth: .infinity, alignment: .topLeading)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("today-compact-board")
                     }
                 }
                 .accessibilityElement(children: .contain)
@@ -208,16 +222,15 @@ struct TodayDashboardView<CatchUpContent: View>: View {
     }
 
     private func resolvedPrefersContinuousRail(measuredWide: Bool) -> Bool {
-        if let prefersContinuousRail {
-            return prefersContinuousRail
-        }
-        // Evidence captures pin the 1024×676 desk. Do not trust an under-measured
-        // NavigationSplitView detail GeometryReader while the board window width
-        // bridge has not reported yet.
+        // Evidence captures pin 1024×676. Prefer the continuous rail even when a
+        // stale board-window override still reports compact mid-resize widths.
         if VisualEvidenceRuntimeContext() != nil {
             return CockpitLayoutPolicy.presentsSplitRail(
                 contentWidth: CockpitLayoutPolicy.standardContentWidth
             )
+        }
+        if let prefersContinuousRail {
+            return prefersContinuousRail
         }
         return measuredWide
     }
