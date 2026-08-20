@@ -372,7 +372,7 @@ struct VoiceCaptureView: View {
                     .accessibilityIdentifier("voice-silence-hint")
             }
         }
-        .soloCard()
+        .suisuiLiquidGlassCapturePanel()
     }
 
     /// Next-step affordance next to a failed status: Open Settings when the
@@ -384,7 +384,10 @@ struct VoiceCaptureView: View {
         if case .failed = viewModel.phase {
             switch viewModel.failureRecovery {
             case .openSettings:
-                SettingsLink {
+                Button {
+                    openWindow(id: "project-board")
+                    SuisuiInAppSettingsNavigation.requestOpen()
+                } label: {
                     Label("Open Settings", systemImage: "gearshape")
                 }
                 .help("Opens Settings to choose an AI provider and store its API key in Keychain.")
@@ -1581,5 +1584,44 @@ private struct ActionPlanPreview: View {
         fields
             .map { "\(localizedReviewFieldLabel($0)): \(localizedReviewFieldValue($0))" }
             .joined(separator: " · ")
+    }
+}
+
+enum VoiceEvidenceLaunch {
+    static var shouldOpenOnLaunch: Bool {
+        ProcessInfo.processInfo.environment["SUISUI_OPEN_VOICE_COMMAND_ON_LAUNCH"] == "1"
+    }
+}
+
+@MainActor
+enum SuisuiInAppVoiceNavigation {
+    static func requestOpen() {
+        _ = ProjectBoardSceneCoordinator.shared.requestOpen(route: .voiceCommand)
+        NotificationCenter.default.post(name: .suisuiOpenBoardVoiceCommand, object: nil)
+    }
+}
+
+struct VoiceCaptureWorkspaceHost: View {
+    @State private var viewModel: VoiceCaptureViewModel?
+
+    var body: some View {
+        Group {
+            if let viewModel {
+                VoiceCaptureView(viewModel: viewModel)
+            } else {
+                ProgressView("Opening Voice Command")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityIdentifier("voice-capture-loading")
+            }
+        }
+        .task {
+            guard viewModel == nil else {
+                return
+            }
+            // Voice runtime construction touches audio, model providers, audit
+            // logging, and local stores. Defer it until this workspace is
+            // opened so primary Project Board launch is not blocked.
+            viewModel = AppRuntimeFactory.makeVoiceCaptureViewModel()
+        }
     }
 }

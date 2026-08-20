@@ -1444,3 +1444,59 @@ struct SettingsPrivacyProjectionBuilder {
     }
 
 }
+
+enum SettingsEvidenceLaunch {
+    static var shouldOpenOnLaunch: Bool {
+        ProcessInfo.processInfo.environment["SUISUI_OPEN_SETTINGS_ON_LAUNCH"] == "1"
+    }
+
+    static var requestedTab: SettingsTab {
+        SettingsTab(rawValue: ProcessInfo.processInfo.environment["SUISUI_SETTINGS_EVIDENCE_TAB"] ?? "") ?? .overview
+    }
+}
+
+@MainActor
+enum SuisuiInAppSettingsNavigation {
+    static func requestOpen() {
+        _ = ProjectBoardSceneCoordinator.shared.requestOpen(route: .settings)
+        NotificationCenter.default.post(name: .suisuiOpenBoardSettings, object: nil)
+    }
+}
+
+struct SuisuiSettingsWorkspace: View {
+    @ObservedObject var settingsViewModel: AppSettingsViewModel
+    @ObservedObject var shortcutSettingsViewModel: ShortcutSettingsViewModel
+    @Binding var appearancePreference: SuisuiAppearancePreference
+    @Binding var languagePreference: AppLanguagePreference
+    var initialTab: SettingsTab = SettingsEvidenceLaunch.requestedTab
+    var onboardingRerunRequest: () -> Void = {
+        OnboardingRerunCoordinator.shared.requestRerun()
+    }
+
+    var body: some View {
+        SettingsView(
+            settingsViewModel: settingsViewModel,
+            shortcutSettingsViewModel: shortcutSettingsViewModel,
+            launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
+            integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),
+            watcherDiagnosticsSnapshotFactory: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot,
+            externalMCPSettingsViewModelFactory: AppRuntimeFactory.makeExternalMCPSettingsViewModel,
+            syncSettingsViewModelFactory: AppRuntimeFactory.makeSyncSettingsViewModel,
+            isGoogleCalendarRuntimeEnabled: AppRuntimeFactory.isGoogleCalendarRuntimeEnabled(),
+            googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
+            googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
+            googleCalendarOAuthDisconnecter: AppRuntimeFactory.makeGoogleCalendarOAuthDisconnecter(),
+            googleCalendarListProviderFactory: AppRuntimeFactory.makeGoogleCalendarListProvider,
+            textToSpeechPreviewerFactory: AppRuntimeFactory.makeTextToSpeechPreviewer,
+            appearancePreference: $appearancePreference,
+            languagePreference: $languagePreference,
+            initialTab: initialTab,
+            presentation: .board,
+            onboardingRerunRequest: onboardingRerunRequest
+        )
+        .task {
+            await settingsViewModel.refreshProviderReadiness()
+        }
+        .accessibilityIdentifier("board-settings-workspace")
+    }
+}

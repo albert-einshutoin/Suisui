@@ -106,7 +106,7 @@
       "actions": ["AXScrollToVisible", "AXPress"],
       "frame": {"width": 267, "height": 32, "visible": true},
       "pressResults": [0],
-      "outcome": {"marker": "voice-command-quick-command-tab", "window": "Voice Command", "routeUnchanged": "projects"},
+      "outcome": {"marker": "voice-command-quick-command-tab", "selectedDestination": "voice-command"},
       "status": "passed"
     },
     {
@@ -115,9 +115,9 @@
       "role": "AXButton",
       "actions": ["AXScrollToVisible", "AXPress"],
       "frame": {"width": 267, "height": 32, "visible": true},
-      "pressResults": [-25204, 0],
-      "outcome": {"window": "Overview", "routeUnchanged": "projects", "firstAttemptOutcomeObserved": true, "boundedRetrySucceeded": true},
-      "status": "passed_with_retry"
+      "pressResults": [0],
+      "outcome": {"marker": "settings-status-overview", "selectedDestination": "settings"},
+      "status": "passed"
     },
     {
       "id": "sidebar-quick-add-task",
@@ -136,7 +136,7 @@
       "actions": ["AXPress"],
       "frame": {"width": 247, "height": 32, "visible": true},
       "pressResults": [0],
-      "outcome": {"marker": "voice-command-quick-command-tab", "window": "Voice Command", "routeUnchanged": "projects"},
+      "outcome": {"marker": "voice-command-quick-command-tab", "selectedDestination": "voice-command"},
       "status": "passed"
     },
     {

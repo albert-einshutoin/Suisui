@@ -644,8 +644,6 @@ exercise_sidebar_entrypoints() {
   wait_for_project_detail_visible
   press_ax_button "sidebar-action-voice-command"
   wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
-  close_window_containing_identifier "voice-command-quick-command-tab"
-  restore_project_board_window
   printf "OK: sidebar Search and Voice Command opened their destination surfaces\n"
 }
 
@@ -653,9 +651,7 @@ exercise_settings_utility() {
   ensure_sidebar_visible
   press_ax_button "sidebar-action-settings"
   wait_for_process_ax_identifier "settings-status-overview" "present"
-  close_window_containing_identifier "settings-status-overview"
-  restore_project_board_window
-  printf "OK: sidebar Settings opened and closed the verified Settings window\n"
+  printf "OK: sidebar Settings opened the in-board Settings workspace\n"
 }
 
 ensure_sidebar_visible() {
@@ -725,13 +721,12 @@ exercise_runtime_crud_recovery_entrypoints() {
 
   press_ax_button "project-board-settings-link"
   wait_for_process_ax_identifier "settings-status-overview" "present"
-  close_window_containing_identifier "settings-status-overview"
+  press_ax_button "project-board-settings-link"
 
   activate_app
   press_ax_button "project-board-voice-command"
   wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
-  close_window_containing_identifier "voice-command-quick-command-tab"
-  printf "OK: runtime CRUD recovery Settings and Voice Command reached their destination windows\n"
+  printf "OK: runtime CRUD recovery Settings and Voice Command reached their destination surfaces\n"
 }
 
 exercise_terminal_utility() {

@@ -110,10 +110,7 @@ on run argv
       repeat with windowIndex from 1 to count of windows
         set currentWindow to window windowIndex
         try
-          if (name of currentWindow as text) is "Voice Command" then
-            perform action "AXRaise" of currentWindow
-            exit repeat
-          end if
+          perform action "AXRaise" of currentWindow
         end try
       end repeat
     end tell
@@ -126,8 +123,10 @@ APPLESCRIPT
 }
 
 wait_for_voice_window() {
-  ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "Voice Command" \
+  ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "" \
     "$TIMEOUT_SECONDS" "" "$APP_BINARY"
+  ax_wait_for_ax_identifier "$APP_NAME" "voice-command-quick-command-tab" \
+    "$TIMEOUT_SECONDS" "$ROOT_DIR" "$tmp_dir/voice-ready.probe" "" "$app_pid"
 }
 
 set_voice_window_size() {
@@ -148,10 +147,8 @@ on run argv
       repeat with windowIndex from 1 to count of windows
         set currentWindow to window windowIndex
         try
-          if (name of currentWindow as text) is "Voice Command" then
-            perform action "AXRaise" of currentWindow
-            set size of currentWindow to {targetWidth, targetHeight}
-          end if
+          perform action "AXRaise" of currentWindow
+          set size of currentWindow to {targetWidth, targetHeight}
         end try
       end repeat
     end tell
@@ -216,47 +213,41 @@ on run argv
       set windowCount to count of windows
       repeat with windowIndex from 1 to windowCount
         set currentWindow to window windowIndex
-        set windowName to ""
         try
-          set windowName to name of currentWindow as text
+          set frontmost to true
+          perform action "AXRaise" of currentWindow
         end try
-        if windowName is "Voice Command" then
+        set fallbackTextArea to missing value
+        set axItems to entire contents of currentWindow
+        repeat with axItem in axItems
+          set itemRole to ""
           try
-            set frontmost to true
-            perform action "AXRaise" of currentWindow
+            set itemRole to role of axItem as text
           end try
-          set fallbackTextArea to missing value
-          set axItems to entire contents of currentWindow
-          repeat with axItem in axItems
-            set itemRole to ""
+          if itemRole is "AXTextArea" or itemRole is "AXTextField" then
+            if fallbackTextArea is missing value then set fallbackTextArea to axItem
+            set itemIdentifier to ""
+            set itemName to ""
+            set itemHelp to ""
             try
-              set itemRole to role of axItem as text
+              set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
             end try
-            if itemRole is "AXTextArea" or itemRole is "AXTextField" then
-              if fallbackTextArea is missing value then set fallbackTextArea to axItem
-              set itemIdentifier to ""
-              set itemName to ""
-              set itemHelp to ""
-              try
-                set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
-              end try
-              try
-                set itemName to name of axItem as text
-              end try
-              try
-                set itemHelp to value of attribute "AXHelp" of axItem as text
-              end try
-              set signalText to itemIdentifier & " " & itemName & " " & itemHelp
-              if signalText contains fragment then
-                set value of axItem to textValue
-                return "set " & fragment
-              end if
+            try
+              set itemName to name of axItem as text
+            end try
+            try
+              set itemHelp to value of attribute "AXHelp" of axItem as text
+            end try
+            set signalText to itemIdentifier & " " & itemName & " " & itemHelp
+            if signalText contains fragment then
+              set value of axItem to textValue
+              return "set " & fragment
             end if
-          end repeat
-          if fallbackTextArea is not missing value then
-            set value of fallbackTextArea to textValue
-            return "set " & fragment
           end if
+        end repeat
+        if fallbackTextArea is not missing value then
+          set value of fallbackTextArea to textValue
+          return "set " & fragment
         end if
       end repeat
     end tell
@@ -298,16 +289,11 @@ on run argv
     tell targetProcess
       repeat with windowIndex from 1 to count of windows
         set currentWindow to window windowIndex
-        set windowName to ""
         try
-          set windowName to name of currentWindow as text
+          set frontmost to true
+          perform action "AXRaise" of currentWindow
         end try
-        if windowName is "Voice Command" then
-          try
-            set frontmost to true
-            perform action "AXRaise" of currentWindow
-          end try
-          set axItems to entire contents of currentWindow
+        set axItems to entire contents of currentWindow
           repeat with axItem in axItems
             set itemRole to ""
             try
@@ -345,7 +331,6 @@ on run argv
               end if
             end if
           end repeat
-        end if
       end repeat
     end tell
   end tell
@@ -387,32 +372,26 @@ on run argv
     tell targetProcess
       repeat with windowIndex from 1 to count of windows
         set currentWindow to window windowIndex
-        set windowName to ""
-        try
-          set windowName to name of currentWindow as text
-        end try
-        if windowName is "Voice Command" then
-          set axItems to entire contents of currentWindow
-          repeat with axItem in axItems
-            set itemRole to ""
+        set axItems to entire contents of currentWindow
+        repeat with axItem in axItems
+          set itemRole to ""
+          try
+            set itemRole to role of axItem as text
+          end try
+          if itemRole is "AXButton" then
+            set itemIdentifier to ""
             try
-              set itemRole to role of axItem as text
+              set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
             end try
-            if itemRole is "AXButton" then
-              set itemIdentifier to ""
-              try
-                set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
-              end try
-              if itemIdentifier contains fragment then
-                set isEnabled to enabled of axItem as boolean
-                if (expectedEnabled is "true" and isEnabled) or (expectedEnabled is "false" and not isEnabled) then
-                  return "matched"
-                end if
-                error "control enabled state did not match"
+            if itemIdentifier contains fragment then
+              set isEnabled to enabled of axItem as boolean
+              if (expectedEnabled is "true" and isEnabled) or (expectedEnabled is "false" and not isEnabled) then
+                return "matched"
               end if
+              error "control enabled state did not match"
             end if
-          end repeat
-        end if
+          end if
+        end repeat
       end repeat
     end tell
   end tell
@@ -451,33 +430,27 @@ on run argv
     tell targetProcess
       repeat with windowIndex from 1 to count of windows
         set currentWindow to window windowIndex
-        set windowName to ""
-        try
-          set windowName to name of currentWindow as text
-        end try
-        if windowName is "Voice Command" then
-          set axItems to entire contents of currentWindow
-          repeat with axItem in axItems
-            set itemName to ""
-            set itemValue to ""
-            set itemDescription to ""
-            set itemHelp to ""
-            try
-              set itemName to name of axItem as text
-            end try
-            try
-              set itemValue to value of axItem as text
-            end try
-            try
-              set itemDescription to description of axItem as text
-            end try
-            try
-              set itemHelp to value of attribute "AXHelp" of axItem as text
-            end try
-            set signalText to itemName & " " & itemValue & " " & itemDescription & " " & itemHelp
-            if signalText contains fragment then return "found"
-          end repeat
-        end if
+        set axItems to entire contents of currentWindow
+        repeat with axItem in axItems
+          set itemName to ""
+          set itemValue to ""
+          set itemDescription to ""
+          set itemHelp to ""
+          try
+            set itemName to name of axItem as text
+          end try
+          try
+            set itemValue to value of axItem as text
+          end try
+          try
+            set itemDescription to description of axItem as text
+          end try
+          try
+            set itemHelp to value of attribute "AXHelp" of axItem as text
+          end try
+          set signalText to itemName & " " & itemValue & " " & itemDescription & " " & itemHelp
+          if signalText contains fragment then return "found"
+        end repeat
       end repeat
     end tell
   end tell
@@ -517,10 +490,8 @@ on run argv
     tell targetProcess
       repeat with currentWindow in windows
         try
-          if (name of currentWindow as text) is "Voice Command" then
-            set currentSize to size of currentWindow
-            if item 1 of currentSize is expectedWidth and item 2 of currentSize is greater than or equal to requestedHeight then return "matched"
-          end if
+          set currentSize to size of currentWindow
+          if item 1 of currentSize is expectedWidth and item 2 of currentSize is greater than or equal to requestedHeight then return "matched"
         end try
       end repeat
     end tell

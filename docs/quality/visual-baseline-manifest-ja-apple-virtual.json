@@ -267,8 +267,8 @@
       "title": "Voice Command",
       "themes": ["light", "dark", "system"],
       "viewport": {
-        "width": 760,
-        "height": 640
+        "width": 1024,
+        "height": 676
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "voice-command-root",

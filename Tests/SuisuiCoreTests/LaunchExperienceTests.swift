@@ -221,16 +221,16 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(adapterSource.contains("activateExistingWindowOrRequestOpen"))
         XCTAssertTrue(appSource.contains(".background(GlobalVoiceShortcutBridge())"))
         XCTAssertTrue(appSource.contains("installOpenRequest"))
-        XCTAssertTrue(appSource.contains("openWindow(id: \"voice-capture\")"))
+        XCTAssertTrue(appSource.contains("SuisuiInAppVoiceNavigation.requestOpen()"))
+        XCTAssertTrue(appSource.contains("openWindow(id: \"project-board\")"))
         XCTAssertTrue(appSource.contains("private struct MenuBarExtraLabel: View"))
         XCTAssertTrue(adapterSource.contains("performVoiceCommandShortcutMenuItem"))
         XCTAssertTrue(adapterSource.contains("item.keyEquivalent == \"V\""))
         XCTAssertTrue(adapterSource.contains("modifiers.contains(.shift)"))
         XCTAssertFalse(adapterSource.contains("item.title == \"Voice Command\""))
-        XCTAssertTrue(appSource.contains("openWindow(id: \"voice-capture\")"))
-        XCTAssertTrue(appSource.contains("markVoiceWindowVisible"))
-        XCTAssertTrue(appSource.contains("markVoiceWindowClosed"))
-        XCTAssertTrue(appSource.contains("VoiceWindowIdentifierInstaller()"))
+        XCTAssertFalse(appSource.contains("openWindow(id: \"voice-capture\")"))
+        XCTAssertTrue(adapterSource.contains("markVoiceWindowVisible"))
+        XCTAssertTrue(adapterSource.contains("markVoiceWindowClosed"))
         XCTAssertTrue(adapterSource.contains("NSUserInterfaceItemIdentifier(VoiceWindowIdentity.identifierRawValue)"))
         XCTAssertTrue(adapterSource.contains("VoiceWindowIdentity.matches("))
         XCTAssertFalse(adapterSource.contains("window.title == \"Voice Command\""))
@@ -296,7 +296,7 @@ final class LaunchExperienceTests: XCTestCase {
         let source = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
         let rootStart = try XCTUnwrap(source.range(of: "private struct ProjectBoardWindowRootView: View"))
         let rootEnd = try XCTUnwrap(
-            source.range(of: "private struct SettingsWindowRootView: View", range: rootStart.lowerBound..<source.endIndex)
+            source.range(of: "private enum SuisuiLaunchRecoveryEnvironment", range: rootStart.lowerBound..<source.endIndex)
         )
         let root = source[rootStart.lowerBound..<rootEnd.lowerBound]
 
@@ -344,7 +344,8 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains("rootView: ProjectBoardFallbackRootView("))
         XCTAssertTrue(source.contains("ProjectBoardWindowRootView(\n                settingsViewModel: settingsViewModel,"))
         XCTAssertTrue(source.contains("makeAppSettingsViewModel(refreshProviderSecretStatusesOnInit: false)"))
-        XCTAssertTrue(source.contains("await settingsViewModel.refreshProviderReadiness()"))
+        let settingsWorkspaceSource = try readPackageFile("Sources/SuisuiApp/Views/SettingsView.swift")
+        XCTAssertTrue(settingsWorkspaceSource.contains("await settingsViewModel.refreshProviderReadiness()"))
         XCTAssertTrue(source.contains("@State private var viewModel: ProjectBoardViewModel?"))
         XCTAssertTrue(source.contains("@State private var isProjectBoardReady = false"))
         XCTAssertTrue(source.contains("ProjectBoardFallbackLoadingView()"))
@@ -376,7 +377,7 @@ final class LaunchExperienceTests: XCTestCase {
         // before reopening a window if necessary.
         let observerStart = try XCTUnwrap(appSource.range(of: "forName: .suisuiDigestNotificationOpened"))
         let observerEnd = try XCTUnwrap(appSource.range(
-            of: "openSettingsWindowForEvidenceIfRequested()",
+            of: "openInAppSettingsForEvidenceIfRequested()",
             range: observerStart.lowerBound..<appSource.endIndex
         ))
         let observerBlock = appSource[observerStart.lowerBound..<observerEnd.lowerBound]
@@ -585,10 +586,12 @@ final class LaunchExperienceTests: XCTestCase {
         )
         let recoverySource = String(source[start.lowerBound..<end.lowerBound])
 
-        XCTAssertTrue(recoverySource.contains("@Environment(\\.openSettings)"))
-        XCTAssertTrue(recoverySource.contains("@Environment(\\.openWindow)"))
-        XCTAssertTrue(recoverySource.contains("openSettings()"))
-        XCTAssertTrue(recoverySource.contains("openWindow(id: \"voice-capture\")"))
+        XCTAssertFalse(recoverySource.contains("@Environment(\\.openSettings)"))
+        XCTAssertFalse(recoverySource.contains("@Environment(\\.openWindow)"))
+        XCTAssertTrue(recoverySource.contains("isShowingEmbeddedSettings.toggle()"))
+        XCTAssertTrue(recoverySource.contains("SuisuiSettingsWorkspace("))
+        XCTAssertTrue(recoverySource.contains("isShowingEmbeddedVoice.toggle()"))
+        XCTAssertTrue(recoverySource.contains("VoiceCaptureWorkspaceHost()"))
     }
 
     func testWorkflowRootAccessibilityKeepsNestedLaunchRecoveryIdentifiers() throws {

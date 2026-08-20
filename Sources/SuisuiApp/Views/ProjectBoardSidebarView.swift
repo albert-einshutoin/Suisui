@@ -39,7 +39,6 @@ struct ProjectBoardSidebarView: View {
     @Binding private var route: BoardRoute
     private let counts: ProjectBoardSidebarCounts
     private let onOpenSearch: () -> Void
-    private let onOpenVoiceCommand: () -> Void
     private let onAddTask: () -> Void
     private let onAddByVoice: () -> Void
     private let onBlockTime: () -> Void
@@ -48,7 +47,6 @@ struct ProjectBoardSidebarView: View {
         route: Binding<BoardRoute>,
         counts: ProjectBoardSidebarCounts,
         onOpenSearch: @escaping () -> Void,
-        onOpenVoiceCommand: @escaping () -> Void,
         onAddTask: @escaping () -> Void,
         onAddByVoice: @escaping () -> Void,
         onBlockTime: @escaping () -> Void
@@ -56,7 +54,6 @@ struct ProjectBoardSidebarView: View {
         _route = route
         self.counts = counts
         self.onOpenSearch = onOpenSearch
-        self.onOpenVoiceCommand = onOpenVoiceCommand
         self.onAddTask = onAddTask
         self.onAddByVoice = onAddByVoice
         self.onBlockTime = onBlockTime
@@ -88,11 +85,7 @@ struct ProjectBoardSidebarView: View {
                 }
                 .padding(.horizontal, 10)
                 .frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36, alignment: .leading)
-                .background(.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.secondary.opacity(0.22), lineWidth: 1)
-                }
+                .suisuiLiquidGlassControlSurface(cornerRadius: 12)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -119,11 +112,7 @@ struct ProjectBoardSidebarView: View {
                 quickAction(.blockTime, handler: onBlockTime)
             }
             .padding(SuisuiSpacing.md)
-            .background(.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-            }
+            .suisuiLiquidGlassControlSurface(cornerRadius: 12)
         }
         .padding(SuisuiSpacing.lg)
         .accessibilityElement(children: .contain)
@@ -136,12 +125,7 @@ struct ProjectBoardSidebarView: View {
     private func sidebarRow(
         _ item: ProjectBoardSidebarItemPresentation
     ) -> some View {
-        switch item.behavior {
-        case .route:
-            destinationSidebarRow(item)
-        case .openVoiceCommand:
-            utilitySidebarRow(item)
-        }
+        destinationSidebarRow(item)
     }
 
     private func destinationSidebarRow(
@@ -155,20 +139,6 @@ struct ProjectBoardSidebarView: View {
             hintKey: "Opens this section."
         )
             .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    @ViewBuilder
-    private func utilitySidebarRow(
-        _ item: ProjectBoardSidebarItemPresentation
-    ) -> some View {
-        // An optional mapping prevents invalid presentation data from gaining a misleading hint or crashing release builds.
-        if let hintKey = utilityAccessibilityHintKey(for: item.behavior) {
-            sidebarRowButton(
-                item,
-                isSelected: false,
-                hintKey: hintKey
-            )
-        }
     }
 
     private func sidebarRowButton(
@@ -236,11 +206,10 @@ struct ProjectBoardSidebarView: View {
             }
                 .padding(.horizontal, 8)
                 .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
-                .background(.background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-                }
+                .suisuiLiquidGlassControlSurface(
+                    cornerRadius: 10,
+                    interactive: true
+                )
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -254,8 +223,6 @@ struct ProjectBoardSidebarView: View {
         switch behavior {
         case .route(let destination):
             route = destination
-        case .openVoiceCommand:
-            onOpenVoiceCommand()
         }
     }
 
@@ -274,17 +241,6 @@ struct ProjectBoardSidebarView: View {
             }
         }
         return localizedCount(count, one: "%d item", other: "%d items")
-    }
-
-    private func utilityAccessibilityHintKey(
-        for behavior: ProjectBoardSidebarItemBehavior
-    ) -> String? {
-        switch behavior {
-        case .route:
-            nil
-        case .openVoiceCommand:
-            "Opens Voice Command."
-        }
     }
 
     private func accessibilityHintKey(

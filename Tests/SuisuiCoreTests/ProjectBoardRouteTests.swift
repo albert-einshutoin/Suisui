@@ -117,7 +117,8 @@ final class ProjectBoardRouteTests: XCTestCase {
             (.review(.completed), "review:completed"),
             (.review(.automationActivity), "review:automation"),
             (.review(.assistantQueue), "review:assistant-queue"),
-            (.settings, "settings")
+            (.settings, "settings"),
+            (.voiceCommand, "voice-command")
         ]
 
         for (route, expectedRawValue) in routeRawValues {

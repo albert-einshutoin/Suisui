@@ -200,21 +200,10 @@ final class VoiceWindowActivationCoordinator {
 
     func activateExistingWindowOrRequestOpen() {
         NSApplication.shared.activate(ignoringOtherApps: true)
-        let voiceWindow = visibleVoiceWindow
-        openRequestGate.handle(
-            isWindowVisible: voiceWindow != nil,
-            activateExisting: {
-                voiceWindow?.makeKeyAndOrderFront(nil)
-                voiceWindow?.orderFrontRegardless()
-            },
-            requestOpen: { [openVoiceWindow] in
-                if let openVoiceWindow {
-                    openVoiceWindow()
-                    return true
-                }
-                return self.performVoiceCommandShortcutMenuItem()
-            }
-        )
+        SuisuiInAppVoiceNavigation.requestOpen()
+        if let openVoiceWindow {
+            openVoiceWindow()
+        }
     }
 
     func markVoiceWindowVisible() {

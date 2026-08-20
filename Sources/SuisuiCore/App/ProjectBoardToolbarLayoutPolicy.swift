@@ -9,6 +9,7 @@ public struct ProjectBoardToolbarContext: Equatable, Sendable {
         case review
         case smartList
         case settings
+        case voiceCommand
     }
 
     public let routeKind: RouteKind

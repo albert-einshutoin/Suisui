@@ -148,7 +148,8 @@ struct MenuBarPanel: View {
             }
 
             Button {
-                openWindow(id: "voice-capture")
+                openWindow(id: "project-board")
+                SuisuiInAppVoiceNavigation.requestOpen()
             } label: {
                 Label("Voice Command", systemImage: "mic")
                     .frame(maxWidth: .infinity)

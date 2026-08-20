@@ -75,7 +75,7 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertTrue(
             searchButton.contains(
-                ".background(.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))"
+                ".suisuiLiquidGlassControlSurface(cornerRadius: 12)"
             )
         )
         XCTAssertTrue(searchButton.contains(".stroke(Color.secondary.opacity(0.22), lineWidth: 1)"))
@@ -268,11 +268,6 @@ final class AppExperienceSourceTests: XCTestCase {
         let destinationRow = try sourceBlock(
             in: sidebar,
             from: "private func destinationSidebarRow(",
-            to: "private func utilitySidebarRow("
-        )
-        let utilityRow = try sourceBlock(
-            in: sidebar,
-            from: "private func utilitySidebarRow(",
             to: "private func sidebarRowButton("
         )
         let sidebarRow = try sourceBlock(
@@ -285,15 +280,10 @@ final class AppExperienceSourceTests: XCTestCase {
             from: "private func quickAction(",
             to: "private func perform"
         )
-        let hintHelpers = try sourceBlock(
-            in: sidebar,
-            from: "private func utilityAccessibilityHintKey(",
-            to: "private func accessibilityIdentifier("
-        )
         let countValue = try sourceBlock(
             in: sidebar,
             from: "private func countAccessibilityValue(",
-            to: "private func utilityAccessibilityHintKey("
+            to: "private func accessibilityHintKey("
         )
         let brandText = try sourceBlock(
             in: brand,
@@ -347,15 +337,8 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertEqual(sidebar.components(separatedBy: "\"Opens this section.\"").count - 1, 1)
         XCTAssertFalse(destinationRow.contains("Navigate work or open a quick action."))
-        XCTAssertFalse(utilityRow.contains(".accessibilityAddTraits"))
-        XCTAssertTrue(
-            utilityRow.contains(
-                "if let hintKey = utilityAccessibilityHintKey(for: item.behavior)"
-            )
-        )
-        XCTAssertTrue(utilityRow.contains("hintKey: hintKey"))
-        XCTAssertTrue(hintHelpers.contains(") -> String?"))
-        XCTAssertTrue(hintHelpers.contains("case .route:\n            nil"))
+        XCTAssertTrue(sidebar.contains("case .route(let destination):"))
+        XCTAssertTrue(sidebar.contains("route = destination"))
         XCTAssertFalse(sidebar.contains("preconditionFailure"))
         XCTAssertFalse(sidebarRow.contains(".accessibilityAddTraits"))
         XCTAssertEqual(sidebar.components(separatedBy: ".accessibilityAddTraits").count - 1, 1)
@@ -388,7 +371,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(sidebar.contains(".stroke(Color.secondary.opacity(0.18), lineWidth: 1)"))
 
         XCTAssertTrue(
-            hintHelpers.contains(
+            sidebar.contains(
                 "case .blockTime:\n            \"Creates a local schedule draft without writing Calendar.\""
             )
         )
@@ -462,15 +445,15 @@ final class AppExperienceSourceTests: XCTestCase {
         let store = try XCTUnwrap(
             helper.range(of: "SuisuiVoiceConversationScopeBridge.store(")
         )
-        let openWindow = try XCTUnwrap(
-            helper.range(of: "VoiceWindowActivationCoordinator.shared.activateExistingWindowOrRequestOpen()")
+        let navigate = try XCTUnwrap(
+            helper.range(of: "navigateWithinScene(to: .voiceCommand)")
         )
-        XCTAssertLessThan(store.lowerBound, openWindow.lowerBound)
+        XCTAssertLessThan(store.lowerBound, navigate.lowerBound)
         XCTAssertTrue(
             helper.contains("name: .suisuiVoiceConversationScopeRequested")
         )
         XCTAssertTrue(helper.contains("NotificationCenter.default.post("))
-        XCTAssertTrue(
+        XCTAssertFalse(
             sidebarCall.contains("onOpenVoiceCommand: openVoiceCommandFromBoardContext")
         )
         XCTAssertTrue(
@@ -480,7 +463,7 @@ final class AppExperienceSourceTests: XCTestCase {
             boardSource.components(
                 separatedBy: "onOpenVoiceCommand: openVoiceCommandFromBoardContext"
             ).count - 1,
-            1
+            0
         )
         XCTAssertEqual(
             boardSource.components(
@@ -877,13 +860,12 @@ final class AppExperienceSourceTests: XCTestCase {
         let source = try readAppShellSource()
 
         XCTAssertTrue(source.contains("WindowGroup(\"Suisui\", id: \"project-board\")"))
-        XCTAssertTrue(source.contains("VoiceCaptureWindowRootView()"))
+        XCTAssertTrue(source.contains("VoiceCaptureWorkspaceHost()"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"voice-capture-loading\")"))
-        XCTAssertTrue(source.contains("SettingsWindowRootView("))
-        XCTAssertFalse(source.contains("Window(\"Voice Command\", id: \"voice-capture\") {\n            VoiceCaptureView(viewModel: AppRuntimeFactory.makeVoiceCaptureViewModel())"))
-        let boardWindow = try XCTUnwrap(source.range(of: "WindowGroup(\"Suisui\", id: \"project-board\")"))
-        let voiceWindow = try XCTUnwrap(source.range(of: "Window(\"Voice Command\", id: \"voice-capture\")"))
-        XCTAssertLessThan(boardWindow.lowerBound, voiceWindow.lowerBound)
+        XCTAssertTrue(source.contains("SuisuiSettingsWorkspace("))
+        XCTAssertFalse(source.contains("SettingsWindowRootView("))
+        XCTAssertFalse(source.contains("VoiceCaptureWindowRootView("))
+        XCTAssertFalse(source.contains("Window(\"Voice Command\", id: \"voice-capture\")"))
     }
 
     func testRecordFlowDoesNotInjectCannedPhaseOneTranscript() throws {
@@ -1554,7 +1536,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("Label(\"Appearance\", systemImage: \"circle.lefthalf.filled\")"))
         XCTAssertTrue(appSource.contains("appearancePreference: $appearancePreference"))
         XCTAssertTrue(appSource.contains("@Binding private var appearancePreference: SuisuiAppearancePreference"))
-        XCTAssertEqual(appSource.components(separatedBy: "@AppStorage(SuisuiAppearancePreference.storageKey)").count - 1, 1)
+        XCTAssertEqual(appSource.components(separatedBy: "@AppStorage(SuisuiAppearancePreference.storageKey)").count - 1, 2)
         XCTAssertFalse(appSource.contains(".accessibilityIdentifier(\"settings-theme-picker\")"))
         XCTAssertFalse(appSource.contains("Picker(\"Theme\", selection: $appearancePreference)"))
         XCTAssertFalse(boardSource.contains("AppearancePicker"))
@@ -1564,9 +1546,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(boardSource.contains("Section(\"Appearance\")"))
         XCTAssertFalse(boardSource.contains("Picker(\"Theme\""))
         XCTAssertFalse(boardSource.contains("Picker(\"Appearance\""))
-        XCTAssertTrue(boardSource.contains("presentation: .board"))
+        XCTAssertTrue(boardSource.contains("SuisuiSettingsWorkspace("))
         XCTAssertTrue(boardSource.contains("appearancePreference: $appearancePreference"))
         XCTAssertTrue(boardSource.contains("@AppStorage(SuisuiAppearancePreference.storageKey)"))
+        let settingsWorkspaceSource = try readPackageFile("Sources/SuisuiApp/Views/SettingsView.swift")
+        XCTAssertTrue(settingsWorkspaceSource.contains("presentation: .board"))
     }
 
     func testLanguageSelectionSupportsJapaneseAndEnglishFromSettings() throws {
@@ -1604,7 +1588,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("private var effectiveLanguagePreference: AppLanguagePreference"))
         XCTAssertTrue(appSource.contains("AppLanguagePreference.environmentOverride ?? languagePreference"))
         XCTAssertTrue(appSource.contains(".environment(\\.locale, effectiveLanguagePreference.locale)"))
-        XCTAssertGreaterThanOrEqual(appSource.components(separatedBy: ".environment(\\.locale, effectiveLanguagePreference.locale)").count - 1, 4)
+        XCTAssertGreaterThanOrEqual(appSource.components(separatedBy: ".environment(\\.locale, effectiveLanguagePreference.locale)").count - 1, 2)
 
         XCTAssertTrue(appSource.contains("languagePreference: $languagePreference"))
         XCTAssertTrue(appSource.contains("@Binding private var languagePreference: AppLanguagePreference"))
@@ -1798,6 +1782,7 @@ final class AppExperienceSourceTests: XCTestCase {
             "SuisuiSurface.",
             "SuisuiTone.",
             "SuisuiBrand.",
+            "suisuiLiquidGlassCapturePanel(",
             ".background(tint.opacity(",
             ".background(background,",
             ".background(dayBackground,",
@@ -2161,7 +2146,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("taskAutomationSettings: @escaping () -> TaskAutoExecutionSettings"))
         XCTAssertTrue(boardSource.contains("appSettings: @escaping () -> AppSettings"))
         XCTAssertTrue(boardSource.contains("viewModel.prepareTaskAutomationReview(settings: taskAutomationSettings())"))
-        XCTAssertTrue(boardSource.contains("does not\n                    // consume LLM budget"))
+        XCTAssertTrue(boardSource.contains("// consume LLM budget; reveal the selected task inspector"))
         XCTAssertTrue(boardSource.contains("decision.status == .readyForReview"))
         XCTAssertTrue(boardSource.contains("openTaskInspector(taskID)"))
         XCTAssertEqual(
@@ -2909,7 +2894,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appearanceSource.contains("static var environmentOverride: SuisuiAppearancePreference?"))
         XCTAssertTrue(appearanceSource.contains("var colorScheme: ColorScheme?"))
         XCTAssertTrue(appSource.contains("@AppStorage(SuisuiAppearancePreference.storageKey)"))
-        XCTAssertEqual(appSource.components(separatedBy: "@AppStorage(SuisuiAppearancePreference.storageKey)").count - 1, 1)
+        XCTAssertEqual(appSource.components(separatedBy: "@AppStorage(SuisuiAppearancePreference.storageKey)").count - 1, 2)
         XCTAssertTrue(appSource.contains("private var effectiveAppearancePreference: SuisuiAppearancePreference"))
         XCTAssertTrue(appSource.contains("SuisuiAppearancePreference.environmentOverride ?? appearancePreference"))
         XCTAssertTrue(appSource.contains(".preferredColorScheme(effectiveAppearancePreference.colorScheme)"))
@@ -3661,7 +3646,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("$0.transcriptionStatus == .succeeded"))
         XCTAssertTrue(appSource.contains("let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)"))
         XCTAssertTrue(appSource.contains("inboxCaptureStore: inboxCaptureStore"))
-        XCTAssertTrue(appSource.contains("Window(\"Voice Command\", id: \"voice-capture\")"))
+        XCTAssertTrue(appSource.contains("VoiceCaptureWorkspaceHost("))
     }
 
     func testInboxWorkflowMatchesReferenceListAndDetailComposition() throws {
@@ -5354,35 +5339,33 @@ final class AppExperienceSourceTests: XCTestCase {
         let scrollView = try XCTUnwrap(voiceSource.range(of: "ScrollView", range: body.lowerBound..<voiceSource.endIndex))
         let captureZone = try XCTUnwrap(voiceSource.range(of: "captureZone", range: scrollView.upperBound..<voiceSource.endIndex))
         XCTAssertLessThan(scrollView.lowerBound, captureZone.lowerBound)
-        XCTAssertTrue(appSource.contains(".defaultSize(width: 760, height: 640)"))
-
-        let evidenceFunction = try XCTUnwrap(appSource.range(of: "private func openVoiceCommandWindowForEvidenceIfRequested()"))
-        let evidenceSource = String(appSource[evidenceFunction.lowerBound...])
-        let sizingOptions = try XCTUnwrap(evidenceSource.range(of: "hostingController.sizingOptions = []"))
-        let contentController = try XCTUnwrap(evidenceSource.range(of: "window.contentViewController = hostingController"))
-        XCTAssertLessThan(sizingOptions.lowerBound, contentController.lowerBound)
+        XCTAssertTrue(appSource.contains("openInAppVoiceCommandForEvidenceIfRequested()"))
+        XCTAssertTrue(appSource.contains("SuisuiInAppVoiceNavigation.requestOpen()"))
+        XCTAssertFalse(appSource.contains("voiceCommandEvidenceWindow"))
     }
 
-    func testSettingsEvidenceWindowOwnsItsAuditedViewport() throws {
+    func testSettingsEvidenceOpensTheInBoardWorkspace() throws {
         let appSource = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
+        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let settingsSource = try readPackageFile("Sources/SuisuiApp/Views/SettingsView.swift")
         let functionStart = try XCTUnwrap(
-            appSource.range(of: "private func openSettingsWindowForEvidenceIfRequested()")
+            appSource.range(of: "private func openInAppSettingsForEvidenceIfRequested()")
         )
         let functionEnd = try XCTUnwrap(
             appSource.range(
-                of: "private func openVoiceCommandWindowForEvidenceIfRequested()",
+                of: "private func openInAppVoiceCommandForEvidenceIfRequested()",
                 range: functionStart.upperBound..<appSource.endIndex
             )
         )
         let evidenceSource = String(appSource[functionStart.lowerBound..<functionEnd.lowerBound])
-        let sizingOptions = try XCTUnwrap(
-            evidenceSource.range(of: "hostingController.sizingOptions = []")
-        )
-        let contentController = try XCTUnwrap(
-            evidenceSource.range(of: "window.contentViewController = hostingController")
-        )
 
-        XCTAssertLessThan(sizingOptions.lowerBound, contentController.lowerBound)
+        XCTAssertTrue(evidenceSource.contains("SuisuiInAppSettingsNavigation.requestOpen()"))
+        XCTAssertTrue(evidenceSource.contains("ensureProjectBoardWindowIsVisible()"))
+        XCTAssertFalse(evidenceSource.contains("NSWindow("))
+        XCTAssertFalse(appSource.contains("settingsEvidenceWindow"))
+        XCTAssertTrue(boardSource.contains("SettingsEvidenceLaunch.shouldOpenOnLaunch"))
+        XCTAssertTrue(settingsSource.contains("SettingsEvidenceLaunch.requestedTab"))
+        XCTAssertTrue(settingsSource.contains("presentation: .board"))
     }
 
     func testReviewRuntimeDoesNotFallBackToEmptyToolRegistry() throws {
@@ -6369,7 +6352,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let appSource = try readAppShellSource()
 
         XCTAssertTrue(appSource.contains("SUISUI_OPEN_VOICE_COMMAND_ON_LAUNCH"))
-        XCTAssertTrue(appSource.contains("openVoiceCommandWindowForEvidenceIfRequested()"))
+        XCTAssertTrue(appSource.contains("openInAppVoiceCommandForEvidenceIfRequested()"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-root\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-input\")"))
         XCTAssertTrue(appSource.contains("VoiceCommandInputPrompt()"))
@@ -6421,7 +6404,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceViewSource.contains(".accessibilityIdentifier(\"voice-answer-retry\")"))
         XCTAssertTrue(voiceViewSource.contains("case .openSettings:"))
         XCTAssertTrue(voiceViewSource.contains("case .retryPlanGeneration:"))
-        XCTAssertTrue(voiceViewSource.contains("SettingsLink"))
+        XCTAssertTrue(voiceViewSource.contains("SuisuiInAppSettingsNavigation.requestOpen()"))
+        XCTAssertFalse(voiceViewSource.contains("SettingsLink"))
         XCTAssertTrue(voiceViewSource.contains("await viewModel.generatePlan()"))
 
         // Classification is on the typed provider error, never on message text.
@@ -7176,8 +7160,8 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardGoogleCalendarSyncRequiresDialogApprovalToken() throws {
         let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
-        let dialogStart = try XCTUnwrap(boardSource.range(of: ".confirmationDialog(\n            \"Sync due tasks to Google Calendar?\""))
-        let dialogEnd = try XCTUnwrap(boardSource.range(of: "private var isInspectorEffectivelyPresented", range: dialogStart.lowerBound..<boardSource.endIndex))
+        let dialogStart = try XCTUnwrap(boardSource.range(of: ".confirmationDialog(\n                \"Sync due tasks to Google Calendar?\""))
+        let dialogEnd = try XCTUnwrap(boardSource.range(of: "private var projectBoardLifecycleChrome", range: dialogStart.lowerBound..<boardSource.endIndex))
         let dialogSource = String(boardSource[dialogStart.lowerBound..<dialogEnd.lowerBound])
 
         XCTAssertTrue(dialogSource.contains("isPresented: $isGoogleCalendarSyncApprovalPresented"))
@@ -7427,7 +7411,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("applySelectedTaskOverrideIfNeeded()"))
         let destinationChangeStart = try XCTUnwrap(boardSource.range(of: ".onChange(of: selectedDestination)"))
         let destinationChangeEnd = try XCTUnwrap(boardSource.range(
-            of: ".fileExporter",
+            of: "private var projectBoardToolbarChrome",
             range: destinationChangeStart.upperBound..<boardSource.endIndex
         ))
         let destinationChangeSource = String(boardSource[destinationChangeStart.lowerBound..<destinationChangeEnd.lowerBound])
@@ -7580,10 +7564,10 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertTrue(helper.contains("retrying named evidence window after readiness failure"))
         XCTAssertTrue(script.contains(
-            "prepare_named_evidence_window \"Voice Command\" \"Voice Command\" \"$VOICE_COMMAND_TARGET_MARKERS\""
+            "prepare_named_evidence_window \"\" \"Voice Command\" \"$VOICE_COMMAND_TARGET_MARKERS\""
         ))
         XCTAssertTrue(script.contains(
-            "prepare_named_evidence_window \"Appearance\" \"Settings appearance\" \"settings-theme-picker=>\""
+            "prepare_named_evidence_window \"\" \"Settings appearance\" \"settings-theme-picker=>\""
         ))
     }
 
@@ -7638,8 +7622,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("SETTINGS_TAB_OVERRIDE=\"MCP\""))
         XCTAssertTrue(appSource.contains("SUISUI_OPEN_SETTINGS_ON_LAUNCH"))
         XCTAssertTrue(appSource.contains("SUISUI_SETTINGS_EVIDENCE_TAB"))
-        XCTAssertTrue(appSource.contains("settingsEvidenceWindow"))
-        XCTAssertTrue(appSource.contains("openSettingsWindowForEvidenceIfRequested"))
+        XCTAssertFalse(appSource.contains("settingsEvidenceWindow"))
+        XCTAssertTrue(appSource.contains("openInAppSettingsForEvidenceIfRequested"))
         XCTAssertTrue(appSource.contains("SettingsView("))
         XCTAssertTrue(script.contains("seed_capture_database"))
         XCTAssertTrue(seederSource.contains("明日のプレゼン資料を作成する"))
@@ -8193,12 +8177,12 @@ final class AppExperienceSourceTests: XCTestCase {
             "SettingsView must call the injected rerun closure"
         )
         XCTAssertTrue(
-            appSource.contains("onboardingRerunCoordinator.requestRerun()"),
-            "SettingsWindowRootView must wire the rerun request to the coordinator"
+            settingsSource.contains("OnboardingRerunCoordinator.shared.requestRerun()"),
+            "The in-board Settings workspace must wire the rerun request to the coordinator"
         )
-        XCTAssertTrue(
-            appSource.contains("OnboardingRerunCoordinator.shared.requestRerun()"),
-            "Settings evidence window must also wire the rerun request to the coordinator"
+        XCTAssertFalse(
+            appSource.contains("SettingsWindowRootView"),
+            "Settings must not keep a detached Settings scene root"
         )
     }
 
@@ -8360,12 +8344,8 @@ final class AppExperienceSourceTests: XCTestCase {
             "ProjectBoardWindowRootView must consume pending rerun on appear"
         )
         XCTAssertTrue(
-            appSource.contains("if onboardingRerunCoordinator.primaryWindowID == nil"),
-            "SettingsWindowRootView must open a Project Board window when no primary is mounted"
-        )
-        XCTAssertTrue(
             appSource.contains("openWindow(id: \"project-board\")"),
-            "SettingsWindowRootView must call openWindow for the 0-window case"
+            "Settings entry points must still be able to reopen the Project Board window"
         )
     }
 

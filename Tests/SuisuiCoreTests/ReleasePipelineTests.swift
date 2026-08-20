@@ -10368,7 +10368,7 @@ final class ReleasePipelineTests: XCTestCase {
             "settings-integrations": (720, 676),
             "settings-appearance": (720, 676),
             "mcp-settings": (720, 676),
-            "voice-command": (760, 640)
+            "voice-command": (1_024, 676)
         ]
         let expectedAXTargets: [String: String] = [
             "project-board": "project-board-detail",
@@ -10544,7 +10544,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("Light/Dark/System visual baseline manifest"))
         XCTAssertTrue(
             captureScript.contains(
-                "prepare_named_evidence_window \"Voice Command\" \"Voice Command\" \"$VOICE_COMMAND_TARGET_MARKERS\" \"voice-command-quick-command-tab\""
+                "prepare_named_evidence_window \"\" \"Voice Command\" \"$VOICE_COMMAND_TARGET_MARKERS\" \"voice-command-quick-command-tab\""
             )
         )
 
@@ -14216,7 +14216,7 @@ final class ReleasePipelineTests: XCTestCase {
           "screenshotDirectory": "docs/release/evidence/ui-screenshots",
           "mainViewport": "999x999",
           "settingsViewport": "720x676",
-          "voiceCommandViewport": "760x640",
+          "voiceCommandViewport": "1024x676",
           "comparison": "bytewise"
         }
         """.write(
@@ -14248,7 +14248,7 @@ final class ReleasePipelineTests: XCTestCase {
           "screenshotDirectory": "docs/release/evidence/ui-screenshots-ja",
           "mainViewport": "999x999",
           "settingsViewport": "720x676",
-          "voiceCommandViewport": "760x640",
+          "voiceCommandViewport": "1024x676",
           "comparison": "bytewise"
         }
         """.write(
@@ -14328,7 +14328,7 @@ final class ReleasePipelineTests: XCTestCase {
           "screenshotDirectory": "docs/release/evidence/ui-screenshots",
           "mainViewport": "1024x676",
           "settingsViewport": "720x676",
-          "voiceCommandViewport": "760x640",
+          "voiceCommandViewport": "1024x676",
           "comparison": "semantic"
         }
         """.write(
@@ -14360,7 +14360,7 @@ final class ReleasePipelineTests: XCTestCase {
           "screenshotDirectory": "docs/release/evidence/ui-screenshots-ja",
           "mainViewport": "1024x676",
           "settingsViewport": "720x676",
-          "voiceCommandViewport": "760x640",
+          "voiceCommandViewport": "1024x676",
           "comparison": "semantic"
         }
         """.write(
@@ -17947,7 +17947,7 @@ final class ReleasePipelineTests: XCTestCase {
             }
             try require(control["role"] as? String == "AXButton", "\(identifier).role")
             try require((control["actions"] as? [String])?.contains("AXPress") == true, "\(identifier).actions")
-            let expectedStatus = identifier == "sidebar-action-settings" ? "passed_with_retry" : "passed"
+            let expectedStatus = "passed"
             try require(control["status"] as? String == expectedStatus, "\(identifier).status")
             let frame = try dictionary(control["frame"], "\(identifier).frame")
             try require(frame["visible"] as? Bool == true, "\(identifier).frame.visible")
@@ -17984,13 +17984,13 @@ final class ReleasePipelineTests: XCTestCase {
 
         let voice = try outcome(for: "sidebar-action-voice-command")
         try require(voice["marker"] as? String == "voice-command-quick-command-tab", "voice.marker")
-        try require(voice["window"] as? String == "Voice Command", "voice.window")
-        try require(voice["routeUnchanged"] as? String == "projects", "voice.routeUnchanged")
+        try require(voice["selectedDestination"] as? String == "voice-command", "voice.selection")
+        try require(voice["window"] == nil, "voice.window")
 
         let settings = try outcome(for: "sidebar-action-settings")
-        try require(settings["window"] as? String == "Overview", "settings.window")
-        try require(settings["routeUnchanged"] as? String == "projects", "settings.routeUnchanged")
-        try require(settings["boundedRetrySucceeded"] as? Bool == true, "settings.boundedRetrySucceeded")
+        try require(settings["marker"] as? String == "settings-status-overview", "settings.marker")
+        try require(settings["selectedDestination"] as? String == "settings", "settings.selection")
+        try require(settings["window"] == nil, "settings.window")
 
         let addTask = try outcome(for: "sidebar-quick-add-task")
         try require(addTask["marker"] as? String == "inbox-workflow", "addTask.marker")
@@ -17999,8 +17999,8 @@ final class ReleasePipelineTests: XCTestCase {
 
         let addByVoice = try outcome(for: "sidebar-quick-add-by-voice")
         try require(addByVoice["marker"] as? String == "voice-command-quick-command-tab", "addByVoice.marker")
-        try require(addByVoice["window"] as? String == "Voice Command", "addByVoice.window")
-        try require(addByVoice["routeUnchanged"] as? String == "projects", "addByVoice.routeUnchanged")
+        try require(addByVoice["selectedDestination"] as? String == "voice-command", "addByVoice.selection")
+        try require(addByVoice["window"] == nil, "addByVoice.window")
 
         let blockTime = try outcome(for: "sidebar-quick-block-time")
         try require(blockTime["marker"] as? String == "schedule-workflow", "blockTime.marker")

@@ -34,7 +34,7 @@ it does not accept an arbitrary baseline path.
 | Settings Integrations | Light / Dark | 720x676 | Public Alpha Sync value and fail-closed safety boundary |
 | Settings Appearance | Light / Dark / System | 720x676 | theme picker and contrast controls |
 | MCP Settings | Light / Dark / System | 720x676 | registered MCP rows without secrets or machine-local paths |
-| Voice Command | Light / Dark / System | 760x640 | command entry, local interpretation, approval boundary |
+| Voice Command | Light / Dark / System | 1024x676 | in-board command entry, local interpretation, approval boundary |
 
 ## Tolerances
 

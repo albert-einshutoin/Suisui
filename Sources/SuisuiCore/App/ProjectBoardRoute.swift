@@ -30,6 +30,7 @@ public enum BoardRoute: Hashable, Sendable {
     case smartList(String)
     case review(ReviewRoute)
     case settings
+    case voiceCommand
 }
 
 /// A contextual focus preserved while an older route is migrated into the
@@ -118,6 +119,9 @@ public enum ProjectBoardRouteCodec {
         case "settings":
             route = .settings
             focus = nil
+        case "voice-command":
+            route = .voiceCommand
+            focus = nil
         default:
             route = dynamicRoute(from: rawValue, availableProjectIDs: availableProjectIDs)
             focus = nil
@@ -150,6 +154,8 @@ public enum ProjectBoardRouteCodec {
             }
         case .settings:
             return "settings"
+        case .voiceCommand:
+            return "voice-command"
         }
     }
 

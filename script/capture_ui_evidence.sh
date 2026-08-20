@@ -25,7 +25,7 @@ VISUAL_BASELINE_MANIFEST="${SUISUI_VISUAL_BASELINE_MANIFEST:-$ROOT_DIR/docs/qual
 SUISUI_VISUAL_AX_AUDIT_RESULT="${SUISUI_VISUAL_AX_AUDIT_RESULT:-$EVIDENCE_TMPDIR/visual-ax-audit-receipt.json}"
 VISUAL_BASELINE_VIEWPORT="${SUISUI_VISUAL_BASELINE_VIEWPORT:-1024x676}"
 SETTINGS_VISUAL_BASELINE_VIEWPORT="${SUISUI_SETTINGS_VISUAL_BASELINE_VIEWPORT:-720x676}"
-VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT="${SUISUI_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT:-760x640}"
+VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT="${SUISUI_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT:-1024x676}"
 TARGET_TIMEOUT_SECONDS="${SUISUI_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS:-30}"
 EVIDENCE_WINDOW_ATTEMPTS=2
 EVIDENCE_ROUTE_ATTEMPTS=2
@@ -1072,9 +1072,11 @@ position_window_for_capture() {
   local origin_x=0
   local origin_y=0
 
-  if [[ "$window_name" == "Voice Command" ]]; then
+  if [[ "$SETTINGS_WINDOW_OVERRIDE" == "1" ]]; then
+    viewport="$SETTINGS_VISUAL_BASELINE_VIEWPORT"
+  elif [[ "$VOICE_COMMAND_WINDOW_OVERRIDE" == "1" ]]; then
     viewport="$VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT"
-  elif [[ -n "$window_name" ]]; then
+  elif [[ -n "$window_name" && "$window_name" != "Voice Command" ]]; then
     viewport="$SETTINGS_VISUAL_BASELINE_VIEWPORT"
   fi
 
@@ -1554,19 +1556,19 @@ capture_visible_window() {
 }
 
 open_mcp_settings_tab() {
-  wait_for_window_capture_metadata "MCP" >/dev/null
+  wait_for_window_capture_metadata >/dev/null
 }
 
 open_settings_appearance_tab() {
-  wait_for_window_capture_metadata "Appearance" >/dev/null
+  wait_for_window_capture_metadata >/dev/null
 }
 
 open_settings_overview_tab() {
-  wait_for_window_capture_metadata "Overview" >/dev/null
+  wait_for_window_capture_metadata >/dev/null
 }
 
 open_settings_sync_tab() {
-  wait_for_window_capture_metadata "Sync" >/dev/null
+  wait_for_window_capture_metadata >/dev/null
 }
 
 prepare_named_evidence_window() {
@@ -1577,12 +1579,12 @@ prepare_named_evidence_window() {
   local window_attempt
   local readiness_diagnostic
 
-  # The process-level readiness probe can succeed on the Project Board while a
-  # separately-created Settings or Voice Command window is still publishing.
-  # Reacquire the named window after AX marker traversal; hosted WindowServer
-  # has twice withdrawn that auxiliary window between the first probe and the
-  # capture, so retry the complete owned-process launch instead of accepting a
-  # stale window or weakening the visual gate.
+  # The process-level readiness probe can succeed on the Project Board before
+  # the requested Settings or Voice Command workspace is ready. Reacquire the
+  # board window after AX marker traversal; hosted WindowServer has twice
+  # withdrawn an auxiliary window between the first probe and the capture, so
+  # retry the complete owned-process launch instead of accepting a stale window
+  # or weakening the visual gate.
   for ((window_attempt = 1; window_attempt <= EVIDENCE_ROUTE_ATTEMPTS; window_attempt++)); do
     readiness_diagnostic="$EVIDENCE_TMPDIR/named-evidence-window.$$.attempt-$window_attempt.err"
     : >"$readiness_diagnostic"
@@ -1623,12 +1625,13 @@ capture_settings_overview() {
   local output_path="$2"
 
   APPEARANCE_OVERRIDE="$appearance"
+  PROJECT_BOARD_SELECTION_OVERRIDE=""
   SETTINGS_WINDOW_OVERRIDE=1
   SETTINGS_TAB_OVERRIDE="Overview"
   VOICE_COMMAND_WINDOW_OVERRIDE=""
-  prepare_named_evidence_window "Overview" "Settings overview" "settings-status-overview=>"
+  prepare_named_evidence_window "" "Settings overview" "settings-status-overview=>"
 
-  capture_visible_window "$appearance Settings overview" "$output_path" "Overview" "settings-status-overview"
+  capture_visible_window "$appearance Settings overview" "$output_path" "" "settings-status-overview"
 }
 
 capture_settings_sync() {
@@ -1636,12 +1639,13 @@ capture_settings_sync() {
   local output_path="$2"
 
   APPEARANCE_OVERRIDE="$appearance"
+  PROJECT_BOARD_SELECTION_OVERRIDE=""
   SETTINGS_WINDOW_OVERRIDE=1
   SETTINGS_TAB_OVERRIDE="Sync"
   VOICE_COMMAND_WINDOW_OVERRIDE=""
-  prepare_named_evidence_window "Sync" "Settings integrations" "sync-paid-value-row=>"
+  prepare_named_evidence_window "" "Settings integrations" "sync-paid-value-row=>"
 
-  capture_visible_window "$appearance Settings integrations" "$output_path" "Sync" "sync-paid-value-row"
+  capture_visible_window "$appearance Settings integrations" "$output_path" "" "sync-paid-value-row"
 }
 
 capture_settings_appearance() {
@@ -1649,12 +1653,13 @@ capture_settings_appearance() {
   local output_path="$2"
 
   APPEARANCE_OVERRIDE="$appearance"
+  PROJECT_BOARD_SELECTION_OVERRIDE=""
   SETTINGS_WINDOW_OVERRIDE=1
   SETTINGS_TAB_OVERRIDE="Appearance"
   VOICE_COMMAND_WINDOW_OVERRIDE=""
-  prepare_named_evidence_window "Appearance" "Settings appearance" "settings-theme-picker=>"
+  prepare_named_evidence_window "" "Settings appearance" "settings-theme-picker=>"
 
-  capture_visible_window "$appearance Settings appearance" "$output_path" "Appearance" "settings-theme-picker"
+  capture_visible_window "$appearance Settings appearance" "$output_path" "" "settings-theme-picker"
 }
 
 capture_mcp_settings_appearance() {
@@ -1662,14 +1667,15 @@ capture_mcp_settings_appearance() {
   local output_path="$2"
 
   APPEARANCE_OVERRIDE="$appearance"
+  PROJECT_BOARD_SELECTION_OVERRIDE=""
   SETTINGS_WINDOW_OVERRIDE=1
   SETTINGS_TAB_OVERRIDE="MCP"
   VOICE_COMMAND_WINDOW_OVERRIDE=""
-  prepare_named_evidence_window "MCP" "MCP settings" "mcp-paid-execution-boundary-row=>"
+  prepare_named_evidence_window "" "MCP settings" "mcp-paid-execution-boundary-row=>"
   scroll_ax_target_into_view "mcp-paid-execution-boundary-row" "MCP settings"
   sleep 1.0
 
-  capture_visible_window "$appearance MCP settings" "$output_path" "MCP" "mcp-paid-execution-boundary-row"
+  capture_visible_window "$appearance MCP settings" "$output_path" "" "mcp-paid-execution-boundary-row"
 }
 
 capture_appearance() {
@@ -1800,9 +1806,9 @@ capture_voice_command_appearance() {
   SETTINGS_WINDOW_OVERRIDE=""
   SETTINGS_TAB_OVERRIDE=""
   VOICE_COMMAND_WINDOW_OVERRIDE=1
-  prepare_named_evidence_window "Voice Command" "Voice Command" "$VOICE_COMMAND_TARGET_MARKERS" "voice-command-quick-command-tab"
+  prepare_named_evidence_window "" "Voice Command" "$VOICE_COMMAND_TARGET_MARKERS" "voice-command-quick-command-tab"
 
-  capture_visible_window "$appearance Voice Command" "$output_path" "Voice Command" "voice-command-root"
+  capture_visible_window "$appearance Voice Command" "$output_path" "" "voice-command-root"
 }
 
 write_evidence_file() {
@@ -2404,8 +2410,9 @@ capture_settings_appearance system "$SETTINGS_APPEARANCE_SYSTEM_SCREENSHOT"
 capture_mcp_settings_appearance light "$MCP_SETTINGS_LIGHT_SCREENSHOT"
 capture_mcp_settings_appearance dark "$MCP_SETTINGS_DARK_SCREENSHOT"
 capture_mcp_settings_appearance system "$MCP_SETTINGS_SYSTEM_SCREENSHOT"
-# Voice Command is a separate singleton window. Capture it last so closing it
-# never has to restore a Project Board/Settings scene in the same evidence run.
+# Voice Command is an in-board workspace. Capture it after Settings so the
+# evidence launch flag can replace the previous destination without restoring
+# a second scene.
 capture_voice_command_appearance light "$VOICE_COMMAND_LIGHT_SCREENSHOT"
 capture_voice_command_appearance dark "$VOICE_COMMAND_DARK_SCREENSHOT"
 capture_voice_command_appearance system "$VOICE_COMMAND_SYSTEM_SCREENSHOT"
