@@ -200,6 +200,13 @@ struct InboxWorkflowView: View {
     }
 
     private func synchronizeSelection(with visibleTaskIDs: [Int64]) {
+        if ProjectBoardTaskSelectionPersistence.environmentSuppressesInboxAutoSelection,
+           ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID == nil {
+            if viewModel.selectedTaskID != nil {
+                viewModel.selectedTaskID = nil
+            }
+            return
+        }
         let visibleSelectionID = inboxVisibleSelectionID(
             current: viewModel.selectedTaskID,
             visibleTaskIDs: visibleTaskIDs
