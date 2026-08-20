@@ -1793,6 +1793,12 @@ capture_project_board_destination() {
   if [[ -n "$post_scroll_target_markers" ]]; then
     wait_for_project_board_destination "$label after scroll" "$post_scroll_target_markers"
   fi
+  if [[ "$scroll_target_identifier" == "inbox-voice-intake-detail" ]]; then
+    # Voice intake detail can publish its AX subtree before the split rail
+    # finishes compositing on dark/system evidence runs.
+    activate_evidence_app
+    sleep 1.5
+  fi
 
   capture_visible_window "$appearance $label" "$output_path" "" "$target_audit_identifier"
 }
