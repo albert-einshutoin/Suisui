@@ -3,7 +3,7 @@
   "artifactRoot": "docs/release/evidence/ui-screenshots-ja",
   "baselineRoot": "docs/quality/visual-baselines-ja",
   "baselineContext": {
-    "sourceCommit": "670ca72f1c0019e8e893912434e61ac9e4b75b20",
+    "sourceCommit": "842ea0b0536639df0d73100e2c53c2505c76cf7b",
     "normalRoute": "normal",
     "locale": "ja-JP",
     "timeZoneIdentifier": "UTC",
@@ -42,9 +42,9 @@
       "axTargetIdentifier": "project-board-detail",
       "requiredVisibleTextLines": [
         "project board to task card to",
-        "\u9032\u884c\u4e2d",
-        "\u9ad8",
-        "7\u670810\u65e5"
+        "進行中",
+        "高",
+        "7月10日"
       ],
       "artifacts": {
         "light": "project-board-light.png",
