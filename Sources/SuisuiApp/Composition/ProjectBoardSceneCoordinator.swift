@@ -2,6 +2,22 @@ import Combine
 import Foundation
 import SuisuiCore
 
+enum ProjectBoardShortcutAction {
+    case commandPalette
+    case destination(BoardPrimaryDestination)
+}
+
+struct ProjectBoardShortcutRequest {
+    let sceneID: UUID
+    let action: ProjectBoardShortcutAction
+}
+
+extension Notification.Name {
+    static let suisuiProjectBoardShortcutRequested = Notification.Name(
+        "dev.suisui.project-board-shortcut-requested"
+    )
+}
+
 /// App-level serialization point for Project Board navigation requests.
 ///
 /// SwiftUI can notify every window about the same published change. Claiming
@@ -13,9 +29,12 @@ final class ProjectBoardSceneCoordinator: ObservableObject {
 
     @Published private(set) var deliveryRevision = 0
     @Published private(set) var lastAppliedRequestID: UUID?
+    @Published private(set) var activeSceneID: UUID?
 
     private var state = ProjectBoardSceneNavigationState()
     private var applicationAcknowledgements = ProjectBoardSceneApplicationAcknowledgements()
+    private var registeredSceneIDs: [UUID] = []
+    private var pendingActiveSceneID: UUID?
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -24,11 +43,50 @@ final class ProjectBoardSceneCoordinator: ObservableObject {
 
     func register(sceneID: UUID) {
         state.register(sceneID: sceneID)
+        if !registeredSceneIDs.contains(sceneID) {
+            registeredSceneIDs.append(sceneID)
+        }
+        if pendingActiveSceneID == sceneID {
+            pendingActiveSceneID = nil
+            setActive(sceneID: sceneID)
+        }
+        // SwiftUI can evaluate Commands before the backing NSWindow posts its
+        // first key notification. Seed only the first registered board; window
+        // notifications remain authoritative once multiple scenes exist.
+        if activeSceneID == nil {
+            activeSceneID = sceneID
+        }
         publishDeliveryOpportunity()
     }
 
     func unregister(sceneID: UUID) {
         state.unregister(sceneID: sceneID)
+        registeredSceneIDs.removeAll { $0 == sceneID }
+        if pendingActiveSceneID == sceneID {
+            pendingActiveSceneID = nil
+        }
+        if activeSceneID == sceneID {
+            // Commands remain usable when the key board closes while a utility
+            // window has focus and another registered board stays open.
+            activeSceneID = registeredSceneIDs.last
+        }
+    }
+
+    func markActive(sceneID: UUID) {
+        guard registeredSceneIDs.contains(sceneID) else {
+            pendingActiveSceneID = sceneID
+            return
+        }
+        pendingActiveSceneID = nil
+        setActive(sceneID: sceneID)
+    }
+
+    func requestShortcut(_ action: ProjectBoardShortcutAction) {
+        guard let activeSceneID else { return }
+        NotificationCenter.default.post(
+            name: .suisuiProjectBoardShortcutRequested,
+            object: ProjectBoardShortcutRequest(sceneID: activeSceneID, action: action)
+        )
     }
 
     @discardableResult
@@ -78,5 +136,11 @@ final class ProjectBoardSceneCoordinator: ObservableObject {
 
     private func publishDeliveryOpportunity() {
         deliveryRevision &+= 1
+    }
+
+    private func setActive(sceneID: UUID) {
+        registeredSceneIDs.removeAll { $0 == sceneID }
+        registeredSceneIDs.append(sceneID)
+        activeSceneID = sceneID
     }
 }

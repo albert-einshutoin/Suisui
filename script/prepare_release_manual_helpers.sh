@@ -8,7 +8,7 @@ release_candidate_source_commit() {
   # Manual helpers are regenerated around evidence files, but the stale check
   # should follow the release-candidate app/runtime source, not helper commits.
   commit="$(
-    git -C "$ROOT_DIR" log -1 --format=%h -- \
+    git -C "$ROOT_DIR" -c core.abbrev=8 log -1 --format=%h -- \
       Sources/SuisuiApp \
       Sources/SuisuiCore \
       Sources/SuisuiCLI \
@@ -19,12 +19,12 @@ release_candidate_source_commit() {
   if [[ -n "$commit" ]]; then
     printf "%s" "$commit"
   else
-    git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown"
+    git -C "$ROOT_DIR" rev-parse --short=8 HEAD 2>/dev/null || printf "unknown"
   fi
 }
 
 SOURCE_COMMIT="$(release_candidate_source_commit)"
-RELEASE_EVIDENCE_SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf "unknown")"
+RELEASE_EVIDENCE_SOURCE_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short=8 HEAD 2>/dev/null || printf "unknown")"
 
 VOICEOVER_SCRIPT="$ROOT_DIR/script/prepare_voiceover_review_candidate.sh"
 COMPETITOR_SCRIPT="$ROOT_DIR/script/create_competitor_hands_on_evidence.sh"

@@ -1,8 +1,9 @@
 # MCP Inspector Evidence
 
-Generated: 2026-08-13T16:24:22Z
+Generated: 2026-08-17T04:30:19Z
 
-- Source commit: `e8788544`
+- Source commit: `dec0b873`
+- Inspector identity: @modelcontextprotocol/inspector@2.2.0
 
 Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and Suisui's local JSON-RPC smoke checks.
 
@@ -59,7 +60,7 @@ Success path: `initialize -> tools/list -> tools/call`
 ## MCP Inspector CLI tools/list
 
 ```console
-$ npx --loglevel error -y @modelcontextprotocol/inspector --cli node fixtures/mcp/stdio-fixture-server.mjs --method tools/list
+$ /usr/bin/env -i HOME=\<mcp-work-dir\>/home TMPDIR=\<mcp-work-dir\>/tmp NPM_CONFIG_REGISTRY=https://registry.npmjs.org/ NPM_CONFIG_USERCONFIG=/dev/null NPM_CONFIG_GLOBALCONFIG=\<mcp-work-dir\>/npm-globalconfig NPM_CONFIG_CACHE=\<mcp-work-dir\>/npm-cache NPM_CONFIG_PREFIX=\<mcp-work-dir\>/npm-prefix NPM_CONFIG_IGNORE_SCRIPTS=true NPM_CONFIG_OFFLINE=false NPM_CONFIG_PREFER_OFFLINE=false NPM_CONFIG_UPDATE_NOTIFIER=false NPM_CONFIG_STRICT_SSL=true PATH=/opt/homebrew/bin:/usr/bin:/bin /opt/homebrew/bin/node /opt/homebrew/bin/npx --loglevel error -y @modelcontextprotocol/inspector@2.2.0 --cli /opt/homebrew/bin/node \<repository-root\>/fixtures/mcp/stdio-fixture-server.mjs --method tools/list
 {
   "tools": [
     {
@@ -89,7 +90,7 @@ exit: 0
 ## MCP Inspector CLI tools/call
 
 ```console
-$ npx --loglevel error -y @modelcontextprotocol/inspector --cli node fixtures/mcp/stdio-fixture-server.mjs --method tools/call --tool-name read_status --tool-arg project=suisui
+$ /usr/bin/env -i HOME=\<mcp-work-dir\>/home TMPDIR=\<mcp-work-dir\>/tmp NPM_CONFIG_REGISTRY=https://registry.npmjs.org/ NPM_CONFIG_USERCONFIG=/dev/null NPM_CONFIG_GLOBALCONFIG=\<mcp-work-dir\>/npm-globalconfig NPM_CONFIG_CACHE=\<mcp-work-dir\>/npm-cache NPM_CONFIG_PREFIX=\<mcp-work-dir\>/npm-prefix NPM_CONFIG_IGNORE_SCRIPTS=true NPM_CONFIG_OFFLINE=false NPM_CONFIG_PREFER_OFFLINE=false NPM_CONFIG_UPDATE_NOTIFIER=false NPM_CONFIG_STRICT_SSL=true PATH=/opt/homebrew/bin:/usr/bin:/bin /opt/homebrew/bin/node /opt/homebrew/bin/npx --loglevel error -y @modelcontextprotocol/inspector@2.2.0 --cli /opt/homebrew/bin/node \<repository-root\>/fixtures/mcp/stdio-fixture-server.mjs --method tools/call --tool-name read_status --tool-arg project=suisui
 {
   "content": [
     {
@@ -106,7 +107,7 @@ exit: 0
 ## Suisui local smoke success
 
 ```console
-$ node fixtures/mcp/stdio-smoke-client.mjs --mode success
+$ /usr/bin/env -i HOME=\<mcp-work-dir\>/home TMPDIR=\<mcp-work-dir\>/tmp PATH=/opt/homebrew/bin:/usr/bin:/bin /opt/homebrew/bin/node \<repository-root\>/fixtures/mcp/stdio-smoke-client.mjs --mode success
 initialize: protocolVersion=2025-11-25
 tools/list: read_status
 tools/call: status: ok project=suisui
@@ -118,7 +119,7 @@ exit: 0
 ## Suisui local failure smoke: malformed-json
 
 ```console
-$ node fixtures/mcp/stdio-smoke-client.mjs --mode malformed-json --expect-failure malformed-json
+$ /usr/bin/env -i HOME=\<mcp-work-dir\>/home TMPDIR=\<mcp-work-dir\>/tmp PATH=/opt/homebrew/bin:/usr/bin:/bin /opt/homebrew/bin/node \<repository-root\>/fixtures/mcp/stdio-smoke-client.mjs --mode malformed-json --expect-failure malformed-json
 malformed-json: Malformed JSON-RPC response.
 
 exit: 0
@@ -127,7 +128,7 @@ exit: 0
 ## Suisui local failure smoke: mismatched-id
 
 ```console
-$ node fixtures/mcp/stdio-smoke-client.mjs --mode mismatched-id --expect-failure mismatched-id
+$ /usr/bin/env -i HOME=\<mcp-work-dir\>/home TMPDIR=\<mcp-work-dir\>/tmp PATH=/opt/homebrew/bin:/usr/bin:/bin /opt/homebrew/bin/node \<repository-root\>/fixtures/mcp/stdio-smoke-client.mjs --mode mismatched-id --expect-failure mismatched-id
 initialize: protocolVersion=2025-11-25
 mismatched-id: Mismatched response id.
 
@@ -137,7 +138,7 @@ exit: 0
 ## Suisui local failure smoke: invalid-schema
 
 ```console
-$ node fixtures/mcp/stdio-smoke-client.mjs --mode invalid-schema --expect-failure invalid-schema
+$ /usr/bin/env -i HOME=\<mcp-work-dir\>/home TMPDIR=\<mcp-work-dir\>/tmp PATH=/opt/homebrew/bin:/usr/bin:/bin /opt/homebrew/bin/node \<repository-root\>/fixtures/mcp/stdio-smoke-client.mjs --mode invalid-schema --expect-failure invalid-schema
 initialize: protocolVersion=2025-11-25
 invalid-schema: Tool entry inputSchema must be an object.
 
@@ -147,7 +148,7 @@ exit: 0
 ## Suisui local failure smoke: timeout
 
 ```console
-$ node fixtures/mcp/stdio-smoke-client.mjs --mode timeout --expect-failure timeout
+$ /usr/bin/env -i HOME=\<mcp-work-dir\>/home TMPDIR=\<mcp-work-dir\>/tmp PATH=/opt/homebrew/bin:/usr/bin:/bin /opt/homebrew/bin/node \<repository-root\>/fixtures/mcp/stdio-smoke-client.mjs --mode timeout --expect-failure timeout
 initialize: protocolVersion=2025-11-25
 timeout: Timed out waiting for JSON-RPC response.
 

@@ -175,6 +175,7 @@ private struct OpenBoardSettingsCommand: Commands {
 /// keyboard anywhere in the app (File menu, next to New Suisui Window).
 private struct SuisuiWindowCommands: Commands {
     @Environment(\.openWindow) private var openWindow
+    @ObservedObject private var projectBoardSceneCoordinator = ProjectBoardSceneCoordinator.shared
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
@@ -194,6 +195,40 @@ private struct SuisuiWindowCommands: Commands {
                 Label("Voice Command", systemImage: "mic")
             }
             .keyboardShortcut("v", modifiers: [.command, .shift])
+        }
+
+        CommandMenu(localizedDisplay("Project navigation")) {
+            Button(localizedDisplay("Search")) {
+                projectBoardSceneCoordinator.requestShortcut(.commandPalette)
+            }
+            .keyboardShortcut("k", modifiers: [.command])
+            .disabled(projectBoardSceneCoordinator.activeSceneID == nil)
+
+            Divider()
+
+            Button(localizedDisplay("Today")) {
+                projectBoardSceneCoordinator.requestShortcut(.destination(.today))
+            }
+            .keyboardShortcut("1", modifiers: [.command])
+            .disabled(projectBoardSceneCoordinator.activeSceneID == nil)
+
+            Button(localizedDisplay("Inbox")) {
+                projectBoardSceneCoordinator.requestShortcut(.destination(.inbox))
+            }
+            .keyboardShortcut("2", modifiers: [.command])
+            .disabled(projectBoardSceneCoordinator.activeSceneID == nil)
+
+            Button(localizedDisplay("Projects")) {
+                projectBoardSceneCoordinator.requestShortcut(.destination(.projects))
+            }
+            .keyboardShortcut("3", modifiers: [.command])
+            .disabled(projectBoardSceneCoordinator.activeSceneID == nil)
+
+            Button(localizedDisplay("Review")) {
+                projectBoardSceneCoordinator.requestShortcut(.destination(.review))
+            }
+            .keyboardShortcut("4", modifiers: [.command])
+            .disabled(projectBoardSceneCoordinator.activeSceneID == nil)
         }
     }
 }
@@ -576,6 +611,12 @@ private struct ProjectBoardFallbackRootView: View {
                     appSettings: appSettings,
                     developmentAutomationReviewSession: AppRuntimeFactory.makeReviewSessionViewModel
                 )
+                .background(
+                    ProjectBoardWindowStateBridge(
+                        sceneID: sceneID,
+                        restoresPrimaryWindow: false
+                    )
+                )
             } else {
                 ProjectBoardFallbackLoadingView()
             }
@@ -650,6 +691,9 @@ private final class SuisuiProjectBoardWindowFallback {
             defer: false
         )
         window.title = "Suisui"
+        window.styleMask.insert(.fullSizeContentView)
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
         window.contentViewController = hostingController
         // The loading view is temporary. Pin only the supported compact
         // minimum so its initial fitting size cannot become a permanent

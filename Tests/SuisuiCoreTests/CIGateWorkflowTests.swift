@@ -92,6 +92,38 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(dependencies.contains("      - ui-performance-build\n"))
     }
 
+    func testPerformanceRouteFailsExplicitlyWhenReleaseArtifactBuildFails() throws {
+        let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        let performanceStart = try XCTUnwrap(workflow.range(of: "\n  ui-performance:"))
+        let performanceJob = String(workflow[performanceStart.lowerBound...])
+        let producerGuard = try XCTUnwrap(
+            performanceJob.range(of: "      - name: Require successful performance artifact build\n")
+        )
+        let artifactDownload = try XCTUnwrap(
+            performanceJob.range(
+                of: "      - name: Download immutable release performance app\n",
+                range: producerGuard.upperBound..<performanceJob.endIndex
+            )
+        )
+        let guardSource = String(performanceJob[producerGuard.lowerBound..<artifactDownload.lowerBound])
+
+        XCTAssertTrue(
+            performanceJob.contains(
+                "    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}"
+            )
+        )
+        XCTAssertFalse(
+            performanceJob.contains("if: ${{ always() && needs.ui-performance-build.result == 'success'")
+        )
+        XCTAssertTrue(guardSource.contains("if: ${{ needs.ui-performance-build.result != 'success' }}"))
+        XCTAssertTrue(guardSource.contains("failure_reason=ui-performance-build-did-not-succeed"))
+        XCTAssertTrue(guardSource.contains("exit 1"))
+        XCTAssertTrue(
+            performanceJob.contains("name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}"),
+            "The producer/consumer artifact must remain scoped to the current workflow attempt"
+        )
+    }
+
     func testPerformanceMeasurementUsesVerifiedReleaseArtifactOnAFreshRunner() throws {
         let workflow = try readRepositoryFile(".github/workflows/ci.yml")
         let buildStart = try XCTUnwrap(workflow.range(of: "\n  ui-performance-build:"))
@@ -109,6 +141,7 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(buildJob.contains("build_configuration=release"))
         XCTAssertTrue(buildJob.contains("uses: actions/upload-artifact@v4"))
         XCTAssertTrue(buildJob.contains("name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}"))
+        XCTAssertTrue(buildJob.contains("overwrite: true"))
 
         XCTAssertTrue(measureJob.contains("uses: actions/download-artifact@v4"))
         XCTAssertTrue(measureJob.contains("name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}"))

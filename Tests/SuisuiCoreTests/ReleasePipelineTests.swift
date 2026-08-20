@@ -611,7 +611,8 @@ final class ReleasePipelineTests: XCTestCase {
             try XCTUnwrap(script.range(of: "run_runtime_gates")).lowerBound
         )
 
-        XCTAssertTrue(automatedPreflight.contains("SUISUI_CI_RELEASE_GATES=1 ./scripts/ci.sh"))
+        XCTAssertTrue(automatedPreflight.contains("SUISUI_CI_RELEASE_GATES=1"))
+        XCTAssertTrue(automatedPreflight.contains("./scripts/ci.sh"))
         XCTAssertTrue(automatedPreflight.contains("./scripts/ci.sh ui-runtime"))
         XCTAssertTrue(automatedPreflight.contains("./scripts/ci.sh ui-visual"))
         XCTAssertTrue(automatedPreflight.contains("./scripts/ci.sh ui-performance"))
@@ -1149,7 +1150,7 @@ final class ReleasePipelineTests: XCTestCase {
         let phase = try readPackageFile("tasks/Phase10-ReleaseReadinessRuntime.md")
 
         XCTAssertTrue(runbook.contains("Manual Release Unblockers"))
-        XCTAssertTrue(runbook.contains("current_commit=\"$(git rev-parse --short HEAD)\""))
+        XCTAssertTrue(runbook.contains("current_commit=\"$(git rev-parse --short=8 HEAD)\""))
         XCTAssertTrue(runbook.contains("automated_evidence=\".tmp/automated-release-preflight-${current_commit}.md\""))
         XCTAssertTrue(runbook.contains("SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=\"$automated_evidence\" ./script/check_automated_release_preflight.sh"))
         XCTAssertTrue(runbook.contains("Use the latest action summary for the current release-candidate source commit and generated helper paths."))
@@ -1298,7 +1299,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(command.contains("REPO_ROOT="))
         XCTAssertTrue(command.contains("cd \"$REPO_ROOT\""))
         XCTAssertTrue(command.contains("EXPECTED_SOURCE_COMMIT=\(currentShortCommit)"))
-        XCTAssertTrue(command.contains("CURRENT_SOURCE_COMMIT=\"$(git rev-parse --short HEAD 2>/dev/null || printf unknown)\""))
+        XCTAssertTrue(command.contains("CURRENT_SOURCE_COMMIT=\"$(git rev-parse --short=8 HEAD 2>/dev/null || printf unknown)\""))
         XCTAssertTrue(command.contains("TRACKED_SOURCE_STATUS=\"$(git status --porcelain --untracked-files=no)\""))
         XCTAssertTrue(command.contains("release evidence command requires a clean tracked source tree"))
         XCTAssertTrue(command.contains("release evidence command was generated for source commit"))
@@ -3741,8 +3742,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("--confirm-manual-hands-on"))
         XCTAssertTrue(checklist.contains("Notion -> Todoist -> Linear -> Motion"))
         XCTAssertTrue(checklist.contains("./script/check_automated_release_preflight.sh"))
-        XCTAssertTrue(checklist.contains("A standard run writes `.tmp/automated-release-preflight-$(git rev-parse --short HEAD).md`"))
-        XCTAssertTrue(checklist.contains("Override `SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE` only when a release operator needs to write or reuse a non-standard evidence path."))
+        XCTAssertTrue(checklist.contains("A standard run writes `.tmp/automated-release-preflight-$(git rev-parse --short=8 HEAD).md`"))
+        XCTAssertTrue(checklist.contains("Override `SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE` only for a non-standard regular-file path below the repository `.tmp` directory"))
         XCTAssertTrue(checklist.contains("The release readiness report auto-discovers `.tmp/automated-release-preflight-<commit>.md` for the current source commit when the environment variable is omitted."))
         XCTAssertTrue(checklist.contains("requires a clean tracked source tree"))
         XCTAssertTrue(checklist.contains("When the final report reuses this evidence, it verifies the generator identity, UTC timestamp, source commit, clean-tree marker, app name, Xcode workspace/scheme/configuration/destination, every automated proof gate, the runtime AX smoke OK line with `unlabeledButtons=0`, `genericButtons=0`, `crudSignals=8/8`, `focusPathSignals=6/6`, and `destructiveCancelSignals=1/1`, and the manual-evidence boundary text."))
@@ -3754,7 +3755,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("then writes the captured `Runtime AX smoke: OK: runtime AX smoke visible...` line into the automated preflight evidence"))
         XCTAssertTrue(checklist.contains("./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("./script/release_readiness_report.sh # auto-discovers .tmp/automated-release-preflight-<commit>.md"))
-        XCTAssertTrue(checklist.contains("SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=\".tmp/automated-release-preflight-$(git rev-parse --short HEAD).md\" ./script/release_readiness_report.sh"))
+        XCTAssertTrue(checklist.contains("SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=\".tmp/automated-release-preflight-$(git rev-parse --short=8 HEAD).md\" ./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("SUISUI_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("SUISUI_RELEASE_CI_PREFLIGHT=1 ./script/release_readiness_report.sh"))
         XCTAssertTrue(checklist.contains("SUISUI_LOCAL_CRUD_SMOKE=1 ./script/release_readiness_report.sh"))
@@ -3938,9 +3939,8 @@ final class ReleasePipelineTests: XCTestCase {
         try "- [x] release readme checked\n"
             .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
 
-        let commit = try runTool(["git", "rev-parse", "--short", "HEAD"])
-            .output
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let commit = try manualReleaseEvidenceSourceCommit()
+        let releaseCommit = try currentShortGitCommit()
         try "- Source commit: `\(commit)`\n"
             .write(
                 to: voiceOverDirectory.appendingPathComponent("accessibility-voiceover-pending-\(commit).md"),
@@ -3997,9 +3997,9 @@ final class ReleasePipelineTests: XCTestCase {
             .write(to: competitorDirectory.appendingPathComponent("hands-on-worksheet.md"), atomically: true, encoding: .utf8)
         try "EXPECTED_SOURCE_COMMIT=\(commit)\n"
             .write(to: competitorDirectory.appendingPathComponent("create-evidence-command.sh"), atomically: true, encoding: .utf8)
-        try "- Release candidate source commit: `\(commit)`\n"
+        try "- Release candidate source commit: `\(releaseCommit)`\n"
             .write(to: releaseMachineDirectory.appendingPathComponent("release-machine-worksheet.md"), atomically: true, encoding: .utf8)
-        try "EXPECTED_SOURCE_COMMIT=\(commit)\n"
+        try "EXPECTED_SOURCE_COMMIT=\(releaseCommit)\n"
             .write(to: releaseMachineDirectory.appendingPathComponent("create-release-evidence-command.sh"), atomically: true, encoding: .utf8)
 
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: reportURL.path)
@@ -4097,9 +4097,7 @@ final class ReleasePipelineTests: XCTestCase {
         try "- [x] release readme checked\n"
             .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
 
-        let commit = try runTool(["git", "rev-parse", "--short", "HEAD"])
-            .output
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let commit = try manualReleaseEvidenceSourceCommit()
         try """
         SUISUI_DATABASE_PATH=/tmp/stale-voiceover-review.sqlite
         SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=project:7
@@ -4196,9 +4194,8 @@ final class ReleasePipelineTests: XCTestCase {
         try "- [x] release readme checked\n"
             .write(to: tasksDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
 
-        let commit = try runTool(["git", "rev-parse", "--short", "HEAD"])
-            .output
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let commit = try manualReleaseEvidenceSourceCommit()
+        let releaseCommit = try currentShortGitCommit()
         try "- Source commit: `\(commit)`\n"
             .write(
                 to: voiceOverDirectory.appendingPathComponent("accessibility-voiceover-pending-\(commit).md"),
@@ -4219,7 +4216,7 @@ final class ReleasePipelineTests: XCTestCase {
             )
         try "- Release candidate source commit: `\(commit)`\n"
             .write(to: competitorDirectory.appendingPathComponent("hands-on-worksheet.md"), atomically: true, encoding: .utf8)
-        try "- Release candidate source commit: `\(commit)`\n"
+        try "- Release candidate source commit: `\(releaseCommit)`\n"
             .write(to: releaseMachineDirectory.appendingPathComponent("release-machine-worksheet.md"), atomically: true, encoding: .utf8)
 
         let commentOnlyCommand = """
@@ -4241,7 +4238,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(actions.contains("- [ ] VoiceOver evidence command is stale or not pinned to release-candidate source commit `\(commit)`: `.tmp/voiceover-review/create-evidence-command.sh`"))
         XCTAssertTrue(actions.contains("- [ ] Competitor evidence command is stale or not pinned to release-candidate source commit `\(commit)`: `.tmp/competitor-hands-on/create-evidence-command.sh`"))
-        XCTAssertTrue(actions.contains("- [ ] Release evidence command is stale or not pinned to release evidence source commit `\(commit)`: `.tmp/release-machine/create-release-evidence-command.sh`"))
+        XCTAssertTrue(actions.contains("- [ ] Release evidence command is stale or not pinned to release evidence source commit `\(releaseCommit)`: `.tmp/release-machine/create-release-evidence-command.sh`"))
         XCTAssertTrue(actions.contains("NEXT: regenerate manual review helpers for the current release candidate before running any passed-evidence command."))
     }
 
@@ -4281,7 +4278,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.name", "Release Tests"]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "Sources/SuisuiApp/App.swift", "Package.swift"]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "product source"]).exitCode, 0)
-        let currentShortCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+        let currentShortCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short=8", "HEAD"])
             .output
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let voiceOverDirectory = fixtureRoot
@@ -4435,7 +4432,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "."]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "product source"]).exitCode, 0)
         let productSourceCommit = String(
-            try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+            try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short=8", "HEAD"])
                 .output
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         )
@@ -4448,7 +4445,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "."]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "release helper docs"]).exitCode, 0)
         let releaseEvidenceCommit = String(
-            try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+            try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short=8", "HEAD"])
                 .output
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         )
@@ -5316,10 +5313,10 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("project-board::.keyboardShortcut(.delete, modifiers: [.command])"))
         XCTAssertTrue(script.contains("project-board::.keyboardShortcut(.return, modifiers: [.command])"))
         XCTAssertTrue(script.contains("project-board::.keyboardShortcut(.escape, modifiers: [])"))
-        XCTAssertTrue(script.contains(#"project-board::.keyboardShortcut(\"1\", modifiers: [.command])"#))
-        XCTAssertTrue(script.contains(#"project-board::.keyboardShortcut(\"2\", modifiers: [.command])"#))
-        XCTAssertTrue(script.contains(#"project-board::.keyboardShortcut(\"3\", modifiers: [.command])"#))
-        XCTAssertTrue(script.contains(#"project-board::.keyboardShortcut(\"4\", modifiers: [.command])"#))
+        XCTAssertTrue(script.contains(#"Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\"1\", modifiers: [.command])"#))
+        XCTAssertTrue(script.contains(#"Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\"2\", modifiers: [.command])"#))
+        XCTAssertTrue(script.contains(#"Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\"3\", modifiers: [.command])"#))
+        XCTAssertTrue(script.contains(#"Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\"4\", modifiers: [.command])"#))
         XCTAssertTrue(script.contains("Sources/SuisuiApp/Views/MenuBarPanel.swift::.keyboardShortcut(.return, modifiers: [.command])"))
         XCTAssertTrue(script.contains("--runtime"))
         XCTAssertTrue(script.contains("--skip-source-anchors"))
@@ -6271,7 +6268,7 @@ final class ReleasePipelineTests: XCTestCase {
             try "final class \(targetName)RuntimeSource {}\n"
                 .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
         }
-        let currentShortCommit = try currentShortGitCommit()
+        let currentShortCommit = try manualReleaseEvidenceSourceCommit()
 
         try readPackageFile("script/release_readiness_report.sh")
             .write(to: reportURL, atomically: true, encoding: .utf8)
@@ -6378,7 +6375,7 @@ final class ReleasePipelineTests: XCTestCase {
             try "final class \(targetName)RuntimeSource {}\n"
                 .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
         }
-        let currentShortCommit = try currentShortGitCommit()
+        let currentShortCommit = try manualReleaseEvidenceSourceCommit()
 
         try readPackageFile("script/release_readiness_report.sh")
             .write(to: reportURL, atomically: true, encoding: .utf8)
@@ -9300,6 +9297,7 @@ final class ReleasePipelineTests: XCTestCase {
         }
 
         let currentShortCommit = try currentShortGitCommit()
+        let currentProductSourceCommit = try manualReleaseEvidenceSourceCommit()
         try """
         # Automated Release Preflight Evidence
 
@@ -9311,9 +9309,9 @@ final class ReleasePipelineTests: XCTestCase {
         App: Suisui
         Xcode workspace: .swiftpm/xcode/package.xcworkspace
         Xcode scheme: Suisui
-        Xcode configuration: Release
+        Xcode configuration: Debug
         Xcode destination: platform=macOS
-        VoiceOver candidate source commit: \(currentShortCommit)
+        VoiceOver candidate source commit: \(currentProductSourceCommit)
         VoiceOver candidate project ID: 42
         VoiceOver candidate database: /tmp/Suisui-voiceover-review.sqlite
         VoiceOver candidate selected destination: project:42
@@ -9455,7 +9453,6 @@ final class ReleasePipelineTests: XCTestCase {
             ]
         )
         let actionSummary = try String(contentsOf: actionSummaryURL, encoding: .utf8)
-
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(result.output.contains("== Automated preflight evidence =="))
         XCTAssertTrue(result.output.contains("OK: automated preflight evidence covers current commit and all local proof gates"))
@@ -9479,7 +9476,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("- [x] Automated preflight evidence accepted: `.tmp/automated-release-preflight.md`"))
         XCTAssertTrue(actionSummary.contains("- [x] Release launch performance smoke: passed"))
         XCTAssertTrue(actionSummary.contains("- Source commit: `\(currentShortCommit)`"))
-        XCTAssertTrue(actionSummary.contains("- Release candidate product source commit: `\(currentShortCommit)`"))
+        XCTAssertTrue(actionSummary.contains("- Release candidate product source commit: `\(currentProductSourceCommit)`"))
         XCTAssertTrue(actionSummary.contains("- Generated at: `2026-06-19T12:30:44Z`"))
         XCTAssertTrue(actionSummary.contains("- Runtime AX smoke: `OK: runtime AX smoke visible, windows=1, window=1 name=Suisui, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1`"))
         XCTAssertTrue(actionSummary.contains("- [x] Release CI: passed"))
@@ -9494,7 +9491,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("Local product gates"))
         XCTAssertTrue(actionSummary.contains("The generated VoiceOver evidence command is pinned to a clean tracked source tree and the release-candidate source commit it was created for."))
         XCTAssertTrue(actionSummary.contains("The generated competitor hands-on evidence command is pinned to a clean tracked source tree and the release-candidate source commit it was created for."))
-        XCTAssertTrue(actionSummary.contains("The generated competitor hands-on evidence command also refuses to run until `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/competitor-benchmark-pending-\(currentShortCommit).md` are `Status: completed`, pinned to the same source commit, free of pending/unchecked/template markers, and filled."))
+        XCTAssertTrue(actionSummary.contains("The generated competitor hands-on evidence command also refuses to run until `.tmp/competitor-hands-on/hands-on-worksheet.md` and `.tmp/competitor-hands-on/competitor-benchmark-pending-\(currentProductSourceCommit).md` are `Status: completed`, pinned to the same source commit, free of pending/unchecked/template markers, and filled."))
         XCTAssertTrue(actionSummary.contains("The generated release-machine evidence command is pinned to a clean tracked source tree and the release evidence source commit it was created for."))
         XCTAssertTrue(actionSummary.contains("The generated release-machine evidence command also refuses to run until `.tmp/release-machine/release-machine-worksheet.md` is `Status: completed`, pinned to the same source commit, free of pending/unchecked/template markers, and filled."))
         XCTAssertTrue(actionSummary.contains("## Manual Evidence Source Hygiene"))
@@ -9516,6 +9513,7 @@ final class ReleasePipelineTests: XCTestCase {
         let accessibilityURL = scriptDirectory.appendingPathComponent("check_accessibility_preflight.sh")
         let actionSummaryURL = fixtureRoot.appendingPathComponent("release-actions.md")
         let currentShortCommit = try currentShortGitCommit()
+        let currentProductSourceCommit = try manualReleaseEvidenceSourceCommit()
         let evidenceURL = tmpDirectory.appendingPathComponent("automated-release-preflight-\(currentShortCommit).md")
 
         try? FileManager.default.removeItem(at: fixtureRoot)
@@ -9543,9 +9541,9 @@ final class ReleasePipelineTests: XCTestCase {
         App: Suisui
         Xcode workspace: .swiftpm/xcode/package.xcworkspace
         Xcode scheme: Suisui
-        Xcode configuration: Release
+        Xcode configuration: Debug
         Xcode destination: platform=macOS
-        VoiceOver candidate source commit: \(currentShortCommit)
+        VoiceOver candidate source commit: \(currentProductSourceCommit)
         VoiceOver candidate project ID: 42
         VoiceOver candidate database: /tmp/Suisui-voiceover-review.sqlite
         VoiceOver candidate selected destination: project:42
@@ -9616,8 +9614,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("- [x] Automated preflight evidence accepted: `.tmp/automated-release-preflight-\(currentShortCommit).md`"))
         XCTAssertTrue(actionSummary.contains("- [x] Release launch performance smoke: passed"))
         XCTAssertTrue(actionSummary.contains("- Runtime AX smoke: `OK: runtime AX smoke visible, windows=1, window=1 name=Suisui, buttons=31, textFields=2, staticTexts=29, unlabeledButtons=0, genericButtons=0, crudSignals=8/8, focusPathSignals=6/6, destructiveCancelSignals=1/1`"))
-        XCTAssertTrue(actionSummary.contains("- Release candidate product source commit: `\(currentShortCommit)`"))
-        XCTAssertTrue(actionSummary.contains("- VoiceOver candidate: source `\(currentShortCommit)`, project `42`, destination `project:42`"))
+        XCTAssertTrue(actionSummary.contains("- Release candidate product source commit: `\(currentProductSourceCommit)`"))
+        XCTAssertTrue(actionSummary.contains("- VoiceOver candidate: source `\(currentProductSourceCommit)`, project `42`, destination `project:42`"))
         XCTAssertTrue(actionSummary.contains("- VoiceOver candidate database: `/tmp/Suisui-voiceover-review.sqlite`"))
         XCTAssertFalse(actionSummary.contains("- Run: `SUISUI_AUTOMATED_PROOF_GATES=1 ./script/release_readiness_report.sh`"))
     }
@@ -9646,6 +9644,7 @@ final class ReleasePipelineTests: XCTestCase {
         }
 
         let currentShortCommit = try currentShortGitCommit()
+        let currentProductSourceCommit = try manualReleaseEvidenceSourceCommit()
         try """
         # Automated Release Preflight Evidence
 
@@ -9659,7 +9658,7 @@ final class ReleasePipelineTests: XCTestCase {
         Xcode scheme: Suisui
         Xcode configuration: Debug
         Xcode destination: platform=macOS
-        VoiceOver candidate source commit: \(currentShortCommit)
+        VoiceOver candidate source commit: \(currentProductSourceCommit)
         VoiceOver candidate project ID: 42
         VoiceOver candidate database: /tmp/Suisui-voiceover-review.sqlite
         VoiceOver candidate selected destination: project:42
@@ -9728,6 +9727,7 @@ final class ReleasePipelineTests: XCTestCase {
         }
 
         let currentShortCommit = try currentShortGitCommit()
+        let currentProductSourceCommit = try manualReleaseEvidenceSourceCommit()
         try """
         # Automated Release Preflight Evidence
 
@@ -9741,7 +9741,7 @@ final class ReleasePipelineTests: XCTestCase {
         Xcode scheme: Suisui
         Xcode configuration: Debug
         Xcode destination: platform=macOS
-        VoiceOver candidate source commit: \(currentShortCommit)
+        VoiceOver candidate source commit: \(currentProductSourceCommit)
         VoiceOver candidate project ID: 42
         VoiceOver candidate database: /tmp/Suisui-voiceover-review.sqlite
         VoiceOver candidate selected destination: project:42
@@ -10131,7 +10131,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Xcode destination"))
         XCTAssertTrue(script.contains("Xcode configuration"))
         XCTAssertTrue(script.contains("XCODE_CONFIGURATION=\"${SUISUI_XCODE_CONFIGURATION:-Debug}\""))
-        XCTAssertTrue(script.contains("EXPECTED_AUTOMATED_PREFLIGHT_XCODE_CONFIGURATION=\"$XCODE_CONFIGURATION\""))
+        XCTAssertTrue(script.contains("EXPECTED_AUTOMATED_PREFLIGHT_XCODE_SCHEME=\"Suisui\""))
+        XCTAssertTrue(script.contains("EXPECTED_AUTOMATED_PREFLIGHT_XCODE_CONFIGURATION=\"Debug\""))
+        XCTAssertTrue(script.contains("EXPECTED_AUTOMATED_PREFLIGHT_XCODE_DESTINATION=\"platform=macOS\""))
         XCTAssertTrue(script.contains("automated_preflight_context_value \"Runtime AX smoke\""))
         XCTAssertTrue(script.contains("automated preflight runtime AX smoke missing marker"))
         XCTAssertTrue(script.contains("-configuration \"$XCODE_CONFIGURATION\""))
@@ -10671,8 +10673,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SUISUI_VISUAL_EVIDENCE_TIME_ZONE=$EVIDENCE_TIME_ZONE"))
         XCTAssertTrue(script.contains("SUISUI_VISUAL_EVIDENCE_LOCALE_IDENTIFIER=$EVIDENCE_RECEIPT_LOCALE"))
         XCTAssertTrue(script.contains("visual_product_source_is_clean()"))
-        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" diff --quiet -- Sources Package.swift script/capture_ui_evidence.sh"))
-        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" diff --cached --quiet -- Sources Package.swift script/capture_ui_evidence.sh"))
+        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" ls-files -v --"))
+        XCTAssertTrue(script.contains("grep -Eq '^[a-zS] ' <<<\"$index_flags\""))
+        XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" status --porcelain=v1 --untracked-files=no --"))
         XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" ls-files --others --exclude-standard -- Sources Package.swift script/capture_ui_evidence.sh"))
         XCTAssertTrue(script.contains("git -C \"$ROOT_DIR\" log -1 --format=%H \"$source_ref\" --"))
         XCTAssertTrue(script.contains("Sources Package.swift script/capture_ui_evidence.sh"))
@@ -12366,10 +12369,11 @@ final class ReleasePipelineTests: XCTestCase {
         let sourceCommit = try runTool(["git", "rev-parse", "--short", "HEAD"])
             .output
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        let releaseCandidateSourceCommit = try manualReleaseEvidenceSourceCommit()
 
         XCTAssertNotEqual(result.exitCode, 0)
         XCTAssertTrue(actionSummary.contains("Source commit: \(sourceCommit)"))
-        XCTAssertTrue(actionSummary.contains("Release-candidate product source commit: \(sourceCommit)"))
+        XCTAssertTrue(actionSummary.contains("Release-candidate product source commit: \(releaseCandidateSourceCommit)"))
         XCTAssertTrue(actionSummary.contains("Status: blocked"))
         XCTAssertTrue(actionSummary.contains("Advisory groups:"))
         XCTAssertTrue(actionSummary.contains("## Operator Priority Queue"))
@@ -12400,7 +12404,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("SUISUI_VOICEOVER_REVIEW_SOURCE_COMMIT"))
         XCTAssertTrue(actionSummary.contains("SUISUI_VOICEOVER_REVIEW_PROJECT_ID"))
         XCTAssertTrue(actionSummary.contains(".tmp/voiceover-review/accessibility-voiceover-pending-<commit>.md"))
-        XCTAssertTrue(actionSummary.contains(".tmp/voiceover-review/accessibility-voiceover-pending-\(sourceCommit).md"))
+        XCTAssertTrue(actionSummary.contains(".tmp/voiceover-review/accessibility-voiceover-pending-\(releaseCandidateSourceCommit).md"))
         XCTAssertTrue(actionSummary.contains("```bash\n./script/create_voiceover_evidence.sh --validate-only \\"))
         XCTAssertTrue(actionSummary.contains("./script/create_voiceover_evidence.sh --passed \\"))
         let voiceOverSectionStart = try XCTUnwrap(actionSummary.range(of: "\n## Manual VoiceOver\n"))
@@ -12434,8 +12438,8 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(actionSummary.contains("```bash\n./script/create_competitor_hands_on_evidence.sh --pending"))
         XCTAssertTrue(actionSummary.contains(".tmp/competitor-hands-on/hands-on-worksheet.md"))
         XCTAssertTrue(actionSummary.contains(".tmp/competitor-hands-on/create-evidence-command.sh"))
-        XCTAssertTrue(actionSummary.contains(".tmp/competitor-hands-on/competitor-hands-on-pending-\(sourceCommit).md"))
-        XCTAssertTrue(actionSummary.contains(".tmp/competitor-hands-on/competitor-benchmark-pending-\(sourceCommit).md"))
+        XCTAssertTrue(actionSummary.contains(".tmp/competitor-hands-on/competitor-hands-on-pending-\(releaseCandidateSourceCommit).md"))
+        XCTAssertTrue(actionSummary.contains(".tmp/competitor-hands-on/competitor-benchmark-pending-\(releaseCandidateSourceCommit).md"))
         XCTAssertTrue(actionSummary.contains("```bash\n./script/create_competitor_hands_on_evidence.sh --validate-only \\"))
         XCTAssertTrue(actionSummary.contains("./script/create_competitor_hands_on_evidence.sh --passed \\"))
         let competitorSectionStart = try XCTUnwrap(actionSummary.range(of: "\n## Competitor Hands-On\n"))
@@ -12475,7 +12479,7 @@ final class ReleasePipelineTests: XCTestCase {
         )
         XCTAssertFalse((statusJSON["manualExternalRequirements"] as? [String] ?? []).isEmpty)
         XCTAssertEqual(statusJSON["sourceCommit"] as? String, sourceCommit)
-        XCTAssertEqual(statusJSON["releaseCandidateSourceCommit"] as? String, sourceCommit)
+        XCTAssertEqual(statusJSON["releaseCandidateSourceCommit"] as? String, releaseCandidateSourceCommit)
         XCTAssertFalse((statusJSON["artifactIdentity"] as? String ?? "").isEmpty)
     }
 
@@ -12517,7 +12521,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(report.contains("script/capture_ui_evidence.sh --doctor"))
         XCTAssertTrue(report.contains("script/release_readiness_report.sh"))
         XCTAssertTrue(report.contains("`./script/check_automated_release_preflight.sh`"))
-        XCTAssertTrue(report.contains("git rev-parse --short HEAD"))
+        XCTAssertTrue(report.contains("git rev-parse --short=8 HEAD"))
         XCTAssertNil(report.range(of: #"automated-release-preflight-[[:xdigit:]]{7,}\.md"#, options: .regularExpression))
         XCTAssertTrue(report.range(of: #"SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.* ./script/release_readiness_report\.sh"#, options: .regularExpression) != nil)
         XCTAssertNil(report.range(of: #"SUISUI_AUTOMATED_PREFLIGHT_EVIDENCE_FILE=.* ./script/check_automated_release_preflight\.sh"#, options: .regularExpression))
@@ -12610,7 +12614,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.name", "Quality Tests"]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "."]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "initial quality fixture"]).exitCode, 0)
-        let currentShortCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+        let currentShortCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short=8", "HEAD"])
             .output
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -13153,7 +13157,7 @@ final class ReleasePipelineTests: XCTestCase {
     }
 
     func testReleaseReadinessReportRequiresLocalVoiceRuntimeEvidence() throws {
-        let currentShortCommit = try currentShortGitCommit()
+        let currentShortCommit = try localVoiceEvidenceSourceCommit()
         let fixtureRoot = packageRoot()
             .appendingPathComponent(".build/test-release-readiness-local-voice-evidence", isDirectory: true)
         let scriptDirectory = fixtureRoot.appendingPathComponent("script", isDirectory: true)
@@ -13353,7 +13357,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.name", "Release Tests"]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "."]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "baseline local voice runtime source"]).exitCode, 0)
-        let baselineCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+        let baselineCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short=8", "HEAD"])
             .output.trimmingCharacters(in: .whitespacesAndNewlines)
 
         try """
@@ -13387,7 +13391,7 @@ final class ReleasePipelineTests: XCTestCase {
             .write(to: wrapperURL, atomically: true, encoding: .utf8)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "script/kokoro_tts_runtime.py"]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "change kokoro runtime wrapper"]).exitCode, 0)
-        let wrapperCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+        let wrapperCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short=8", "HEAD"])
             .output.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let result = try runTool(["bash", reportURL.path])
@@ -13982,7 +13986,7 @@ final class ReleasePipelineTests: XCTestCase {
         let screenshotDirectory = evidenceDirectory.appendingPathComponent("ui-screenshots", isDirectory: true)
         let reportURL = scriptDirectory.appendingPathComponent("release_readiness_report.sh")
         let preflightURL = scriptDirectory.appendingPathComponent("verify_release_environment.sh")
-        let currentUISourceCommit = try currentShortGitCommit()
+        let currentUISourceCommit = try uiEvidenceSourceCommit()
 
         try? FileManager.default.removeItem(at: fixtureRoot)
         try FileManager.default.createDirectory(at: scriptDirectory, withIntermediateDirectories: true)
@@ -14142,7 +14146,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "config", "user.name", "Quality Tests"]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "."]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "initial visual source"]).exitCode, 0)
-        let staleShortCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+        let staleShortCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short=8", "HEAD"])
             .output.trimmingCharacters(in: .whitespacesAndNewlines)
         let staleFullCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "HEAD"])
             .output.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -14151,7 +14155,7 @@ final class ReleasePipelineTests: XCTestCase {
             .write(to: captureURL, atomically: true, encoding: .utf8)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "add", "script/capture_ui_evidence.sh"]).exitCode, 0)
         XCTAssertEqual(try runTool(["git", "-C", fixtureRoot.path, "commit", "-m", "change visual capture contract"]).exitCode, 0)
-        let currentShortCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short", "HEAD"])
+        let currentShortCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "--short=8", "HEAD"])
             .output.trimmingCharacters(in: .whitespacesAndNewlines)
         let currentFullCommit = try runTool(["git", "-C", fixtureRoot.path, "rev-parse", "HEAD"])
             .output.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -15013,7 +15017,7 @@ final class ReleasePipelineTests: XCTestCase {
             try "final class \(targetName)RuntimeSource {}\n"
                 .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
         }
-        let currentShortCommit = try currentShortGitCommit()
+        let currentShortCommit = try manualReleaseEvidenceSourceCommit()
 
         try readPackageFile("script/release_readiness_report.sh")
             .write(to: reportURL, atomically: true, encoding: .utf8)
@@ -15554,7 +15558,7 @@ final class ReleasePipelineTests: XCTestCase {
             try "final class \(targetName)RuntimeSource {}\n"
                 .write(to: targetDirectory.appendingPathComponent("RuntimeSource.swift"), atomically: true, encoding: .utf8)
         }
-        let currentShortCommit = try currentShortGitCommit()
+        let currentShortCommit = try manualReleaseEvidenceSourceCommit()
 
         try readPackageFile("script/release_readiness_report.sh")
             .write(to: reportURL, atomically: true, encoding: .utf8)
@@ -16281,6 +16285,8 @@ final class ReleasePipelineTests: XCTestCase {
 
         - Source commit: `\(currentShortCommit)`
 
+        - Inspector identity: @modelcontextprotocol/inspector@2.2.0
+
         Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and Suisui's local JSON-RPC smoke checks.
 
         Implemented legacy baseline: `2025-11-25`
@@ -16417,6 +16423,8 @@ final class ReleasePipelineTests: XCTestCase {
         Generated: 2026-06-19T00:00:00Z
 
         - Source commit: `\(currentShortCommit)`
+
+        - Inspector identity: @modelcontextprotocol/inspector@2.2.0
 
         Scope: validate the release MCP stdio fixture with the official MCP Inspector CLI and Suisui's local JSON-RPC smoke checks.
 
@@ -17129,7 +17137,10 @@ final class ReleasePipelineTests: XCTestCase {
     private func currentShortGitCommit() throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["git", "-C", packageRoot().path, "rev-parse", "--short", "HEAD"]
+        process.arguments = [
+            "git", "-c", "core.abbrev=8", "-C", packageRoot().path,
+            "rev-parse", "--short=8", "HEAD"
+        ]
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
@@ -17143,27 +17154,47 @@ final class ReleasePipelineTests: XCTestCase {
     }
 
     private func manualReleaseEvidenceSourceCommit() throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = [
-            "git", "-C", packageRoot().path,
-            "log", "-1", "--format=%h", "--",
+        try scopedSourceCommit(paths: [
             "Sources/SuisuiApp",
             "Sources/SuisuiCore",
             "Sources/SuisuiCLI",
             "Sources/SuisuiExternalConnectors",
             "Package.swift",
             "packaging/app_metadata.env"
-        ]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        try process.run()
-        process.waitUntilExit()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: data, encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        XCTAssertEqual(process.terminationStatus, 0, output)
+        ])
+    }
+
+    private func uiEvidenceSourceCommit() throws -> String {
+        try scopedSourceCommit(paths: [
+            "Sources",
+            "Package.swift",
+            "script/capture_ui_evidence.sh"
+        ])
+    }
+
+    private func localVoiceEvidenceSourceCommit() throws -> String {
+        try scopedSourceCommit(paths: [
+            "Sources/SuisuiCore/Voice",
+            "Sources/SuisuiCore/App/AppSettings.swift",
+            "Sources/SuisuiCore/App/DailyPlanningReviewReadout.swift",
+            "Sources/SuisuiApp",
+            "Package.swift",
+            "packaging/app_metadata.env",
+            "script/kokoro_tts_runtime.py",
+            "script/check_local_voice_runtime_smoke.sh",
+            "docs/voice-models.md"
+        ])
+    }
+
+    private func scopedSourceCommit(paths: [String]) throws -> String {
+        let result = try runTool(
+            [
+                "git", "-c", "core.abbrev=8", "-C", packageRoot().path,
+                "log", "-1", "--format=%h", "--"
+            ] + paths
+        )
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        let output = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
         return output.isEmpty ? try currentShortGitCommit() : output
     }
 
