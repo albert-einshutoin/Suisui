@@ -94,7 +94,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
         GeometryReader { proxy in
             let availableWidth = max(proxy.size.width, 1)
             let measuredWide = TodayDashboardLayoutMetrics.isWide(availableWidth: availableWidth)
-            let isWide = prefersContinuousRail ?? measuredWide
+            let isWide = resolvedPrefersContinuousRail(measuredWide: measuredWide)
             let presentsCompactRailCardsHorizontally = !isWide
                 && availableWidth >= TodayDashboardLayoutMetrics.compactRailCardsMinimumWidth
             ScrollViewReader { scrollProxy in
@@ -205,6 +205,21 @@ struct TodayDashboardView<CatchUpContent: View>: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func resolvedPrefersContinuousRail(measuredWide: Bool) -> Bool {
+        if let prefersContinuousRail {
+            return prefersContinuousRail
+        }
+        // Evidence captures pin the 1024×676 desk. Do not trust an under-measured
+        // NavigationSplitView detail GeometryReader while the board window width
+        // bridge has not reported yet.
+        if VisualEvidenceRuntimeContext() != nil {
+            return CockpitLayoutPolicy.presentsSplitRail(
+                contentWidth: CockpitLayoutPolicy.standardContentWidth
+            )
+        }
+        return measuredWide
     }
 
     private func mainContent(

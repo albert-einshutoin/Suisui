@@ -39,7 +39,12 @@ struct ProjectBoardLaunchRecoveryView: View {
             TodayWorkflowView(
                 viewModel: viewModel,
                 selectTodayTask: selectWorkflowTask,
-                openInspectorForTodayRailTask: openInspectorForWorkflowTask
+                openInspectorForTodayRailTask: openInspectorForWorkflowTask,
+                prefersContinuousRail: VisualEvidenceRuntimeContext() != nil
+                    ? CockpitLayoutPolicy.presentsSplitRail(
+                        contentWidth: CockpitLayoutPolicy.standardContentWidth
+                    )
+                    : nil
             )
         case .done:
             DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())

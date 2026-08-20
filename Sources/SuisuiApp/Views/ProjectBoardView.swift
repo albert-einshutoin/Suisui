@@ -914,7 +914,14 @@ struct ProjectBoardView: View {
     /// AppKit window width is authoritative for the 1024 desk; the Today
     /// GeometryReader can under-report NavigationSplitView detail width and
     /// incorrectly stack Workload/Focus/Assistant below the fold.
+    /// Visual evidence always pins 1024×676, so use the standard content
+    /// contract there instead of a still-zero or mid-resize window width.
     private var todayPrefersContinuousRail: Bool? {
+        if VisualEvidenceRuntimeContext() != nil {
+            return CockpitLayoutPolicy.presentsSplitRail(
+                contentWidth: CockpitLayoutPolicy.standardContentWidth
+            )
+        }
         guard projectBoardWindowWidth > 0 else {
             return nil
         }
