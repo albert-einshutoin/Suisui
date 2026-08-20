@@ -78,7 +78,6 @@ final class AppExperienceSourceTests: XCTestCase {
                 ".suisuiLiquidGlassControlSurface(cornerRadius: 12)"
             )
         )
-        XCTAssertTrue(searchButton.contains(".stroke(Color.secondary.opacity(0.22), lineWidth: 1)"))
         XCTAssertTrue(searchButton.contains(".contentShape(Rectangle())"))
 
         let quickActionStart = try XCTUnwrap(sidebarSource.range(of: "private func quickAction("))
@@ -103,6 +102,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(sidebarSource.contains("sidebar-quick-add-task"))
         XCTAssertTrue(sidebarSource.contains("sidebar-quick-add-by-voice"))
         XCTAssertTrue(sidebarSource.contains("sidebar-quick-block-time"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-quick-import-tasks"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-profile"))
         XCTAssertFalse(sidebarSource.contains("sidebar-destination-review"))
     }
 
@@ -169,6 +170,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("onOpenSearch: { isCommandPaletteVisible = true }"))
         XCTAssertTrue(boardSource.contains("onAddTask: beginInboxQuickAddFromSidebar"))
         XCTAssertTrue(boardSource.contains("onBlockTime: prepareScheduleDraftFromSidebar"))
+        XCTAssertTrue(boardSource.contains("onImportTasks: { isImportingTaskInterop = true }"))
         XCTAssertTrue(boardSource.contains("private func prepareScheduleDraftFromSidebar()"))
         XCTAssertFalse(sidebarSource.contains("review: Int?"))
         XCTAssertFalse(
@@ -368,11 +370,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(quickAction.contains(".help(LocalizedStringKey(accessibilityHintKey(for: action)))"))
         XCTAssertFalse(quickAction.contains(".accessibilityAddTraits"))
         XCTAssertTrue(sidebar.contains("Text(LocalizedStringKey(\"Quick Actions\"))"))
-        XCTAssertTrue(sidebar.contains(".stroke(Color.secondary.opacity(0.18), lineWidth: 1)"))
+        XCTAssertTrue(sidebar.contains(".suisuiLiquidGlassControlSurface(cornerRadius: 12)"))
 
         XCTAssertTrue(
             sidebar.contains(
                 "case .blockTime:\n            \"Creates a local schedule draft without writing Calendar.\""
+            )
+        )
+        XCTAssertTrue(
+            sidebar.contains(
+                "case .importTasks:\n            \"Imports tasks from a local JSON file.\""
             )
         )
         for mapping in [
@@ -1936,6 +1943,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(projectsHubSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
         XCTAssertTrue(boardDetailSource.contains("@Environment(\\.accessibilityReduceMotion) private var reduceMotion"))
         XCTAssertTrue(boardDetailSource.contains("reduceMotion ? nil : .snappy(duration: 0.16)"))
+        XCTAssertTrue(boardDetailSource.contains("GridItem(.adaptive(minimum: 220, maximum: 340), spacing: 12)"))
+        XCTAssertTrue(boardDetailSource.contains("projects-portfolio-summary-milestones"))
+        XCTAssertTrue(boardDetailSource.contains("projects-portfolio-summary-artifacts"))
         XCTAssertTrue(doneSource.contains("heatmapMarkerDiameter"))
         XCTAssertTrue(doneSource.contains("done-heatmap-legend"))
 
@@ -6434,7 +6444,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceSource.contains(".accessibilityLabel(\"Stop Hands-free mode\")"))
         XCTAssertTrue(
             voiceSource.contains(
-                "Label(\"Voice Command\", systemImage: \"mic\")\n                    .font(.headline)\n                    .accessibilityIdentifier(\"voice-command-root\")"
+                "Label(\"Voice Command\", systemImage: \"mic\")\n                        .font(.headline)\n                        .accessibilityIdentifier(\"voice-command-root\")"
             )
         )
         XCTAssertEqual(
@@ -6446,6 +6456,9 @@ final class AppExperienceSourceTests: XCTestCase {
                 ".accessibilityIdentifier(\"voice-command-quick-command-tab\")"
             )
         )
+        XCTAssertTrue(voiceSource.contains("voice-command-understood-rail"))
+        XCTAssertTrue(voiceSource.contains("voice-command-context-rail"))
+        XCTAssertTrue(voiceSource.contains("struct VoiceListeningOrb"))
         XCTAssertTrue(
             voiceSource.contains(
                 "Label(\"Record once\", systemImage: \"waveform.badge.mic\")\n                .font(.subheadline.weight(.semibold))\n                .accessibilityIdentifier(\"voice-command-capture-zone\")"
@@ -6556,6 +6569,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(overviewSource.contains(".accessibilityLabel(localizedSettingsDisplay(group.group.title))"))
         XCTAssertTrue(overviewSource.contains("settings-readiness-row-"))
         XCTAssertTrue(overviewSource.contains("settings-readiness-action-"))
+        XCTAssertTrue(appSource.contains("settings-overview-detail-rail"))
+        XCTAssertTrue(appSource.contains("settings-ai-readiness-rail"))
         XCTAssertFalse(overviewSource.contains("LazyVGrid"))
     }
 

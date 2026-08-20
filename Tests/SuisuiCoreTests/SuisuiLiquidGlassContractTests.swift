@@ -31,6 +31,9 @@ final class SuisuiLiquidGlassContractTests: XCTestCase {
         let source = try readSource("Sources/SuisuiApp/Views/VoiceCaptureView.swift")
 
         XCTAssertTrue(source.contains(".suisuiLiquidGlassCapturePanel()"))
+        XCTAssertTrue(source.contains("voice-command-understood-rail"))
+        XCTAssertTrue(source.contains("voice-command-context-rail"))
+        XCTAssertTrue(source.contains("struct VoiceListeningOrb"))
     }
 
     func testSettingsAppearanceControlsUseLiquidGlassSurfaces() throws {

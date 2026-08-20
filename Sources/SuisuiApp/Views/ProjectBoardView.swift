@@ -176,10 +176,13 @@ struct ProjectBoardView: View {
                     schedule: sidebarMetrics.scheduleCount,
                     completed: sidebarMetrics.doneCount
                 ),
+                profileDisplayName: appSettings().normalizedForRuntime.profileDisplayName ?? "",
+                planLabel: nil,
                 onOpenSearch: { isCommandPaletteVisible = true },
                 onAddTask: beginInboxQuickAddFromSidebar,
                 onAddByVoice: openVoiceCommandFromBoardContext,
-                onBlockTime: prepareScheduleDraftFromSidebar
+                onBlockTime: prepareScheduleDraftFromSidebar,
+                onImportTasks: { isImportingTaskInterop = true }
             )
             .id(toolbarLayoutRefreshToken)
             .projectBoardSynchronizedColumnBounds()

@@ -147,58 +147,99 @@ struct VoiceCaptureView: View {
     }
 
     private var quickCommandWorkspace: some View {
-        VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
-            HStack {
-                // Structural identifiers stay on leaf headings. SwiftUI
-                // propagates container identifiers into descendants, which
-                // would hide action and mode-control identifiers from AX.
-                Label("Voice Command", systemImage: "mic")
-                    .font(.headline)
-                    .accessibilityIdentifier("voice-command-root")
-                Spacer()
-                Button {
-                    viewModel.clear()
-                    clarificationAnswer = ""
-                } label: {
-                    Label("Clear", systemImage: "xmark.circle")
-                }
-                .disabled(viewModel.draft.text.isEmpty && viewModel.planningResponse == nil)
-                .accessibilityIdentifier("voice-command-clear")
-            }
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
-                    // Capture belongs to the same scroll boundary as later
-                    // states so larger text and compact displays never make
-                    // the primary controls increase the window minimum size.
-                    captureZone
-
-                    if hasWorkingContent {
-                        workingZone
-                            .transition(.opacity.combined(with: .move(edge: .top)))
+        GeometryReader { proxy in
+            let isWide = CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(proxy.size.width))
+            VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+                HStack {
+                    // Structural identifiers stay on leaf headings. SwiftUI
+                    // propagates container identifiers into descendants, which
+                    // would hide action and mode-control identifiers from AX.
+                    Label("Voice Command", systemImage: "mic")
+                        .font(.headline)
+                        .accessibilityIdentifier("voice-command-root")
+                    Spacer()
+                    Button {
+                        viewModel.clear()
+                        clarificationAnswer = ""
+                    } label: {
+                        Label("Clear", systemImage: "xmark.circle")
                     }
+                    .disabled(viewModel.draft.text.isEmpty && viewModel.planningResponse == nil)
+                    .accessibilityIdentifier("voice-command-clear")
+                }
 
-                    if hasReviewContent {
-                        reviewZone
-                            .transition(.opacity.combined(with: .move(edge: .top)))
+                HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+                            // Capture belongs to the same scroll boundary as later
+                            // states so larger text and compact displays never make
+                            // the primary controls increase the window minimum size.
+                            captureZone
+
+                            if hasWorkingContent {
+                                workingZone
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                            }
+
+                            if hasReviewContent {
+                                reviewZone
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        // Zones fade/slide in briefly as they appear; Reduce Motion
+                        // disables the animation so state changes apply instantly.
+                        .animation(
+                            SuisuiMotion.animation(duration: SuisuiMotion.standard, reduceMotion: reduceMotion),
+                            value: hasWorkingContent
+                        )
+                        .animation(
+                            SuisuiMotion.animation(duration: SuisuiMotion.standard, reduceMotion: reduceMotion),
+                            value: hasReviewContent
+                        )
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+                    if isWide {
+                        VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+                            VoiceUnderstoodActionsRail(
+                                routingResult: viewModel.routingResult,
+                                planActionTitles: understoodPlanActionTitles
+                            )
+                            VoiceQuickCommandContextRail(
+                                destinationTitle: quickCommandDestinationTitle,
+                                isHandsFreeListening: viewModel.isLowLatencyVoiceAgentListening,
+                                speechProviderName: viewModel.handsFreeModeProviderName,
+                                needsClarification: viewModel.routingResult?.needsClarification == true
+                                    || viewModel.clarificationQuestion != nil
+                            )
+                            Spacer(minLength: 0)
+                        }
+                        .frame(width: max(220, CGFloat(CockpitLayoutPolicy.railWidth)))
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                // Zones fade/slide in briefly as they appear; Reduce Motion
-                // disables the animation so state changes apply instantly.
-                .animation(
-                    SuisuiMotion.animation(duration: SuisuiMotion.standard, reduceMotion: reduceMotion),
-                    value: hasWorkingContent
-                )
-                .animation(
-                    SuisuiMotion.animation(duration: SuisuiMotion.standard, reduceMotion: reduceMotion),
-                    value: hasReviewContent
-                )
             }
+            .padding(SuisuiSpacing.lg)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .padding(SuisuiSpacing.lg)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var understoodPlanActionTitles: [String] {
+        guard let actions = viewModel.planningResponse?.actionPlan?.actions else {
+            return []
+        }
+        return actions.prefix(5).map(\.tool.rawValue)
+    }
+
+    private var quickCommandDestinationTitle: String {
+        let scope = viewModel.conversationWorkspaceScope
+        if let taskName = scope.taskName, !taskName.isEmpty {
+            return taskName
+        }
+        if let projectName = scope.projectName, !projectName.isEmpty {
+            return projectName
+        }
+        return scope.sessionTitle
     }
 
     /// Whether the tappable example commands render: only while the command
@@ -217,10 +258,13 @@ struct VoiceCaptureView: View {
         viewModel.phase == .generatingPlan || viewModel.phase == .transcribing || viewModel.isLowLatencyVoiceAgentListening
     }
 
+    private var isListeningHeroActive: Bool {
+        viewModel.isRecording || viewModel.isLowLatencyVoiceAgentListening
+    }
+
     /// Hero capture affordance: a large circular microphone button centered
-    /// above the input, with the current phase word beneath it. While a
-    /// recording is live the glyph swaps to a stop square and the input level
-    /// meter renders directly under the status word.
+    /// above the input, with the current phase word beneath it. While listening
+    /// or recording, a larger orb, ring pulse, and waveform meter take over.
     private var heroCaptureControl: some View {
         VStack(spacing: SuisuiSpacing.sm) {
             Button {
@@ -236,16 +280,12 @@ struct VoiceCaptureView: View {
                     }
                 }
             } label: {
-                Image(systemName: viewModel.isRecording ? "stop.fill" : "mic.fill")
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(viewModel.isRecording ? AnyShapeStyle(Color.white) : AnyShapeStyle(.tint))
-                    .frame(width: 64, height: 64)
-                    .background(
-                        Circle()
-                            .fill(viewModel.isRecording ? AnyShapeStyle(.tint) : AnyShapeStyle(SuisuiBrand.soloBlue.opacity(0.14)))
-                    )
-                    .contentShape(Circle())
-                    .opacity(isHeroRecordDisabled ? 0.45 : 1)
+                VoiceListeningOrb(
+                    isListening: isListeningHeroActive,
+                    isRecording: viewModel.isRecording,
+                    meter: viewModel.inputLevelMeter
+                )
+                .opacity(isHeroRecordDisabled ? 0.45 : 1)
             }
             .buttonStyle(.plain)
             .disabled(isHeroRecordDisabled)
@@ -259,7 +299,7 @@ struct VoiceCaptureView: View {
 
             StatusRow(phase: viewModel.phase)
 
-            if viewModel.isRecording {
+            if isListeningHeroActive {
                 VoiceInputLevelMeter(meter: viewModel.inputLevelMeter)
             }
         }
@@ -866,6 +906,159 @@ private struct VoiceInputLevelMeter: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Microphone input level")
         .accessibilityIdentifier("voice-input-level-meter")
+    }
+}
+
+/// Large listening orb used by the Quick Command hero. Idle shows a compact
+/// mic; listening/recording expands the orb with a soft ring and level-driven
+/// glow while keeping the control a single tappable surface.
+private struct VoiceListeningOrb: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let isListening: Bool
+    let isRecording: Bool
+    @ObservedObject var meter: MicrophoneInputLevelMeter
+
+    private var orbSize: CGFloat {
+        isListening ? 96 : 64
+    }
+
+    private var ringScale: CGFloat {
+        guard isListening, !reduceMotion else { return 1 }
+        return 1.08 + CGFloat(min(max(meter.inputLevel, 0), 1)) * 0.12
+    }
+
+    var body: some View {
+        ZStack {
+            if isListening {
+                Circle()
+                    .stroke(Color.accentColor.opacity(0.28), lineWidth: 2)
+                    .frame(width: orbSize + 18, height: orbSize + 18)
+                    .scaleEffect(ringScale)
+                    .animation(
+                        SuisuiMotion.animation(duration: SuisuiMotion.quick, reduceMotion: reduceMotion),
+                        value: meter.inputLevel
+                    )
+            }
+
+            Image(systemName: isRecording ? "stop.fill" : "mic.fill")
+                .font(.system(size: isListening ? 34 : 26, weight: .semibold))
+                .foregroundStyle(isListening ? AnyShapeStyle(Color.white) : AnyShapeStyle(.tint))
+                .frame(width: orbSize, height: orbSize)
+                .background(
+                    Circle()
+                        .fill(
+                            isListening
+                                ? AnyShapeStyle(.tint)
+                                : AnyShapeStyle(SuisuiBrand.soloBlue.opacity(0.14))
+                        )
+                )
+                .contentShape(Circle())
+        }
+        .frame(width: orbSize + 24, height: orbSize + 24)
+        .animation(
+            SuisuiMotion.animation(duration: SuisuiMotion.standard, reduceMotion: reduceMotion),
+            value: isListening
+        )
+    }
+}
+
+/// Lightweight "understood" list for Quick Command — intent summary plus plan
+/// action titles when a reviewable plan exists. Distinct from Conversation
+/// Understanding so the capture desk stays compact.
+private struct VoiceUnderstoodActionsRail: View {
+    let routingResult: VoiceCommandRoutingResult?
+    let planActionTitles: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
+            Label("Understood", systemImage: "checkmark.seal")
+                .font(SuisuiTypography.sectionTitle)
+
+            if let routingResult {
+                Text(localizedSettingsDisplay(routingResult.intent.displayName))
+                    .font(.subheadline.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(localizedSettingsDisplay(routingResult.interpretationSummary))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(Array(routingResult.matchedSignals.prefix(3).enumerated()), id: \.offset) { _, signal in
+                    Label(signal, systemImage: "sparkle")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            } else {
+                Text("Speak or type a command to see what Suisui understood.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !planActionTitles.isEmpty {
+                Text("Planned actions")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+                ForEach(Array(planActionTitles.enumerated()), id: \.offset) { _, title in
+                    Label(title, systemImage: "arrow.right.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("voice-command-understood-rail")
+    }
+}
+
+/// Quick Command context chips: current destination, hands-free state, speech
+/// provider, and whether clarification is required.
+private struct VoiceQuickCommandContextRail: View {
+    let destinationTitle: String
+    let isHandsFreeListening: Bool
+    let speechProviderName: String
+    let needsClarification: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
+            Label("Context", systemImage: "sidebar.right")
+                .font(SuisuiTypography.sectionTitle)
+
+            contextChip(title: destinationTitle, systemImage: "mappin.and.ellipse")
+            contextChip(
+                title: isHandsFreeListening ? "Hands-free listening" : "Push to talk",
+                systemImage: isHandsFreeListening ? "ear" : "hand.tap"
+            )
+            contextChip(title: speechProviderName, systemImage: "waveform")
+            contextChip(
+                title: needsClarification ? "Clarification needed" : "Ready to continue",
+                systemImage: needsClarification ? "questionmark.circle" : "checkmark.circle"
+            )
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("voice-command-context-rail")
+    }
+
+    private func contextChip(title: String, systemImage: String) -> some View {
+        Label(localizedSettingsDisplay(title), systemImage: systemImage)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                SuisuiTone.neutral.color.opacity(0.12),
+                in: RoundedRectangle(cornerRadius: SuisuiRadius.control, style: .continuous)
+            )
+            .lineLimit(2)
     }
 }
 

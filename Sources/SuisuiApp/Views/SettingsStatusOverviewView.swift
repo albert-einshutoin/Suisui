@@ -4,11 +4,18 @@ import SwiftUI
 struct SettingsStatusOverviewView: View {
     let groups: [SettingsReadinessRowGroup]
     let performAction: (SettingsReadinessAction) -> Void
+    var selectedRowID: String? = nil
+    var onSelectRow: ((SettingsReadinessRow) -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ForEach(groups, id: \SettingsReadinessRowGroup.group) { (group: SettingsReadinessRowGroup) in
-                SettingsReadinessGroupView(group: group, performAction: performAction)
+                SettingsReadinessGroupView(
+                    group: group,
+                    selectedRowID: selectedRowID,
+                    performAction: performAction,
+                    onSelectRow: onSelectRow
+                )
             }
         }
         .padding(.vertical, 2)
@@ -26,16 +33,22 @@ struct SettingsStatusOverviewView: View {
 /// open, because that is the only group the user has to do something about.
 private struct SettingsReadinessGroupView: View {
     let group: SettingsReadinessRowGroup
+    let selectedRowID: String?
     let performAction: (SettingsReadinessAction) -> Void
+    let onSelectRow: ((SettingsReadinessRow) -> Void)?
 
     @State private var isExpanded: Bool
 
     init(
         group: SettingsReadinessRowGroup,
-        performAction: @escaping (SettingsReadinessAction) -> Void
+        selectedRowID: String?,
+        performAction: @escaping (SettingsReadinessAction) -> Void,
+        onSelectRow: ((SettingsReadinessRow) -> Void)?
     ) {
         self.group = group
+        self.selectedRowID = selectedRowID
         self.performAction = performAction
+        self.onSelectRow = onSelectRow
         _isExpanded = State(initialValue: group.group == .needsAttention)
     }
 
@@ -43,7 +56,14 @@ private struct SettingsReadinessGroupView: View {
         DisclosureGroup(isExpanded: $isExpanded) {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(group.rows, id: \SettingsReadinessRow.id) { (row: SettingsReadinessRow) in
-                    SettingsReadinessRowView(row: row, performAction: performAction)
+                    SettingsReadinessRowView(
+                        row: row,
+                        isSelected: selectedRowID == row.id,
+                        performAction: performAction,
+                        onSelect: onSelectRow.map { callback in
+                            { callback(row) }
+                        }
+                    )
                 }
             }
             .padding(.top, 8)
@@ -93,7 +113,9 @@ private struct SettingsReadinessGroupView: View {
 
 private struct SettingsReadinessRowView: View {
     let row: SettingsReadinessRow
+    let isSelected: Bool
     let performAction: (SettingsReadinessAction) -> Void
+    let onSelect: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -132,10 +154,15 @@ private struct SettingsReadinessRowView: View {
         .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card))
         .overlay {
             RoundedRectangle(cornerRadius: SuisuiRadius.card)
-                .stroke(row.state.borderColor)
+                .stroke(isSelected ? Color.accentColor : row.state.borderColor, lineWidth: isSelected ? 1.5 : 1)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onSelect?()
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings-readiness-row-\(row.id)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

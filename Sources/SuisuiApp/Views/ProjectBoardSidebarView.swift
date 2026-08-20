@@ -38,25 +38,47 @@ struct ProjectBoardSidebarCounts: Equatable {
 struct ProjectBoardSidebarView: View {
     @Binding private var route: BoardRoute
     private let counts: ProjectBoardSidebarCounts
+    private let profileDisplayName: String
+    private let planLabel: String?
     private let onOpenSearch: () -> Void
     private let onAddTask: () -> Void
     private let onAddByVoice: () -> Void
     private let onBlockTime: () -> Void
+    private let onImportTasks: () -> Void
 
     init(
         route: Binding<BoardRoute>,
         counts: ProjectBoardSidebarCounts,
+        profileDisplayName: String = "",
+        planLabel: String? = nil,
         onOpenSearch: @escaping () -> Void,
         onAddTask: @escaping () -> Void,
         onAddByVoice: @escaping () -> Void,
-        onBlockTime: @escaping () -> Void
+        onBlockTime: @escaping () -> Void,
+        onImportTasks: @escaping () -> Void
     ) {
         _route = route
         self.counts = counts
+        self.profileDisplayName = profileDisplayName
+        self.planLabel = planLabel
         self.onOpenSearch = onOpenSearch
         self.onAddTask = onAddTask
         self.onAddByVoice = onAddByVoice
         self.onBlockTime = onBlockTime
+        self.onImportTasks = onImportTasks
+    }
+
+    private var resolvedProfileDisplayName: String {
+        let trimmed = profileDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? localizedDisplay("Local profile") : trimmed
+    }
+
+    private var profileInitial: String {
+        let trimmed = profileDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let first = trimmed.first {
+            return String(first).uppercased()
+        }
+        return "L"
     }
 
     var body: some View {
@@ -113,17 +135,58 @@ struct ProjectBoardSidebarView: View {
                     quickAction(.addTask, handler: onAddTask)
                     quickAction(.addByVoice, handler: onAddByVoice)
                     quickAction(.blockTime, handler: onBlockTime)
+                    quickAction(.importTasks, handler: onImportTasks)
                 }
                 .padding(SuisuiSpacing.md)
                 .suisuiLiquidGlassControlSurface(cornerRadius: 12)
             }
             .suisuiLiquidGlassControlGroup(spacing: SuisuiSpacing.md)
+
+            Spacer(minLength: 0)
+
+            profileFooter
         }
         .padding(SuisuiSpacing.lg)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project-board-sidebar")
         .accessibilityLabel(Text(LocalizedStringKey("Project navigation")))
         .accessibilityHint(Text(LocalizedStringKey("Navigate work or open a quick action.")))
+    }
+
+    private var profileFooter: some View {
+        HStack(spacing: 10) {
+            Text(profileInitial)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 32, height: 32)
+                .background(Color.accentColor.opacity(0.14), in: Circle())
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(resolvedProfileDisplayName)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                if let planLabel, !planLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(planLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("sidebar-profile")
+        .accessibilityLabel(Text(resolvedProfileDisplayName))
+        .accessibilityValue(
+            planLabel.flatMap { label in
+                let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            } ?? ""
+        )
     }
 
     @ViewBuilder
@@ -258,6 +321,8 @@ struct ProjectBoardSidebarView: View {
             "Opens Voice Command."
         case .blockTime:
             "Creates a local schedule draft without writing Calendar."
+        case .importTasks:
+            "Imports tasks from a local JSON file."
         }
     }
 
@@ -280,6 +345,7 @@ struct ProjectBoardSidebarView: View {
         case .addTask: "sidebar-quick-add-task"
         case .addByVoice: "sidebar-quick-add-by-voice"
         case .blockTime: "sidebar-quick-block-time"
+        case .importTasks: "sidebar-quick-import-tasks"
         }
     }
 }

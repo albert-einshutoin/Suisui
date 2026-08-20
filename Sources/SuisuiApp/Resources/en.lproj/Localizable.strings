@@ -1793,12 +1793,32 @@
 /* Today sidebar navigation and quick actions */
 "Add by Voice" = "Add by Voice";
 "Block Time" = "Block Time";
+"Imports tasks from a local JSON file." = "Imports tasks from a local JSON file.";
+"Local profile" = "Local profile";
 "Navigate work or open a quick action." = "Navigate work or open a quick action.";
 "Opens the command palette." = "Opens the command palette.";
 "Opens this section." = "Opens this section.";
 "No items today" = "No items today";
 "No scheduled items" = "No scheduled items";
 "No completed items" = "No completed items";
+
+/* Voice Quick Command desk */
+"Understood" = "Understood";
+"Context" = "Context";
+"Speak or type a command to see what Suisui understood." = "Speak or type a command to see what Suisui understood.";
+"Planned actions" = "Planned actions";
+"Hands-free listening" = "Hands-free listening";
+"Push to talk" = "Push to talk";
+"Ready to continue" = "Ready to continue";
+
+/* Settings overview desk */
+"Selected readiness" = "Selected readiness";
+"Select a readiness row to review details." = "Select a readiness row to review details.";
+"Readiness" = "Readiness";
+"Readiness details appear once Overview has loaded provider status." = "Readiness details appear once Overview has loaded provider status.";
+
+/* Projects portfolio rail */
+"Milestones" = "Milestones";
 
 /* Voice workspace Q&A */
 "Searching your workspace" = "Searching your workspace";

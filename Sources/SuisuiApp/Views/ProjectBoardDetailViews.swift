@@ -101,6 +101,8 @@ struct ProjectsPortfolioOverview: View {
                                 recentTaskTitle: recentTaskTitle(for: selectedSummary),
                                 todayDueTaskCount: todayDueTaskCount(for: selectedSummary),
                                 nextMilestoneTitle: nextMilestone(for: selectedSummary)?.title,
+                                milestoneTitles: milestoneTitles(for: selectedSummary),
+                                artifactTitles: artifactTitles(for: selectedSummary),
                                 onOpen: { onOpenProject(selectedSummary.projectID) }
                             )
                             .frame(width: CGFloat(CockpitLayoutPolicy.railWidth))
@@ -116,6 +118,8 @@ struct ProjectsPortfolioOverview: View {
                                     recentTaskTitle: recentTaskTitle(for: selectedSummary),
                                     todayDueTaskCount: todayDueTaskCount(for: selectedSummary),
                                     nextMilestoneTitle: nextMilestone(for: selectedSummary)?.title,
+                                    milestoneTitles: milestoneTitles(for: selectedSummary),
+                                    artifactTitles: artifactTitles(for: selectedSummary),
                                     onOpen: { onOpenProject(selectedSummary.projectID) }
                                 )
                             }
@@ -146,7 +150,9 @@ struct ProjectsPortfolioOverview: View {
 
     private var projectGridContent: some View {
         LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 260, maximum: 360), spacing: 12)],
+            // ~220pt minimum keeps two portfolio cards stable at the 1024pt
+            // canonical window beside the summary rail.
+            columns: [GridItem(.adaptive(minimum: 220, maximum: 340), spacing: 12)],
             alignment: .leading,
             spacing: 12
         ) {
@@ -197,6 +203,27 @@ struct ProjectsPortfolioOverview: View {
             .filter { !$0.isCompleted }
             .sorted { ($0.dueAt ?? "9999") < ($1.dueAt ?? "9999") }
             .first
+    }
+
+    private func milestoneTitles(for summary: ProjectPortfolioSummary) -> [String] {
+        let milestones = viewModel.snapshot.projects.first { $0.id == summary.projectID }?.milestones ?? []
+        return milestones
+            .sorted { lhs, rhs in
+                if lhs.isCompleted != rhs.isCompleted {
+                    return !lhs.isCompleted && rhs.isCompleted
+                }
+                return (lhs.dueAt ?? "9999") < (rhs.dueAt ?? "9999")
+            }
+            .prefix(3)
+            .map(\.title)
+    }
+
+    private func artifactTitles(for summary: ProjectPortfolioSummary) -> [String] {
+        let artifacts = viewModel.snapshot.projects.first { $0.id == summary.projectID }?.artifacts ?? []
+        return artifacts
+            .prefix(3)
+            .map { URL(fileURLWithPath: $0.expectedPath).lastPathComponent }
+            .filter { !$0.isEmpty }
     }
 
     private var portfolioRankingRuleDescription: String? {
@@ -425,6 +452,8 @@ private struct ProjectPortfolioSummaryRail: View {
     let recentTaskTitle: String?
     let todayDueTaskCount: Int
     let nextMilestoneTitle: String?
+    let milestoneTitles: [String]
+    let artifactTitles: [String]
     let onOpen: () -> Void
 
     private var localizedRiskReason: String {
@@ -491,6 +520,34 @@ private struct ProjectPortfolioSummaryRail: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             }
+            if !milestoneTitles.isEmpty {
+                summarySection(
+                    titleKey: "Milestones",
+                    systemImage: "flag",
+                    accessibilityIdentifier: "projects-portfolio-summary-milestones"
+                ) {
+                    ForEach(Array(milestoneTitles.enumerated()), id: \.offset) { _, title in
+                        Text(title)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+            }
+            if !artifactTitles.isEmpty {
+                summarySection(
+                    titleKey: "Artifacts",
+                    systemImage: "doc",
+                    accessibilityIdentifier: "projects-portfolio-summary-artifacts"
+                ) {
+                    ForEach(Array(artifactTitles.enumerated()), id: \.offset) { _, title in
+                        Text(title)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
             Button(action: onOpen) {
                 Label("Open Project", systemImage: "arrow.right")
             }
@@ -514,6 +571,25 @@ private struct ProjectPortfolioSummaryRail: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(SuisuiTone.neutral.color.opacity(0.12), in: RoundedRectangle(cornerRadius: SuisuiRadius.control, style: .continuous))
+    }
+
+    private func summarySection<Content: View>(
+        titleKey: String,
+        systemImage: String,
+        accessibilityIdentifier: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(LocalizedStringKey(titleKey), systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            content()
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(SuisuiTone.neutral.color.opacity(0.12), in: RoundedRectangle(cornerRadius: SuisuiRadius.control, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 }
 

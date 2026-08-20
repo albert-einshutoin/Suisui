@@ -31,6 +31,7 @@ final class ProjectBoardSidebarPresentationTests: XCTestCase {
                 .init(title: "Add Task", systemImage: "plus.circle"),
                 .init(title: "Add by Voice", systemImage: "mic.circle"),
                 .init(title: "Block Time", systemImage: "calendar.badge.clock"),
+                .init(title: "Import Tasks", systemImage: "square.and.arrow.down"),
             ]
         )
     }

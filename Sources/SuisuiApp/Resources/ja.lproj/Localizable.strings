@@ -1775,12 +1775,32 @@
 /* Today sidebar navigation and quick actions */
 "Add by Voice" = "音声で追加";
 "Block Time" = "時間をブロック";
+"Imports tasks from a local JSON file." = "ローカルのJSONファイルからタスクをインポートします。";
+"Local profile" = "ローカルプロフィール";
 "Navigate work or open a quick action." = "作業画面へ移動するか、クイックアクションを開きます。";
 "Opens the command palette." = "コマンドパレットを開きます。";
 "Opens this section." = "このセクションを開きます。";
 "No items today" = "今日の項目はありません";
 "No scheduled items" = "予定項目はありません";
 "No completed items" = "完了済みの項目はありません";
+
+/* Voice Quick Command desk */
+"Understood" = "理解した内容";
+"Context" = "コンテキスト";
+"Speak or type a command to see what Suisui understood." = "コマンドを話すか入力すると、Suisuiが理解した内容が表示されます。";
+"Planned actions" = "計画された操作";
+"Hands-free listening" = "ハンズフリーで聴取中";
+"Push to talk" = "プッシュして話す";
+"Ready to continue" = "続行できます";
+
+/* Settings overview desk */
+"Selected readiness" = "選択中の準備状態";
+"Select a readiness row to review details." = "行を選択して詳細を確認します。";
+"Readiness" = "準備状態";
+"Readiness details appear once Overview has loaded provider status." = "Overviewがプロバイダ状態を読み込むと、準備状態の詳細が表示されます。";
+
+/* Projects portfolio rail */
+"Milestones" = "マイルストーン";
 
 /* Voice workspace Q&A */
 "Searching your workspace" = "ワークスペースを検索中";

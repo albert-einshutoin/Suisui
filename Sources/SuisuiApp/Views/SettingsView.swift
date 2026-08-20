@@ -245,7 +245,8 @@ struct SettingsView: View {
             shortcutSettingsViewModel: shortcutSettingsViewModel,
             makeTextToSpeechPreviewer: { [settingsViewModel, textToSpeechPreviewerFactory] in
                 textToSpeechPreviewerFactory(settingsViewModel.settings)
-            }
+            },
+            readinessGroups: settingsOverviewDependencies.groups
         )
     }
 

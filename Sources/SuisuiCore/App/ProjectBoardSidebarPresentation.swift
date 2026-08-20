@@ -37,12 +37,14 @@ public enum ProjectBoardSidebarQuickAction: String, CaseIterable, Hashable, Send
     case addTask
     case addByVoice
     case blockTime
+    case importTasks
 
     public var title: String {
         switch self {
         case .addTask: "Add Task"
         case .addByVoice: "Add by Voice"
         case .blockTime: "Block Time"
+        case .importTasks: "Import Tasks"
         }
     }
 
@@ -51,6 +53,7 @@ public enum ProjectBoardSidebarQuickAction: String, CaseIterable, Hashable, Send
         case .addTask: "plus.circle"
         case .addByVoice: "mic.circle"
         case .blockTime: "calendar.badge.clock"
+        case .importTasks: "square.and.arrow.down"
         }
     }
 }
