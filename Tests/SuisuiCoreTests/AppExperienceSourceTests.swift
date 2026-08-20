@@ -4911,6 +4911,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(rail.contains("TodayWorkloadCard(workload: dashboard.workload)"))
         XCTAssertTrue(rail.contains("TodayAssistantCard("))
         XCTAssertTrue(dashboard.contains("today-wide-board"))
+        XCTAssertTrue(dashboard.contains(".frame(width: availableWidth, alignment: .topLeading)"))
         XCTAssertTrue(cards.contains("actionColor(for: recommendation)"))
         XCTAssertTrue(cards.contains(".foregroundStyle(.white)"))
         XCTAssertFalse(

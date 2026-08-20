@@ -36,7 +36,9 @@ enum ProjectBoardLayoutMetrics {
     // minimum. With the compact inspector open, that floor prevents the product
     // from reaching its supported 1024pt compact window width.
     static let detailColumnMinWidth: CGFloat = 440
-    static let detailColumnIdealWidth: CGFloat = 700
+    // Prefer the 1024pt detail remainder (≈784) so cockpit split rails and the
+    // Today continuous rail stay beside primary content instead of clipping.
+    static let detailColumnIdealWidth: CGFloat = 784
     static let terminalPanelMinHeight: CGFloat = 220
     static let terminalPanelIdealHeight: CGFloat = 280
     static let terminalPanelMaxHeight: CGFloat = 360

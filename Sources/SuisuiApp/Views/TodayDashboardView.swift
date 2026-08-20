@@ -127,6 +127,9 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                     .accessibilityLabel("Today briefing")
                     .padding(.horizontal, 18)
                     .padding(.vertical, 18)
+                    // Vertical ScrollView otherwise lets maxWidth: .infinity children
+                    // grow past the detail column and clip the continuous rail.
+                    .frame(width: availableWidth, alignment: .topLeading)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
