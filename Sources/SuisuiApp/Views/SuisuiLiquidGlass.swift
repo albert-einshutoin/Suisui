@@ -70,4 +70,19 @@ extension View {
     func suisuiLiquidGlassCapturePanel() -> some View {
         modifier(SuisuiLiquidGlassCapturePanelModifier())
     }
+
+    /// Groups sibling Liquid Glass controls so macOS 26 can share sampling and
+    /// morph nearby shapes. Older releases keep the content unchanged.
+    @ViewBuilder
+    func suisuiLiquidGlassControlGroup(
+        spacing: CGFloat = SuisuiSpacing.md
+    ) -> some View {
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer(spacing: spacing) {
+                self
+            }
+        } else {
+            self
+        }
+    }
 }

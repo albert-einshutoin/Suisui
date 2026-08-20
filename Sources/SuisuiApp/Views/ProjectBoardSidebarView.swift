@@ -74,45 +74,50 @@ struct ProjectBoardSidebarView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(LocalizedStringKey("Suisui")))
 
-            Button(action: onOpenSearch) {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .accessibilityHidden(true)
-                    Text(LocalizedStringKey("Search"))
-                    Spacer()
-                    Text(LocalizedStringKey("⌘K"))
-                        .foregroundStyle(.secondary)
+            // Search and Quick Actions share one Liquid Glass sampling region so
+            // nearby control surfaces can morph without sampling each other.
+            VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+                Button(action: onOpenSearch) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .accessibilityHidden(true)
+                        Text(LocalizedStringKey("Search"))
+                        Spacer()
+                        Text(LocalizedStringKey("⌘K"))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36, alignment: .leading)
+                    .suisuiLiquidGlassControlSurface(cornerRadius: 12)
+                    .contentShape(Rectangle())
                 }
-                .padding(.horizontal, 10)
-                .frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36, alignment: .leading)
-                .suisuiLiquidGlassControlSurface(cornerRadius: 12)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text(LocalizedStringKey("Search")))
-            .accessibilityIdentifier("sidebar-open-search")
-            .accessibilityHint(Text(LocalizedStringKey("Opens the command palette.")))
-            .help(LocalizedStringKey("Opens the command palette."))
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(LocalizedStringKey("Search")))
+                .accessibilityIdentifier("sidebar-open-search")
+                .accessibilityHint(Text(LocalizedStringKey("Opens the command palette.")))
+                .help(LocalizedStringKey("Opens the command palette."))
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(ProjectBoardSidebarPresentation.items, id: \.id) { item in
-                        sidebarRow(item)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(ProjectBoardSidebarPresentation.items, id: \.id) { item in
+                            sidebarRow(item)
+                        }
                     }
                 }
-            }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(LocalizedStringKey("Quick Actions"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(LocalizedStringKey("Quick Actions"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
 
-                quickAction(.addTask, handler: onAddTask)
-                quickAction(.addByVoice, handler: onAddByVoice)
-                quickAction(.blockTime, handler: onBlockTime)
+                    quickAction(.addTask, handler: onAddTask)
+                    quickAction(.addByVoice, handler: onAddByVoice)
+                    quickAction(.blockTime, handler: onBlockTime)
+                }
+                .padding(SuisuiSpacing.md)
+                .suisuiLiquidGlassControlSurface(cornerRadius: 12)
             }
-            .padding(SuisuiSpacing.md)
-            .suisuiLiquidGlassControlSurface(cornerRadius: 12)
+            .suisuiLiquidGlassControlGroup(spacing: SuisuiSpacing.md)
         }
         .padding(SuisuiSpacing.lg)
         .accessibilityElement(children: .contain)
