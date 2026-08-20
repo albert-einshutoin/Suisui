@@ -10,7 +10,7 @@
     "referenceInstant": "2026-07-10T12:00:00Z"
   },
   "rasterComparison": {
-    "perChannelDeltaThreshold": 0.10,
+    "perChannelDeltaThreshold": 0.1,
     "maximumChangedPixelRatio": 0.005,
     "maximumMeanAbsoluteError": 0.01
   },
@@ -29,7 +29,11 @@
     {
       "id": "project-board",
       "title": "Project Board",
-      "themes": ["light", "dark", "system"],
+      "themes": [
+        "light",
+        "dark",
+        "system"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -50,7 +54,11 @@
     {
       "id": "inbox",
       "title": "Inbox",
-      "themes": ["light", "dark", "system"],
+      "themes": [
+        "light",
+        "dark",
+        "system"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -66,7 +74,11 @@
     {
       "id": "today",
       "title": "Today",
-      "themes": ["light", "dark", "system"],
+      "themes": [
+        "light",
+        "dark",
+        "system"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -82,7 +94,10 @@
     {
       "id": "inbox-voice",
       "title": "Inbox Voice",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -97,7 +112,10 @@
     {
       "id": "projects-overview",
       "title": "Projects Overview",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -112,7 +130,10 @@
     {
       "id": "schedule",
       "title": "Schedule",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -127,7 +148,10 @@
     {
       "id": "schedule-workload",
       "title": "Schedule Workload",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -142,7 +166,10 @@
     {
       "id": "done",
       "title": "Done",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -157,7 +184,10 @@
     {
       "id": "assistant-queue-waiting-review",
       "title": "Assistant Queue Waiting Review",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -172,7 +202,10 @@
     {
       "id": "assistant-queue-approved",
       "title": "Assistant Queue Approved",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -187,7 +220,10 @@
     {
       "id": "assistant-queue-failed",
       "title": "Assistant Queue Failed",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -202,9 +238,13 @@
     {
       "id": "settings-overview",
       "title": "Settings Overview",
-      "themes": ["light", "dark", "system"],
+      "themes": [
+        "light",
+        "dark",
+        "system"
+      ],
       "viewport": {
-        "width": 720,
+        "width": 1024,
         "height": 676
       },
       "axFrameAudit": true,
@@ -218,9 +258,12 @@
     {
       "id": "settings-integrations",
       "title": "Settings Integrations",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "viewport": {
-        "width": 720,
+        "width": 1024,
         "height": 676
       },
       "axFrameAudit": true,
@@ -233,9 +276,13 @@
     {
       "id": "settings-appearance",
       "title": "Settings Appearance",
-      "themes": ["light", "dark", "system"],
+      "themes": [
+        "light",
+        "dark",
+        "system"
+      ],
       "viewport": {
-        "width": 720,
+        "width": 1024,
         "height": 676
       },
       "axFrameAudit": true,
@@ -249,9 +296,13 @@
     {
       "id": "mcp-settings",
       "title": "MCP Settings",
-      "themes": ["light", "dark", "system"],
+      "themes": [
+        "light",
+        "dark",
+        "system"
+      ],
       "viewport": {
-        "width": 720,
+        "width": 1024,
         "height": 676
       },
       "axFrameAudit": true,
@@ -265,7 +316,11 @@
     {
       "id": "voice-command",
       "title": "Voice Command",
-      "themes": ["light", "dark", "system"],
+      "themes": [
+        "light",
+        "dark",
+        "system"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676

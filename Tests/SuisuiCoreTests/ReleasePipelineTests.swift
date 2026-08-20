@@ -10364,10 +10364,10 @@ final class ReleasePipelineTests: XCTestCase {
             "assistant-queue-waiting-review": (1_024, 676),
             "assistant-queue-approved": (1_024, 676),
             "assistant-queue-failed": (1_024, 676),
-            "settings-overview": (720, 676),
-            "settings-integrations": (720, 676),
-            "settings-appearance": (720, 676),
-            "mcp-settings": (720, 676),
+            "settings-overview": (1024, 676),
+            "settings-integrations": (1024, 676),
+            "settings-appearance": (1024, 676),
+            "mcp-settings": (1024, 676),
             "voice-command": (1_024, 676)
         ]
         let expectedAXTargets: [String: String] = [
@@ -14215,7 +14215,7 @@ final class ReleasePipelineTests: XCTestCase {
           "sourceManifest": "docs/quality/visual-baseline-manifest.json",
           "screenshotDirectory": "docs/release/evidence/ui-screenshots",
           "mainViewport": "999x999",
-          "settingsViewport": "720x676",
+          "settingsViewport": "1024x676",
           "voiceCommandViewport": "1024x676",
           "comparison": "bytewise"
         }
@@ -14247,7 +14247,7 @@ final class ReleasePipelineTests: XCTestCase {
           "sourceManifest": "docs/quality/visual-baseline-manifest-ja.json",
           "screenshotDirectory": "docs/release/evidence/ui-screenshots-ja",
           "mainViewport": "999x999",
-          "settingsViewport": "720x676",
+          "settingsViewport": "1024x676",
           "voiceCommandViewport": "1024x676",
           "comparison": "bytewise"
         }
@@ -14327,7 +14327,7 @@ final class ReleasePipelineTests: XCTestCase {
           "sourceManifest": "docs/quality/visual-baseline-manifest.json",
           "screenshotDirectory": "docs/release/evidence/ui-screenshots",
           "mainViewport": "1024x676",
-          "settingsViewport": "720x676",
+          "settingsViewport": "1024x676",
           "voiceCommandViewport": "1024x676",
           "comparison": "semantic"
         }
@@ -14359,7 +14359,7 @@ final class ReleasePipelineTests: XCTestCase {
           "sourceManifest": "docs/quality/visual-baseline-manifest-ja.json",
           "screenshotDirectory": "docs/release/evidence/ui-screenshots-ja",
           "mainViewport": "1024x676",
-          "settingsViewport": "720x676",
+          "settingsViewport": "1024x676",
           "voiceCommandViewport": "1024x676",
           "comparison": "semantic"
         }
