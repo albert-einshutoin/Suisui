@@ -159,48 +159,36 @@ struct TodayDashboardView<CatchUpContent: View>: View {
         dashboard: TodayDashboardSnapshot,
         openReview: @escaping () -> Void
     ) -> some View {
-        VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.widgetSpacing) {
-            TodayDashboardAlignedRow {
-                TodayDashboardRecommendationCards(
-                    recommendations: dashboard.recommendations,
-                    onAction: performRecommendationAction
-                )
-            } rail: {
-                TodayWorkloadCard(workload: dashboard.workload)
+        // Keep Workload → Focus → Assistant as one continuous rail so the
+        // 1024×676 contract shows the sample desk without clipping interleaved
+        // row partners off-screen.
+        HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
+            VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.widgetSpacing) {
+                mainContent(dashboard: dashboard, isWide: true, openReview: openReview)
+                reviewActionsCard(isWide: true)
+                HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
+                    TodayIntegrationCard(integration: dashboard.integrations.calendar)
+                        .todayDashboardFillRow()
+                    TodayIntegrationCard(integration: dashboard.integrations.slack)
+                        .todayDashboardFillRow()
+                }
             }
-            TodayDashboardAlignedRow {
-                taskList(dashboard: dashboard, isWide: true)
-            } rail: {
-                focusCard(dashboard: dashboard)
-            }
-            HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
-                TodayDashboardWeeklyScheduleCard(schedule: dashboard.weeklySchedule)
-                    .todayDashboardFillRow()
-                TodayDashboardReviewCard(
-                    review: dashboard.review,
-                    externalActivity: dashboard.externalActivity,
-                    openReview: openReview
-                )
-                .accessibilityFocused($isReviewFocused)
-                .todayDashboardFillRow()
-                TodayAssistantCard(
-                    assistantContext: snapshot.assistantContext,
-                    viewModel: viewModel,
-                    commandTitle: $commandTitle,
-                    openInspector: openInspectorForTodayRailTask
-                )
-                .frame(width: TodayDashboardLayoutMetrics.railMinimumWidth)
-                .todayDashboardFillRow()
-            }
-            reviewActionsCard(isWide: true)
-            HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
-                TodayIntegrationCard(integration: dashboard.integrations.calendar)
-                    .todayDashboardFillRow()
-                TodayIntegrationCard(integration: dashboard.integrations.slack)
-                    .todayDashboardFillRow()
-            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+
+            rail(
+                dashboard: dashboard,
+                presentsCardsHorizontally: false,
+                showsSecondaryIntegrations: false,
+                availableWidth: TodayDashboardLayoutMetrics.railMinimumWidth
+            )
+            .frame(
+                width: TodayDashboardLayoutMetrics.railMinimumWidth,
+                alignment: .topLeading
+            )
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("today-wide-board")
     }
 
     private func mainContent(
@@ -237,16 +225,6 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                 commandTitle = String(localized: "New task: ")
                 isReviewFocused = true
             }
-        )
-    }
-
-    private func focusCard(dashboard: TodayDashboardSnapshot) -> some View {
-        TodayFocusCard(
-            session: viewModel.focusSession,
-            tasks: dashboard.tasks,
-            suggestedTaskID: dashboard.recommendation?.taskID,
-            startFocusSession: viewModel.startFocusSession,
-            openInspector: openInspectorForTodayRailTask
         )
     }
 
@@ -340,28 +318,5 @@ struct TodayDashboardView<CatchUpContent: View>: View {
             showsSecondaryIntegrations: showsSecondaryIntegrations,
             availableWidth: availableWidth
         )
-    }
-}
-
-private struct TodayDashboardAlignedRow<Primary: View, Rail: View>: View {
-    let primary: Primary
-    let railContent: Rail
-
-    init(
-        @ViewBuilder primary: () -> Primary,
-        @ViewBuilder rail: () -> Rail
-    ) {
-        self.primary = primary()
-        self.railContent = rail()
-    }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
-            primary
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            railContent
-                .frame(width: TodayDashboardLayoutMetrics.railMinimumWidth, alignment: .topLeading)
-                .frame(maxHeight: .infinity, alignment: .topLeading)
-        }
     }
 }

@@ -4754,8 +4754,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(board.contains("dashboardDisplayName: todaySettings.profileDisplayName ?? \"\""))
         XCTAssertTrue(board.contains("dashboardDailyCapacityMinutes: todaySettings.dailyWorkCapacityMinutes"))
         XCTAssertTrue(dashboard.contains("GeometryReader"))
-        XCTAssertTrue(dashboard.contains("TodayDashboardAlignedRow"))
+        XCTAssertFalse(dashboard.contains("TodayDashboardAlignedRow"))
         XCTAssertTrue(dashboard.contains("wideBoard(dashboard: dashboard, openReview: openReview)"))
+        XCTAssertTrue(dashboard.contains("accessibilityIdentifier(\"today-wide-board\")"))
+        XCTAssertTrue(dashboard.contains("presentsCardsHorizontally: false"))
+        XCTAssertTrue(dashboard.contains("showsSecondaryIntegrations: false"))
         XCTAssertTrue(dashboard.contains("compactRailCardsMinimumWidth"))
         XCTAssertTrue(dashboard.contains("presentsCompactRailCardsHorizontally"))
         XCTAssertTrue(dashboard.contains("static let twoColumnMinimumWidth = primaryMinimumWidth + railMinimumWidth + columnSpacing"))
@@ -4903,8 +4906,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(rail.contains("assistantCard\n                .frame"))
         XCTAssertTrue(rail.contains("let cardWidth = presentsCardsHorizontally"))
         XCTAssertTrue(dashboard.contains("availableWidth: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth"))
-        XCTAssertTrue(dashboard.contains("TodayWorkloadCard(workload: dashboard.workload)"))
-        XCTAssertTrue(dashboard.contains("TodayAssistantCard("))
+        XCTAssertFalse(dashboard.contains("TodayWorkloadCard(workload: dashboard.workload)"))
+        XCTAssertFalse(dashboard.contains("TodayAssistantCard("))
+        XCTAssertTrue(rail.contains("TodayWorkloadCard(workload: dashboard.workload)"))
+        XCTAssertTrue(rail.contains("TodayAssistantCard("))
+        XCTAssertTrue(dashboard.contains("today-wide-board"))
+        XCTAssertTrue(cards.contains("actionColor(for: recommendation)"))
+        XCTAssertTrue(cards.contains(".foregroundStyle(.white)"))
+        XCTAssertFalse(
+            cards.contains(
+                ".stroke(SuisuiBrand.soloBlue.opacity(0.28), lineWidth: 1)"
+            )
+        )
     }
 
     func testTodayWorkflowProvidesCommonQuickActionChipsAndLocalRailActions() throws {
@@ -4977,7 +4990,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(todayWorkflowScope.contains("GridItem(.adaptive"))
         XCTAssertTrue(todayWorkflowScope.contains("GeometryReader"))
         XCTAssertTrue(todayWorkflowScope.contains("TodayDashboardLayoutMetrics.isWide(availableWidth: availableWidth)"))
-        XCTAssertTrue(todayWorkflowScope.contains("TodayDashboardAlignedRow"))
+        XCTAssertFalse(todayWorkflowScope.contains("TodayDashboardAlignedRow"))
+        XCTAssertTrue(todayWorkflowScope.contains("today-wide-board"))
         XCTAssertTrue(todayWorkflowScope.contains("HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing)"))
         XCTAssertTrue(todayWorkflowScope.contains("VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.sectionSpacing)"))
         XCTAssertTrue(todayWorkflowScope.contains("ScrollView(.vertical)"))

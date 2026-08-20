@@ -35,12 +35,12 @@ struct TodayDashboardRecommendationCards: View {
                             Spacer(minLength: 0)
                             Text(actionTitle(for: recommendation))
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(SuisuiBrand.soloBlue)
+                                .foregroundStyle(.white)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 7)
                                 .background(
-                                    RoundedRectangle(cornerRadius: SuisuiRadius.control, style: .continuous)
-                                        .stroke(SuisuiBrand.soloBlue.opacity(0.28), lineWidth: 1)
+                                    actionColor(for: recommendation),
+                                    in: RoundedRectangle(cornerRadius: SuisuiRadius.control, style: .continuous)
                                 )
                         }
                         .frame(maxWidth: .infinity, minHeight: TodayDashboardLayoutMetrics.recommendationCardMinHeight, maxHeight: .infinity, alignment: .topLeading)
