@@ -42,7 +42,8 @@
       "axTargetIdentifier": "project-board-detail",
       "requiredVisibleTextLines": [
         "project board to task card to",
-        "\u9032\u884c\u4e2d \u9ad8",
+        "\u9032\u884c\u4e2d",
+        "\u9ad8",
         "7\u670810\u65e5"
       ],
       "artifacts": {

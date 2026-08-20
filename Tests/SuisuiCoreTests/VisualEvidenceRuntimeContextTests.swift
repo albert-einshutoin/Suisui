@@ -15,7 +15,8 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
         XCTAssertEqual(manifest["baselineRoot"] as? String, "docs/quality/visual-baselines-ja")
         XCTAssertEqual(requiredVisibleTextLines, [
             "project board to task card to",
-            "進行中 高",
+            "進行中",
+            "高",
             "7月10日"
         ])
         XCTAssertFalse(requiredVisibleTextLines.contains("In Progress High"))
