@@ -19,7 +19,7 @@ enum TodayDashboardLayoutMetrics {
     static func isWide(availableWidth: CGFloat) -> Bool {
         // Prefer the continuous rail whenever the detail column can host
         // primary + rail. Keep the 960pt window (720pt content) compact.
-        availableWidth >= 730
+        CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(availableWidth))
     }
 }
 
@@ -60,6 +60,10 @@ struct TodayDashboardView<CatchUpContent: View>: View {
     let openInspectorForTodayRailTask: (Int64) -> Void
     let playDailyPlanningReadout: () -> Void
     let openCatchUp: () -> Void
+    /// When set, prefer this over GeometryReader width. NavigationSplitView can
+    /// under-report the detail column during the first layout passes, which would
+    /// otherwise keep the continuous rail stacked below the fold at 1024×676.
+    let prefersContinuousRail: Bool?
     @ViewBuilder let catchUpContent: () -> CatchUpContent
     @AccessibilityFocusState private var isReviewFocused: Bool
     @AccessibilityFocusState private var isReviewActionsFocused: Bool
@@ -88,8 +92,9 @@ struct TodayDashboardView<CatchUpContent: View>: View {
             locale: localizedDisplayLocale()
         )
         GeometryReader { proxy in
-            let availableWidth = proxy.size.width
-            let isWide = TodayDashboardLayoutMetrics.isWide(availableWidth: availableWidth)
+            let availableWidth = max(proxy.size.width, 1)
+            let measuredWide = TodayDashboardLayoutMetrics.isWide(availableWidth: availableWidth)
+            let isWide = prefersContinuousRail ?? measuredWide
             let presentsCompactRailCardsHorizontally = !isWide
                 && availableWidth >= TodayDashboardLayoutMetrics.compactRailCardsMinimumWidth
             ScrollViewReader { scrollProxy in
@@ -163,11 +168,11 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                                     showsSecondaryIntegrations: false,
                                     availableWidth: availableWidth
                                 )
-                                .frame(width: availableWidth, alignment: .topLeading)
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
                             }
                             .padding(.horizontal, 18)
                             .padding(.vertical, 18)
-                            .frame(width: availableWidth, alignment: .topLeading)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     }
@@ -199,6 +204,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                 Text("Starting a new Focus ends the active local session. It does not change task status or Calendar.")
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func mainContent(

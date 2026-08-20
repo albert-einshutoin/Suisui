@@ -638,7 +638,8 @@ struct ProjectBoardView: View {
                     consumedCatchUpFocusRevision = revision
                     activeBoardRouteFocus = nil
                     return true
-                }
+                },
+                prefersContinuousRail: todayPrefersContinuousRail
             )
         case .primary(.inbox):
             InboxWorkflowView(
@@ -908,6 +909,24 @@ struct ProjectBoardView: View {
 
     private var usesCompactInspectorPresentation: Bool {
         projectBoardWindowWidth < InspectorPresentationPolicy.wideMinimumWidth
+    }
+
+    /// AppKit window width is authoritative for the 1024 desk; the Today
+    /// GeometryReader can under-report NavigationSplitView detail width and
+    /// incorrectly stack Workload/Focus/Assistant below the fold.
+    private var todayPrefersContinuousRail: Bool? {
+        guard projectBoardWindowWidth > 0 else {
+            return nil
+        }
+        let contentWidth: Double
+        if columnVisibility == .detailOnly {
+            contentWidth = Double(projectBoardWindowWidth)
+        } else {
+            contentWidth = CockpitLayoutPolicy.contentWidth(
+                forWindowWidth: Double(projectBoardWindowWidth)
+            )
+        }
+        return CockpitLayoutPolicy.presentsSplitRail(contentWidth: contentWidth)
     }
 
     private var wideInspectorBinding: Binding<Bool> {

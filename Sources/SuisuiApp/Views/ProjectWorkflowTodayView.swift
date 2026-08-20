@@ -15,6 +15,9 @@ struct TodayWorkflowView: View {
     let initiallyExpandsCatchUp: Bool
     var catchUpFocusRevision: Int? = nil
     var onCatchUpFocusConsumed: (Int) -> Bool = { _ in true }
+    /// Board window width drives the continuous rail at 1024×676; GeometryReader
+    /// alone can under-measure the NavigationSplitView detail column.
+    var prefersContinuousRail: Bool? = nil
     @State private var commandTitle = ""
     @State private var isCatchUpExpanded = false
     @AccessibilityFocusState private var isCatchUpFocused: Bool
@@ -30,7 +33,8 @@ struct TodayWorkflowView: View {
         weatherModel: TodayWeatherModel? = nil,
         initiallyExpandsCatchUp: Bool = false,
         catchUpFocusRevision: Int? = nil,
-        onCatchUpFocusConsumed: @escaping (Int) -> Bool = { _ in true }
+        onCatchUpFocusConsumed: @escaping (Int) -> Bool = { _ in true },
+        prefersContinuousRail: Bool? = nil
     ) {
         _viewModel = StateObject(wrappedValue: TodayFeatureViewModel(board: viewModel))
         _weatherModel = StateObject(wrappedValue: weatherModel ?? AppRuntimeFactory.makeTodayWeatherModel())
@@ -43,6 +47,7 @@ struct TodayWorkflowView: View {
         self.initiallyExpandsCatchUp = initiallyExpandsCatchUp
         self.catchUpFocusRevision = catchUpFocusRevision
         self.onCatchUpFocusConsumed = onCatchUpFocusConsumed
+        self.prefersContinuousRail = prefersContinuousRail
         _isCatchUpExpanded = State(initialValue: initiallyExpandsCatchUp)
     }
 
@@ -80,7 +85,8 @@ struct TodayWorkflowView: View {
             openCatchUp: {
                 isCatchUpExpanded = true
                 isCatchUpFocused = true
-            }
+            },
+            prefersContinuousRail: prefersContinuousRail
         ) {
             catchUpSection
         }
