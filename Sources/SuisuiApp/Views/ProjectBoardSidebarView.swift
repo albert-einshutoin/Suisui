@@ -82,12 +82,12 @@ struct ProjectBoardSidebarView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
             HStack(spacing: 8) {
                 Image(nsImage: NSApplication.shared.applicationIconImage)
                     .resizable()
-                    .frame(width: 32, height: 32)
-                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .frame(width: 28, height: 28)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                     .accessibilityHidden(true)
                 Text(LocalizedStringKey("Suisui"))
                     .font(.title3.weight(.semibold))
@@ -96,9 +96,10 @@ struct ProjectBoardSidebarView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(LocalizedStringKey("Suisui")))
 
-            // Search and Quick Actions share one Liquid Glass sampling region so
-            // nearby control surfaces can morph without sampling each other.
-            VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+            // Search, destinations, and Quick Actions share one Liquid Glass
+            // sampling region. Destinations stay outside a ScrollView so all
+            // seven sample items remain visible at the 1024×676 contract.
+            VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
                 Button(action: onOpenSearch) {
                     HStack(spacing: 8) {
                         Image(systemName: "magnifyingglass")
@@ -109,7 +110,7 @@ struct ProjectBoardSidebarView: View {
                             .foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, 10)
-                    .frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: 32, maxHeight: 32, alignment: .leading)
                     .suisuiLiquidGlassControlSurface(cornerRadius: 12)
                     .contentShape(Rectangle())
                 }
@@ -119,15 +120,14 @@ struct ProjectBoardSidebarView: View {
                 .accessibilityHint(Text(LocalizedStringKey("Opens the command palette.")))
                 .help(LocalizedStringKey("Opens the command palette."))
 
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(ProjectBoardSidebarPresentation.items, id: \.id) { item in
-                            sidebarRow(item)
-                        }
+                VStack(alignment: .leading, spacing: 1) {
+                    ForEach(ProjectBoardSidebarPresentation.items, id: \.id) { item in
+                        sidebarRow(item)
                     }
                 }
+                .layoutPriority(1)
 
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(LocalizedStringKey("Quick Actions"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
@@ -137,16 +137,17 @@ struct ProjectBoardSidebarView: View {
                     quickAction(.blockTime, handler: onBlockTime)
                     quickAction(.importTasks, handler: onImportTasks)
                 }
-                .padding(SuisuiSpacing.md)
+                .padding(SuisuiSpacing.sm)
                 .suisuiLiquidGlassControlSurface(cornerRadius: 12)
             }
-            .suisuiLiquidGlassControlGroup(spacing: SuisuiSpacing.md)
+            .suisuiLiquidGlassControlGroup(spacing: SuisuiSpacing.sm)
 
             Spacer(minLength: 0)
 
             profileFooter
         }
-        .padding(SuisuiSpacing.lg)
+        .padding(.horizontal, SuisuiSpacing.md)
+        .padding(.vertical, SuisuiSpacing.sm)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project-board-sidebar")
         .accessibilityLabel(Text(LocalizedStringKey("Project navigation")))
@@ -240,7 +241,7 @@ struct ProjectBoardSidebarView: View {
                 }
             }
             .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
             .foregroundStyle(isSelected ? Color.white : Color.primary)
             .background {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -273,7 +274,7 @@ struct ProjectBoardSidebarView: View {
                     .accessibilityHidden(true)
             }
                 .padding(.horizontal, 8)
-                .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
                 .suisuiLiquidGlassControlSurface(
                     cornerRadius: 10,
                     interactive: true

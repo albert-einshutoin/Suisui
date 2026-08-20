@@ -23,7 +23,7 @@ final class SuisuiLiquidGlassContractTests: XCTestCase {
 
         XCTAssertTrue(source.contains(".suisuiLiquidGlassControlSurface(cornerRadius: 12)"))
         XCTAssertTrue(source.contains(".suisuiLiquidGlassControlSurface("))
-        XCTAssertTrue(source.contains(".suisuiLiquidGlassControlGroup(spacing: SuisuiSpacing.md)"))
+        XCTAssertTrue(source.contains(".suisuiLiquidGlassControlGroup(spacing: SuisuiSpacing.sm)"))
         XCTAssertFalse(source.contains(".background(.background, in: RoundedRectangle(cornerRadius: 12"))
     }
 

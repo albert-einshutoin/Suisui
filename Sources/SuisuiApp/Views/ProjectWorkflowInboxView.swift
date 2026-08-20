@@ -129,7 +129,7 @@ struct InboxWorkflowView: View {
                                     voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail",
                                     fillsAvailableHeight: true
                                 )
-                                .frame(width: CGFloat(CockpitLayoutPolicy.railWidth))
+                                .frame(width: CGFloat(CockpitLayoutPolicy.inboxRailWidth))
                                 .frame(maxHeight: .infinity, alignment: .topLeading)
                                 .padding(.trailing, 18)
                                 .padding(.bottom, 18)
@@ -351,7 +351,7 @@ private struct InboxReferenceHeader: View {
                 .padding(.bottom, referenceContentTopPadding)
 
             HStack(alignment: .center, spacing: 8) {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     ForEach(InboxReferenceFilter.allCases) { filter in
                         Button {
                             referenceFilter = filter
@@ -359,9 +359,9 @@ private struct InboxReferenceHeader: View {
                             Text(filterTitle(filter))
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(referenceFilter == filter ? .white : .primary)
-                                .padding(.horizontal, 13)
-                                .padding(.vertical, 8)
-                                .frame(minHeight: 36)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .frame(minHeight: 32)
                                 .background(
                                     referenceFilter == filter ? Color.accentColor : Color.clear,
                                     in: RoundedRectangle(cornerRadius: 10)
@@ -788,7 +788,7 @@ private struct InboxActionPanel: View {
     @State private var showsAdvancedVoiceMetadata = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             InboxSelectedItemContext(
                 task: task,
                 viewModel: viewModel,
@@ -884,9 +884,9 @@ private struct InboxActionPanel: View {
                 capture: viewModel.selectedInboxCaptureRecords.first
             )
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 18)
-        .padding(.bottom, 30)
+        .padding(.horizontal, 14)
+        .padding(.top, 14)
+        .padding(.bottom, 24)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(accessibilityIdentifier)
         .accessibilityLabel("Inbox classification actions")
@@ -1165,7 +1165,7 @@ private struct InboxSelectedItemContext: View {
                         .keyboardShortcut("4", modifiers: [.command, .control])
                         .accessibilityIdentifier("inbox-action-review-later-menu")
                         if !viewModel.selectedInboxCaptureRecords.isEmpty {
-                            Button("Show AI Interpretation and Note", systemImage: "sparkles") {
+                            Button("Show Note", systemImage: "note.text") {
                                 onShowAdvancedVoiceMetadata()
                             }
                         }
@@ -1293,12 +1293,6 @@ private struct InboxVoiceIntakeDetail: View {
     var body: some View {
         if let capture = captures.first {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .center, spacing: 8) {
-                    Text("Voice Memo")
-                        .font(.headline)
-                    Spacer(minLength: 8)
-                }
-
                 voicePlayback(capture)
 
                 HStack(spacing: 8) {
@@ -1340,16 +1334,16 @@ private struct InboxVoiceIntakeDetail: View {
                     .accessibilityValue(transcriptReviewText(for: capture))
                 .accessibilityIdentifier("inbox-voice-transcript")
 
-                if showsAdvancedMetadata {
-                    DisclosureGroup("AI Interpretation", isExpanded: .constant(true)) {
-                        detailSection(
-                            title: "Interpretation",
-                            value: interpretationReviewText(for: capture),
-                            systemImage: interpretationSystemImage(for: capture)
-                        )
-                        .accessibilityIdentifier("inbox-voice-interpretation")
-                    }
+                // Keep interpretation on the desk with transcript so sample
+                // understanding density is visible without a More-menu hop.
+                detailSection(
+                    title: "Interpretation",
+                    value: interpretationReviewText(for: capture),
+                    systemImage: interpretationSystemImage(for: capture)
+                )
+                .accessibilityIdentifier("inbox-voice-interpretation")
 
+                if showsAdvancedMetadata {
                     DisclosureGroup("Note", isExpanded: .constant(true)) {
                         memoEditor(for: capture)
                     }

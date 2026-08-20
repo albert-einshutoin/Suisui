@@ -62,7 +62,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let searchStart = try XCTUnwrap(sidebarSource.range(of: "Button(action: onOpenSearch)"))
         let searchEnd = try XCTUnwrap(
             sidebarSource.range(
-                of: "ScrollView {",
+                of: "VStack(alignment: .leading, spacing: 1) {",
                 range: searchStart.lowerBound..<sidebarSource.endIndex
             )
         )
@@ -70,7 +70,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(searchButton.contains(".padding(.horizontal, 10)"))
         XCTAssertTrue(
             searchButton.contains(
-                ".frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36, alignment: .leading)"
+                ".frame(maxWidth: .infinity, minHeight: 32, maxHeight: 32, alignment: .leading)"
             )
         )
         XCTAssertTrue(
@@ -79,6 +79,11 @@ final class AppExperienceSourceTests: XCTestCase {
             )
         )
         XCTAssertTrue(searchButton.contains(".contentShape(Rectangle())"))
+        XCTAssertFalse(sidebarSource.contains("ScrollView {"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-destination-completed"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-action-voice-command"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-action-settings"))
+        XCTAssertTrue(sidebarSource.contains(".layoutPriority(1)"))
 
         let quickActionStart = try XCTUnwrap(sidebarSource.range(of: "private func quickAction("))
         let quickActionEnd = try XCTUnwrap(
@@ -115,7 +120,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let searchStart = try XCTUnwrap(sidebarSource.range(of: "Button(action: onOpenSearch)"))
         let searchEnd = try XCTUnwrap(
             sidebarSource.range(
-                of: "ScrollView {",
+                of: "VStack(alignment: .leading, spacing: 1) {",
                 range: searchStart.lowerBound..<sidebarSource.endIndex
             )
         )
@@ -260,7 +265,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let search = try sourceBlock(
             in: sidebar,
             from: "Button(action: onOpenSearch)",
-            to: "ScrollView {"
+            to: "VStack(alignment: .leading, spacing: 1) {"
         )
         let root = try sourceBlock(
             in: sidebar,
@@ -3782,6 +3787,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(
             transcript.contains(".frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)")
         )
+        // Context already owns the Voice Memo chrome; intake detail starts at playback.
+        XCTAssertFalse(transcript.contains("Text(\"Voice Memo\")"))
+        XCTAssertTrue(transcript.contains(".accessibilityIdentifier(\"inbox-voice-interpretation\")"))
+        XCTAssertFalse(
+            transcript.contains("DisclosureGroup(\"AI Interpretation\", isExpanded: .constant(true))")
+        )
         XCTAssertTrue(proposedActions.contains(".frame(height: 36)"))
         XCTAssertFalse(proposedActions.contains(".padding(.vertical, 13)"))
         XCTAssertTrue(details.contains(".frame(minHeight: 38)"))
@@ -3795,6 +3806,19 @@ final class AppExperienceSourceTests: XCTestCase {
             source.contains(".frame(maxWidth: .infinity, minHeight: 32, maxHeight: 32)")
         )
         XCTAssertTrue(source.contains(".padding(.top, 8)"))
+        let actionPanelStart = try XCTUnwrap(source.range(of: "private struct InboxActionPanel"))
+        let actionPanelEnd = try XCTUnwrap(
+            source.range(
+                of: "private struct InboxTriageActionButtonStyle",
+                range: actionPanelStart.upperBound..<source.endIndex
+            )
+        )
+        let actionPanel = String(source[actionPanelStart.lowerBound..<actionPanelEnd.lowerBound])
+        XCTAssertTrue(actionPanel.contains("VStack(alignment: .leading, spacing: 12)"))
+        XCTAssertTrue(actionPanel.contains(".padding(.horizontal, 14)"))
+        XCTAssertTrue(actionPanel.contains(".padding(.top, 14)"))
+        XCTAssertTrue(source.contains("Button(\"Show Note\""))
+        XCTAssertFalse(source.contains("Show AI Interpretation and Note"))
         XCTAssertTrue(seederSource.contains("var envelopeSeed: UInt64 = 0x5A17_C9E3"))
         XCTAssertTrue(seederSource.contains("let speechEnvelope = (0...64).map"))
         XCTAssertTrue(seederSource.contains("envelopeSeed &*= 6_364_136_223_846_793_005"))
@@ -3811,6 +3835,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(japanese.contains("\"Inbox reference presentation metadata\" = \"山田さんからの音声メモ · 今日 10:15\";"))
         XCTAssertTrue(japanese.contains("\"Today %@ · Taro Yamada (you)\" = \"今日 %@ · 山田太郎（あなた）\";"))
         XCTAssertTrue(english.contains("\"Today %@ · Taro Yamada (you)\" = \"Today %@ · Taro Yamada (you)\";"))
+        XCTAssertTrue(english.contains("\"Convert to Task\" = \"Convert\";"))
+        XCTAssertTrue(japanese.contains("\"Convert to Task\" = \"タスクに変換\";"))
+        XCTAssertTrue(english.contains("\"Show Note\" = \"Show Note\";"))
+        XCTAssertTrue(japanese.contains("\"Show Note\" = \"メモを表示\";"))
     }
 
     func testInboxReferenceUIUsesPersistedTriageLifecycle() throws {
@@ -3836,7 +3864,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("onSelectTask: selectInboxTask"))
         XCTAssertTrue(workflowSource.contains("memoDraft: $voiceMemoDraft"))
         XCTAssertTrue(workflowSource.contains("memoCaptureID: $voiceMemoCaptureID"))
-        XCTAssertTrue(workflowSource.contains(".frame(width: CGFloat(CockpitLayoutPolicy.railWidth))"))
+        XCTAssertTrue(workflowSource.contains(".frame(width: CGFloat(CockpitLayoutPolicy.inboxRailWidth))"))
         XCTAssertTrue(workflowSource.contains(".padding(.trailing, 18)"))
         XCTAssertTrue(workflowSource.contains(".frame(maxWidth: .infinity, minHeight: 84"))
 

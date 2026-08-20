@@ -2227,10 +2227,11 @@
 "Search related past materials" = "Search related past materials";
 "Link to a new project" = "Link to a new project";
 "Add presentation preparation task" = "Add presentation preparation task";
-"Convert to Task" = "Convert to Task";
+"Convert to Task" = "Convert";
 "Review Later Inbox" = "Review Later";
 "Inbox Transcript" = "Transcript";
 "Show AI Interpretation and Note" = "Show AI Interpretation and Note";
+"Show Note" = "Show Note";
 "Received" = "Received";
 "Related" = "Related";
 "Unassigned" = "Unassigned";

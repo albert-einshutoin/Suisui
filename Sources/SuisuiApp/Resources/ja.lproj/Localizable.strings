@@ -2231,6 +2231,7 @@
 "Review Later Inbox" = "後で対応";
 "Inbox Transcript" = "文字起こし";
 "Show AI Interpretation and Note" = "AIの解釈とメモを表示";
+"Show Note" = "メモを表示";
 "Received" = "受信日時";
 "Related" = "関連";
 "Unassigned" = "未設定";

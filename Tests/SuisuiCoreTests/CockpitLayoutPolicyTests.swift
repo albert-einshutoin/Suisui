@@ -28,8 +28,17 @@ final class CockpitLayoutPolicyTests: XCTestCase {
     }
 
     func testVoiceEvidenceWidthKeepsConversationAndUnderstandingSideBySide() {
-        XCTAssertTrue(CockpitLayoutPolicy.presentsSplitRail(contentWidth: 760))
-        XCTAssertFalse(CockpitLayoutPolicy.presentsSplitRail(contentWidth: 759))
+        XCTAssertTrue(CockpitLayoutPolicy.presentsSplitRail(contentWidth: 730))
+        XCTAssertFalse(CockpitLayoutPolicy.presentsSplitRail(contentWidth: 729))
+    }
+
+    func testInboxTriageRailIsWiderThanSharedWorkflowRails() {
+        XCTAssertEqual(CockpitLayoutPolicy.railWidth, 240)
+        XCTAssertEqual(CockpitLayoutPolicy.inboxRailWidth, 280)
+        XCTAssertGreaterThan(
+            CockpitLayoutPolicy.inboxRailWidth,
+            CockpitLayoutPolicy.railWidth
+        )
     }
 
     func testSecondaryIntegrationsAreOmittedWhenTheRailStacks() {
