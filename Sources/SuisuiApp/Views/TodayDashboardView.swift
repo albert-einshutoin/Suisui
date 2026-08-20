@@ -17,7 +17,9 @@ enum TodayDashboardLayoutMetrics {
     static let twoColumnMinimumWidth = primaryMinimumWidth + railMinimumWidth + columnSpacing
 
     static func isWide(availableWidth: CGFloat) -> Bool {
-        CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(availableWidth))
+        // Prefer the continuous rail whenever the detail column can host
+        // primary + rail. Keep the 960pt window (720pt content) compact.
+        availableWidth >= 730
     }
 }
 
@@ -86,52 +88,93 @@ struct TodayDashboardView<CatchUpContent: View>: View {
             locale: localizedDisplayLocale()
         )
         GeometryReader { proxy in
+            let availableWidth = proxy.size.width
+            let isWide = TodayDashboardLayoutMetrics.isWide(availableWidth: availableWidth)
+            let presentsCompactRailCardsHorizontally = !isWide
+                && availableWidth >= TodayDashboardLayoutMetrics.compactRailCardsMinimumWidth
             ScrollViewReader { scrollProxy in
-                ScrollView(.vertical) {
-                    let availableWidth = proxy.size.width
-                    let isWide = TodayDashboardLayoutMetrics.isWide(availableWidth: availableWidth)
-                    let presentsCompactRailCardsHorizontally = !isWide && availableWidth >= TodayDashboardLayoutMetrics.compactRailCardsMinimumWidth
-                    let openReview = {
-                        // These summaries come from Today planning and Catch Up,
-                        // so keep users in that workflow instead of routing to the
-                        // unrelated global Review overview.
-                        withAnimation {
-                            scrollProxy.scrollTo("today-review-actions", anchor: .top)
-                        }
-                        DispatchQueue.main.async {
-                            isReviewActionsFocused = true
-                        }
+                let openReview = {
+                    // These summaries come from Today planning and Catch Up,
+                    // so keep users in that workflow instead of routing to the
+                    // unrelated global Review overview.
+                    withAnimation {
+                        scrollProxy.scrollTo("today-review-actions", anchor: .top)
                     }
-                    VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.sectionSpacing) {
-                        TodayDashboardHeaderView(header: dashboard.header, weather: dashboard.weather)
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                        if isWide {
-                            wideBoard(dashboard: dashboard, openReview: openReview)
-                        } else {
-                            mainContent(dashboard: dashboard, isWide: isWide, openReview: openReview)
-                            reviewActionsCard(isWide: false)
-                            rail(
-                                dashboard: dashboard,
-                                presentsCardsHorizontally: presentsCompactRailCardsHorizontally,
-                                showsSecondaryIntegrations: isWide,
-                                availableWidth: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth
-                            )
+                    DispatchQueue.main.async {
+                        isReviewActionsFocused = true
+                    }
+                }
+                Group {
+                    if isWide {
+                        // Keep the rail outside the primary ScrollView so vertical
+                        // scrolling cannot let maxWidth: .infinity children clip it.
+                        HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
+                            ScrollView(.vertical) {
+                                VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.sectionSpacing) {
+                                    TodayDashboardHeaderView(header: dashboard.header, weather: dashboard.weather)
+                                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                                    mainContent(dashboard: dashboard, isWide: true, openReview: openReview)
+                                    reviewActionsCard(isWide: true)
+                                    HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
+                                        TodayIntegrationCard(integration: dashboard.integrations.calendar)
+                                            .todayDashboardFillRow()
+                                        TodayIntegrationCard(integration: dashboard.integrations.slack)
+                                            .todayDashboardFillRow()
+                                    }
+                                }
+                                .padding(.leading, 18)
+                                .padding(.vertical, 18)
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+                            ScrollView(.vertical) {
+                                rail(
+                                    dashboard: dashboard,
+                                    presentsCardsHorizontally: false,
+                                    showsSecondaryIntegrations: false,
+                                    availableWidth: TodayDashboardLayoutMetrics.railMinimumWidth
+                                )
+                                .padding(.trailing, 18)
+                                .padding(.vertical, 18)
+                                .frame(
+                                    width: TodayDashboardLayoutMetrics.railMinimumWidth,
+                                    alignment: .topLeading
+                                )
+                            }
                             .frame(
-                                width: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth,
+                                width: TodayDashboardLayoutMetrics.railMinimumWidth + 18,
                                 alignment: .topLeading
                             )
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("today-wide-board")
+                    } else {
+                        ScrollView(.vertical) {
+                            VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.sectionSpacing) {
+                                TodayDashboardHeaderView(header: dashboard.header, weather: dashboard.weather)
+                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                                mainContent(dashboard: dashboard, isWide: false, openReview: openReview)
+                                reviewActionsCard(isWide: false)
+                                rail(
+                                    dashboard: dashboard,
+                                    presentsCardsHorizontally: presentsCompactRailCardsHorizontally,
+                                    showsSecondaryIntegrations: false,
+                                    availableWidth: availableWidth
+                                )
+                                .frame(width: availableWidth, alignment: .topLeading)
+                            }
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 18)
+                            .frame(width: availableWidth, alignment: .topLeading)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     }
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("today-briefing-panel")
-                    .accessibilityLabel("Today briefing")
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 18)
-                    // Vertical ScrollView otherwise lets maxWidth: .infinity children
-                    // grow past the detail column and clip the continuous rail.
-                    .frame(width: availableWidth, alignment: .topLeading)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("today-briefing-panel")
+                .accessibilityLabel("Today briefing")
             }
             .alert(
                 "Replace active Focus?",
@@ -156,42 +199,6 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                 Text("Starting a new Focus ends the active local session. It does not change task status or Calendar.")
             }
         }
-    }
-
-    private func wideBoard(
-        dashboard: TodayDashboardSnapshot,
-        openReview: @escaping () -> Void
-    ) -> some View {
-        // Keep Workload → Focus → Assistant as one continuous rail so the
-        // 1024×676 contract shows the sample desk without clipping interleaved
-        // row partners off-screen.
-        HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
-            VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.widgetSpacing) {
-                mainContent(dashboard: dashboard, isWide: true, openReview: openReview)
-                reviewActionsCard(isWide: true)
-                HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
-                    TodayIntegrationCard(integration: dashboard.integrations.calendar)
-                        .todayDashboardFillRow()
-                    TodayIntegrationCard(integration: dashboard.integrations.slack)
-                        .todayDashboardFillRow()
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-
-            rail(
-                dashboard: dashboard,
-                presentsCardsHorizontally: false,
-                showsSecondaryIntegrations: false,
-                availableWidth: TodayDashboardLayoutMetrics.railMinimumWidth
-            )
-            .frame(
-                width: TodayDashboardLayoutMetrics.railMinimumWidth,
-                alignment: .topLeading
-            )
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("today-wide-board")
     }
 
     private func mainContent(

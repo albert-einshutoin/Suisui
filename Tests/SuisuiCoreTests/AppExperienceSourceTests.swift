@@ -4744,9 +4744,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(dashboard.contains("VisualEvidenceRuntimeContext.runtimeCalendar()"))
         XCTAssertTrue(dashboard.contains("localizedDisplayLocale()"))
         XCTAssertFalse(dashboard.contains("now: Date()"))
-        XCTAssertTrue(dashboard.contains("mainContent(dashboard: dashboard, isWide: isWide, openReview: openReview)"))
+        XCTAssertTrue(dashboard.contains("mainContent(dashboard: dashboard, isWide: true, openReview: openReview)"))
+        XCTAssertTrue(dashboard.contains("mainContent(dashboard: dashboard, isWide: false, openReview: openReview)"))
         XCTAssertTrue(dashboard.contains("presentsCardsHorizontally: presentsCompactRailCardsHorizontally"))
-        XCTAssertTrue(dashboard.contains("showsSecondaryIntegrations: isWide"))
+        XCTAssertTrue(dashboard.contains("showsSecondaryIntegrations: false"))
         XCTAssertTrue(dashboard.contains("displayName: displayName"))
         XCTAssertTrue(dashboard.contains("dailyCapacityMinutes: dailyCapacityMinutes"))
         XCTAssertTrue(todayWorkflow.contains("dashboardDisplayName: String = \"\""))
@@ -4755,7 +4756,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(board.contains("dashboardDailyCapacityMinutes: todaySettings.dailyWorkCapacityMinutes"))
         XCTAssertTrue(dashboard.contains("GeometryReader"))
         XCTAssertFalse(dashboard.contains("TodayDashboardAlignedRow"))
-        XCTAssertTrue(dashboard.contains("wideBoard(dashboard: dashboard, openReview: openReview)"))
+        XCTAssertFalse(dashboard.contains("wideBoard(dashboard: dashboard, openReview: openReview)"))
         XCTAssertTrue(dashboard.contains("accessibilityIdentifier(\"today-wide-board\")"))
         XCTAssertTrue(dashboard.contains("presentsCardsHorizontally: false"))
         XCTAssertTrue(dashboard.contains("showsSecondaryIntegrations: false"))
@@ -4769,6 +4770,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(dashboard.contains("TodayDashboardRecommendationCards"))
         XCTAssertTrue(dashboard.contains("TodayDashboardTaskListView"))
         XCTAssertTrue(dashboard.contains("TodayDashboardRailView"))
+        // Wide rail stays outside the primary vertical ScrollView so it cannot clip.
+        XCTAssertTrue(dashboard.contains("Keep the rail outside the primary ScrollView"))
         XCTAssertTrue(header.contains("today-dashboard-header"))
         XCTAssertTrue(header.contains("Suisui Today: %@. %@. %@. %@. %@"))
         XCTAssertTrue(header.contains("localizedTaskCount(header.taskCount)"))
@@ -4900,12 +4903,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(taskList.contains(".frame(width: 280, alignment: .leading)"))
         XCTAssertTrue(taskList.contains("today-task-list-add"))
         XCTAssertTrue(dashboard.contains("VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.sectionSpacing)"))
-        XCTAssertTrue(dashboard.contains("width: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth"))
+        XCTAssertTrue(dashboard.contains("width: TodayDashboardLayoutMetrics.railMinimumWidth + 18"))
         XCTAssertTrue(rail.contains("minHeight: TodayDashboardLayoutMetrics.railWidgetMinHeight"))
         XCTAssertTrue(focusCard.contains("minHeight: TodayDashboardLayoutMetrics.railWidgetMinHeight"))
         XCTAssertTrue(rail.contains("assistantCard\n                .frame"))
         XCTAssertTrue(rail.contains("let cardWidth = presentsCardsHorizontally"))
-        XCTAssertTrue(dashboard.contains("availableWidth: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth"))
+        XCTAssertTrue(dashboard.contains("availableWidth: availableWidth"))
+        XCTAssertTrue(dashboard.contains("availableWidth: TodayDashboardLayoutMetrics.railMinimumWidth"))
         XCTAssertFalse(dashboard.contains("TodayWorkloadCard(workload: dashboard.workload)"))
         XCTAssertFalse(dashboard.contains("TodayAssistantCard("))
         XCTAssertTrue(rail.contains("TodayWorkloadCard(workload: dashboard.workload)"))
@@ -5059,7 +5063,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(sharedSource.contains("maxHeight: fillsAvailableHeight ? .infinity : nil"))
 
         XCTAssertLessThan(
-            try XCTUnwrap(workflowScope.range(of: "mainContent(dashboard: dashboard, isWide: isWide, openReview: openReview)")).lowerBound,
+            try XCTUnwrap(workflowScope.range(of: "mainContent(dashboard: dashboard, isWide: false, openReview: openReview)")).lowerBound,
             try XCTUnwrap(workflowScope.range(of: "presentsCardsHorizontally: presentsCompactRailCardsHorizontally")).lowerBound
         )
     }

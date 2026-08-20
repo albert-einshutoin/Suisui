@@ -29,19 +29,14 @@ final class TodayDashboardLayoutMetricsTests: XCTestCase {
                 .appendingPathComponent("Sources/SuisuiApp/Views/TodayDashboardView.swift"),
             encoding: .utf8
         )
-        let wideStart = try XCTUnwrap(source.range(of: "private func wideBoard("))
-        let wideEnd = try XCTUnwrap(
-            source.range(of: "private func mainContent(", range: wideStart.upperBound..<source.endIndex)
-        )
-        let wideBoard = String(source[wideStart.lowerBound..<wideEnd.lowerBound])
 
-        XCTAssertTrue(wideBoard.contains("accessibilityIdentifier(\"today-wide-board\")"))
-        XCTAssertTrue(wideBoard.contains("presentsCardsHorizontally: false"))
-        XCTAssertTrue(wideBoard.contains("showsSecondaryIntegrations: false"))
-        XCTAssertTrue(wideBoard.contains("TodayDashboardRailView(") || wideBoard.contains("rail("))
-        XCTAssertFalse(wideBoard.contains("TodayDashboardAlignedRow"))
+        XCTAssertTrue(source.contains("accessibilityIdentifier(\"today-wide-board\")"))
+        XCTAssertTrue(source.contains("presentsCardsHorizontally: false"))
+        XCTAssertTrue(source.contains("showsSecondaryIntegrations: false"))
+        XCTAssertTrue(source.contains("Keep the rail outside the primary ScrollView"))
+        XCTAssertFalse(source.contains("TodayDashboardAlignedRow"))
         XCTAssertTrue(
-            wideBoard.contains("width: TodayDashboardLayoutMetrics.railMinimumWidth")
+            source.contains("width: TodayDashboardLayoutMetrics.railMinimumWidth + 18")
         )
     }
 
