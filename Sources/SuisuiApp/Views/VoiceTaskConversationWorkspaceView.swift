@@ -12,6 +12,7 @@ struct VoiceTaskConversationWorkspaceView: View {
     let onPauseSession: () -> Void
     let onResumeSession: () -> Void
     let onArchiveSession: () -> Void
+    @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
 
     init(
         viewModel: VoiceCaptureViewModel,
@@ -31,7 +32,15 @@ struct VoiceTaskConversationWorkspaceView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let layout = VoiceTaskConversationWorkspaceLayout(width: proxy.size.width)
+            let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: proxy.size.width)
+            let layout = VoiceTaskConversationWorkspaceLayout(
+                measuredWidth: proxy.size.width,
+                authoritativeContentWidth: authoritativeContentWidth
+            )
+            let understandingWidth = CockpitSplitLayout.railWidth(
+                for: .voiceConversation,
+                contentWidth: layoutWidth
+            )
             let presentation = currentPresentation
             VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
                 VoiceTaskConversationWorkspaceHeader(
@@ -47,14 +56,15 @@ struct VoiceTaskConversationWorkspaceView: View {
                         case .regular:
                             HStack(alignment: .top, spacing: SuisuiSpacing.md) {
                                 conversationColumn(presentation)
-                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)
                                 VoiceTaskConversationUnderstandingView(
                                     presentation: presentation,
                                     isCompact: false,
                                     onOpenAssistantQueue: onOpenAssistantQueue
                                 )
-                                .frame(maxWidth: 330, alignment: .topLeading)
+                                .cockpitSplitSecondaryRail(width: understandingWidth)
                             }
+                            .frame(width: max(layoutWidth - CGFloat(SuisuiSpacing.lg) * 2, 1), alignment: .topLeading)
                         case .compact:
                             VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
                                 conversationColumn(presentation)
@@ -174,8 +184,11 @@ private enum VoiceTaskConversationWorkspaceLayout {
     case compact
     case regular
 
-    init(width: CGFloat) {
-        self = CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(width)) ? .regular : .compact
+    init(measuredWidth: CGFloat, authoritativeContentWidth: Double?) {
+        self = CockpitSplitLayout.presentsSplitRail(
+            measuredWidth: measuredWidth,
+            authoritativeContentWidth: authoritativeContentWidth
+        ) ? .regular : .compact
     }
 }
 

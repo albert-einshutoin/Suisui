@@ -48,6 +48,7 @@ struct ProjectsPortfolioOverview: View {
     @State private var filter: ProjectPortfolioFilter = .all
     @State private var sort: ProjectPortfolioSort = .risk
     @State private var selectedProjectID: Int64?
+    @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
 
     private var summaries: [ProjectPortfolioSummary] {
         sorted(filtered(viewModel.derivedReadModels.projectPortfolioSummaries))
@@ -59,7 +60,12 @@ struct ProjectsPortfolioOverview: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let isWide = CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(proxy.size.width))
+            let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: proxy.size.width)
+            let isWide = CockpitSplitLayout.presentsSplitRail(
+                measuredWidth: proxy.size.width,
+                authoritativeContentWidth: authoritativeContentWidth
+            )
+            let railWidth = CockpitSplitLayout.railWidth(for: .projects, contentWidth: layoutWidth)
             VStack(alignment: .leading, spacing: 14) {
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .center, spacing: 12) {
@@ -98,9 +104,9 @@ struct ProjectsPortfolioOverview: View {
                                 projectsGlobalProposalBanner(title: globalProposalTitle)
                             }
                             projectGrid
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                .cockpitSplitPrimaryColumn()
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .cockpitSplitPrimaryColumn()
                         if let selectedSummary {
                             ProjectPortfolioSummaryRail(
                                 summary: selectedSummary,
@@ -113,9 +119,10 @@ struct ProjectsPortfolioOverview: View {
                                 proposalTitle: localProposalTitle(for: selectedSummary),
                                 onOpen: { onOpenProject(selectedSummary.projectID) }
                             )
-                            .frame(width: CGFloat(CockpitLayoutPolicy.railWidth))
+                            .cockpitSplitSecondaryRail(width: railWidth)
                         }
                     }
+                    .frame(width: layoutWidth, alignment: .topLeading)
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
@@ -903,6 +910,7 @@ private struct ProjectDetailOverview: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
     let onAddTask: () -> Void
     let onOpenTaskInspector: (Int64) -> Void
+    @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
 
     private let columns = [
         GridItem(.adaptive(minimum: 280), spacing: 12)
@@ -910,7 +918,12 @@ private struct ProjectDetailOverview: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let isWide = CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(proxy.size.width))
+            let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: proxy.size.width)
+            let isWide = CockpitSplitLayout.presentsSplitRail(
+                measuredWidth: proxy.size.width,
+                authoritativeContentWidth: authoritativeContentWidth
+            )
+            let railWidth = CockpitSplitLayout.railWidth(for: .projects, contentWidth: layoutWidth)
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     ProjectProgressOverview(project: project)
@@ -920,7 +933,7 @@ private struct ProjectDetailOverview: View {
                             LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
                                 primaryOverviewPanels
                             }
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                            .cockpitSplitPrimaryColumn()
 
                             VStack(alignment: .leading, spacing: 12) {
                                 ProjectAssistantPanel(project: project, viewModel: viewModel)
@@ -930,8 +943,9 @@ private struct ProjectDetailOverview: View {
                                     onOpenTaskInspector: onOpenTaskInspector
                                 )
                             }
-                            .frame(width: CGFloat(CockpitLayoutPolicy.railWidth), alignment: .topLeading)
+                            .cockpitSplitSecondaryRail(width: railWidth)
                         }
+                        .frame(width: layoutWidth, alignment: .topLeading)
                     } else {
                         LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
                             primaryOverviewPanels

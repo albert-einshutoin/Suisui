@@ -80,9 +80,10 @@ Owns:
   diagnostics export, developer mode, launch-at-login, data location.
 - Wide Settings desks (`CockpitLayoutPolicy.presentsSplitRail`) keep a
   readiness rail on Overview (`settings-overview-detail-rail`) and AI
-  (`settings-ai-readiness-rail`). Appearance stays control-layer only
-  (Liquid Glass theme/language pickers) and never shows a fake
-  “Save Changes” hero — preference writes apply immediately.
+  (`settings-ai-readiness-rail`). Below the split floor the same rail
+  stacks under the form so readiness stays reachable. Appearance stays
+  control-layer only (Liquid Glass theme/language pickers) and never shows
+  a fake “Save Changes” hero — preference writes apply immediately.
 
 Sample vocabulary mapping (marketing mock → product TabView):
 

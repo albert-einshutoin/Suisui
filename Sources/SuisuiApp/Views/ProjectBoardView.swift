@@ -10,10 +10,11 @@ import AppKit
 enum ProjectBoardWindowMetrics {
     // The primary window must keep one stable content contract across sidebar
     // destinations; otherwise SwiftUI can re-fit the window when Inbox/Today
-    // switch between compact and rail-heavy workflow surfaces.
-    static let defaultWidth: CGFloat = 1_180
+    // switch between compact and rail-heavy workflow surfaces. Widths come from
+    // CockpitLayoutPolicy so launch / minimum / visual 1024 stay one ladder.
+    static let defaultWidth = CGFloat(CockpitLayoutPolicy.defaultLaunchWindowWidth)
     static let defaultHeight: CGFloat = 760
-    static let minWidth: CGFloat = 960
+    static let minWidth = CGFloat(CockpitLayoutPolicy.minimumWindowWidth)
     static let minHeight: CGFloat = 572
 }
 
@@ -260,6 +261,7 @@ struct ProjectBoardView: View {
             minHeight: ProjectBoardWindowMetrics.minHeight,
             alignment: .topLeading
         )
+        .environment(\.cockpitAuthoritativeContentWidth, cockpitAuthoritativeContentWidth)
         .inspector(isPresented: wideInspectorBinding) {
             inspectorContent
                 .inspectorColumnWidth(min: 240, ideal: 280, max: 420)
@@ -911,27 +913,29 @@ struct ProjectBoardView: View {
         projectBoardWindowWidth < InspectorPresentationPolicy.wideMinimumWidth
     }
 
-    /// AppKit window width is authoritative for the 1024 desk; the Today
-    /// GeometryReader can under-report NavigationSplitView detail width and
-    /// incorrectly stack Workload/Focus/Assistant below the fold.
-    /// Visual evidence always pins 1024×676, so use the standard content
-    /// contract there instead of a still-zero or mid-resize window width.
-    private var todayPrefersContinuousRail: Bool? {
+    /// AppKit window width is authoritative for every cockpit desk; GeometryReader
+    /// can under-report NavigationSplitView detail width and incorrectly stack
+    /// secondary rails below the fold at 1024×676. Visual evidence always pins
+    /// that contract, so publish the standard content width instead of a still-zero
+    /// or mid-resize window width.
+    private var cockpitAuthoritativeContentWidth: Double? {
         if VisualEvidenceRuntimeContext() != nil {
-            return CockpitLayoutPolicy.presentsSplitRail(
-                contentWidth: CockpitLayoutPolicy.standardContentWidth
-            )
+            return CockpitLayoutPolicy.standardContentWidth
         }
         guard projectBoardWindowWidth > 0 else {
             return nil
         }
-        let contentWidth: Double
         if columnVisibility == .detailOnly {
-            contentWidth = Double(projectBoardWindowWidth)
-        } else {
-            contentWidth = CockpitLayoutPolicy.contentWidth(
-                forWindowWidth: Double(projectBoardWindowWidth)
-            )
+            return Double(projectBoardWindowWidth)
+        }
+        return CockpitLayoutPolicy.contentWidth(
+            forWindowWidth: Double(projectBoardWindowWidth)
+        )
+    }
+
+    private var todayPrefersContinuousRail: Bool? {
+        guard let contentWidth = cockpitAuthoritativeContentWidth else {
+            return nil
         }
         return CockpitLayoutPolicy.presentsSplitRail(contentWidth: contentWidth)
     }

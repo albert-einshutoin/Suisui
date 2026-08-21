@@ -18,6 +18,7 @@ enum SettingsFeatureLoadState<Value> {
 struct SettingsOverviewFeatureView: View {
     let dependencies: SettingsOverviewDependencies
     @State private var selectedRowID: String?
+    @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
 
     private var selectedRow: SettingsReadinessRow? {
         let rows = dependencies.groups.flatMap(\.rows)
@@ -29,14 +30,29 @@ struct SettingsOverviewFeatureView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let isWide = CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(proxy.size.width))
-            HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
-                overviewForm
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
+            let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: proxy.size.width)
+            let isWide = CockpitSplitLayout.presentsSplitRail(
+                measuredWidth: proxy.size.width,
+                authoritativeContentWidth: authoritativeContentWidth
+            )
+            let railWidth = CockpitSplitLayout.railWidth(for: .settings, contentWidth: layoutWidth)
+            Group {
                 if isWide {
-                    overviewDetailRail
-                        .frame(width: max(240, CGFloat(CockpitLayoutPolicy.railWidth) + 40))
+                    HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
+                        overviewForm
+                            .cockpitSplitPrimaryColumn()
+                        overviewDetailRail
+                            .cockpitSplitSecondaryRail(width: railWidth)
+                    }
+                    .frame(width: layoutWidth, height: proxy.size.height, alignment: .topLeading)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
+                            overviewForm
+                            overviewDetailRail
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
             }
         }
@@ -176,6 +192,7 @@ struct SettingsAppearanceFeatureView: View {
 struct SettingsAIFeatureView: View {
     @ObservedObject var settingsViewModel: AppSettingsViewModel
     let context: SettingsAIDependencies
+    @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
 
     private var aiReadinessRows: [SettingsReadinessRow] {
         let preferredIDs: Set<String> = ["ai", "stt", "tts", "privacy", "data-location"]
@@ -186,13 +203,29 @@ struct SettingsAIFeatureView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let isWide = CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(proxy.size.width))
-            HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
-                aiSettingsForm
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: proxy.size.width)
+            let isWide = CockpitSplitLayout.presentsSplitRail(
+                measuredWidth: proxy.size.width,
+                authoritativeContentWidth: authoritativeContentWidth
+            )
+            let railWidth = CockpitSplitLayout.railWidth(for: .settings, contentWidth: layoutWidth)
+            Group {
                 if isWide {
-                    aiReadinessRail
-                        .frame(width: max(240, CGFloat(CockpitLayoutPolicy.railWidth) + 40))
+                    HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
+                        aiSettingsForm
+                            .cockpitSplitPrimaryColumn()
+                        aiReadinessRail
+                            .cockpitSplitSecondaryRail(width: railWidth)
+                    }
+                    .frame(width: layoutWidth, height: proxy.size.height, alignment: .topLeading)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
+                            aiSettingsForm
+                            aiReadinessRail
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
             }
         }

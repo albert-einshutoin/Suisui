@@ -25,6 +25,7 @@ struct DoneWorkflowView: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
     let appSettings: AppSettings
     @State private var historyFilter: DoneHistoryFilter = .all
+    @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
 
     init(viewModel: ProjectBoardViewModel, appSettings: AppSettings = .default) {
         self.viewModel = viewModel
@@ -66,7 +67,12 @@ struct DoneWorkflowView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let isWide = CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(proxy.size.width))
+            let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: proxy.size.width)
+            let isWide = CockpitSplitLayout.presentsSplitRail(
+                measuredWidth: proxy.size.width,
+                authoritativeContentWidth: authoritativeContentWidth
+            )
+            let railWidth = CockpitSplitLayout.railWidth(for: .done, contentWidth: layoutWidth)
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 10) {
                     Label("Completed", systemImage: "checkmark.circle")
@@ -85,10 +91,11 @@ struct DoneWorkflowView: View {
                 if isWide {
                     HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
                         donePrimaryColumn
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                            .cockpitSplitPrimaryColumn()
                         doneSummaryRail
-                            .frame(width: CGFloat(CockpitLayoutPolicy.railWidth), alignment: .topLeading)
+                            .cockpitSplitSecondaryRail(width: railWidth)
                     }
+                    .frame(width: max(layoutWidth - 36, 1), alignment: .topLeading)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 } else {
                     ScrollView {

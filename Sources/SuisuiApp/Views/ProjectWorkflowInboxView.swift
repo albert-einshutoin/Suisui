@@ -30,6 +30,7 @@ struct InboxWorkflowView: View {
     @State private var isQuickAddExpanded = false
     @State private var lastReviewRefreshMinute: Date?
     @FocusState private var isQuickAddFocused: Bool
+    @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
 
     init(
         viewModel: ProjectBoardViewModel,
@@ -110,7 +111,12 @@ struct InboxWorkflowView: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { timeline in
             GeometryReader { proxy in
-                let isWide = CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(proxy.size.width))
+                let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: proxy.size.width)
+                let isWide = CockpitSplitLayout.presentsSplitRail(
+                    measuredWidth: proxy.size.width,
+                    authoritativeContentWidth: authoritativeContentWidth
+                )
+                let railWidth = CockpitSplitLayout.railWidth(for: .inbox, contentWidth: layoutWidth)
                 Group {
                     if isWide {
                         VStack(alignment: .leading, spacing: 14) {
@@ -120,7 +126,7 @@ struct InboxWorkflowView: View {
                             HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
                                 inboxTaskList()
                                     .padding(.leading, 18)
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                    .cockpitSplitPrimaryColumn()
                                 InboxTriageRail(
                                     task: viewModel.selectedTask,
                                     viewModel: viewModel,
@@ -129,12 +135,16 @@ struct InboxWorkflowView: View {
                                     voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail",
                                     fillsAvailableHeight: true
                                 )
-                                .frame(width: CGFloat(CockpitLayoutPolicy.inboxRailWidth))
+                                .cockpitSplitSecondaryRail(width: railWidth)
                                 .frame(maxHeight: .infinity, alignment: .topLeading)
                                 .padding(.trailing, 18)
                                 .padding(.bottom, 18)
                             }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                            .frame(
+                                width: layoutWidth,
+                                height: max(proxy.size.height - 14, 1),
+                                alignment: .topLeading
+                            )
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         // Distinct identities prevent SwiftUI from reusing AppKit-backed

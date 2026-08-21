@@ -66,7 +66,7 @@ private enum ScheduleLayoutMetrics {
     static let outerPadding: CGFloat = 14
     static let sectionSpacing: CGFloat = 10
     static let calendarMinimumWidth: CGFloat = 360
-    static let railWidth = CGFloat(CockpitLayoutPolicy.railWidth)
+    static let railWidth = CGFloat(CockpitLayoutPolicy.scheduleRailMinimumWidth)
     static let dayHeaderHeight: CGFloat = 44
     static let allDayRowHeight: CGFloat = 30
     static let hourRowHeight: CGFloat = 52
@@ -79,7 +79,7 @@ private enum ScheduleLayoutMetrics {
     }
 
     static func railWidth(for viewportWidth: CGFloat) -> CGFloat {
-        min(320, railWidth + max(0, viewportWidth - standardViewportWidth) * 0.12)
+        CGFloat(CockpitLayoutPolicy.scheduleRailWidth(contentWidth: Double(viewportWidth)))
     }
 }
 
@@ -100,6 +100,7 @@ struct ScheduleWorkflowView: View {
     @State private var scheduleSearchText = ""
     @State private var contentFilter: ScheduleContentFilter = .all
     @FocusState private var isScheduleSearchFocused: Bool
+    @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
 
     var body: some View {
         GeometryReader { viewport in
@@ -693,15 +694,23 @@ private struct ScheduleOverviewCalendar: View {
     @Binding var quickDraftSelection: ScheduleQuickDraftSelection?
     let viewportWidth: CGFloat
     let visibleHourRowCount: Int
+    @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
 
     var body: some View {
-        if CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(viewportWidth)) {
-            HStack(alignment: .top, spacing: 12) {
+        let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: viewportWidth)
+        let isWide = CockpitSplitLayout.presentsSplitRail(
+            measuredWidth: viewportWidth,
+            authoritativeContentWidth: authoritativeContentWidth
+        )
+        let railWidth = CockpitSplitLayout.railWidth(for: .schedule, contentWidth: layoutWidth)
+        if isWide {
+            HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
                 calendar
-                    .frame(minWidth: ScheduleLayoutMetrics.calendarMinimumWidth, maxWidth: .infinity)
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)
                 rail(itemLimit: nil)
-                    .frame(width: ScheduleLayoutMetrics.railWidth(for: viewportWidth))
+                    .cockpitSplitSecondaryRail(width: railWidth)
             }
+            .frame(width: layoutWidth, alignment: .topLeading)
         } else {
             VStack(alignment: .leading, spacing: 12) {
                 calendar

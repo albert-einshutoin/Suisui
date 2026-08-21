@@ -132,6 +132,7 @@ enum SuisuiVoiceConversationScopeBridge {
 struct VoiceCaptureView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
     @StateObject private var viewModel: VoiceCaptureViewModel
     @State private var clarificationAnswer = ""
 
@@ -250,7 +251,12 @@ struct VoiceCaptureView: View {
 
     private var quickCommandWorkspace: some View {
         GeometryReader { proxy in
-            let isWide = CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(proxy.size.width))
+            let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: proxy.size.width)
+            let isWide = CockpitSplitLayout.presentsSplitRail(
+                measuredWidth: proxy.size.width,
+                authoritativeContentWidth: authoritativeContentWidth
+            )
+            let railWidth = CockpitSplitLayout.railWidth(for: .voiceQuickCommand, contentWidth: layoutWidth)
             VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
                 HStack {
                     // Structural identifiers stay on leaf headings. SwiftUI
@@ -270,74 +276,96 @@ struct VoiceCaptureView: View {
                     .accessibilityIdentifier("voice-command-clear")
                 }
 
-                HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
+                if isWide {
+                    HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
+                        quickCommandPrimaryScroll
+                            .cockpitSplitPrimaryColumn()
+                        quickCommandSecondaryRail
+                            .cockpitSplitSecondaryRail(width: railWidth)
+                    }
+                    .frame(width: max(layoutWidth - CGFloat(SuisuiSpacing.lg) * 2, 1), alignment: .topLeading)
+                } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
-                            // Capture belongs to the same scroll boundary as later
-                            // states so larger text and compact displays never make
-                            // the primary controls increase the window minimum size.
-                            if presentsListeningEvidenceDesk {
-                                listeningEvidenceDesk
-                            } else {
-                                captureZone
-                            }
-
-                            if hasWorkingContent {
-                                workingZone
-                                    .transition(.opacity.combined(with: .move(edge: .top)))
-                            }
-
-                            if hasReviewContent {
-                                reviewZone
-                                    .transition(.opacity.combined(with: .move(edge: .top)))
-                            }
+                            quickCommandPrimaryContent
+                            quickCommandSecondaryRail
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        // Zones fade/slide in briefly as they appear; Reduce Motion
-                        // disables the animation so state changes apply instantly.
-                        .animation(
-                            SuisuiMotion.animation(duration: SuisuiMotion.standard, reduceMotion: reduceMotion),
-                            value: hasWorkingContent
-                        )
-                        .animation(
-                            SuisuiMotion.animation(duration: SuisuiMotion.standard, reduceMotion: reduceMotion),
-                            value: hasReviewContent
-                        )
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-                    if isWide {
-                        VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
-                            VoiceUnderstoodActionsRail(
-                                routingResult: viewModel.routingResult,
-                                planActionTitles: understoodPlanActionTitles,
-                                evidenceActions: presentsListeningEvidenceDesk
-                                    ? VoiceVisualEvidenceFixture.understoodActions
-                                    : []
-                            )
-                            VoiceQuickCommandContextRail(
-                                destinationTitle: quickCommandDestinationTitle,
-                                isHandsFreeListening: viewModel.isLowLatencyVoiceAgentListening
-                                    || presentsListeningEvidenceDesk,
-                                speechProviderName: viewModel.handsFreeModeProviderName,
-                                needsClarification: presentsListeningEvidenceDesk
-                                    || viewModel.routingResult?.needsClarification == true
-                                    || viewModel.clarificationQuestion != nil,
-                                conversationTurns: presentsListeningEvidenceDesk
-                                    ? VoiceVisualEvidenceFixture.conversationTurns
-                                    : [],
-                                confirmationOptions: presentsListeningEvidenceDesk
-                                    ? VoiceVisualEvidenceFixture.confirmationOptions
-                                    : []
-                            )
-                            Spacer(minLength: 0)
-                        }
-                        .frame(width: max(220, CGFloat(CockpitLayoutPolicy.railWidth)))
-                    }
                 }
             }
             .padding(SuisuiSpacing.lg)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+    }
+
+    private var quickCommandPrimaryScroll: some View {
+        ScrollView {
+            quickCommandPrimaryContent
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var quickCommandPrimaryContent: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+            // Capture belongs to the same scroll boundary as later
+            // states so larger text and compact displays never make
+            // the primary controls increase the window minimum size.
+            if presentsListeningEvidenceDesk {
+                listeningEvidenceDesk
+            } else {
+                captureZone
+            }
+
+            if hasWorkingContent {
+                workingZone
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            if hasReviewContent {
+                reviewZone
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Zones fade/slide in briefly as they appear; Reduce Motion
+        // disables the animation so state changes apply instantly.
+        .animation(
+            SuisuiMotion.animation(duration: SuisuiMotion.standard, reduceMotion: reduceMotion),
+            value: hasWorkingContent
+        )
+        .animation(
+            SuisuiMotion.animation(duration: SuisuiMotion.standard, reduceMotion: reduceMotion),
+            value: hasReviewContent
+        )
+    }
+
+    private var quickCommandSecondaryRail: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+            VoiceUnderstoodActionsRail(
+                routingResult: viewModel.routingResult,
+                planActionTitles: understoodPlanActionTitles,
+                evidenceActions: presentsListeningEvidenceDesk
+                    ? VoiceVisualEvidenceFixture.understoodActions
+                    : []
+            )
+            VoiceQuickCommandContextRail(
+                destinationTitle: quickCommandDestinationTitle,
+                isHandsFreeListening: viewModel.isLowLatencyVoiceAgentListening
+                    || presentsListeningEvidenceDesk,
+                speechProviderName: viewModel.handsFreeModeProviderName,
+                needsClarification: presentsListeningEvidenceDesk
+                    || viewModel.routingResult?.needsClarification == true
+                    || viewModel.clarificationQuestion != nil,
+                conversationTurns: presentsListeningEvidenceDesk
+                    ? VoiceVisualEvidenceFixture.conversationTurns
+                    : [],
+                confirmationOptions: presentsListeningEvidenceDesk
+                    ? VoiceVisualEvidenceFixture.confirmationOptions
+                    : []
+            )
+            Spacer(minLength: 0)
         }
     }
 
