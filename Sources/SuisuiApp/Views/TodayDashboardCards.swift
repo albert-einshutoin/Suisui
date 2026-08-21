@@ -21,9 +21,10 @@ struct TodayDashboardRecommendationCards: View {
                     HStack(alignment: .top, spacing: SuisuiSpacing.sm) {
                         ForEach(recommendations, id: \.id) { recommendation in
                             recommendationButton(recommendation)
+                                .frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)
                         }
                     }
-                    .frame(maxHeight: .infinity, alignment: .top)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 }
             }
         }
@@ -66,6 +67,7 @@ struct TodayDashboardRecommendationCards: View {
                     )
             }
             .frame(
+                minWidth: 0,
                 maxWidth: .infinity,
                 minHeight: TodayDashboardLayoutMetrics.recommendationCardMinHeight,
                 maxHeight: .infinity,
@@ -74,6 +76,7 @@ struct TodayDashboardRecommendationCards: View {
         }
         .buttonStyle(.plain)
         .todayDashboardCard()
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)
         .accessibilityLabel(String(format: String(localized: "Recommendation: %@. %@"), recommendation.title, recommendation.reason))
         .accessibilityHint(accessibilityHint(for: recommendation))
     }

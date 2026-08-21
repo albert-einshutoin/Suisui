@@ -35,7 +35,7 @@ extension View {
     /// this treatment local avoids changing established cards elsewhere while
     /// preserving one shared border, inset, and elevation across the dashboard.
     func todayDashboardCard() -> some View {
-        self.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        self.frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(SuisuiSpacing.lg)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -156,6 +156,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                                 .padding(.vertical, 18)
                                 .frame(width: primaryWidth - 18, alignment: .topLeading)
                             }
+                            .scrollIndicators(.hidden)
                             .frame(width: primaryWidth, alignment: .topLeading)
                             .clipped()
 
@@ -173,6 +174,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                                     alignment: .topLeading
                                 )
                             }
+                            .scrollIndicators(.hidden)
                             .cockpitSplitSecondaryRail(width: railSpan)
                         }
                         .frame(
