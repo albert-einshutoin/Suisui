@@ -142,7 +142,7 @@ struct VoiceCaptureView: View {
     @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
     @StateObject private var viewModel: VoiceCaptureViewModel
     @State private var clarificationAnswer = ""
-    @State private var selectedVoiceEvidenceTab = VoiceEvidenceTab.quickCommand
+    @State private var selectedVoiceEvidenceTab: VoiceEvidenceTab
 
     private enum VoiceEvidenceTab: Hashable {
         case conversation
@@ -151,6 +151,13 @@ struct VoiceCaptureView: View {
 
     init(viewModel: VoiceCaptureViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
+        // Resolve before first layout so Conversation evidence does not wait
+        // on onAppear while AX markers look for the still-unmounted tab.
+        _selectedVoiceEvidenceTab = State(
+            initialValue: VoiceVisualEvidenceSurface.resolved() == .conversation
+                ? .conversation
+                : .quickCommand
+        )
     }
 
     private var presentsListeningEvidenceDesk: Bool {
@@ -237,9 +244,9 @@ struct VoiceCaptureView: View {
                 .tag(VoiceEvidenceTab.quickCommand)
         }
         .onAppear {
-            selectedVoiceEvidenceTab = VoiceVisualEvidenceSurface.resolved() == .conversation
-                ? .conversation
-                : .quickCommand
+            if VoiceVisualEvidenceSurface.resolved() == .conversation {
+                selectedVoiceEvidenceTab = .conversation
+            }
         }
         .task {
             await viewModel.restoreConversationIfNeeded()
