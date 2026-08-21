@@ -218,30 +218,48 @@ struct VoiceCaptureView: View {
     }
 
     var body: some View {
-        TabView(selection: $selectedVoiceEvidenceTab) {
-            VoiceTaskConversationWorkspaceView(
-                viewModel: viewModel,
-                onOpenAssistantQueue: {
-                    postAssistantQueueOpenRequest(
-                        itemID: viewModel.assistantQueueItem?.id
+        Group {
+            if VoiceVisualEvidenceSurface.resolved() == .conversation {
+                // Evidence captures the Conversation desk alone so TabView does
+                // not leave the workspace unmounted for AX markers.
+                VoiceTaskConversationWorkspaceView(
+                    viewModel: viewModel,
+                    onOpenAssistantQueue: {
+                        postAssistantQueueOpenRequest(
+                            itemID: viewModel.assistantQueueItem?.id
+                        )
+                    },
+                    onPauseSession: viewModel.pauseConversationWorkspace,
+                    onResumeSession: viewModel.resumeConversationWorkspace,
+                    onArchiveSession: viewModel.archiveConversationWorkspace
+                )
+            } else {
+                TabView(selection: $selectedVoiceEvidenceTab) {
+                    VoiceTaskConversationWorkspaceView(
+                        viewModel: viewModel,
+                        onOpenAssistantQueue: {
+                            postAssistantQueueOpenRequest(
+                                itemID: viewModel.assistantQueueItem?.id
+                            )
+                        },
+                        onPauseSession: viewModel.pauseConversationWorkspace,
+                        onResumeSession: viewModel.resumeConversationWorkspace,
+                        onArchiveSession: viewModel.archiveConversationWorkspace
                     )
-                },
-                onPauseSession: viewModel.pauseConversationWorkspace,
-                onResumeSession: viewModel.resumeConversationWorkspace,
-                onArchiveSession: viewModel.archiveConversationWorkspace
-            )
-            .tabItem {
-                Label("Conversation", systemImage: "text.bubble")
-            }
-            .tag(VoiceEvidenceTab.conversation)
-            .accessibilityIdentifier("voice-conversation-tab")
+                    .tabItem {
+                        Label("Conversation", systemImage: "text.bubble")
+                    }
+                    .tag(VoiceEvidenceTab.conversation)
+                    .accessibilityIdentifier("voice-conversation-tab")
 
-            quickCommandWorkspace
-                .tabItem {
-                    Label("Quick Command", systemImage: "waveform")
-                        .accessibilityIdentifier("voice-command-quick-command-tab")
+                    quickCommandWorkspace
+                        .tabItem {
+                            Label("Quick Command", systemImage: "waveform")
+                                .accessibilityIdentifier("voice-command-quick-command-tab")
+                        }
+                        .tag(VoiceEvidenceTab.quickCommand)
                 }
-                .tag(VoiceEvidenceTab.quickCommand)
+            }
         }
         .onAppear {
             if VoiceVisualEvidenceSurface.resolved() == .conversation {
