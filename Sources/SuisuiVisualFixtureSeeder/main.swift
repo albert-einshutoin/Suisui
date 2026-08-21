@@ -1401,7 +1401,11 @@ private func seedCaptureFixtures(
     }
     let today = dayFormatter.string(from: referenceInstant)
     let tomorrow = dayFormatter.string(from: tomorrowInstant)
+    let yesterdayDay = dayFormatter.string(from: yesterdayInstant)
     let yesterday = ISO8601DateFormatter().string(from: yesterdayInstant)
+    let todayMorning = "\(today)T10:00:00Z"
+    let todayAfternoon = "\(today)T14:00:00Z"
+    let tomorrowMorning = "\(tomorrow)T11:00:00Z"
 
     return try connection.transaction {
         try connection.execute(
@@ -1499,7 +1503,34 @@ private func seedCaptureFixtures(
                 "Document remaining release blockers",
                 "blocked",
                 "Keep signing, notarization, and manual accessibility gates visible.",
+                .text(yesterdayDay),
                 .null,
+                "medium"
+            ),
+            (
+                projectIDValue,
+                "Stakeholder sync",
+                "planned",
+                "Timed meeting block for schedule evidence density.",
+                .text(todayMorning),
+                .null,
+                "high"
+            ),
+            (
+                projectIDValue,
+                "Focus polish: AX paths",
+                "planned",
+                "Timed focus block for schedule evidence density.",
+                .text(todayAfternoon),
+                .null,
+                "high"
+            ),
+            (
+                projectIDValue,
+                "Launch readout rehearsal",
+                "planned",
+                "Timed follow-up for the next evidence day.",
+                .text(tomorrowMorning),
                 .null,
                 "medium"
             ),

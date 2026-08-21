@@ -239,7 +239,22 @@ struct ScheduleWorkflowView: View {
         .accessibilityHint("Reviews workload and approval-ready schedule drafts from Review.")
         .onAppear {
             viewModel.refreshExternalScheduleEvents(around: workloadReferenceDate)
+            prepareScheduleDraftForVisualEvidenceIfNeeded()
         }
+    }
+
+    /// Evidence captures pin a dense week desk. Preparing a local draft once
+    /// surfaces caution-colored proposal blocks beside timed due tasks without
+    /// writing Calendar or inventing a synced badge.
+    private func prepareScheduleDraftForVisualEvidenceIfNeeded() {
+        guard VisualEvidenceRuntimeContext() != nil,
+              viewModel.scheduleDraft == nil else {
+            return
+        }
+        _ = viewModel.prepareScheduleDraft(
+            on: workloadReferenceDate,
+            calendar: VisualEvidenceRuntimeContext.runtimeCalendar()
+        )
     }
 
     private var scheduleTitle: some View {
@@ -2765,7 +2780,7 @@ private struct ScheduleSuggestionsPanel: View {
                                 .accessibilityIdentifier("schedule-unscheduled-task-\(task.id)")
                             Spacer(minLength: 0)
                         }
-                        Text("This open task has not been placed on the calendar yet.")
+                        Text(suggestionReason(for: task))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                         Button {
@@ -2796,6 +2811,16 @@ private struct ScheduleSuggestionsPanel: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("schedule-suggestions")
+    }
+
+    private func suggestionReason(for task: ProjectBoardTask) -> String {
+        if task.status == .blocked {
+            return String(localized: "Blocked work needs a local slot before more planning.")
+        }
+        if task.priority == .high {
+            return String(localized: "High-priority open work is still unscheduled.")
+        }
+        return String(localized: "This open task has not been placed on the calendar yet.")
     }
 }
 

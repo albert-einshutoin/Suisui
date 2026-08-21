@@ -5304,6 +5304,27 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(gridSource.contains("ScrollView(.horizontal"))
     }
 
+    func testScheduleEvidenceDensifiesTimedBlocksAndKeepsProductModeVocabulary() throws {
+        let scheduleSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowScheduleView.swift")
+        let seederSource = try readPackageFile("Sources/SuisuiVisualFixtureSeeder/main.swift")
+
+        XCTAssertTrue(scheduleSource.contains("case .overview: \"Week\""))
+        XCTAssertTrue(scheduleSource.contains("case .timeline: \"Day\""))
+        XCTAssertTrue(scheduleSource.contains("case .agenda: \"Schedule\""))
+        XCTAssertTrue(scheduleSource.contains("case .workload: \"Workload\""))
+        XCTAssertFalse(scheduleSource.contains("すべて"))
+        XCTAssertFalse(scheduleSource.contains("同期済み"))
+        XCTAssertTrue(scheduleSource.contains("prepareScheduleDraftForVisualEvidenceIfNeeded"))
+        XCTAssertTrue(scheduleSource.contains("VisualEvidenceRuntimeContext() != nil"))
+        XCTAssertTrue(seederSource.contains("T10:00:00Z"))
+        XCTAssertTrue(seederSource.contains("T14:00:00Z"))
+        XCTAssertTrue(seederSource.contains("Stakeholder sync"))
+        XCTAssertTrue(seederSource.contains("Focus polish: AX paths"))
+        // Overdue/blocked work keeps Needs Adjustment populated without Calendar sync badges.
+        XCTAssertTrue(seederSource.contains("\"Document remaining release blockers\""))
+        XCTAssertTrue(seederSource.contains(".text(yesterdayDay)"))
+    }
+
     func testScheduleKeepsDaySeparatorsVisibleAndAdaptsAroundThirteenInchViewport() throws {
         let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowScheduleView.swift")
 
