@@ -4,58 +4,78 @@ import SwiftUI
 struct TodayDashboardRecommendationCards: View {
     let recommendations: [TodayRecommendation]
     let onAction: (TodayRecommendation) -> Void
+    var stacksVertically: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
             Label("Recommendations", systemImage: "sparkles")
                 .font(SuisuiTypography.sectionTitle)
-            HStack(alignment: .top, spacing: SuisuiSpacing.sm) {
-                ForEach(recommendations, id: \.id) { recommendation in
-                    Button {
-                        onAction(recommendation)
-                    } label: {
-                        VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
-                            HStack(alignment: .top, spacing: SuisuiSpacing.sm) {
-                                Image(systemName: recommendationIcon(for: recommendation))
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 34, height: 34)
-                                    .background(actionColor(for: recommendation), in: Circle())
-                                    .accessibilityHidden(true)
-                                VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
-                                    Text(recommendation.title)
-                                        .font(.subheadline.weight(.semibold))
-                                        .lineLimit(2)
-                                    Text(recommendation.reason)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                            }
-                            Spacer(minLength: 0)
-                            Text(actionTitle(for: recommendation))
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 7)
-                                .background(
-                                    actionColor(for: recommendation),
-                                    in: RoundedRectangle(cornerRadius: SuisuiRadius.control, style: .continuous)
-                                )
+            Group {
+                if stacksVertically {
+                    VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
+                        ForEach(recommendations, id: \.id) { recommendation in
+                            recommendationButton(recommendation)
                         }
-                        .frame(maxWidth: .infinity, minHeight: TodayDashboardLayoutMetrics.recommendationCardMinHeight, maxHeight: .infinity, alignment: .topLeading)
                     }
-                    .buttonStyle(.plain)
-                    .todayDashboardCard()
-                    .accessibilityLabel(String(format: String(localized: "Recommendation: %@. %@"), recommendation.title, recommendation.reason))
-                    .accessibilityHint(accessibilityHint(for: recommendation))
+                } else {
+                    HStack(alignment: .top, spacing: SuisuiSpacing.sm) {
+                        ForEach(recommendations, id: \.id) { recommendation in
+                            recommendationButton(recommendation)
+                        }
+                    }
+                    .frame(maxHeight: .infinity, alignment: .top)
                 }
             }
-            .frame(maxHeight: .infinity, alignment: .top)
         }
-        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-recommendations")
+    }
+
+    private func recommendationButton(_ recommendation: TodayRecommendation) -> some View {
+        Button {
+            onAction(recommendation)
+        } label: {
+            VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+                HStack(alignment: .top, spacing: SuisuiSpacing.sm) {
+                    Image(systemName: recommendationIcon(for: recommendation))
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(actionColor(for: recommendation), in: Circle())
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
+                        Text(recommendation.title)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(2)
+                        Text(recommendation.reason)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 0)
+                Text(actionTitle(for: recommendation))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 7)
+                    .background(
+                        actionColor(for: recommendation),
+                        in: RoundedRectangle(cornerRadius: SuisuiRadius.control, style: .continuous)
+                    )
+            }
+            .frame(
+                maxWidth: .infinity,
+                minHeight: TodayDashboardLayoutMetrics.recommendationCardMinHeight,
+                maxHeight: .infinity,
+                alignment: .topLeading
+            )
+        }
+        .buttonStyle(.plain)
+        .todayDashboardCard()
+        .accessibilityLabel(String(format: String(localized: "Recommendation: %@. %@"), recommendation.title, recommendation.reason))
+        .accessibilityHint(accessibilityHint(for: recommendation))
     }
 
     private func recommendationIcon(for recommendation: TodayRecommendation) -> String {

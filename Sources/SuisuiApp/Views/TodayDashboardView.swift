@@ -16,10 +16,17 @@ enum TodayDashboardLayoutMetrics {
     static let compactRailCardsMinimumWidth: CGFloat = 864
     static let twoColumnMinimumWidth = primaryMinimumWidth + railMinimumWidth + columnSpacing
 
+    /// Prefer continuous rail only when the *laid-out* board width can host
+    /// primary + rail. Authoritative window width alone can force split while
+    /// GeometryReader still proposes a narrower detail column, which paints the
+    /// rail over the task list.
+    static func prefersContinuousRail(boardWidth: CGFloat) -> Bool {
+        boardWidth + 0.5 >= twoColumnMinimumWidth
+            && CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(boardWidth))
+    }
+
     static func isWide(availableWidth: CGFloat) -> Bool {
-        // Prefer the continuous rail whenever the detail column can host
-        // primary + rail. Keep the 960pt window (720pt content) compact.
-        CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(availableWidth))
+        prefersContinuousRail(boardWidth: availableWidth)
     }
 }
 
@@ -94,13 +101,15 @@ struct TodayDashboardView<CatchUpContent: View>: View {
         )
         GeometryReader { proxy in
             let proposedWidth = max(proxy.size.width, 1)
-            // Recommendation cards publish a wide ideal size that can inflate the
-            // GeometryReader past the visible detail column and clip the rail.
-            let availableWidth = min(
-                proposedWidth,
-                CGFloat(CockpitLayoutPolicy.standardContentWidth)
+            // Authoritative AppKit width keeps 1024 evidence in split when the
+            // GeometryReader under-measures, but never lay out wider than the
+            // proposal — that is what stacked the rail on top of the task list.
+            let layoutWidth = CockpitSplitLayout.layoutWidth(
+                measuredWidth: proposedWidth,
+                authoritativeContentWidth: authoritativeContentWidth
             )
-            let isWide = resolvedPrefersContinuousRail(availableWidth: availableWidth)
+            let boardWidth = min(layoutWidth, proposedWidth)
+            let isWide = resolvedPrefersContinuousRail(boardWidth: boardWidth)
             let presentsCompactRailCardsHorizontally = !isWide
                 && proposedWidth >= TodayDashboardLayoutMetrics.compactRailCardsMinimumWidth
             ScrollViewReader { scrollProxy in
@@ -141,7 +150,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                                 .padding(.vertical, 18)
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
                             }
-                            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                            .cockpitSplitPrimaryColumn()
 
                             ScrollView(.vertical) {
                                 rail(
@@ -157,14 +166,14 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                                     alignment: .topLeading
                                 )
                             }
-                            .frame(width: railSpan, alignment: .topLeading)
-                            .layoutPriority(1)
+                            .cockpitSplitSecondaryRail(width: railSpan)
                         }
                         .frame(
-                            width: availableWidth,
+                            width: boardWidth,
                             height: proxy.size.height,
                             alignment: .topLeading
                         )
+                        .clipped()
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("today-wide-board")
                     } else {
@@ -178,15 +187,23 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                                     dashboard: dashboard,
                                     presentsCardsHorizontally: presentsCompactRailCardsHorizontally,
                                     showsSecondaryIntegrations: false,
-                                    availableWidth: availableWidth
+                                    availableWidth: max(boardWidth - (TodayDashboardLayoutMetrics.horizontalInsets * 2), 1)
                                 )
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
+                                HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
+                                    TodayIntegrationCard(integration: dashboard.integrations.calendar)
+                                        .todayDashboardFillRow()
+                                    TodayIntegrationCard(integration: dashboard.integrations.slack)
+                                        .todayDashboardFillRow()
+                                }
                             }
                             .padding(.horizontal, 18)
                             .padding(.vertical, 18)
                             .frame(maxWidth: .infinity, alignment: .topLeading)
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .frame(width: boardWidth, alignment: .topLeading)
+                        .frame(maxHeight: .infinity, alignment: .topLeading)
+                        .clipped()
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("today-compact-board")
                     }
@@ -221,21 +238,14 @@ struct TodayDashboardView<CatchUpContent: View>: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private func resolvedPrefersContinuousRail(availableWidth: CGFloat) -> Bool {
-        // Evidence captures pin 1024×676. Prefer the continuous rail even when a
-        // stale board-window override still reports compact mid-resize widths.
-        if VisualEvidenceRuntimeContext() != nil {
-            return CockpitLayoutPolicy.presentsSplitRail(
-                contentWidth: CockpitLayoutPolicy.standardContentWidth
-            )
+    private func resolvedPrefersContinuousRail(boardWidth: CGFloat) -> Bool {
+        // Prefer continuous rail only when the laid-out board width clears the
+        // two-column floor. Forcing split from a larger authoritative width
+        // while GeometryReader proposes less paints the rail over the task list.
+        if let prefersContinuousRail, prefersContinuousRail == false {
+            return false
         }
-        if let prefersContinuousRail {
-            return prefersContinuousRail
-        }
-        return CockpitLayoutPolicy.presentsSplitRail(
-            measuredContentWidth: Double(availableWidth),
-            authoritativeContentWidth: authoritativeContentWidth
-        )
+        return TodayDashboardLayoutMetrics.prefersContinuousRail(boardWidth: boardWidth)
     }
 
     private func mainContent(
@@ -246,16 +256,19 @@ struct TodayDashboardView<CatchUpContent: View>: View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.lg) {
             TodayDashboardRecommendationCards(
                 recommendations: dashboard.recommendations,
-                onAction: performRecommendationAction
+                onAction: performRecommendationAction,
+                stacksVertically: !isWide
             )
-            taskList(dashboard: dashboard, isWide: isWide)
-            TodayDashboardWeeklyScheduleCard(schedule: dashboard.weeklySchedule)
+            // Keep Needs Review above the long task list so the first viewport
+            // still surfaces catch-up pressure when the continuous rail is beside.
             TodayDashboardReviewCard(
                 review: dashboard.review,
                 externalActivity: dashboard.externalActivity,
                 openReview: openReview
             )
             .accessibilityFocused($isReviewFocused)
+            taskList(dashboard: dashboard, isWide: isWide)
+            TodayDashboardWeeklyScheduleCard(schedule: dashboard.weeklySchedule)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }

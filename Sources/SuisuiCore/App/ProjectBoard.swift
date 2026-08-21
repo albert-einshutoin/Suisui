@@ -5039,7 +5039,15 @@ public final class ProjectBoardViewModel: ObservableObject {
                 reason: String(format: String(localized: "%@ is blocking today's plan."), task.title)
             ))
         }
-        if let task = firstTask(matching: { dueDate(for: $0.dueAt, calendar: calendar).map { $0 < dayStart } == true }) {
+        // Prefer yesterday's overdue for the chip so older mid-week dues do not
+        // steal the slot from a distinct "clear overdue" action.
+        let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: dayStart) ?? dayStart
+        if let task = firstTask(matching: {
+            guard let due = dueDate(for: $0.dueAt, calendar: calendar) else { return false }
+            return due < dayStart && due >= yesterdayStart
+        }) ?? firstTask(matching: {
+            dueDate(for: $0.dueAt, calendar: calendar).map { $0 < dayStart } == true
+        }) {
             usedTaskIDs.insert(task.id)
             chips.append(TodayRecommendationChip(
                 kind: .overdue,

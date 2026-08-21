@@ -8,6 +8,9 @@ final class TodayDashboardLayoutMetricsTests: XCTestCase {
 
         XCTAssertEqual(contentWidth, 784)
         XCTAssertTrue(TodayDashboardLayoutMetrics.isWide(availableWidth: CGFloat(contentWidth)))
+        XCTAssertTrue(
+            TodayDashboardLayoutMetrics.prefersContinuousRail(boardWidth: CGFloat(contentWidth))
+        )
         XCTAssertLessThanOrEqual(
             TodayDashboardLayoutMetrics.railMinimumWidth
                 + TodayDashboardLayoutMetrics.columnSpacing
@@ -34,18 +37,18 @@ final class TodayDashboardLayoutMetricsTests: XCTestCase {
         XCTAssertTrue(source.contains("presentsCardsHorizontally: false"))
         XCTAssertTrue(source.contains("showsSecondaryIntegrations: false"))
         XCTAssertTrue(source.contains("Keep the rail outside the primary ScrollView"))
-        XCTAssertFalse(source.contains("prefersContinuousRail ?? measuredWide"))
-        XCTAssertTrue(source.contains("resolvedPrefersContinuousRail(availableWidth:"))
-        XCTAssertTrue(source.contains("authoritativeContentWidth: authoritativeContentWidth"))
-        XCTAssertTrue(source.contains("VisualEvidenceRuntimeContext() != nil"))
+        XCTAssertTrue(source.contains("resolvedPrefersContinuousRail(boardWidth:"))
+        XCTAssertTrue(source.contains("let boardWidth = min(layoutWidth, proposedWidth)"))
+        XCTAssertTrue(source.contains("cockpitSplitPrimaryColumn()"))
+        XCTAssertTrue(source.contains("cockpitSplitSecondaryRail(width:"))
+        XCTAssertTrue(source.contains(".clipped()"))
+        XCTAssertTrue(source.contains("prefersContinuousRail(boardWidth:"))
         XCTAssertFalse(source.contains("TodayDashboardAlignedRow"))
         XCTAssertTrue(
             source.contains("width: TodayDashboardLayoutMetrics.railMinimumWidth + 18")
                 || source.contains("let railSpan = TodayDashboardLayoutMetrics.railMinimumWidth + 18")
         )
-        XCTAssertTrue(source.contains("frame(minWidth: 0, maxWidth: .infinity"))
-        XCTAssertTrue(source.contains("width: availableWidth"))
-        XCTAssertTrue(source.contains("CGFloat(CockpitLayoutPolicy.standardContentWidth)"))
+        XCTAssertTrue(source.contains("width: boardWidth"))
     }
 
     func testMinimumWindowMovesTheRailBelowTheMainSurface() {
@@ -54,6 +57,20 @@ final class TodayDashboardLayoutMetricsTests: XCTestCase {
         XCTAssertEqual(compactContentWidth, 720)
         XCTAssertFalse(
             TodayDashboardLayoutMetrics.isWide(availableWidth: CGFloat(compactContentWidth))
+        )
+        XCTAssertFalse(
+            TodayDashboardLayoutMetrics.prefersContinuousRail(boardWidth: CGFloat(compactContentWidth))
+        )
+    }
+
+    func testUnderMeasuredBoardWidthStacksEvenWhenAuthoritativeWidthWouldSplit() {
+        // GeometryReader can propose ~600 while AppKit still reports 784.
+        // Splitting against the larger width paints the rail over the primary.
+        XCTAssertFalse(
+            TodayDashboardLayoutMetrics.prefersContinuousRail(boardWidth: 600)
+        )
+        XCTAssertTrue(
+            TodayDashboardLayoutMetrics.prefersContinuousRail(boardWidth: 784)
         )
     }
 }
