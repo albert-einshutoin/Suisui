@@ -139,36 +139,43 @@ struct DoneWorkflowView: View {
                     spacing: 8
                 ) {
                     DoneStatTile(
-                        title: "Completed Tasks",
+                        title: "Tasks",
+                        accessibilityTitle: "Completed Tasks",
                         value: "\(analytics.completedTaskCount)",
                         systemImage: "checkmark.square"
                     )
                     DoneStatTile(
-                        title: "Completed Projects",
+                        title: "Projects",
+                        accessibilityTitle: "Completed Projects",
                         value: "\(analytics.completedProjectCount)",
                         systemImage: "folder.badge.checkmark"
                     )
                     DoneStatValueTile(
-                        title: "On-Time Rate",
+                        title: "On-Time",
+                        accessibilityTitle: "On-Time Rate",
                         value: analytics.onTimeRate.map { "\(Int($0 * 100))%" } ?? "—",
                         systemImage: "clock.badge.checkmark"
                     )
                     DoneStatTile(
                         title: "Streak",
+                        accessibilityTitle: "Streak",
                         value: localizedCount(analytics.streakDays, one: "%d day", other: "%d days"),
                         systemImage: "flame"
                     )
                 }
-                DoneWeeklyTrendChartView(buckets: analytics.weeklyTrendBuckets)
-                doneExecutionReceiptsPanel
+                // Heatmap + weekday/hour insight stay above the fold so the
+                // first viewport reads as a recap desk, not only stats+receipts.
                 DoneCompletionHeatmapView(buckets: analytics.completionHeatmapBuckets)
                 DoneProductivityInsightView(
                     bestWeekdaySummary: analytics.bestWeekdaySummary,
                     bestHourSummary: analytics.bestHourSummary
                 )
+                DoneWeeklyTrendChartView(buckets: analytics.weeklyTrendBuckets)
+                doneExecutionReceiptsPanel
                 localRuleInsight
             }
         }
+        .scrollIndicators(.never)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
@@ -448,43 +455,59 @@ struct ExecutionReceiptHistoryFileDocument: FileDocument {
 
 private struct DoneStatTile: View {
     let title: LocalizedStringKey
+    var accessibilityTitle: LocalizedStringKey? = nil
     let value: String
     let systemImage: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label(title, systemImage: systemImage)
-                .font(.caption)
+                .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+                .fixedSize(horizontal: false, vertical: true)
             Text(value)
                 .font(.title3.weight(.semibold))
                 .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 64, maxHeight: .infinity, alignment: .leading)
         .padding(10)
         .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityTitle ?? title)
+        .accessibilityValue(value)
     }
 }
 
 private struct DoneStatValueTile: View {
     let title: LocalizedStringKey
+    var accessibilityTitle: LocalizedStringKey? = nil
     let value: String
     let systemImage: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label(title, systemImage: systemImage)
-                .font(.caption)
+                .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+                .fixedSize(horizontal: false, vertical: true)
             Text(value)
                 .font(.title3.weight(.semibold))
                 .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 64, maxHeight: .infinity, alignment: .leading)
         .padding(10)
         .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityTitle ?? title)
+        .accessibilityValue(value)
     }
 }
 
@@ -553,10 +576,10 @@ private struct DoneCompletionHeatmapView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Label("Completion Heatmap", systemImage: "square.grid.3x3")
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
                 Spacer(minLength: 8)
                 Text("Last 28 days")
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
             }
 
@@ -857,17 +880,26 @@ struct ExecutionReceiptHistoryRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Label(row.statusLabel, systemImage: statusSystemImage)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(statusTint)
+                Label {
+                    Text(row.statusLabel)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                } icon: {
+                    Image(systemName: statusSystemImage)
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(statusTint)
+                .fixedSize(horizontal: true, vertical: false)
                 Text(row.toolLabel)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Spacer(minLength: 8)
+                    .minimumScaleFactor(0.85)
+                Spacer(minLength: 4)
                 Text(row.occurredAtLabel)
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
 
             Text(row.outcomeSummary)

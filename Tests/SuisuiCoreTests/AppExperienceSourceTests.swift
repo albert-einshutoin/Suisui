@@ -3443,7 +3443,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(dashboardSource.contains("today-briefing-panel"))
         XCTAssertTrue(dashboardSource.contains("@State private var isWideReviewActionsExpanded = true"))
         XCTAssertFalse(calendarFactorySource.contains("guard (try? credentialStore.loadMetadata()) != nil else { return nil }"))
-        XCTAssertTrue(doneWorkflowSource.contains("DoneStatTile(title: \"Completed Projects\""))
+        XCTAssertTrue(doneWorkflowSource.contains("DoneStatTile(\n                        title: \"Projects\""))
+        XCTAssertTrue(doneWorkflowSource.contains("accessibilityTitle: \"Completed Projects\""))
+        XCTAssertTrue(doneWorkflowSource.contains("DoneCompletionHeatmapView(buckets: analytics.completionHeatmapBuckets)"))
+        // Heatmap stays above receipts so the first viewport shows the recap band.
+        let heatmapIndex = try XCTUnwrap(doneWorkflowSource.range(of: "DoneCompletionHeatmapView(buckets: analytics.completionHeatmapBuckets)"))
+        let receiptsIndex = try XCTUnwrap(doneWorkflowSource.range(of: "doneExecutionReceiptsPanel"))
+        XCTAssertLessThan(heatmapIndex.lowerBound, receiptsIndex.lowerBound)
         XCTAssertFalse(doneWorkflowSource.contains("DoneStatTile(title: \"Total Work\""))
         XCTAssertFalse(boardSource.contains("doneFocusHours"))
     }
