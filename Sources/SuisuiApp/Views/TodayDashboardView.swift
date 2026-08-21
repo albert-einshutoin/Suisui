@@ -11,6 +11,7 @@ enum TodayDashboardLayoutMetrics {
     static let widgetSpacing = SuisuiSpacing.md
     static let railWidgetMinHeight: CGFloat = 168
     static let recommendationCardMinHeight: CGFloat = 102
+    static let recommendationCardStackedMinHeight: CGFloat = 72
     static let horizontalInsets: CGFloat = 18
     // 900pt windows leave 864pt after the dashboard's horizontal insets.
     static let compactRailCardsMinimumWidth: CGFloat = 864

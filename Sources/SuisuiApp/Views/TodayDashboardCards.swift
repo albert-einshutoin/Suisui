@@ -6,6 +6,12 @@ struct TodayDashboardRecommendationCards: View {
     let onAction: (TodayRecommendation) -> Void
     var stacksVertically: Bool = false
 
+    private var cardMinHeight: CGFloat {
+        stacksVertically
+            ? TodayDashboardLayoutMetrics.recommendationCardStackedMinHeight
+            : TodayDashboardLayoutMetrics.recommendationCardMinHeight
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
             Label("Recommendations", systemImage: "sparkles")
@@ -37,7 +43,7 @@ struct TodayDashboardRecommendationCards: View {
         Button {
             onAction(recommendation)
         } label: {
-            VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+            VStack(alignment: .leading, spacing: stacksVertically ? SuisuiSpacing.sm : SuisuiSpacing.md) {
                 HStack(alignment: .top, spacing: SuisuiSpacing.sm) {
                     Image(systemName: recommendationIcon(for: recommendation))
                         .font(.system(size: 15, weight: .semibold))
@@ -52,25 +58,40 @@ struct TodayDashboardRecommendationCards: View {
                         Text(recommendation.reason)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .lineLimit(stacksVertically ? 2 : nil)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    if stacksVertically {
+                        Spacer(minLength: 0)
+                        Text(actionTitle(for: recommendation))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(
+                                actionColor(for: recommendation),
+                                in: RoundedRectangle(cornerRadius: SuisuiRadius.control, style: .continuous)
+                            )
+                    }
                 }
-                Spacer(minLength: 0)
-                Text(actionTitle(for: recommendation))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 7)
-                    .background(
-                        actionColor(for: recommendation),
-                        in: RoundedRectangle(cornerRadius: SuisuiRadius.control, style: .continuous)
-                    )
+                if !stacksVertically {
+                    Spacer(minLength: 0)
+                    Text(actionTitle(for: recommendation))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background(
+                            actionColor(for: recommendation),
+                            in: RoundedRectangle(cornerRadius: SuisuiRadius.control, style: .continuous)
+                        )
+                }
             }
             .frame(
                 minWidth: 0,
                 maxWidth: .infinity,
-                minHeight: TodayDashboardLayoutMetrics.recommendationCardMinHeight,
-                maxHeight: .infinity,
+                minHeight: cardMinHeight,
+                maxHeight: stacksVertically ? cardMinHeight : .infinity,
                 alignment: .topLeading
             )
         }
