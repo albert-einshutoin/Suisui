@@ -1827,12 +1827,6 @@ capture_project_board_destination() {
   # Route markers can exist outside the current ScrollView viewport. Scroll the
   # evidence-specific landmark into view so captures of the same route prove a
   # distinct visual state instead of producing duplicate raster baselines.
-  if [[ "$scroll_target_identifier" == "assistant-queue-row-visual-failed" ]]; then
-    # Failed is last in the LazyVStack, so the row often never enters the AX
-    # tree until the Failed filter narrows the list or the container scrolls.
-    press_named_window_control "assistant-queue-filter-option-failed" || true
-    sleep 0.5
-  fi
   if [[ -n "$scroll_container_identifier" ]]; then
     # Some SwiftUI descendants do not enter the visible AX subtree until their
     # containing ScrollView moves. Materialize that region first, then use the
@@ -2505,8 +2499,8 @@ capture_project_board_destination light assistant-queue "$ASSISTANT_QUEUE_WAITIN
 capture_project_board_destination dark assistant-queue "$ASSISTANT_QUEUE_WAITING_DARK_SCREENSHOT" "Assistant Queue waiting review" "$ASSISTANT_QUEUE_ROUTE_MARKERS" "" "assistant-queue-row-visual-waiting" "assistant-queue-row-visual-waiting" "$ASSISTANT_QUEUE_WAITING_TARGET_MARKERS"
 capture_project_board_destination light assistant-queue "$ASSISTANT_QUEUE_APPROVED_LIGHT_SCREENSHOT" "Assistant Queue approved" "$ASSISTANT_QUEUE_ROUTE_MARKERS" "" "assistant-queue-row-visual-approved" "assistant-queue-row-visual-approved" "$ASSISTANT_QUEUE_APPROVED_TARGET_MARKERS"
 capture_project_board_destination dark assistant-queue "$ASSISTANT_QUEUE_APPROVED_DARK_SCREENSHOT" "Assistant Queue approved" "$ASSISTANT_QUEUE_ROUTE_MARKERS" "" "assistant-queue-row-visual-approved" "assistant-queue-row-visual-approved" "$ASSISTANT_QUEUE_APPROVED_TARGET_MARKERS"
-capture_project_board_destination light assistant-queue "$ASSISTANT_QUEUE_FAILED_LIGHT_SCREENSHOT" "Assistant Queue failed" "$ASSISTANT_QUEUE_ROUTE_MARKERS" "" "assistant-queue-row-visual-failed" "assistant-queue-row-visual-failed" "$ASSISTANT_QUEUE_FAILED_TARGET_MARKERS" "" "assistant-queue-workflow"
-capture_project_board_destination dark assistant-queue "$ASSISTANT_QUEUE_FAILED_DARK_SCREENSHOT" "Assistant Queue failed" "$ASSISTANT_QUEUE_ROUTE_MARKERS" "" "assistant-queue-row-visual-failed" "assistant-queue-row-visual-failed" "$ASSISTANT_QUEUE_FAILED_TARGET_MARKERS" "" "assistant-queue-workflow"
+capture_project_board_destination light assistant-queue "$ASSISTANT_QUEUE_FAILED_LIGHT_SCREENSHOT" "Assistant Queue failed" "$ASSISTANT_QUEUE_ROUTE_MARKERS" "" "assistant-queue-row-visual-failed" "assistant-queue-row-visual-failed" "$ASSISTANT_QUEUE_FAILED_TARGET_MARKERS"
+capture_project_board_destination dark assistant-queue "$ASSISTANT_QUEUE_FAILED_DARK_SCREENSHOT" "Assistant Queue failed" "$ASSISTANT_QUEUE_ROUTE_MARKERS" "" "assistant-queue-row-visual-failed" "assistant-queue-row-visual-failed" "$ASSISTANT_QUEUE_FAILED_TARGET_MARKERS"
 capture_settings_overview light "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT"
 capture_settings_overview dark "$SETTINGS_OVERVIEW_DARK_SCREENSHOT"
 capture_settings_sync light "$SETTINGS_INTEGRATIONS_LIGHT_SCREENSHOT"
