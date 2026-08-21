@@ -1396,13 +1396,19 @@ private func seedCaptureFixtures(
     dayFormatter.timeZone = calendar.timeZone
     dayFormatter.dateFormat = "yyyy-MM-dd"
     guard let tomorrowInstant = calendar.date(byAdding: .day, value: 1, to: referenceInstant),
-          let yesterdayInstant = calendar.date(byAdding: .day, value: -1, to: referenceInstant) else {
+          let yesterdayInstant = calendar.date(byAdding: .day, value: -1, to: referenceInstant),
+          let threeDaysAgoInstant = calendar.date(byAdding: .day, value: -3, to: referenceInstant),
+          let fiveDaysAgoInstant = calendar.date(byAdding: .day, value: -5, to: referenceInstant) else {
         throw SeederError.invalidCaptureFixture("reference instant could not produce relative dates")
     }
     let today = dayFormatter.string(from: referenceInstant)
     let tomorrow = dayFormatter.string(from: tomorrowInstant)
     let yesterdayDay = dayFormatter.string(from: yesterdayInstant)
-    let yesterday = ISO8601DateFormatter().string(from: yesterdayInstant)
+    let isoFormatter = ISO8601DateFormatter()
+    let yesterday = isoFormatter.string(from: yesterdayInstant)
+    let todayCompleted = isoFormatter.string(from: referenceInstant)
+    let threeDaysAgoCompleted = isoFormatter.string(from: threeDaysAgoInstant)
+    let fiveDaysAgoCompleted = isoFormatter.string(from: fiveDaysAgoInstant)
     let todayMorning = "\(today)T10:00:00Z"
     let todayAfternoon = "\(today)T14:00:00Z"
     let tomorrowMorning = "\(tomorrow)T11:00:00Z"
@@ -1659,6 +1665,42 @@ private func seedCaptureFixtures(
                 .text(tomorrow),
                 .text(yesterday),
                 "medium"
+            ),
+            (
+                completedProjectIDValue,
+                "Done desk sample: today",
+                "completed",
+                "Today completion densifies the Done history list.",
+                .text(today),
+                .text(todayCompleted),
+                "high"
+            ),
+            (
+                completedProjectIDValue,
+                "Done desk sample: focus wrap-up",
+                "completed",
+                "Second today completion keeps the Today section multi-row.",
+                .text(today),
+                .text(todayCompleted),
+                "medium"
+            ),
+            (
+                completedProjectIDValue,
+                "Done desk sample: last week",
+                "completed",
+                "Past-week completion densifies Last 7 days grouping.",
+                .text(yesterdayDay),
+                .text(threeDaysAgoCompleted),
+                "medium"
+            ),
+            (
+                completedProjectIDValue,
+                "Done desk sample: earlier week",
+                "completed",
+                "Additional past-week completion for Done desk density.",
+                .text(yesterdayDay),
+                .text(fiveDaysAgoCompleted),
+                "low"
             )
         ]
         for fixture in taskFixtures {
@@ -1840,6 +1882,45 @@ private func seedCaptureFixtures(
     }
 }
 
+private func seedDoneExecutionReceipts(referenceInstant: Date) throws {
+    // Receipt JSON lives under the isolated capture HOME Application Support so
+    // Done can show secret-free digest rows without writing Calendar or prompts.
+    let receiptsDirectory = try SuisuiAppDatabaseLocation.applicationSupportDirectoryURL(createDirectory: true)
+        .appendingPathComponent("ExecutionReceipts", isDirectory: true)
+    try? FileManager.default.removeItem(at: receiptsDirectory)
+    let store = try FileExecutionReceiptStore(directoryURL: receiptsDirectory)
+    let earlier = referenceInstant.addingTimeInterval(-3_600)
+    let later = referenceInstant.addingTimeInterval(-900)
+    try store.save(
+        ExecutionReceipt(
+            id: "ui-evidence-receipt-calendar",
+            runID: "ui-evidence-run-calendar",
+            createdAt: earlier,
+            startedAt: earlier,
+            finishedAt: earlier.addingTimeInterval(12),
+            status: .succeeded,
+            inputPreview: "Local schedule draft apply for evidence",
+            outputSummary: "Registered schedule to calendar",
+            primaryToolName: ActionTool.calendarCreateWorkBlock.rawValue,
+            visibleSurfaces: [.doneList, .auditLog]
+        )
+    )
+    try store.save(
+        ExecutionReceipt(
+            id: "ui-evidence-receipt-markdown",
+            runID: "ui-evidence-run-markdown",
+            createdAt: later,
+            startedAt: later,
+            finishedAt: later.addingTimeInterval(8),
+            status: .succeeded,
+            inputPreview: "Local markdown deliverable for evidence",
+            outputSummary: "Created Markdown note",
+            primaryToolName: ActionTool.taskUpdate.rawValue,
+            visibleSurfaces: [.doneList, .auditLog]
+        )
+    )
+}
+
 private func run(options: SeederOptions) throws {
     let preparedDatabase = try options.prepareDatabaseFile()
     let connection = try SQLiteConnection(
@@ -1875,6 +1956,9 @@ private func run(options: SeederOptions) throws {
 
     for item in [waiting] + waitingDensityItems + [approved, failed] {
         try store.save(item)
+    }
+    if options.captureReferenceInstant != nil {
+        try seedDoneExecutionReceipts(referenceInstant: options.captureReferenceInstant!)
     }
     try options.validatePreparedDatabase(preparedDatabase)
 

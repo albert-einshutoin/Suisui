@@ -2219,14 +2219,21 @@ final class AppExperienceSourceTests: XCTestCase {
         let automationSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectWorkflowAutomationActivityView.swift"
         )
-        let sharedReceiptSource = try readPackageFile(
+        let doneSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift"
         )
-        let workflowSource = automationSource + sharedReceiptSource
+        let workflowSource = automationSource + doneSource
         let historySource = try readPackageFile("Sources/SuisuiCore/App/ExecutionReceiptHistory.swift")
 
-        XCTAssertFalse(sharedReceiptSource.contains("viewModel.executionReceiptHistorySnapshot"))
-        XCTAssertFalse(sharedReceiptSource.contains("Recent AI Activity"))
+        // Done surfaces a compact, redacted receipt strip. Search/export stay on
+        // Automation Activity so the desk never becomes a full audit console.
+        XCTAssertTrue(doneSource.contains("viewModel.executionReceiptHistorySnapshot"))
+        XCTAssertTrue(doneSource.contains(".accessibilityIdentifier(\"done-execution-receipts\")"))
+        XCTAssertTrue(doneSource.contains("Execution Receipts"))
+        XCTAssertFalse(doneSource.contains("Recent AI Activity"))
+        XCTAssertFalse(doneSource.contains("execution-receipt-search-field"))
+        XCTAssertFalse(doneSource.contains("execution-receipt-export-button"))
+        XCTAssertFalse(doneSource.contains("prepareExecutionReceiptHistoryExport"))
         XCTAssertTrue(automationSource.contains(".accessibilityIdentifier(\"automation-activity-workflow\")"))
         XCTAssertTrue(workflowSource.contains("viewModel.executionReceiptHistorySnapshot"))
         XCTAssertTrue(workflowSource.contains("viewModel.executionUsageMeterSnapshot"))
@@ -2258,6 +2265,37 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(receiptHistoryViewTail.contains(".actions"))
         XCTAssertFalse(receiptHistoryViewTail.contains("receipt.id"))
         XCTAssertFalse(receiptHistoryViewTail.contains("receipt.runID"))
+    }
+
+    func testDoneWorkflowPresentsListPrimaryDeskWithStatsAndReceiptsInRail() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift")
+        let seeder = try readPackageFile("Sources/SuisuiVisualFixtureSeeder/main.swift")
+
+        XCTAssertTrue(source.contains("private enum DoneHistoryFilter"))
+        XCTAssertTrue(source.contains("case .all: \"All\""))
+        XCTAssertTrue(source.contains("case .today: \"Today\""))
+        XCTAssertTrue(source.contains("case .thisWeek: \"This Week\""))
+        XCTAssertTrue(source.contains("case .thisMonth: \"This Month\""))
+        XCTAssertTrue(source.contains("donePrimaryColumn"))
+        XCTAssertTrue(source.contains("doneSummaryRail"))
+        XCTAssertTrue(source.contains("historyContent"))
+        XCTAssertTrue(source.contains("done-execution-receipts"))
+        // Wide desk keeps the completed list as the primary column, not a
+        // chart-first analytics dashboard stacked above history.
+        let wideStart = try XCTUnwrap(source.range(of: "if isWide"))
+        let wideEnd = try XCTUnwrap(source.range(of: "} else {", range: wideStart.upperBound..<source.endIndex))
+        let wideBody = source[wideStart.lowerBound..<wideEnd.lowerBound]
+        XCTAssertTrue(wideBody.contains("donePrimaryColumn"))
+        XCTAssertTrue(wideBody.contains("doneSummaryRail"))
+        let primaryIndex = try XCTUnwrap(wideBody.range(of: "donePrimaryColumn"))
+        let railIndex = try XCTUnwrap(wideBody.range(of: "doneSummaryRail"))
+        XCTAssertLessThan(primaryIndex.lowerBound, railIndex.lowerBound)
+
+        XCTAssertTrue(seeder.contains("Done desk sample: today"))
+        XCTAssertTrue(seeder.contains("Done desk sample: last week"))
+        XCTAssertTrue(seeder.contains("seedDoneExecutionReceipts"))
+        XCTAssertTrue(seeder.contains("Registered schedule to calendar"))
+        XCTAssertTrue(seeder.contains("Created Markdown note"))
     }
 
     func testInspectorsShowScopedAIReceiptsWithoutRawReceiptFields() throws {
