@@ -697,7 +697,7 @@ private struct ScheduleOverviewCalendar: View {
     @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
 
     var body: some View {
-        let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: viewportWidth)
+        let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: viewportWidth, authoritativeContentWidth: authoritativeContentWidth)
         let isWide = CockpitSplitLayout.presentsSplitRail(
             measuredWidth: viewportWidth,
             authoritativeContentWidth: authoritativeContentWidth

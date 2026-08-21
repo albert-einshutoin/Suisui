@@ -35,7 +35,8 @@ final class TodayDashboardLayoutMetricsTests: XCTestCase {
         XCTAssertTrue(source.contains("showsSecondaryIntegrations: false"))
         XCTAssertTrue(source.contains("Keep the rail outside the primary ScrollView"))
         XCTAssertFalse(source.contains("prefersContinuousRail ?? measuredWide"))
-        XCTAssertTrue(source.contains("resolvedPrefersContinuousRail(measuredWide:"))
+        XCTAssertTrue(source.contains("resolvedPrefersContinuousRail(availableWidth:"))
+        XCTAssertTrue(source.contains("authoritativeContentWidth: authoritativeContentWidth"))
         XCTAssertTrue(source.contains("VisualEvidenceRuntimeContext() != nil"))
         XCTAssertFalse(source.contains("TodayDashboardAlignedRow"))
         XCTAssertTrue(

@@ -6916,7 +6916,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(overviewSource.contains("Section(\"Status Overview\")"))
         XCTAssertFalse(overviewSource.contains("SettingsAppearanceSection(appearancePreference: $appearancePreference, languagePreference: $languagePreference)"))
         XCTAssertTrue(overviewSource.contains("settings-overview-detail-rail"))
+        XCTAssertTrue(overviewSource.contains("CockpitSplitLayout.presentsSplitRail("))
+        XCTAssertTrue(overviewSource.contains("overviewDetailRail"))
+        // Narrow Settings keep the readiness rail reachable by stacking under the form.
+        XCTAssertTrue(overviewSource.contains("ScrollView"))
         XCTAssertTrue(aiSource.contains("settings-ai-readiness-rail"))
+        XCTAssertTrue(aiSource.contains("CockpitSplitLayout.presentsSplitRail("))
+        XCTAssertTrue(aiSource.contains("aiReadinessRail"))
         XCTAssertFalse(appearanceSectionSource.contains("Save Changes"))
         XCTAssertFalse(appearanceSource.contains("Save Changes"))
         XCTAssertFalse(appearanceSectionSource.contains("Proプラン"))

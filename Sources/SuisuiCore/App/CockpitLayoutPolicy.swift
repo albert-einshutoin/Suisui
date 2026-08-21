@@ -96,8 +96,14 @@ public enum CockpitLayoutPolicy {
     /// incorrectly at the 1024×676 contract.
     public static func presentsSplitRail(
         measuredContentWidth: Double,
-        authoritativeContentWidth: Double?
+        authoritativeContentWidth: Double?,
+        environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> Bool {
+        // Evidence captures pin 1024×676 even when a desk GeometryReader still
+        // reports a mid-resize or under-measured width.
+        if VisualEvidenceRuntimeContext(environment: environment) != nil {
+            return presentsSplitRail(contentWidth: standardContentWidth)
+        }
         if let authoritativeContentWidth, authoritativeContentWidth > 0 {
             return presentsSplitRail(contentWidth: authoritativeContentWidth)
         }
@@ -106,10 +112,19 @@ public enum CockpitLayoutPolicy {
         )
     }
 
-    /// Cap ideal-size inflation from wide children so split HStacks stay inside
-    /// the visible detail column (Today recommendation cards ~1050pt ideal).
-    public static func layoutContentWidth(measuredContentWidth: Double) -> Double {
-        min(max(measuredContentWidth, 1), standardContentWidth)
+    /// Resolve the width used to pin split HStacks.
+    /// - With an AppKit-backed content width, use that so launch desks (≈940pt)
+    ///   expand instead of staying locked to the 784pt visual contract.
+    /// - Without authority, cap at `standardContentWidth` so ideal-size inflation
+    ///   (Today recommendation cards ≈1050pt) cannot clip the secondary rail.
+    public static func layoutContentWidth(
+        measuredContentWidth: Double,
+        authoritativeContentWidth: Double? = nil
+    ) -> Double {
+        if let authoritativeContentWidth, authoritativeContentWidth > 0 {
+            return authoritativeContentWidth
+        }
+        return min(max(measuredContentWidth, 1), standardContentWidth)
     }
 
     public static func showsSecondaryIntegrations(contentWidth: Double) -> Bool {

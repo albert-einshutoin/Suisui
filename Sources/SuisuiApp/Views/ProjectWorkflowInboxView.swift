@@ -111,7 +111,7 @@ struct InboxWorkflowView: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { timeline in
             GeometryReader { proxy in
-                let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: proxy.size.width)
+                let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: proxy.size.width, authoritativeContentWidth: authoritativeContentWidth)
                 let isWide = CockpitSplitLayout.presentsSplitRail(
                     measuredWidth: proxy.size.width,
                     authoritativeContentWidth: authoritativeContentWidth

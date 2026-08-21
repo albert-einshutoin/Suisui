@@ -69,6 +69,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
     @AccessibilityFocusState private var isReviewActionsFocused: Bool
     @State private var focusTaskPendingReplacement: Int64?
     @State private var isWideReviewActionsExpanded = true
+    @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
     private func makeDashboard(now: Date, calendar: Calendar, locale: Locale) -> TodayDashboardSnapshot {
         TodayDashboardSnapshotBuilder.make(
             today: snapshot,
@@ -99,8 +100,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                 proposedWidth,
                 CGFloat(CockpitLayoutPolicy.standardContentWidth)
             )
-            let measuredWide = TodayDashboardLayoutMetrics.isWide(availableWidth: availableWidth)
-            let isWide = resolvedPrefersContinuousRail(measuredWide: measuredWide)
+            let isWide = resolvedPrefersContinuousRail(availableWidth: availableWidth)
             let presentsCompactRailCardsHorizontally = !isWide
                 && proposedWidth >= TodayDashboardLayoutMetrics.compactRailCardsMinimumWidth
             ScrollViewReader { scrollProxy in
@@ -221,7 +221,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private func resolvedPrefersContinuousRail(measuredWide: Bool) -> Bool {
+    private func resolvedPrefersContinuousRail(availableWidth: CGFloat) -> Bool {
         // Evidence captures pin 1024×676. Prefer the continuous rail even when a
         // stale board-window override still reports compact mid-resize widths.
         if VisualEvidenceRuntimeContext() != nil {
@@ -232,7 +232,10 @@ struct TodayDashboardView<CatchUpContent: View>: View {
         if let prefersContinuousRail {
             return prefersContinuousRail
         }
-        return measuredWide
+        return CockpitLayoutPolicy.presentsSplitRail(
+            measuredContentWidth: Double(availableWidth),
+            authoritativeContentWidth: authoritativeContentWidth
+        )
     }
 
     private func mainContent(

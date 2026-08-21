@@ -117,7 +117,14 @@ final class CockpitLayoutPolicyTests: XCTestCase {
         )
     }
 
-    func testLayoutContentWidthCapsIdealInflationAtStandardDetail() {
+    func testLayoutContentWidthPrefersAuthoritativeLaunchDetail() {
+        XCTAssertEqual(
+            CockpitLayoutPolicy.layoutContentWidth(
+                measuredContentWidth: 1_050,
+                authoritativeContentWidth: 940
+            ),
+            940
+        )
         XCTAssertEqual(
             CockpitLayoutPolicy.layoutContentWidth(measuredContentWidth: 1_050),
             CockpitLayoutPolicy.standardContentWidth
@@ -125,6 +132,28 @@ final class CockpitLayoutPolicyTests: XCTestCase {
         XCTAssertEqual(
             CockpitLayoutPolicy.layoutContentWidth(measuredContentWidth: 640),
             640
+        )
+    }
+
+    func testVisualEvidenceForcesStandardSplitEvenWhenGeometryUnderReports() {
+        let evidenceEnvironment = [
+            VisualEvidenceRuntimeContext.referenceInstantEnvironmentKey: "2026-07-10T12:00:00Z",
+            VisualEvidenceRuntimeContext.timeZoneEnvironmentKey: "UTC",
+            VisualEvidenceRuntimeContext.localeEnvironmentKey: "en-US"
+        ]
+        XCTAssertTrue(
+            CockpitLayoutPolicy.presentsSplitRail(
+                measuredContentWidth: 500,
+                authoritativeContentWidth: nil,
+                environment: evidenceEnvironment
+            )
+        )
+        XCTAssertFalse(
+            CockpitLayoutPolicy.presentsSplitRail(
+                measuredContentWidth: 500,
+                authoritativeContentWidth: nil,
+                environment: [:]
+            )
         )
     }
 

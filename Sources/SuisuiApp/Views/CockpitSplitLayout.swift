@@ -26,10 +26,14 @@ enum CockpitSplitLayout {
         )
     }
 
-    static func layoutWidth(measuredWidth: CGFloat) -> CGFloat {
+    static func layoutWidth(
+        measuredWidth: CGFloat,
+        authoritativeContentWidth: Double?
+    ) -> CGFloat {
         CGFloat(
             CockpitLayoutPolicy.layoutContentWidth(
-                measuredContentWidth: Double(measuredWidth)
+                measuredContentWidth: Double(measuredWidth),
+                authoritativeContentWidth: authoritativeContentWidth
             )
         )
     }

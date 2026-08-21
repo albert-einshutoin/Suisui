@@ -32,7 +32,7 @@ struct VoiceTaskConversationWorkspaceView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: proxy.size.width)
+            let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: proxy.size.width, authoritativeContentWidth: authoritativeContentWidth)
             let layout = VoiceTaskConversationWorkspaceLayout(
                 measuredWidth: proxy.size.width,
                 authoritativeContentWidth: authoritativeContentWidth

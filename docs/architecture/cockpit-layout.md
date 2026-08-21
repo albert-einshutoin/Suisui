@@ -40,5 +40,7 @@ contentWidth = windowWidth - sidebarMaxWidth(240)
 ## 実装メモ
 
 - Split 時は primary に `minWidth: 0`、secondary に `layoutPriority(1)`（`CockpitSplitLayout`）。
-- レイアウト幅は ideal 膨張を抑えるため `standardContentWidth`（784）で cap。
+- AppKit の content 幅があるときはそれを layout 幅に使い、起動デスク（≈940）は 784 に潰さない。
+  authority が無いときだけ ideal 膨張を `standardContentWidth` で cap する。
+- Visual evidence 実行中は GeometryReader 幅に関わらず 1024 契約の split を強制する。
 - ADR 0009 の frame jump / overlap ゲートと併用する。visual 正本は引き続き 1024×676。
