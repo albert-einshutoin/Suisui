@@ -1643,7 +1643,7 @@ capture_settings_overview() {
   SETTINGS_WINDOW_OVERRIDE=1
   SETTINGS_TAB_OVERRIDE="Overview"
   VOICE_COMMAND_WINDOW_OVERRIDE=""
-  prepare_named_evidence_window "" "Settings overview" "settings-status-overview=>"
+  prepare_named_evidence_window "" "Settings overview" "settings-status-overview=>|settings-overview-detail-rail=>"
 
   capture_visible_window "$appearance Settings overview" "$output_path" "" "settings-status-overview"
 }
@@ -1674,6 +1674,20 @@ capture_settings_appearance() {
   prepare_named_evidence_window "" "Settings appearance" "settings-theme-picker=>"
 
   capture_visible_window "$appearance Settings appearance" "$output_path" "" "settings-theme-picker"
+}
+
+capture_settings_ai() {
+  local appearance="$1"
+  local output_path="$2"
+
+  APPEARANCE_OVERRIDE="$appearance"
+  PROJECT_BOARD_SELECTION_OVERRIDE=""
+  SETTINGS_WINDOW_OVERRIDE=1
+  SETTINGS_TAB_OVERRIDE="AI"
+  VOICE_COMMAND_WINDOW_OVERRIDE=""
+  prepare_named_evidence_window "" "Settings AI" "settings-ai-readiness-rail=>"
+
+  capture_visible_window "$appearance Settings AI" "$output_path" "" "settings-ai-readiness-rail"
 }
 
 capture_mcp_settings_appearance() {
@@ -1942,6 +1956,8 @@ write_evidence_file() {
     printf -- '- Settings Appearance Light: `%s`\n' "$(relative_path "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT")"
     printf -- '- Settings Appearance Dark: `%s`\n' "$(relative_path "$SETTINGS_APPEARANCE_DARK_SCREENSHOT")"
     printf -- '- Settings Appearance System: `%s`\n' "$(relative_path "$SETTINGS_APPEARANCE_SYSTEM_SCREENSHOT")"
+    printf -- '- Settings AI Light: `%s`\n' "$(relative_path "$SETTINGS_AI_LIGHT_SCREENSHOT")"
+    printf -- '- Settings AI Dark: `%s`\n' "$(relative_path "$SETTINGS_AI_DARK_SCREENSHOT")"
     printf -- '- MCP Settings Light: `%s`\n' "$(relative_path "$MCP_SETTINGS_LIGHT_SCREENSHOT")"
     printf -- '- MCP Settings Dark: `%s`\n' "$(relative_path "$MCP_SETTINGS_DARK_SCREENSHOT")"
     printf -- '- MCP Settings System: `%s`\n' "$(relative_path "$MCP_SETTINGS_SYSTEM_SCREENSHOT")"
@@ -2277,6 +2293,8 @@ SETTINGS_OVERVIEW_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-overview-light.png"
 SETTINGS_OVERVIEW_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-overview-dark.png"
 SETTINGS_APPEARANCE_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-appearance-light.png"
 SETTINGS_APPEARANCE_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-appearance-dark.png"
+SETTINGS_AI_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-ai-light.png"
+SETTINGS_AI_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-ai-dark.png"
 MCP_SETTINGS_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-mcp-light.png"
 MCP_SETTINGS_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-mcp-dark.png"
 INBOX_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/inbox-light.png"
@@ -2456,6 +2474,8 @@ capture_settings_overview system "$SETTINGS_OVERVIEW_SYSTEM_SCREENSHOT"
 capture_settings_appearance light "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT"
 capture_settings_appearance dark "$SETTINGS_APPEARANCE_DARK_SCREENSHOT"
 capture_settings_appearance system "$SETTINGS_APPEARANCE_SYSTEM_SCREENSHOT"
+capture_settings_ai light "$SETTINGS_AI_LIGHT_SCREENSHOT"
+capture_settings_ai dark "$SETTINGS_AI_DARK_SCREENSHOT"
 capture_mcp_settings_appearance light "$MCP_SETTINGS_LIGHT_SCREENSHOT"
 capture_mcp_settings_appearance dark "$MCP_SETTINGS_DARK_SCREENSHOT"
 capture_mcp_settings_appearance system "$MCP_SETTINGS_SYSTEM_SCREENSHOT"
@@ -2510,6 +2530,8 @@ echo "- $(relative_path "$ASSISTANT_QUEUE_FAILED_DARK_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_APPEARANCE_DARK_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_APPEARANCE_SYSTEM_SCREENSHOT")"
+echo "- $(relative_path "$SETTINGS_AI_LIGHT_SCREENSHOT")"
+echo "- $(relative_path "$SETTINGS_AI_DARK_SCREENSHOT")"
 echo "- $(relative_path "$MCP_SETTINGS_LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$MCP_SETTINGS_DARK_SCREENSHOT")"
 echo "- $(relative_path "$MCP_SETTINGS_SYSTEM_SCREENSHOT")"

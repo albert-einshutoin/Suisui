@@ -295,6 +295,24 @@
       }
     },
     {
+      "id": "settings-ai",
+      "title": "Settings AI",
+      "themes": [
+        "light",
+        "dark"
+      ],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "settings-ai-readiness-rail",
+      "artifacts": {
+        "light": "settings-ai-light.png",
+        "dark": "settings-ai-dark.png"
+      }
+    },
+    {
       "id": "mcp-settings",
       "title": "MCP Settings",
       "themes": [

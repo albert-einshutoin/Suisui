@@ -10349,6 +10349,7 @@ final class ReleasePipelineTests: XCTestCase {
             "schedule-workload",
             "done",
             "settings-integrations",
+            "settings-ai",
             "assistant-queue-waiting-review",
             "assistant-queue-approved",
             "assistant-queue-failed",
@@ -10370,6 +10371,7 @@ final class ReleasePipelineTests: XCTestCase {
             "settings-overview": (1024, 676),
             "settings-integrations": (1024, 676),
             "settings-appearance": (1024, 676),
+            "settings-ai": (1024, 676),
             "mcp-settings": (1024, 676),
             "voice-command": (1_024, 676),
             "voice-command-listening": (1_024, 676)
@@ -10389,6 +10391,7 @@ final class ReleasePipelineTests: XCTestCase {
             "settings-overview": "settings-status-overview",
             "settings-integrations": "sync-paid-value-row",
             "settings-appearance": "settings-theme-picker",
+            "settings-ai": "settings-ai-readiness-rail",
             "mcp-settings": "mcp-paid-execution-boundary-row",
             "voice-command": "voice-command-root",
             "voice-command-listening": "voice-command-listening-hero"
@@ -10774,6 +10777,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(seeder.contains("'$ROOT_DIR'"))
         XCTAssertTrue(captureScript.contains("capture_settings_overview system"))
         XCTAssertTrue(captureScript.contains("capture_settings_appearance system"))
+        XCTAssertTrue(captureScript.contains("capture_settings_ai light \"$SETTINGS_AI_LIGHT_SCREENSHOT\""))
         XCTAssertTrue(captureScript.contains("capture_mcp_settings_appearance system"))
         XCTAssertTrue(captureScript.contains("VOICE_COMMAND_SYSTEM_SCREENSHOT"))
         XCTAssertTrue(captureScript.contains("\"$AX_RESIZE_WINDOW_HELPER_BINARY\""))

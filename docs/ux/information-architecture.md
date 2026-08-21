@@ -78,9 +78,26 @@ Owns:
 - Provider configuration and readiness (API keys in Keychain), voice model
   management, notification/quiet-hours preferences, backup/restore,
   diagnostics export, developer mode, launch-at-login, data location.
+- Wide Settings desks (`CockpitLayoutPolicy.presentsSplitRail`) keep a
+  readiness rail on Overview (`settings-overview-detail-rail`) and AI
+  (`settings-ai-readiness-rail`). Appearance stays control-layer only
+  (Liquid Glass theme/language pickers) and never shows a fake
+  “Save Changes” hero — preference writes apply immediately.
+
+Sample vocabulary mapping (marketing mock → product TabView):
+
+| Sample label | Product tab / surface |
+| --- | --- |
+| 一般 / General | Overview |
+| AIとモデル / AI & Models | AI |
+| 音声 / Voice | AI (STT/TTS + voice models) |
+| 連携 / Integrations | Sync + MCP (advanced) and Overview readiness tiles |
+| セキュリティ / Security | Privacy |
+| データ / Data | Privacy (data location / backup) |
 
 Does not do: task or plan content display — Overview shows status labels
 only, and diagnostics/backup surfaces deal in counts and files, not rows.
+Does not do: fake Pro badges or a Settings-wide Save Changes CTA.
 
 ### Menu bar panel
 
