@@ -41,6 +41,7 @@ final class TodayDashboardLayoutMetricsTests: XCTestCase {
         XCTAssertTrue(source.contains("let boardWidth = min(layoutWidth, proposedWidth)"))
         XCTAssertTrue(source.contains("cockpitSplitPrimaryColumn()"))
         XCTAssertTrue(source.contains("cockpitSplitSecondaryRail(width:"))
+        XCTAssertTrue(source.contains("let primaryWidth = max("))
         XCTAssertTrue(source.contains(".clipped()"))
         XCTAssertTrue(source.contains("prefersContinuousRail(boardWidth:"))
         XCTAssertFalse(source.contains("TodayDashboardAlignedRow"))
@@ -49,6 +50,7 @@ final class TodayDashboardLayoutMetricsTests: XCTestCase {
                 || source.contains("let railSpan = TodayDashboardLayoutMetrics.railMinimumWidth + 18")
         )
         XCTAssertTrue(source.contains("width: boardWidth"))
+        XCTAssertTrue(source.contains("frame(width: primaryWidth"))
     }
 
     func testMinimumWindowMovesTheRailBelowTheMainSurface() {

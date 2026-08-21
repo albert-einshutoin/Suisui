@@ -132,6 +132,12 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                         // cards otherwise publish a ~1050pt ideal width that expands the
                         // reader and clips Workload/Focus/Assistant off the visible desk.
                         let railSpan = TodayDashboardLayoutMetrics.railMinimumWidth + 18
+                        let primaryWidth = max(
+                            boardWidth
+                                - railSpan
+                                - TodayDashboardLayoutMetrics.columnSpacing,
+                            1
+                        )
                         HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
                             ScrollView(.vertical) {
                                 VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.sectionSpacing) {
@@ -148,9 +154,10 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                                 }
                                 .padding(.leading, 18)
                                 .padding(.vertical, 18)
-                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                                .frame(width: primaryWidth - 18, alignment: .topLeading)
                             }
-                            .cockpitSplitPrimaryColumn()
+                            .frame(width: primaryWidth, alignment: .topLeading)
+                            .clipped()
 
                             ScrollView(.vertical) {
                                 rail(
