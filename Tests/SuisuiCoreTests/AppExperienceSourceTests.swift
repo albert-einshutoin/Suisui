@@ -6664,6 +6664,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceSource.contains("voice-command-understood-rail"))
         XCTAssertTrue(voiceSource.contains("voice-command-context-rail"))
         XCTAssertTrue(voiceSource.contains("struct VoiceListeningOrb"))
+        XCTAssertTrue(voiceSource.contains("VoiceVisualEvidenceSurface"))
+        XCTAssertTrue(voiceSource.contains("SUISUI_VISUAL_EVIDENCE_VOICE_SURFACE"))
+        XCTAssertTrue(voiceSource.contains("voice-command-listening-hero"))
+        XCTAssertTrue(voiceSource.contains("voice-command-listening-timer"))
+        XCTAssertTrue(voiceSource.contains("voice-command-understood-action-"))
+        XCTAssertTrue(voiceSource.contains("Create preparation task"))
+        XCTAssertTrue(voiceSource.contains("voice-command-conversation-log"))
+        XCTAssertTrue(voiceSource.contains("voice-command-confirmation-chips"))
         XCTAssertTrue(
             voiceSource.contains(
                 "Label(\"Record once\", systemImage: \"waveform.badge.mic\")\n                .font(.subheadline.weight(.semibold))\n                .accessibilityIdentifier(\"voice-command-capture-zone\")"
@@ -7719,6 +7727,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("inbox-voice-intake-detail=>Voice intake detail for $INBOX_VOICE_TITLE"))
         XCTAssertTrue(script.contains("capture_project_board_destination light inbox \"$INBOX_VOICE_LIGHT_SCREENSHOT\" \"Inbox voice detail\" \"$INBOX_VOICE_ROUTE_MARKERS\" \"$INBOX_VOICE_TASK_OVERRIDE\" \"inbox-voice-intake-detail\" \"inbox-voice-intake-detail\" \"$INBOX_VOICE_TARGET_MARKERS\""))
         XCTAssertTrue(script.contains("capture_voice_command_appearance light \"$VOICE_COMMAND_LIGHT_SCREENSHOT\""))
+        XCTAssertTrue(script.contains("capture_voice_command_listening_appearance light \"$VOICE_COMMAND_LISTENING_LIGHT_SCREENSHOT\""))
+        XCTAssertTrue(script.contains("SUISUI_VISUAL_EVIDENCE_VOICE_SURFACE=$VOICE_SURFACE_OVERRIDE"))
+        XCTAssertTrue(script.contains("voice-command-listening-hero"))
         let captureDestinationStart = try XCTUnwrap(script.range(of: "capture_project_board_destination()"))
         let captureDestinationEnd = try XCTUnwrap(script.range(
             of: "capture_voice_command_appearance()",

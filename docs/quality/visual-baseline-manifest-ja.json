@@ -333,6 +333,24 @@
         "dark": "voice-command-dark.png",
         "system": "voice-command-system.png"
       }
+    },
+    {
+      "id": "voice-command-listening",
+      "title": "Voice Command Listening",
+      "themes": [
+        "light",
+        "dark"
+      ],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "voice-command-listening-hero",
+      "artifacts": {
+        "light": "voice-command-listening-light.png",
+        "dark": "voice-command-listening-dark.png"
+      }
     }
   ]
 }

@@ -10351,7 +10351,8 @@ final class ReleasePipelineTests: XCTestCase {
             "settings-integrations",
             "assistant-queue-waiting-review",
             "assistant-queue-approved",
-            "assistant-queue-failed"
+            "assistant-queue-failed",
+            "voice-command-listening"
         ]
         XCTAssertEqual(screenIDs, coreSystemScreens.union(sampleDerivedScreens))
         let expectedViewports: [String: (width: Int, height: Int)] = [
@@ -10370,7 +10371,8 @@ final class ReleasePipelineTests: XCTestCase {
             "settings-integrations": (1024, 676),
             "settings-appearance": (1024, 676),
             "mcp-settings": (1024, 676),
-            "voice-command": (1_024, 676)
+            "voice-command": (1_024, 676),
+            "voice-command-listening": (1_024, 676)
         ]
         let expectedAXTargets: [String: String] = [
             "project-board": "project-board-detail",
@@ -10388,7 +10390,8 @@ final class ReleasePipelineTests: XCTestCase {
             "settings-integrations": "sync-paid-value-row",
             "settings-appearance": "settings-theme-picker",
             "mcp-settings": "mcp-paid-execution-boundary-row",
-            "voice-command": "voice-command-root"
+            "voice-command": "voice-command-root",
+            "voice-command-listening": "voice-command-listening-hero"
         ]
 
         for screen in screens {

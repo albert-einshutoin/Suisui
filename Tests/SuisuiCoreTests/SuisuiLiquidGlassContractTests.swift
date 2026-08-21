@@ -33,6 +33,7 @@ final class SuisuiLiquidGlassContractTests: XCTestCase {
         XCTAssertTrue(source.contains(".suisuiLiquidGlassCapturePanel()"))
         XCTAssertTrue(source.contains("voice-command-understood-rail"))
         XCTAssertTrue(source.contains("voice-command-context-rail"))
+        XCTAssertTrue(source.contains("voice-command-listening-hero"))
         XCTAssertTrue(source.contains("struct VoiceListeningOrb"))
     }
 

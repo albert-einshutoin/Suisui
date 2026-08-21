@@ -2,6 +2,104 @@ import Foundation
 import SuisuiCore
 import SwiftUI
 
+private enum VoiceVisualEvidenceSurface: String {
+    case idle
+    case listening
+
+    /// Evidence launches one Voice desk per isolated process so Listening does
+    /// not depend on timing a real microphone session.
+    static func resolved(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> VoiceVisualEvidenceSurface {
+        guard environment["SUISUI_VISUAL_EVIDENCE_REFERENCE_INSTANT"] != nil,
+              environment["SUISUI_VISUAL_EVIDENCE_VOICE_SURFACE"] == "listening" else {
+            return .idle
+        }
+        return .listening
+    }
+}
+
+private struct VoiceUnderstoodActionCard: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let detail: String
+    let timeLabel: String?
+    let systemImage: String
+}
+
+private struct VoiceConversationEvidenceTurn: Identifiable, Equatable {
+    let id: String
+    let speaker: String
+    let text: String
+    let timeLabel: String
+}
+
+private enum VoiceVisualEvidenceFixture {
+    static let listeningTimerLabel = "00:12"
+    static let currentUtterance = """
+    Schedule a product strategy review tomorrow from 2pm to 3pm. Add a prep \
+    task for related docs and a 30-minute team reminder under Launch Readiness.
+    """
+
+    static let understoodActions: [VoiceUnderstoodActionCard] = [
+        VoiceUnderstoodActionCard(
+            id: "prep-task",
+            title: "Create preparation task",
+            detail: "Prepare related documents beforehand",
+            timeLabel: "Tomorrow 11:00",
+            systemImage: "checklist"
+        ),
+        VoiceUnderstoodActionCard(
+            id: "calendar-block",
+            title: "Block calendar time",
+            detail: "Product strategy review meeting",
+            timeLabel: "14:00–15:00",
+            systemImage: "calendar"
+        ),
+        VoiceUnderstoodActionCard(
+            id: "reminder",
+            title: "Suggest reminder",
+            detail: "Notify the team 30 minutes before",
+            timeLabel: "13:30",
+            systemImage: "bell"
+        ),
+        VoiceUnderstoodActionCard(
+            id: "project-link",
+            title: "Link to project",
+            detail: "Launch Readiness",
+            timeLabel: nil,
+            systemImage: "folder"
+        )
+    ]
+
+    static let conversationTurns: [VoiceConversationEvidenceTurn] = [
+        VoiceConversationEvidenceTurn(
+            id: "u1",
+            speaker: "You",
+            text: "Put a strategy review on the calendar tomorrow afternoon.",
+            timeLabel: "13:41"
+        ),
+        VoiceConversationEvidenceTurn(
+            id: "a1",
+            speaker: "Suisui",
+            text: "Does 14:00–15:00 work for the meeting?",
+            timeLabel: "13:41"
+        ),
+        VoiceConversationEvidenceTurn(
+            id: "u2",
+            speaker: "You",
+            text: "Yes. Add a prep task and reminder too.",
+            timeLabel: "13:42"
+        )
+    ]
+
+    static let confirmationOptions = [
+        "Tomorrow by 11:00",
+        "1 hour before the meeting",
+        "No due date"
+    ]
+}
+
 struct SuisuiVoiceConversationScopeRequest: Equatable, Sendable {
     let projectID: Int64?
     let projectName: String?
@@ -39,6 +137,10 @@ struct VoiceCaptureView: View {
 
     init(viewModel: VoiceCaptureViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
+    }
+
+    private var presentsListeningEvidenceDesk: Bool {
+        VoiceVisualEvidenceSurface.resolved() == .listening
     }
 
     private var isVoiceCommandInputEmpty: Bool {
@@ -174,7 +276,11 @@ struct VoiceCaptureView: View {
                             // Capture belongs to the same scroll boundary as later
                             // states so larger text and compact displays never make
                             // the primary controls increase the window minimum size.
-                            captureZone
+                            if presentsListeningEvidenceDesk {
+                                listeningEvidenceDesk
+                            } else {
+                                captureZone
+                            }
 
                             if hasWorkingContent {
                                 workingZone
@@ -204,14 +310,25 @@ struct VoiceCaptureView: View {
                         VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
                             VoiceUnderstoodActionsRail(
                                 routingResult: viewModel.routingResult,
-                                planActionTitles: understoodPlanActionTitles
+                                planActionTitles: understoodPlanActionTitles,
+                                evidenceActions: presentsListeningEvidenceDesk
+                                    ? VoiceVisualEvidenceFixture.understoodActions
+                                    : []
                             )
                             VoiceQuickCommandContextRail(
                                 destinationTitle: quickCommandDestinationTitle,
-                                isHandsFreeListening: viewModel.isLowLatencyVoiceAgentListening,
+                                isHandsFreeListening: viewModel.isLowLatencyVoiceAgentListening
+                                    || presentsListeningEvidenceDesk,
                                 speechProviderName: viewModel.handsFreeModeProviderName,
-                                needsClarification: viewModel.routingResult?.needsClarification == true
-                                    || viewModel.clarificationQuestion != nil
+                                needsClarification: presentsListeningEvidenceDesk
+                                    || viewModel.routingResult?.needsClarification == true
+                                    || viewModel.clarificationQuestion != nil,
+                                conversationTurns: presentsListeningEvidenceDesk
+                                    ? VoiceVisualEvidenceFixture.conversationTurns
+                                    : [],
+                                confirmationOptions: presentsListeningEvidenceDesk
+                                    ? VoiceVisualEvidenceFixture.confirmationOptions
+                                    : []
                             )
                             Spacer(minLength: 0)
                         }
@@ -304,6 +421,57 @@ struct VoiceCaptureView: View {
             }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// Deterministic Listening desk for visual evidence: orb, timer, waveform,
+    /// and current utterance without opening a real microphone session.
+    private var listeningEvidenceDesk: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+            VStack(spacing: SuisuiSpacing.sm) {
+                VoiceListeningOrb(
+                    isListening: true,
+                    isRecording: false,
+                    meter: viewModel.inputLevelMeter
+                )
+                Text("Listening")
+                    .font(.subheadline.weight(.semibold))
+                Text(VoiceVisualEvidenceFixture.listeningTimerLabel)
+                    .font(.title3.monospacedDigit().weight(.semibold))
+                    .accessibilityIdentifier("voice-command-listening-timer")
+                VoiceInputLevelMeter(meter: viewModel.inputLevelMeter)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(14)
+            .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card, style: .continuous))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("voice-command-listening-hero")
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Current utterance")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    Text("Pause")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(SuisuiBrand.soloBlue)
+                }
+                Text(VoiceVisualEvidenceFixture.currentUtterance)
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("voice-command-listening-transcript")
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card, style: .continuous))
+
+            Text("Listening evidence is a frozen review desk. Plans still wait in Review before any Calendar or task writes.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("voice-command-listening-desk")
     }
 
     /// Zone 1: everything needed to enter a command and start work, grouped in
@@ -968,13 +1136,18 @@ private struct VoiceListeningOrb: View {
 private struct VoiceUnderstoodActionsRail: View {
     let routingResult: VoiceCommandRoutingResult?
     let planActionTitles: [String]
+    var evidenceActions: [VoiceUnderstoodActionCard] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
             Label("Understood", systemImage: "checkmark.seal")
                 .font(SuisuiTypography.sectionTitle)
 
-            if let routingResult {
+            if !evidenceActions.isEmpty {
+                ForEach(evidenceActions) { action in
+                    VoiceUnderstoodActionCardView(action: action)
+                }
+            } else if let routingResult {
                 Text(localizedSettingsDisplay(routingResult.intent.displayName))
                     .font(.subheadline.weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
@@ -995,7 +1168,7 @@ private struct VoiceUnderstoodActionsRail: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if !planActionTitles.isEmpty {
+            if evidenceActions.isEmpty, !planActionTitles.isEmpty {
                 Text("Planned actions")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -1016,6 +1189,41 @@ private struct VoiceUnderstoodActionsRail: View {
     }
 }
 
+private struct VoiceUnderstoodActionCardView: View {
+    let action: VoiceUnderstoodActionCard
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: action.systemImage)
+                .foregroundStyle(SuisuiBrand.soloBlue)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(action.title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(2)
+                Text(action.detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+            if let timeLabel = action.timeLabel {
+                Text(timeLabel)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            SuisuiTone.neutral.color.opacity(0.1),
+            in: RoundedRectangle(cornerRadius: SuisuiRadius.control, style: .continuous)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("voice-command-understood-action-\(action.id)")
+    }
+}
+
 /// Quick Command context chips: current destination, hands-free state, speech
 /// provider, and whether clarification is required.
 private struct VoiceQuickCommandContextRail: View {
@@ -1023,6 +1231,8 @@ private struct VoiceQuickCommandContextRail: View {
     let isHandsFreeListening: Bool
     let speechProviderName: String
     let needsClarification: Bool
+    var conversationTurns: [VoiceConversationEvidenceTurn] = []
+    var confirmationOptions: [String] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
@@ -1039,6 +1249,70 @@ private struct VoiceQuickCommandContextRail: View {
                 title: needsClarification ? "Clarification needed" : "Ready to continue",
                 systemImage: needsClarification ? "questionmark.circle" : "checkmark.circle"
             )
+
+            if !conversationTurns.isEmpty {
+                VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
+                    Text("Current conversation")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
+                    ForEach(conversationTurns) { turn in
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text(turn.speaker)
+                                    .font(.caption2.weight(.semibold))
+                                Spacer(minLength: 4)
+                                Text(turn.timeLabel)
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(turn.text)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(7)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            SuisuiTone.neutral.color.opacity(0.08),
+                            in: RoundedRectangle(cornerRadius: SuisuiRadius.control, style: .continuous)
+                        )
+                    }
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("voice-command-conversation-log")
+            }
+
+            if !confirmationOptions.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Confirmation needed")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
+                    Text("Preparation task due date")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    ForEach(Array(confirmationOptions.enumerated()), id: \.offset) { index, option in
+                        Text(option)
+                            .font(.caption2.weight(index == 0 ? .semibold : .regular))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                index == 0
+                                    ? AnyShapeStyle(SuisuiBrand.soloBlue.opacity(0.14))
+                                    : AnyShapeStyle(SuisuiTone.neutral.color.opacity(0.08)),
+                                in: RoundedRectangle(cornerRadius: SuisuiRadius.control, style: .continuous)
+                            )
+                            .overlay {
+                                RoundedRectangle(cornerRadius: SuisuiRadius.control, style: .continuous)
+                                    .stroke(index == 0 ? SuisuiBrand.soloBlue.opacity(0.55) : .clear, lineWidth: 1)
+                            }
+                    }
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("voice-command-confirmation-chips")
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .topLeading)
