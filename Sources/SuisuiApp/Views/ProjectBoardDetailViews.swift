@@ -93,8 +93,14 @@ struct ProjectsPortfolioOverview: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if isWide {
                     HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
-                        projectGrid
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        VStack(alignment: .leading, spacing: 12) {
+                            if let globalProposalTitle {
+                                projectsGlobalProposalBanner(title: globalProposalTitle)
+                            }
+                            projectGrid
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         if let selectedSummary {
                             ProjectPortfolioSummaryRail(
                                 summary: selectedSummary,
@@ -103,6 +109,8 @@ struct ProjectsPortfolioOverview: View {
                                 nextMilestoneTitle: nextMilestone(for: selectedSummary)?.title,
                                 milestoneTitles: milestoneTitles(for: selectedSummary),
                                 artifactTitles: artifactTitles(for: selectedSummary),
+                                priorityTaskTitles: priorityTaskTitles(for: selectedSummary),
+                                proposalTitle: localProposalTitle(for: selectedSummary),
                                 onOpen: { onOpenProject(selectedSummary.projectID) }
                             )
                             .frame(width: CGFloat(CockpitLayoutPolicy.railWidth))
@@ -111,6 +119,9 @@ struct ProjectsPortfolioOverview: View {
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
+                            if let globalProposalTitle {
+                                projectsGlobalProposalBanner(title: globalProposalTitle)
+                            }
                             projectGridContent
                             if let selectedSummary {
                                 ProjectPortfolioSummaryRail(
@@ -120,6 +131,8 @@ struct ProjectsPortfolioOverview: View {
                                     nextMilestoneTitle: nextMilestone(for: selectedSummary)?.title,
                                     milestoneTitles: milestoneTitles(for: selectedSummary),
                                     artifactTitles: artifactTitles(for: selectedSummary),
+                                    priorityTaskTitles: priorityTaskTitles(for: selectedSummary),
+                                    proposalTitle: localProposalTitle(for: selectedSummary),
                                     onOpen: { onOpenProject(selectedSummary.projectID) }
                                 )
                             }
@@ -157,8 +170,11 @@ struct ProjectsPortfolioOverview: View {
             spacing: 12
         ) {
             ForEach(summaries) { summary in
+                let milestone = nextMilestone(for: summary)
                 ProjectPortfolioCard(
                     summary: summary,
+                    nextMilestoneTitle: milestone?.title,
+                    nextMilestoneDueAt: milestone?.dueAt,
                     isSelected: summary.projectID == selectedSummary?.projectID,
                     onSelect: { selectedProjectID = summary.projectID },
                     onOpen: { onOpenProject(summary.projectID) }
@@ -226,6 +242,114 @@ struct ProjectsPortfolioOverview: View {
             .filter { !$0.isEmpty }
     }
 
+    private func priorityTaskTitles(for summary: ProjectPortfolioSummary) -> [String] {
+        let openTasks = projectTasks(for: summary).filter { $0.status != .done }
+        let ranked = openTasks.sorted { lhs, rhs in
+            let leftRank = priorityRank(lhs.priority)
+            let rightRank = priorityRank(rhs.priority)
+            if leftRank != rightRank {
+                return leftRank > rightRank
+            }
+            return (lhs.dueAt ?? "9999") < (rhs.dueAt ?? "9999")
+        }
+        return Array(ranked.prefix(3).map(\.title))
+    }
+
+    private func priorityRank(_ priority: ProjectTaskPriority) -> Int {
+        switch priority {
+        case .high: return 3
+        case .medium: return 2
+        case .low: return 1
+        }
+    }
+
+    private func localProposalTitle(for summary: ProjectPortfolioSummary) -> String? {
+        let tasks = projectTasks(for: summary)
+        if let blocked = tasks.first(where: { $0.status == .blocked }) {
+            return String(
+                format: String(localized: "%@ is blocked. Resolve it before adding more work."),
+                blocked.title
+            )
+        }
+        if let highPriority = tasks.first(where: { $0.status != .done && $0.priority == .high }) {
+            return String(
+                format: String(localized: "%@ is high priority. Make it the next focused task."),
+                highPriority.title
+            )
+        }
+        if let nextDue = tasks
+            .filter({ $0.status != .done })
+            .sorted(by: { ($0.dueAt ?? "9999") < ($1.dueAt ?? "9999") })
+            .first,
+           let dueAt = nextDue.dueAt {
+            return String(
+                format: String(localized: "%@ is the next due task at %@."),
+                nextDue.title,
+                dueAt
+            )
+        }
+        return nil
+    }
+
+    /// Cross-project attention only when blocked or overdue work exists locally.
+    private var globalProposalTitle: String? {
+        let blocked = summaries.reduce(0) { $0 + $1.blockedTaskCount }
+        let overdue = summaries.reduce(0) { $0 + $1.overdueTaskCount }
+        guard blocked > 0 || overdue > 0 else {
+            return nil
+        }
+        if blocked > 0, overdue > 0 {
+            return String(
+                format: String(localized: "%d blocked and %d overdue tasks need attention across projects."),
+                blocked,
+                overdue
+            )
+        }
+        if blocked > 0 {
+            return String(
+                format: String(localized: "%d blocked tasks need attention across projects."),
+                blocked
+            )
+        }
+        return String(
+            format: String(localized: "%d overdue tasks need attention across projects."),
+            overdue
+        )
+    }
+
+    private func projectsGlobalProposalBanner(title: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "sparkles")
+                .foregroundStyle(SuisuiBrand.soloBlue)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Suisui suggestion")
+                    .font(.caption.weight(.semibold))
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            if let focus = summaries.first(where: { $0.blockedTaskCount > 0 || $0.overdueTaskCount > 0 }) {
+                Button("Review") {
+                    selectedProjectID = focus.projectID
+                }
+                .controlSize(.small)
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: SuisuiRadius.card, style: .continuous)
+                .stroke(SuisuiBrand.soloBlue.opacity(0.28), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("projects-portfolio-global-proposal")
+        .accessibilityLabel(title)
+    }
+
     private var portfolioRankingRuleDescription: String? {
         summaries.first.map {
             String(localized: String.LocalizationValue($0.localHealthRuleDescription))
@@ -236,7 +360,7 @@ struct ProjectsPortfolioOverview: View {
         HStack(spacing: 8) {
             Picker("Project Filter", selection: $filter) {
                 ForEach(ProjectPortfolioFilter.allCases) { filter in
-                    Text(LocalizedStringKey(filter.title)).tag(filter)
+                    Text(filterTitle(for: filter)).tag(filter)
                 }
             }
             .pickerStyle(.segmented)
@@ -255,6 +379,22 @@ struct ProjectsPortfolioOverview: View {
             .help("Sort projects")
             .accessibilityIdentifier("projects-portfolio-sort")
         }
+    }
+
+    private func filterTitle(for filter: ProjectPortfolioFilter) -> String {
+        let count = viewModel.derivedReadModels.projectPortfolioSummaries.filter { summary in
+            switch filter {
+            case .all:
+                return true
+            case .active:
+                return summary.health != .completed
+            case .overdue:
+                return summary.overdueTaskCount > 0
+            case .completed:
+                return summary.health == .completed
+            }
+        }.count
+        return "\(filter.title) (\(count))"
     }
 
     private func filtered(_ summaries: [ProjectPortfolioSummary]) -> [ProjectPortfolioSummary] {
@@ -328,6 +468,8 @@ private struct ProjectPortfolioHeader: View {
 
 private struct ProjectPortfolioCard: View {
     let summary: ProjectPortfolioSummary
+    let nextMilestoneTitle: String?
+    let nextMilestoneDueAt: String?
     let isSelected: Bool
     let onSelect: () -> Void
     let onOpen: () -> Void
@@ -367,6 +509,25 @@ private struct ProjectPortfolioCard: View {
                 Label(summary.nextDueAt ?? String(localized: "No due date"), systemImage: "calendar")
                 Label(localizedRiskReason, systemImage: "heart.text.square")
                 Label(summary.nextActionTitle, systemImage: "arrow.right.circle")
+                if let nextMilestoneTitle {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Label(nextMilestoneTitle, systemImage: "flag")
+                            .lineLimit(1)
+                        if let nextMilestoneDueAt {
+                            Spacer(minLength: 4)
+                            Text(nextMilestoneDueAt)
+                                .monospacedDigit()
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("projects-portfolio-card-milestone")
+                    .accessibilityLabel(
+                        String(
+                            format: String(localized: "Next milestone %@"),
+                            nextMilestoneTitle
+                        )
+                    )
+                }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -454,6 +615,8 @@ private struct ProjectPortfolioSummaryRail: View {
     let nextMilestoneTitle: String?
     let milestoneTitles: [String]
     let artifactTitles: [String]
+    let priorityTaskTitles: [String]
+    let proposalTitle: String?
     let onOpen: () -> Void
 
     private var localizedRiskReason: String {
@@ -480,83 +643,124 @@ private struct ProjectPortfolioSummaryRail: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
-            Label("Selected project", systemImage: "sidebar.right")
-                .font(SuisuiTypography.sectionTitle)
-            Text(summary.title)
-                .font(.headline)
-                .fixedSize(horizontal: false, vertical: true)
-            summaryWidget {
-                Label(String(localized: String.LocalizationValue(summary.health.title)), systemImage: summary.health.systemImage)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(summary.health.tint)
-                ProgressView(value: summary.progress)
-                    .tint(summary.health.tint)
-                    .accessibilityLabel("Project progress")
-                    .accessibilityValue("\(Int((summary.progress * 100).rounded()))%")
-            }
-            summaryWidget {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label(summary.nextDueAt ?? String(localized: "No due date"), systemImage: "calendar")
-                    Label(summary.nextActionTitle, systemImage: "arrow.right.circle")
-                    Label(localizedRiskReason, systemImage: "heart.text.square")
-                    if todayDueTaskCount > 0 {
-                        Label {
-                            Text(localizedCount(todayDueTaskCount, one: "%d task due today", other: "%d tasks due today"))
-                        } icon: {
-                            Image(systemName: "sun.max")
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+                Label("Selected project", systemImage: "sidebar.right")
+                    .font(SuisuiTypography.sectionTitle)
+                Text(summary.title)
+                    .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
+                summaryWidget {
+                    Label(String(localized: String.LocalizationValue(summary.health.title)), systemImage: summary.health.systemImage)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(summary.health.tint)
+                    ProgressView(value: summary.progress)
+                        .tint(summary.health.tint)
+                        .accessibilityLabel("Project progress")
+                        .accessibilityValue("\(Int((summary.progress * 100).rounded()))%")
+                }
+                summaryWidget {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label(summary.nextDueAt ?? String(localized: "No due date"), systemImage: "calendar")
+                        Label(summary.nextActionTitle, systemImage: "arrow.right.circle")
+                        Label(localizedRiskReason, systemImage: "heart.text.square")
+                        if todayDueTaskCount > 0 {
+                            Label {
+                                Text(localizedCount(todayDueTaskCount, one: "%d task due today", other: "%d tasks due today"))
+                            } icon: {
+                                Image(systemName: "sun.max")
+                            }
+                        }
+                        if let recentTaskTitle {
+                            Label(recentTaskTitle, systemImage: "clock.arrow.circlepath")
+                                .lineLimit(2)
+                        }
+                        if let nextMilestoneTitle {
+                            Label(nextMilestoneTitle, systemImage: "flag")
+                                .lineLimit(2)
                         }
                     }
-                    if let recentTaskTitle {
-                        Label(recentTaskTitle, systemImage: "clock.arrow.circlepath")
-                            .lineLimit(2)
-                    }
-                    if let nextMilestoneTitle {
-                        Label(nextMilestoneTitle, systemImage: "flag")
-                            .lineLimit(2)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                if !milestoneTitles.isEmpty {
+                    summarySection(
+                        titleKey: "Milestones",
+                        systemImage: "flag",
+                        accessibilityIdentifier: "projects-portfolio-summary-milestones"
+                    ) {
+                        ForEach(Array(milestoneTitles.enumerated()), id: \.offset) { _, title in
+                            Text(title)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
                     }
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-            if !milestoneTitles.isEmpty {
                 summarySection(
-                    titleKey: "Milestones",
-                    systemImage: "flag",
-                    accessibilityIdentifier: "projects-portfolio-summary-milestones"
+                    titleKey: "Today's Priority Tasks",
+                    systemImage: "checklist",
+                    accessibilityIdentifier: "projects-portfolio-summary-priority-tasks"
                 ) {
-                    ForEach(Array(milestoneTitles.enumerated()), id: \.offset) { _, title in
-                        Text(title)
+                    if priorityTaskTitles.isEmpty {
+                        Text("No open priority tasks.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                    } else {
+                        ForEach(Array(priorityTaskTitles.enumerated()), id: \.offset) { _, title in
+                            Text(title)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
                     }
                 }
-            }
-            if !artifactTitles.isEmpty {
                 summarySection(
                     titleKey: "Artifacts",
                     systemImage: "doc",
                     accessibilityIdentifier: "projects-portfolio-summary-artifacts"
                 ) {
-                    ForEach(Array(artifactTitles.enumerated()), id: \.offset) { _, title in
-                        Text(title)
+                    if artifactTitles.isEmpty {
+                        Text("No linked artifacts yet.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                    } else {
+                        ForEach(Array(artifactTitles.enumerated()), id: \.offset) { _, title in
+                            Text(title)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
                 }
+                if let proposalTitle {
+                    summarySection(
+                        titleKey: "Suisui Suggestion",
+                        systemImage: "sparkles",
+                        accessibilityIdentifier: "projects-portfolio-summary-proposal"
+                    ) {
+                        Text(proposalTitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button(action: onOpen) {
+                            Label("Review in project", systemImage: "arrow.right")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+                Button(action: onOpen) {
+                    Label("Open Project", systemImage: "arrow.right")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .accessibilityIdentifier("projects-portfolio-summary-open-\(summary.projectID)")
             }
-            Button(action: onOpen) {
-                Label("Open Project", systemImage: "arrow.right")
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .accessibilityIdentifier("projects-portfolio-summary-open-\(summary.projectID)")
-            Spacer(minLength: 0)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card, style: .continuous))
         .accessibilityElement(children: .contain)

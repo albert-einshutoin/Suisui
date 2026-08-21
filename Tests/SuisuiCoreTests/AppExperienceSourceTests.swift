@@ -1527,6 +1527,27 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-task-list\")"))
     }
 
+    func testProjectsPortfolioDensifiesCardsAndSummaryRailWithoutFakeProposals() throws {
+        let boardDetailSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardDetailViews.swift")
+
+        XCTAssertTrue(boardDetailSource.contains("projects-portfolio-card-milestone"))
+        XCTAssertTrue(boardDetailSource.contains("nextMilestoneTitle"))
+        XCTAssertTrue(boardDetailSource.contains("projects-portfolio-summary-priority-tasks"))
+        XCTAssertTrue(boardDetailSource.contains("projects-portfolio-summary-proposal"))
+        XCTAssertTrue(boardDetailSource.contains("projects-portfolio-summary-artifacts"))
+        XCTAssertTrue(boardDetailSource.contains("No linked artifacts yet."))
+        XCTAssertTrue(boardDetailSource.contains("priorityTaskTitles"))
+        XCTAssertTrue(boardDetailSource.contains("proposalTitle"))
+        XCTAssertTrue(boardDetailSource.contains("projects-portfolio-global-proposal"))
+        XCTAssertTrue(boardDetailSource.contains("if let globalProposalTitle"))
+        XCTAssertFalse(boardDetailSource.contains("Proプラン"))
+        XCTAssertFalse(boardDetailSource.contains("Pro Plan"))
+        // Artifacts stay framed even when empty; do not hide the whole section.
+        XCTAssertFalse(
+            boardDetailSource.contains("if !artifactTitles.isEmpty {\n                summarySection(\n                    titleKey: \"Artifacts\"")
+        )
+    }
+
     func testAppearanceSelectionIsConfiguredOnlyFromSettings() throws {
         let appSource = try readAppShellSource()
         let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
