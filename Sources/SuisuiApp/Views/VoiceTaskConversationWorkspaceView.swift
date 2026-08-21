@@ -84,8 +84,9 @@ struct VoiceTaskConversationWorkspaceView: View {
             .padding(SuisuiSpacing.lg)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        // Keep structural proof on a leaf heading. Container identifiers are
+        // absorbed by SwiftUI descendants and disappear from AX marker waits.
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("voice-conversation-workspace")
         .onAppear {
             viewModel.refreshConversationWorkspaceCloseout()
         }
@@ -248,6 +249,7 @@ private struct VoiceTaskConversationTurnList: View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
             Label("Conversation", systemImage: "text.bubble")
                 .font(.headline)
+                .accessibilityIdentifier("voice-conversation-workspace")
             switch presentation.turnListState {
             case .empty:
                 ContentUnavailableView(
