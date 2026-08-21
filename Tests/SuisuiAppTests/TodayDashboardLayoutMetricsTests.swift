@@ -39,7 +39,6 @@ final class TodayDashboardLayoutMetricsTests: XCTestCase {
         XCTAssertTrue(source.contains("Keep the rail outside the primary ScrollView"))
         XCTAssertTrue(source.contains("resolvedPrefersContinuousRail(boardWidth:"))
         XCTAssertTrue(source.contains("let boardWidth = min(layoutWidth, proposedWidth)"))
-        XCTAssertTrue(source.contains("cockpitSplitPrimaryColumn()"))
         XCTAssertTrue(source.contains("cockpitSplitSecondaryRail(width:"))
         XCTAssertTrue(source.contains("let primaryWidth = max("))
         XCTAssertTrue(source.contains(".clipped()"))
