@@ -1578,7 +1578,7 @@ private func seedCaptureFixtures(
                 "Tuesday timed block for multi-day schedule density.",
                 .text(tuesdayMidday),
                 .null,
-                "high"
+                "medium"
             ),
             (
                 projectIDValue,

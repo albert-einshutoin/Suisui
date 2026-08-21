@@ -102,7 +102,9 @@ struct TodayWorkflowView: View {
         if let dashboardWeatherState {
             return dashboardWeatherState
         }
-        if VisualEvidenceRuntimeContext() != nil {
+        // Capture sets the reference instant even when the full locale triplet
+        // is still resolving; weather density must not wait on WeatherKit.
+        if ProcessInfo.processInfo.environment["SUISUI_VISUAL_EVIDENCE_REFERENCE_INSTANT"] != nil {
             return .available(
                 temperatureCelsius: 23,
                 location: "Shibuya",
@@ -115,7 +117,7 @@ struct TodayWorkflowView: View {
     /// Evidence fills Needs Review with sanitized synced rows (counts only),
     /// never Calendar “synced” chrome on the Schedule desk.
     private var resolvedIntegrationsState: TodayIntegrationStates {
-        guard VisualEvidenceRuntimeContext() != nil else {
+        guard ProcessInfo.processInfo.environment["SUISUI_VISUAL_EVIDENCE_REFERENCE_INSTANT"] != nil else {
             return viewModel.integrationStates
         }
         let reference = VisualEvidenceRuntimeContext.referenceDate()
