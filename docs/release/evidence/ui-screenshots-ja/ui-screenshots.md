@@ -2,8 +2,8 @@
 
 Generated with `script/capture_ui_evidence.sh`.
 
-- Generated at: `2026-08-21T05:57:11Z`
-- Source commit: `57a2556a`
+- Generated at: `2026-08-21T06:32:41Z`
+- Source commit: `b2d720a7`
 - App bundle: `dist/Suisui.app`
 - Visual baseline manifest: `docs/quality/visual-baseline-manifest-ja.json`
 - Viewport contract: `SUISUI_VISUAL_BASELINE_VIEWPORT=1024x676`, `SUISUI_SETTINGS_VISUAL_BASELINE_VIEWPORT=1024x676`, `SUISUI_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT=1024x676`
@@ -62,6 +62,8 @@ Generated with `script/capture_ui_evidence.sh`.
 - Settings Appearance Light: `docs/release/evidence/ui-screenshots-ja/settings-appearance-light.png`
 - Settings Appearance Dark: `docs/release/evidence/ui-screenshots-ja/settings-appearance-dark.png`
 - Settings Appearance System: `docs/release/evidence/ui-screenshots-ja/settings-appearance-system.png`
+- Settings AI Light: `docs/release/evidence/ui-screenshots-ja/settings-ai-light.png`
+- Settings AI Dark: `docs/release/evidence/ui-screenshots-ja/settings-ai-dark.png`
 - MCP Settings Light: `docs/release/evidence/ui-screenshots-ja/settings-mcp-light.png`
 - MCP Settings Dark: `docs/release/evidence/ui-screenshots-ja/settings-mcp-dark.png`
 - MCP Settings System: `docs/release/evidence/ui-screenshots-ja/settings-mcp-system.png`
