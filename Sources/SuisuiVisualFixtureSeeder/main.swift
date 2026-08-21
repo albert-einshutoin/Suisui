@@ -1398,33 +1398,24 @@ private func seedCaptureFixtures(
     guard let tomorrowInstant = calendar.date(byAdding: .day, value: 1, to: referenceInstant),
           let yesterdayInstant = calendar.date(byAdding: .day, value: -1, to: referenceInstant),
           let threeDaysAgoInstant = calendar.date(byAdding: .day, value: -3, to: referenceInstant),
-          let fiveDaysAgoInstant = calendar.date(byAdding: .day, value: -5, to: referenceInstant),
-          let mondayInstant = calendar.date(byAdding: .day, value: -4, to: referenceInstant),
-          let tuesdayInstant = calendar.date(byAdding: .day, value: -3, to: referenceInstant),
-          let wednesdayInstant = calendar.date(byAdding: .day, value: -2, to: referenceInstant),
-          let thursdayInstant = calendar.date(byAdding: .day, value: -1, to: referenceInstant) else {
+          let fiveDaysAgoInstant = calendar.date(byAdding: .day, value: -5, to: referenceInstant) else {
         throw SeederError.invalidCaptureFixture("reference instant could not produce relative dates")
     }
     let today = dayFormatter.string(from: referenceInstant)
     let tomorrow = dayFormatter.string(from: tomorrowInstant)
     let yesterdayDay = dayFormatter.string(from: yesterdayInstant)
-    let mondayDay = dayFormatter.string(from: mondayInstant)
-    let tuesdayDay = dayFormatter.string(from: tuesdayInstant)
-    let wednesdayDay = dayFormatter.string(from: wednesdayInstant)
-    let thursdayDay = dayFormatter.string(from: thursdayInstant)
     let isoFormatter = ISO8601DateFormatter()
     let yesterday = isoFormatter.string(from: yesterdayInstant)
     let todayCompleted = isoFormatter.string(from: referenceInstant)
     let threeDaysAgoCompleted = isoFormatter.string(from: threeDaysAgoInstant)
     let fiveDaysAgoCompleted = isoFormatter.string(from: fiveDaysAgoInstant)
     let todayMorning = "\(today)T10:00:00Z"
+    let todayLateMorning = "\(today)T11:00:00Z"
     let todayAfternoon = "\(today)T14:00:00Z"
     let todayEvening = "\(today)T16:00:00Z"
+    let todayEarly = "\(today)T09:00:00Z"
     let tomorrowMorning = "\(tomorrow)T11:00:00Z"
-    let mondayMorning = "\(mondayDay)T09:00:00Z"
-    let tuesdayMidday = "\(tuesdayDay)T11:00:00Z"
-    let wednesdayAfternoon = "\(wednesdayDay)T13:00:00Z"
-    let thursdayFocus = "\(thursdayDay)T15:00:00Z"
+    let tomorrowAfternoon = "\(tomorrow)T13:00:00Z"
 
     return try connection.transaction {
         try connection.execute(
@@ -1566,8 +1557,8 @@ private func seedCaptureFixtures(
                 projectIDValue,
                 "Design workshop",
                 "planned",
-                "Monday timed block for multi-day schedule density.",
-                .text(mondayMorning),
+                "Friday morning timed block for schedule density.",
+                .text(todayEarly),
                 .null,
                 "medium"
             ),
@@ -1575,8 +1566,8 @@ private func seedCaptureFixtures(
                 projectIDValue,
                 "Spec review session",
                 "planned",
-                "Tuesday timed block for multi-day schedule density.",
-                .text(tuesdayMidday),
+                "Friday late-morning timed block for schedule density.",
+                .text(todayLateMorning),
                 .null,
                 "medium"
             ),
@@ -1584,8 +1575,8 @@ private func seedCaptureFixtures(
                 projectIDValue,
                 "Report drafting block",
                 "planned",
-                "Wednesday timed block for multi-day schedule density.",
-                .text(wednesdayAfternoon),
+                "Saturday timed block for multi-day schedule density.",
+                .text(tomorrowAfternoon),
                 .null,
                 "low"
             ),
@@ -1593,8 +1584,8 @@ private func seedCaptureFixtures(
                 projectIDValue,
                 "Invoice prep focus",
                 "planned",
-                "Thursday timed block for multi-day schedule density.",
-                .text(thursdayFocus),
+                "Friday afternoon companion block beside Focus polish.",
+                .text("\(today)T15:00:00Z"),
                 .null,
                 "medium"
             ),
