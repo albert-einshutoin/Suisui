@@ -107,6 +107,11 @@ struct DoneWorkflowView: View {
         .accessibilityIdentifier("done-workflow")
         .accessibilityLabel("Completed")
         .accessibilityHint("Reviews completed tasks, completed projects, and local recap.")
+        .onAppear {
+            // Load the same redacted audit snapshot Automation Activity uses so
+            // the compact receipt strip is populated without opening the audit desk.
+            viewModel.refreshExecutionReceiptAuditSnapshotsIfNeeded()
+        }
     }
 
     private var donePrimaryColumn: some View {

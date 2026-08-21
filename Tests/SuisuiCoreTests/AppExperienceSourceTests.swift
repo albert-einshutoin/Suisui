@@ -2228,6 +2228,7 @@ final class AppExperienceSourceTests: XCTestCase {
         // Done surfaces a compact, redacted receipt strip. Search/export stay on
         // Automation Activity so the desk never becomes a full audit console.
         XCTAssertTrue(doneSource.contains("viewModel.executionReceiptHistorySnapshot"))
+        XCTAssertTrue(doneSource.contains("viewModel.refreshExecutionReceiptAuditSnapshotsIfNeeded()"))
         XCTAssertTrue(doneSource.contains(".accessibilityIdentifier(\"done-execution-receipts\")"))
         XCTAssertTrue(doneSource.contains("Execution Receipts"))
         XCTAssertFalse(doneSource.contains("Recent AI Activity"))
