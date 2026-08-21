@@ -138,12 +138,21 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                                 - TodayDashboardLayoutMetrics.columnSpacing,
                             1
                         )
+                        // Three recommendation cards need room beside the rail; when the
+                        // primary column is too tight, stack them so none sit under the
+                        // column scroller / rail edge.
+                        let stacksRecommendations = primaryWidth < 560
                         HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
                             ScrollView(.vertical) {
                                 VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.sectionSpacing) {
                                     TodayDashboardHeaderView(header: dashboard.header, weather: dashboard.weather)
                                         .frame(maxWidth: .infinity, alignment: .topLeading)
-                                    mainContent(dashboard: dashboard, isWide: true, openReview: openReview)
+                                    mainContent(
+                                        dashboard: dashboard,
+                                        isWide: true,
+                                        stacksRecommendations: stacksRecommendations,
+                                        openReview: openReview
+                                    )
                                     reviewActionsCard(isWide: true)
                                     HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
                                         TodayIntegrationCard(integration: dashboard.integrations.calendar)
@@ -153,10 +162,11 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                                     }
                                 }
                                 .padding(.leading, 18)
+                                .padding(.trailing, 8)
                                 .padding(.vertical, 18)
-                                .frame(width: primaryWidth - 18, alignment: .topLeading)
+                                .frame(width: max(primaryWidth - 8, 1), alignment: .topLeading)
                             }
-                            .scrollIndicators(.hidden)
+                            .scrollIndicators(.never)
                             .frame(width: primaryWidth, alignment: .topLeading)
                             .clipped()
 
@@ -174,7 +184,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                                     alignment: .topLeading
                                 )
                             }
-                            .scrollIndicators(.hidden)
+                            .scrollIndicators(.never)
                             .cockpitSplitSecondaryRail(width: railSpan)
                         }
                         .frame(
@@ -190,7 +200,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                             VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.sectionSpacing) {
                                 TodayDashboardHeaderView(header: dashboard.header, weather: dashboard.weather)
                                     .frame(maxWidth: .infinity, alignment: .topLeading)
-                                mainContent(dashboard: dashboard, isWide: false, openReview: openReview)
+                                mainContent(dashboard: dashboard, isWide: false, stacksRecommendations: true, openReview: openReview)
                                 reviewActionsCard(isWide: false)
                                 rail(
                                     dashboard: dashboard,
@@ -260,13 +270,14 @@ struct TodayDashboardView<CatchUpContent: View>: View {
     private func mainContent(
         dashboard: TodayDashboardSnapshot,
         isWide: Bool,
+        stacksRecommendations: Bool,
         openReview: @escaping () -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.lg) {
             TodayDashboardRecommendationCards(
                 recommendations: dashboard.recommendations,
                 onAction: performRecommendationAction,
-                stacksVertically: !isWide
+                stacksVertically: stacksRecommendations
             )
             // Keep Needs Review above the long task list so the first viewport
             // still surfaces catch-up pressure when the continuous rail is beside.
