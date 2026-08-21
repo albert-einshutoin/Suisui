@@ -148,12 +148,12 @@ struct DoneWorkflowView: View {
                     )
                 }
                 DoneWeeklyTrendChartView(buckets: analytics.weeklyTrendBuckets)
+                doneExecutionReceiptsPanel
                 DoneCompletionHeatmapView(buckets: analytics.completionHeatmapBuckets)
                 DoneProductivityInsightView(
                     bestWeekdaySummary: analytics.bestWeekdaySummary,
                     bestHourSummary: analytics.bestHourSummary
                 )
-                doneExecutionReceiptsPanel
                 localRuleInsight
             }
         }
