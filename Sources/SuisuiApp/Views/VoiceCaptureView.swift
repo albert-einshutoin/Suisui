@@ -5,17 +5,24 @@ import SwiftUI
 private enum VoiceVisualEvidenceSurface: String {
     case idle
     case listening
+    case conversation
 
-    /// Evidence launches one Voice desk per isolated process so Listening does
-    /// not depend on timing a real microphone session.
+    /// Evidence launches one Voice desk per isolated process so Listening /
+    /// Conversation do not depend on timing a real microphone session.
     static func resolved(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> VoiceVisualEvidenceSurface {
-        guard environment["SUISUI_VISUAL_EVIDENCE_REFERENCE_INSTANT"] != nil,
-              environment["SUISUI_VISUAL_EVIDENCE_VOICE_SURFACE"] == "listening" else {
+        guard environment["SUISUI_VISUAL_EVIDENCE_REFERENCE_INSTANT"] != nil else {
             return .idle
         }
-        return .listening
+        switch environment["SUISUI_VISUAL_EVIDENCE_VOICE_SURFACE"] {
+        case "listening":
+            return .listening
+        case "conversation":
+            return .conversation
+        default:
+            return .idle
+        }
     }
 }
 
@@ -135,6 +142,12 @@ struct VoiceCaptureView: View {
     @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
     @StateObject private var viewModel: VoiceCaptureViewModel
     @State private var clarificationAnswer = ""
+    @State private var selectedVoiceEvidenceTab = VoiceEvidenceTab.quickCommand
+
+    private enum VoiceEvidenceTab: Hashable {
+        case conversation
+        case quickCommand
+    }
 
     init(viewModel: VoiceCaptureViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -198,7 +211,7 @@ struct VoiceCaptureView: View {
     }
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedVoiceEvidenceTab) {
             VoiceTaskConversationWorkspaceView(
                 viewModel: viewModel,
                 onOpenAssistantQueue: {
@@ -213,12 +226,20 @@ struct VoiceCaptureView: View {
             .tabItem {
                 Label("Conversation", systemImage: "text.bubble")
             }
+            .tag(VoiceEvidenceTab.conversation)
+            .accessibilityIdentifier("voice-conversation-tab")
 
             quickCommandWorkspace
                 .tabItem {
                     Label("Quick Command", systemImage: "waveform")
                         .accessibilityIdentifier("voice-command-quick-command-tab")
                 }
+                .tag(VoiceEvidenceTab.quickCommand)
+        }
+        .onAppear {
+            selectedVoiceEvidenceTab = VoiceVisualEvidenceSurface.resolved() == .conversation
+                ? .conversation
+                : .quickCommand
         }
         .task {
             await viewModel.restoreConversationIfNeeded()

@@ -77,8 +77,8 @@ struct TodayWorkflowView: View {
             commandTitle: $commandTitle,
             displayName: dashboardDisplayName,
             dailyCapacityMinutes: dashboardDailyCapacityMinutes,
-            weatherState: dashboardWeatherState ?? weatherModel.state,
-            integrationsState: viewModel.integrationStates,
+            weatherState: resolvedWeatherState,
+            integrationsState: resolvedIntegrationsState,
             selectTodayTask: selectTodayTask,
             openInspectorForTodayRailTask: openInspectorForTodayRailTask,
             playDailyPlanningReadout: playDailyPlanningReadout,
@@ -95,6 +95,37 @@ struct TodayWorkflowView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-workflow")
+    }
+
+    /// Evidence pins a sample-like weather chip without calling WeatherKit.
+    private var resolvedWeatherState: TodayWeatherState {
+        if let dashboardWeatherState {
+            return dashboardWeatherState
+        }
+        if VisualEvidenceRuntimeContext() != nil {
+            return .available(
+                temperatureCelsius: 23,
+                location: "Shibuya",
+                updatedAt: VisualEvidenceRuntimeContext.referenceDate()
+            )
+        }
+        return weatherModel.state
+    }
+
+    /// Evidence fills Needs Review with sanitized synced rows (counts only),
+    /// never Calendar “synced” chrome on the Schedule desk.
+    private var resolvedIntegrationsState: TodayIntegrationStates {
+        guard VisualEvidenceRuntimeContext() != nil else {
+            return viewModel.integrationStates
+        }
+        let reference = VisualEvidenceRuntimeContext.referenceDate()
+        return TodayIntegrationStates(
+            calendar: .synced(lastSyncedAt: reference, itemCount: 3),
+            slack: .synced(
+                lastSyncedAt: reference.addingTimeInterval(-3_600),
+                itemCount: 2
+            )
+        )
     }
 
     private var catchUpSection: some View {

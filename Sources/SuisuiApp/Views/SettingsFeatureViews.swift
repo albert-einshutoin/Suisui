@@ -1227,6 +1227,8 @@ struct SettingsPrivacyFeatureView: View {
 
         }
         .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-privacy-root")
         .confirmationDialog(
             "Restore from backup?",
             isPresented: context.$isConfirmingBackupRestore,

@@ -244,18 +244,15 @@ struct ScheduleWorkflowView: View {
         }
     }
 
-    /// Evidence captures pin a dense week desk. Preparing a local draft once
-    /// surfaces caution-colored proposal blocks beside timed due tasks without
-    /// writing Calendar or inventing a synced badge.
+    /// Evidence captures pin a dense week desk. Timed dues already paint the
+    /// grid at wall-clock hours; remapping them into sequential draft slots
+    /// would hide T10/T14 density and collapse multi-hue priority colors into
+    /// caution drafts. Keep Calendar writes approval-gated (no synced badge).
     private func prepareScheduleDraftForVisualEvidenceIfNeeded() {
-        guard VisualEvidenceRuntimeContext() != nil,
-              viewModel.scheduleDraft == nil else {
+        guard VisualEvidenceRuntimeContext() != nil else {
             return
         }
-        _ = viewModel.prepareScheduleDraft(
-            on: workloadReferenceDate,
-            calendar: VisualEvidenceRuntimeContext.runtimeCalendar()
-        )
+        // Intentionally no-op: densify via seeder timed dues + priority tints.
     }
 
     private var scheduleTitle: some View {
@@ -1616,12 +1613,12 @@ private struct WeeklyScheduleTimeAxisBlock: View {
             .padding(.vertical, 2)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(
-                (block.source == .scheduleDraft ? SuisuiTone.caution.color : SuisuiBrand.soloBlue).opacity(0.14),
+                blockAccent.opacity(0.14),
                 in: RoundedRectangle(cornerRadius: SuisuiRadius.control)
             )
             .overlay(alignment: .leading) {
                 Rectangle()
-                    .fill(block.source == .scheduleDraft ? SuisuiTone.caution.color : SuisuiBrand.soloBlue)
+                    .fill(blockAccent)
                     .frame(width: 3)
             }
         }
@@ -1654,6 +1651,30 @@ private struct WeeklyScheduleTimeAxisBlock: View {
                 Button("Shorten 15 Minutes") { resizeBy(-15) }
                 Button("Extend 15 Minutes") { resizeBy(15) }
             }
+        }
+    }
+
+    /// Local due blocks tint by priority/status so the week desk reads denser
+    /// without inventing Google Calendar “synced” chrome.
+    private var blockAccent: Color {
+        if block.source == .scheduleDraft {
+            return SuisuiTone.caution.color
+        }
+        switch block.task.status {
+        case .blocked:
+            return SuisuiTone.danger.color
+        case .inProgress:
+            return SuisuiTone.positive.color
+        default:
+            break
+        }
+        switch block.task.priority {
+        case .high:
+            return SuisuiBrand.soloBlue
+        case .medium:
+            return SuisuiTone.attention.color
+        case .low:
+            return SuisuiTone.neutral.color
         }
     }
 

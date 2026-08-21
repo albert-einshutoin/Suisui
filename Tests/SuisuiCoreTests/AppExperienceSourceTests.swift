@@ -5357,13 +5357,20 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(scheduleSource.contains("同期済み"))
         XCTAssertTrue(scheduleSource.contains("prepareScheduleDraftForVisualEvidenceIfNeeded"))
         XCTAssertTrue(scheduleSource.contains("VisualEvidenceRuntimeContext() != nil"))
+        XCTAssertTrue(scheduleSource.contains("private var blockAccent: Color"))
+        XCTAssertTrue(scheduleSource.contains("SuisuiTone.attention.color"))
         XCTAssertTrue(seederSource.contains("T10:00:00Z"))
         XCTAssertTrue(seederSource.contains("T14:00:00Z"))
+        XCTAssertTrue(seederSource.contains("T16:00:00Z"))
+        XCTAssertTrue(seederSource.contains("T09:00:00Z"))
         XCTAssertTrue(seederSource.contains("Stakeholder sync"))
         XCTAssertTrue(seederSource.contains("Focus polish: AX paths"))
+        XCTAssertTrue(seederSource.contains("Design workshop"))
+        XCTAssertTrue(seederSource.contains("Submit weekly status"))
         // Overdue/blocked work keeps Needs Adjustment populated without Calendar sync badges.
         XCTAssertTrue(seederSource.contains("\"Document remaining release blockers\""))
         XCTAssertTrue(seederSource.contains(".text(yesterdayDay)"))
+        XCTAssertTrue(seederSource.contains(".text(today)"))
     }
 
     func testScheduleKeepsDaySeparatorsVisibleAndAdaptsAroundThirteenInchViewport() throws {
@@ -6671,6 +6678,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceSource.contains("SUISUI_VISUAL_EVIDENCE_VOICE_SURFACE"))
         XCTAssertTrue(voiceSource.contains("voice-command-listening-hero"))
         XCTAssertTrue(voiceSource.contains("voice-command-listening-timer"))
+        XCTAssertTrue(voiceSource.contains("case conversation"))
+        XCTAssertTrue(voiceSource.contains("voice-conversation-tab"))
         XCTAssertTrue(voiceSource.contains("voice-command-understood-action-"))
         XCTAssertTrue(voiceSource.contains("Create preparation task"))
         XCTAssertTrue(voiceSource.contains("voice-command-conversation-log"))
@@ -6787,6 +6796,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(overviewSource.contains("settings-readiness-action-"))
         XCTAssertTrue(appSource.contains("settings-overview-detail-rail"))
         XCTAssertTrue(appSource.contains("settings-ai-readiness-rail"))
+        XCTAssertTrue(appSource.contains("settings-privacy-root"))
         XCTAssertFalse(overviewSource.contains("LazyVGrid"))
     }
 
@@ -7636,6 +7646,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("settings-ai-readiness-rail"))
         XCTAssertTrue(script.contains("settings-overview-detail-rail=>"))
         XCTAssertTrue(script.contains("SETTINGS_TAB_OVERRIDE=\"AI\""))
+        XCTAssertTrue(script.contains("capture_settings_privacy"))
+        XCTAssertTrue(script.contains("SETTINGS_TAB_OVERRIDE=\"Privacy\""))
+        XCTAssertTrue(script.contains("settings-privacy-root"))
+        XCTAssertTrue(script.contains("capture_voice_conversation_appearance"))
+        XCTAssertTrue(script.contains("VOICE_SURFACE_OVERRIDE=\"conversation\""))
+        XCTAssertTrue(script.contains("voice-conversation-workspace"))
         XCTAssertTrue(script.contains("open_mcp_settings_tab"))
         XCTAssertTrue(script.contains("capture_mcp_settings_appearance"))
         XCTAssertTrue(script.contains("SUISUI_SETTINGS_EVIDENCE_TAB=$SETTINGS_TAB_OVERRIDE"))

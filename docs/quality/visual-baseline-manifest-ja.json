@@ -369,6 +369,42 @@
         "light": "voice-command-listening-light.png",
         "dark": "voice-command-listening-dark.png"
       }
+    },
+    {
+      "id": "settings-privacy",
+      "title": "Settings Privacy",
+      "themes": [
+        "light",
+        "dark"
+      ],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "settings-privacy-root",
+      "artifacts": {
+        "light": "settings-privacy-light.png",
+        "dark": "settings-privacy-dark.png"
+      }
+    },
+    {
+      "id": "voice-conversation",
+      "title": "Voice Conversation",
+      "themes": [
+        "light",
+        "dark"
+      ],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "voice-conversation-workspace",
+      "artifacts": {
+        "light": "voice-conversation-light.png",
+        "dark": "voice-conversation-dark.png"
+      }
     }
   ]
 }

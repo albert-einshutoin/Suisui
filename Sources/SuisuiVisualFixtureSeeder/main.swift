@@ -1398,12 +1398,20 @@ private func seedCaptureFixtures(
     guard let tomorrowInstant = calendar.date(byAdding: .day, value: 1, to: referenceInstant),
           let yesterdayInstant = calendar.date(byAdding: .day, value: -1, to: referenceInstant),
           let threeDaysAgoInstant = calendar.date(byAdding: .day, value: -3, to: referenceInstant),
-          let fiveDaysAgoInstant = calendar.date(byAdding: .day, value: -5, to: referenceInstant) else {
+          let fiveDaysAgoInstant = calendar.date(byAdding: .day, value: -5, to: referenceInstant),
+          let mondayInstant = calendar.date(byAdding: .day, value: -4, to: referenceInstant),
+          let tuesdayInstant = calendar.date(byAdding: .day, value: -3, to: referenceInstant),
+          let wednesdayInstant = calendar.date(byAdding: .day, value: -2, to: referenceInstant),
+          let thursdayInstant = calendar.date(byAdding: .day, value: -1, to: referenceInstant) else {
         throw SeederError.invalidCaptureFixture("reference instant could not produce relative dates")
     }
     let today = dayFormatter.string(from: referenceInstant)
     let tomorrow = dayFormatter.string(from: tomorrowInstant)
     let yesterdayDay = dayFormatter.string(from: yesterdayInstant)
+    let mondayDay = dayFormatter.string(from: mondayInstant)
+    let tuesdayDay = dayFormatter.string(from: tuesdayInstant)
+    let wednesdayDay = dayFormatter.string(from: wednesdayInstant)
+    let thursdayDay = dayFormatter.string(from: thursdayInstant)
     let isoFormatter = ISO8601DateFormatter()
     let yesterday = isoFormatter.string(from: yesterdayInstant)
     let todayCompleted = isoFormatter.string(from: referenceInstant)
@@ -1411,7 +1419,12 @@ private func seedCaptureFixtures(
     let fiveDaysAgoCompleted = isoFormatter.string(from: fiveDaysAgoInstant)
     let todayMorning = "\(today)T10:00:00Z"
     let todayAfternoon = "\(today)T14:00:00Z"
+    let todayEvening = "\(today)T16:00:00Z"
     let tomorrowMorning = "\(tomorrow)T11:00:00Z"
+    let mondayMorning = "\(mondayDay)T09:00:00Z"
+    let tuesdayMidday = "\(tuesdayDay)T11:00:00Z"
+    let wednesdayAfternoon = "\(wednesdayDay)T13:00:00Z"
+    let thursdayFocus = "\(thursdayDay)T15:00:00Z"
 
     return try connection.transaction {
         try connection.execute(
@@ -1509,6 +1522,15 @@ private func seedCaptureFixtures(
                 "Document remaining release blockers",
                 "blocked",
                 "Keep signing, notarization, and manual accessibility gates visible.",
+                .text(today),
+                .null,
+                "medium"
+            ),
+            (
+                projectIDValue,
+                "Submit weekly status",
+                "planned",
+                "Distinct overdue task so Today can show blocker + overdue + high chips.",
                 .text(yesterdayDay),
                 .null,
                 "medium"
@@ -1525,7 +1547,7 @@ private func seedCaptureFixtures(
             (
                 projectIDValue,
                 "Focus polish: AX paths",
-                "planned",
+                "in_progress",
                 "Timed focus block for schedule evidence density.",
                 .text(todayAfternoon),
                 .null,
@@ -1539,6 +1561,51 @@ private func seedCaptureFixtures(
                 .text(tomorrowMorning),
                 .null,
                 "medium"
+            ),
+            (
+                projectIDValue,
+                "Design workshop",
+                "planned",
+                "Monday timed block for multi-day schedule density.",
+                .text(mondayMorning),
+                .null,
+                "medium"
+            ),
+            (
+                projectIDValue,
+                "Spec review session",
+                "planned",
+                "Tuesday timed block for multi-day schedule density.",
+                .text(tuesdayMidday),
+                .null,
+                "high"
+            ),
+            (
+                projectIDValue,
+                "Report drafting block",
+                "planned",
+                "Wednesday timed block for multi-day schedule density.",
+                .text(wednesdayAfternoon),
+                .null,
+                "low"
+            ),
+            (
+                projectIDValue,
+                "Invoice prep focus",
+                "planned",
+                "Thursday timed block for multi-day schedule density.",
+                .text(thursdayFocus),
+                .null,
+                "medium"
+            ),
+            (
+                projectIDValue,
+                "Team reminder buffer",
+                "planned",
+                "Friday evening timed block beside Stakeholder sync.",
+                .text(todayEvening),
+                .null,
+                "low"
             ),
             (
                 inboxProjectIDValue,

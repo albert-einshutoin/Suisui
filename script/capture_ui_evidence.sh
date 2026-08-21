@@ -1690,6 +1690,20 @@ capture_settings_ai() {
   capture_visible_window "$appearance Settings AI" "$output_path" "" "settings-ai-readiness-rail"
 }
 
+capture_settings_privacy() {
+  local appearance="$1"
+  local output_path="$2"
+
+  APPEARANCE_OVERRIDE="$appearance"
+  PROJECT_BOARD_SELECTION_OVERRIDE=""
+  SETTINGS_WINDOW_OVERRIDE=1
+  SETTINGS_TAB_OVERRIDE="Privacy"
+  VOICE_COMMAND_WINDOW_OVERRIDE=""
+  prepare_named_evidence_window "" "Settings Privacy" "settings-privacy-root=>"
+
+  capture_visible_window "$appearance Settings Privacy" "$output_path" "" "settings-privacy-root"
+}
+
 capture_mcp_settings_appearance() {
   local appearance="$1"
   local output_path="$2"
@@ -1867,6 +1881,22 @@ capture_voice_command_listening_appearance() {
   prepare_named_evidence_window "" "Voice Command" "$VOICE_COMMAND_LISTENING_TARGET_MARKERS" "voice-command-quick-command-tab"
 
   capture_visible_window "$appearance Voice Command Listening" "$output_path" "" "voice-command-listening-hero"
+}
+
+capture_voice_conversation_appearance() {
+  local appearance="$1"
+  local output_path="$2"
+
+  APPEARANCE_OVERRIDE="$appearance"
+  PROJECT_BOARD_SELECTION_OVERRIDE=""
+  INBOX_EVIDENCE_CLEAR_SELECTION=""
+  SETTINGS_WINDOW_OVERRIDE=""
+  SETTINGS_TAB_OVERRIDE=""
+  VOICE_COMMAND_WINDOW_OVERRIDE=1
+  VOICE_SURFACE_OVERRIDE="conversation"
+  prepare_named_evidence_window "" "Voice Conversation" "$VOICE_CONVERSATION_TARGET_MARKERS"
+
+  capture_visible_window "$appearance Voice Conversation" "$output_path" "" "voice-conversation-workspace"
 }
 
 write_evidence_file() {
@@ -2295,6 +2325,8 @@ SETTINGS_APPEARANCE_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-appearance-light.
 SETTINGS_APPEARANCE_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-appearance-dark.png"
 SETTINGS_AI_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-ai-light.png"
 SETTINGS_AI_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-ai-dark.png"
+SETTINGS_PRIVACY_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-privacy-light.png"
+SETTINGS_PRIVACY_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-privacy-dark.png"
 MCP_SETTINGS_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-mcp-light.png"
 MCP_SETTINGS_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-mcp-dark.png"
 INBOX_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/inbox-light.png"
@@ -2311,6 +2343,8 @@ VOICE_COMMAND_DARK_SCREENSHOT="$SCREENSHOT_DIR/voice-command-dark.png"
 VOICE_COMMAND_SYSTEM_SCREENSHOT="$SCREENSHOT_DIR/voice-command-system.png"
 VOICE_COMMAND_LISTENING_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/voice-command-listening-light.png"
 VOICE_COMMAND_LISTENING_DARK_SCREENSHOT="$SCREENSHOT_DIR/voice-command-listening-dark.png"
+VOICE_CONVERSATION_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/voice-conversation-light.png"
+VOICE_CONVERSATION_DARK_SCREENSHOT="$SCREENSHOT_DIR/voice-conversation-dark.png"
 INBOX_VOICE_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/inbox-voice-light.png"
 INBOX_VOICE_DARK_SCREENSHOT="$SCREENSHOT_DIR/inbox-voice-dark.png"
 PROJECTS_OVERVIEW_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/projects-overview-light.png"
@@ -2376,6 +2410,7 @@ DONE_TARGET_MARKERS="done-workflow=>$DONE_ROUTE_LABEL"
 DONE_ANALYTICS_TARGET_MARKERS="done-workflow=>$DONE_ROUTE_LABEL|done-completion-heatmap=>|done-productivity-insight=>|done-local-rule-insight=>"
 VOICE_COMMAND_TARGET_MARKERS="voice-command-root=>$VOICE_COMMAND_LABEL"
 VOICE_COMMAND_LISTENING_TARGET_MARKERS="voice-command-listening-hero=>$VOICE_COMMAND_LISTENING_LABEL"
+VOICE_CONVERSATION_TARGET_MARKERS="voice-conversation-workspace=>"
 # The compact destination lives inside a closed Menu and is not guaranteed to
 # appear in the AX tree. The selected workflow itself is the stable route proof.
 ASSISTANT_QUEUE_ROUTE_MARKERS="assistant-queue-workflow=>"
@@ -2476,6 +2511,8 @@ capture_settings_appearance dark "$SETTINGS_APPEARANCE_DARK_SCREENSHOT"
 capture_settings_appearance system "$SETTINGS_APPEARANCE_SYSTEM_SCREENSHOT"
 capture_settings_ai light "$SETTINGS_AI_LIGHT_SCREENSHOT"
 capture_settings_ai dark "$SETTINGS_AI_DARK_SCREENSHOT"
+capture_settings_privacy light "$SETTINGS_PRIVACY_LIGHT_SCREENSHOT"
+capture_settings_privacy dark "$SETTINGS_PRIVACY_DARK_SCREENSHOT"
 capture_mcp_settings_appearance light "$MCP_SETTINGS_LIGHT_SCREENSHOT"
 capture_mcp_settings_appearance dark "$MCP_SETTINGS_DARK_SCREENSHOT"
 capture_mcp_settings_appearance system "$MCP_SETTINGS_SYSTEM_SCREENSHOT"
@@ -2487,6 +2524,8 @@ capture_voice_command_appearance dark "$VOICE_COMMAND_DARK_SCREENSHOT"
 capture_voice_command_appearance system "$VOICE_COMMAND_SYSTEM_SCREENSHOT"
 capture_voice_command_listening_appearance light "$VOICE_COMMAND_LISTENING_LIGHT_SCREENSHOT"
 capture_voice_command_listening_appearance dark "$VOICE_COMMAND_LISTENING_DARK_SCREENSHOT"
+capture_voice_conversation_appearance light "$VOICE_CONVERSATION_LIGHT_SCREENSHOT"
+capture_voice_conversation_appearance dark "$VOICE_CONVERSATION_DARK_SCREENSHOT"
 
 GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 write_visual_ax_audit_receipt "$SOURCE_COMMIT"
