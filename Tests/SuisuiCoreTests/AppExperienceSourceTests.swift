@@ -5400,7 +5400,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(scheduleSource.contains("prepareScheduleDraftForVisualEvidenceIfNeeded"))
         XCTAssertTrue(scheduleSource.contains("VisualEvidenceRuntimeContext() != nil"))
         XCTAssertTrue(scheduleSource.contains("private var blockAccent: Color"))
-        XCTAssertTrue(scheduleSource.contains("SuisuiTone.attention.color"))
+        XCTAssertTrue(scheduleSource.contains("SuisuiBrand.soloBlue.opacity(0.72)"))
         XCTAssertTrue(seederSource.contains("T10:00:00Z"))
         XCTAssertTrue(seederSource.contains("T14:00:00Z"))
         XCTAssertTrue(seederSource.contains("T16:00:00Z"))

@@ -34,7 +34,9 @@ final class ReleasePipelineTests: XCTestCase {
         // runner. In that state, stale baseline provenance is expected and
         // must not make this contract test fail before the blocker is read.
         if receipt["status"] as? String == "blocked" {
-            XCTAssertNotEqual(englishSourceCommit, latestProductSourceCommit)
+            // 1024 visual baselines can refresh independently while the wide
+            // runtime AX receipt stays blocked on hosted runner capacity.
+            XCTAssertNotEqual(receipt["sourceCommit"] as? String, englishSourceCommit)
         } else {
             XCTAssertEqual(englishSourceCommit, latestProductSourceCommit)
         }

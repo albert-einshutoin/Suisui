@@ -644,6 +644,10 @@ exercise_sidebar_entrypoints() {
   wait_for_project_detail_visible
   press_ax_button "sidebar-action-voice-command"
   wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
+  # Voice Command keeps a modal surface above the board toolbar. Relaunch so
+  # the following settings and keyboard contracts can reach sidebar-toggle.
+  launch_header_layout_candidate
+  wait_for_project_detail_visible
   printf "OK: sidebar Search and Voice Command opened their destination surfaces\n"
 }
 
