@@ -3,7 +3,7 @@
   "artifactRoot": "docs/release/evidence/ui-screenshots-ja",
   "baselineRoot": "docs/quality/visual-baselines-ja",
   "baselineContext": {
-    "sourceCommit": "224c46818b24edf2b0fef80bc6ae8f6e418b70ee",
+    "sourceCommit": "0f96c688050d5653621eb8b126b960495d02e5c9",
     "normalRoute": "normal",
     "locale": "ja-JP",
     "timeZoneIdentifier": "UTC",
