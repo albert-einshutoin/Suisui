@@ -248,6 +248,12 @@ class ImpactAnalysisTests(unittest.TestCase):
         self.assertEqual(plan["strategy"], "full")
         self.assertIn("deleted", plan["fallbackReason"])
 
+    def test_deleted_documentation_forces_full(self) -> None:
+        plan = self._analyze([{"status": "D", "path": "docs/quality/removed.md"}])
+
+        self.assertEqual(plan["strategy"], "full")
+        self.assertIn("deleted", plan["fallbackReason"])
+
     def test_rename_uses_destination_path_and_preserves_provenance(self) -> None:
         self._write("Sources/SuisuiCore/App/RenamedWidget.swift", "struct RenamedWidget {}\n")
         self._write(

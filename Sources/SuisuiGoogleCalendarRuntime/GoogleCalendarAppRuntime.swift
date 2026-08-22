@@ -739,6 +739,14 @@ public protocol GoogleCalendarRuntimeEventClient: Sendable {
     ) throws -> GoogleCalendarRuntimeEventRecord
 }
 
+public protocol GoogleCalendarRuntimeEventsReader: Sendable {
+    func listEvents(
+        calendarID: String,
+        timeZoneIdentifier: String,
+        in interval: DateInterval
+    ) throws -> [ExternalScheduleEvent]
+}
+
 public struct GoogleCalendarRuntimeCalendarListEntry: Equatable, Identifiable, Sendable {
     public var id: String
     public var summary: String
@@ -960,6 +968,198 @@ public struct GoogleCalendarHTTPEventClient: GoogleCalendarRuntimeEventClient {
     }
 }
 
+public struct GoogleCalendarHTTPEventsReader: GoogleCalendarRuntimeEventsReader {
+    private static let maximumPageCount = 4
+    private static let maximumInterval: TimeInterval = 31 * 24 * 60 * 60
+
+    private let tokenProvider: any GoogleCalendarBearerTokenProvider
+    private let httpClient: any SynchronousHTTPDataClient
+    private let configuration: GoogleCalendarHTTPConfiguration
+
+    public init(
+        tokenProvider: any GoogleCalendarBearerTokenProvider,
+        httpClient: any SynchronousHTTPDataClient = URLSessionSynchronousHTTPDataClient(),
+        configuration: GoogleCalendarHTTPConfiguration = GoogleCalendarHTTPConfiguration()
+    ) {
+        self.tokenProvider = tokenProvider
+        self.httpClient = httpClient
+        self.configuration = configuration
+    }
+
+    public func listEvents(
+        calendarID: String,
+        timeZoneIdentifier: String,
+        in interval: DateInterval
+    ) throws -> [ExternalScheduleEvent] {
+        let normalizedCalendarID = calendarID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedCalendarID.isEmpty == false,
+              normalizedCalendarID.count <= 512,
+              normalizedCalendarID.rangeOfCharacter(from: CharacterSet(charactersIn: "/?#")) == nil,
+              interval.duration > 0,
+              interval.duration <= Self.maximumInterval,
+              TimeZone(identifier: timeZoneIdentifier) != nil else {
+            throw GoogleCalendarRuntimeError.apiFailure("Google Calendar events.list input was invalid.")
+        }
+
+        let accessToken = try tokenProvider.bearerToken()
+        var events: [ExternalScheduleEvent] = []
+        var pageToken: String?
+        var seenPageTokens: Set<String> = []
+        var pageCount = 0
+
+        repeat {
+            pageCount += 1
+            guard pageCount <= Self.maximumPageCount else {
+                throw GoogleCalendarRuntimeError.apiFailure("Google Calendar events.list exceeded the page limit.")
+            }
+            if let pageToken, seenPageTokens.insert(pageToken).inserted == false {
+                throw GoogleCalendarRuntimeError.apiFailure("Google Calendar events.list returned a repeated page token.")
+            }
+
+            let request = try makeListEventsRequest(
+                calendarID: normalizedCalendarID,
+                timeZoneIdentifier: timeZoneIdentifier,
+                interval: interval,
+                accessToken: accessToken,
+                pageToken: pageToken
+            )
+            let (data, response) = try httpClient.data(for: request)
+            if response.statusCode == 429 || response.statusCode == 503 {
+                throw GoogleCalendarRuntimeError.rateLimited(retryAfterSeconds: Self.retryAfterSeconds(from: response))
+            }
+            guard (200..<300).contains(response.statusCode) else {
+                throw GoogleCalendarRuntimeError.apiFailure("Google Calendar events.list failed with HTTP \(response.statusCode).")
+            }
+
+            let body: GoogleCalendarEventsListResponse
+            do {
+                body = try JSONDecoder().decode(GoogleCalendarEventsListResponse.self, from: data)
+            } catch {
+                throw GoogleCalendarRuntimeError.apiFailure("Google Calendar events.list response could not be decoded.")
+            }
+            events.append(contentsOf: body.items.compactMap {
+                Self.event(from: $0, timeZoneIdentifier: timeZoneIdentifier)
+            })
+            pageToken = body.nextPageToken?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if pageToken?.isEmpty == true { pageToken = nil }
+        } while pageToken != nil
+
+        return events
+    }
+
+    public func makeListEventsRequest(
+        calendarID: String,
+        timeZoneIdentifier: String,
+        interval: DateInterval,
+        accessToken: String,
+        pageToken: String? = nil
+    ) throws -> URLRequest {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        let url = configuration.baseURL
+            .appendingPathComponent("calendars")
+            .appendingPathComponent(calendarID)
+            .appendingPathComponent("events")
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        var queryItems = [
+            URLQueryItem(name: "timeMin", value: formatter.string(from: interval.start)),
+            URLQueryItem(name: "timeMax", value: formatter.string(from: interval.end)),
+            URLQueryItem(name: "timeZone", value: timeZoneIdentifier),
+            URLQueryItem(name: "singleEvents", value: "true"),
+            URLQueryItem(name: "showDeleted", value: "false"),
+            URLQueryItem(name: "orderBy", value: "startTime"),
+            URLQueryItem(name: "maxResults", value: "250"),
+            URLQueryItem(name: "fields", value: "nextPageToken,items(id,summary,location,status,transparency,start(date,dateTime,timeZone),end(date,dateTime,timeZone))")
+        ]
+        if let pageToken, pageToken.isEmpty == false {
+            queryItems.append(URLQueryItem(name: "pageToken", value: pageToken))
+        }
+        components?.queryItems = queryItems
+        guard let requestURL = components?.url else {
+            throw GoogleCalendarRuntimeError.apiFailure("Google Calendar events.list URL could not be built.")
+        }
+        var request = URLRequest(url: requestURL, timeoutInterval: configuration.timeoutInterval)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        return request
+    }
+
+    private static func event(
+        from item: GoogleCalendarEventsListItem,
+        timeZoneIdentifier: String
+    ) -> ExternalScheduleEvent? {
+        guard item.status != "cancelled",
+              let id = item.id?.trimmingCharacters(in: .whitespacesAndNewlines),
+              id.isEmpty == false,
+              id.count <= 1_024,
+              let start = eventDate(item.start, timeZoneIdentifier: timeZoneIdentifier),
+              let end = eventDate(item.end, timeZoneIdentifier: timeZoneIdentifier),
+              end > start else {
+            return nil
+        }
+        let title = String((item.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").prefix(512))
+        let location = item.location?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ExternalScheduleEvent(
+            id: id,
+            title: title.isEmpty ? String(localized: "Busy", bundle: .main) : title,
+            startAt: start,
+            endAt: end,
+            isAllDay: item.start?.date != nil,
+            blocksAvailability: item.transparency != "transparent",
+            location: location.flatMap { $0.isEmpty ? nil : String($0.prefix(512)) },
+            allDayStartDateKey: item.start?.date,
+            allDayEndDateKey: item.end?.date
+        )
+    }
+
+    private static func eventDate(
+        _ value: GoogleCalendarEventsListDate?,
+        timeZoneIdentifier: String
+    ) -> Date? {
+        if let dateTime = value?.dateTime {
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = fractional.date(from: dateTime) { return date }
+            if let date = ISO8601DateFormatter().date(from: dateTime) { return date }
+            guard let timeZone = TimeZone(identifier: value?.timeZone ?? timeZoneIdentifier) else {
+                return nil
+            }
+            let parts = dateTime.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+            guard parts.count <= 2,
+                  parts.count == 1 || (parts[1].isEmpty == false && parts[1].count <= 9 && parts[1].allSatisfy(\.isNumber)) else {
+                return nil
+            }
+            let formatter = DateFormatter()
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = timeZone
+            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+            guard let date = formatter.date(from: String(parts[0])) else { return nil }
+            guard parts.count == 2, let fraction = Double("0.\(parts[1])") else { return date }
+            return date.addingTimeInterval(fraction)
+        }
+        guard let dateOnly = value?.date,
+              let timeZone = TimeZone(identifier: timeZoneIdentifier) else {
+            return nil
+        }
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: dateOnly)
+    }
+
+    private static func retryAfterSeconds(from response: HTTPURLResponse) -> TimeInterval? {
+        guard let value = response.value(forHTTPHeaderField: "Retry-After")?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let seconds = TimeInterval(value),
+              seconds >= 0 else {
+            return nil
+        }
+        return seconds
+    }
+}
+
 public struct GoogleCalendarHTTPEventSink: ExternalCalendarEventSink {
     private let client: any GoogleCalendarRuntimeEventClient
 
@@ -993,6 +1193,34 @@ public struct GoogleCalendarHTTPEventSink: ExternalCalendarEventSink {
 }
 
 public enum GoogleCalendarAppRuntimeFactory {
+    public static func makeEventsReader(
+        secretStore: any SecretStore,
+        metadataStore: any GoogleCalendarOAuthCredentialMetadataStore,
+        oauthClientID: String? = nil
+    ) -> GoogleCalendarRuntimeEventsReader {
+        let credentialStore = GoogleCalendarOAuthCredentialStore(
+            secretStore: secretStore,
+            metadataStore: metadataStore
+        )
+        return GoogleCalendarHTTPEventsReader(tokenProvider: GoogleCalendarOAuthBearerTokenProvider(
+            credentialStore: credentialStore,
+            requiredScopes: [GoogleCalendarRuntimeOAuthScope.eventsWrite],
+            refreshService: makeRefreshService(credentialStore: credentialStore, oauthClientID: oauthClientID)
+        ))
+    }
+
+    public static func makeEventsReader(
+        secretStore: any SecretStore,
+        connection: SQLiteConnection,
+        oauthClientID: String? = nil
+    ) -> GoogleCalendarRuntimeEventsReader {
+        makeEventsReader(
+            secretStore: secretStore,
+            metadataStore: SQLiteGoogleCalendarOAuthCredentialMetadataStore(connection: connection),
+            oauthClientID: oauthClientID
+        )
+    }
+
     public static func makeCalendarListClient(
         secretStore: any SecretStore,
         metadataStore: any GoogleCalendarOAuthCredentialMetadataStore,
@@ -1224,6 +1452,38 @@ private struct GoogleCalendarCalendarListItem: Decodable {
     var summary: String?
     var primary: Bool?
     var accessRole: String?
+}
+
+private struct GoogleCalendarEventsListResponse: Decodable {
+    var nextPageToken: String?
+    var items: [GoogleCalendarEventsListItem]
+
+    enum CodingKeys: String, CodingKey {
+        case nextPageToken
+        case items
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        nextPageToken = try container.decodeIfPresent(String.self, forKey: .nextPageToken)
+        items = try container.decodeIfPresent([GoogleCalendarEventsListItem].self, forKey: .items) ?? []
+    }
+}
+
+private struct GoogleCalendarEventsListItem: Decodable {
+    var id: String?
+    var summary: String?
+    var location: String?
+    var status: String?
+    var transparency: String?
+    var start: GoogleCalendarEventsListDate?
+    var end: GoogleCalendarEventsListDate?
+}
+
+private struct GoogleCalendarEventsListDate: Decodable {
+    var date: String?
+    var dateTime: String?
+    var timeZone: String?
 }
 
 private final class LockedResultBox: @unchecked Sendable {

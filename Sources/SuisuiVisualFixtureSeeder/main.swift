@@ -1396,12 +1396,26 @@ private func seedCaptureFixtures(
     dayFormatter.timeZone = calendar.timeZone
     dayFormatter.dateFormat = "yyyy-MM-dd"
     guard let tomorrowInstant = calendar.date(byAdding: .day, value: 1, to: referenceInstant),
-          let yesterdayInstant = calendar.date(byAdding: .day, value: -1, to: referenceInstant) else {
+          let yesterdayInstant = calendar.date(byAdding: .day, value: -1, to: referenceInstant),
+          let threeDaysAgoInstant = calendar.date(byAdding: .day, value: -3, to: referenceInstant),
+          let fiveDaysAgoInstant = calendar.date(byAdding: .day, value: -5, to: referenceInstant) else {
         throw SeederError.invalidCaptureFixture("reference instant could not produce relative dates")
     }
     let today = dayFormatter.string(from: referenceInstant)
     let tomorrow = dayFormatter.string(from: tomorrowInstant)
-    let yesterday = ISO8601DateFormatter().string(from: yesterdayInstant)
+    let yesterdayDay = dayFormatter.string(from: yesterdayInstant)
+    let isoFormatter = ISO8601DateFormatter()
+    let yesterday = isoFormatter.string(from: yesterdayInstant)
+    let todayCompleted = isoFormatter.string(from: referenceInstant)
+    let threeDaysAgoCompleted = isoFormatter.string(from: threeDaysAgoInstant)
+    let fiveDaysAgoCompleted = isoFormatter.string(from: fiveDaysAgoInstant)
+    let todayMorning = "\(today)T10:00:00Z"
+    let todayLateMorning = "\(today)T11:00:00Z"
+    let todayAfternoon = "\(today)T14:00:00Z"
+    let todayEvening = "\(today)T16:00:00Z"
+    let todayEarly = "\(today)T09:00:00Z"
+    let tomorrowMorning = "\(tomorrow)T11:00:00Z"
+    let tomorrowAfternoon = "\(tomorrow)T13:00:00Z"
 
     return try connection.transaction {
         try connection.execute(
@@ -1499,9 +1513,90 @@ private func seedCaptureFixtures(
                 "Document remaining release blockers",
                 "blocked",
                 "Keep signing, notarization, and manual accessibility gates visible.",
-                .null,
+                .text(today),
                 .null,
                 "medium"
+            ),
+            (
+                projectIDValue,
+                "Submit weekly status",
+                "planned",
+                "Distinct overdue task so Today can show blocker + overdue + high chips.",
+                .text(yesterdayDay),
+                .null,
+                "medium"
+            ),
+            (
+                projectIDValue,
+                "Stakeholder sync",
+                "planned",
+                "Timed meeting block for schedule evidence density.",
+                .text(todayMorning),
+                .null,
+                "high"
+            ),
+            (
+                projectIDValue,
+                "Focus polish: AX paths",
+                "in_progress",
+                "Timed focus block for schedule evidence density.",
+                .text(todayAfternoon),
+                .null,
+                "high"
+            ),
+            (
+                projectIDValue,
+                "Launch readout rehearsal",
+                "planned",
+                "Timed follow-up for the next evidence day.",
+                .text(tomorrowMorning),
+                .null,
+                "medium"
+            ),
+            (
+                projectIDValue,
+                "Design workshop",
+                "planned",
+                "Friday morning timed block for schedule density.",
+                .text(todayEarly),
+                .null,
+                "medium"
+            ),
+            (
+                projectIDValue,
+                "Spec review session",
+                "planned",
+                "Friday late-morning timed block for schedule density.",
+                .text(todayLateMorning),
+                .null,
+                "medium"
+            ),
+            (
+                projectIDValue,
+                "Report drafting block",
+                "planned",
+                "Saturday timed block for multi-day schedule density.",
+                .text(tomorrowAfternoon),
+                .null,
+                "low"
+            ),
+            (
+                projectIDValue,
+                "Invoice prep focus",
+                "planned",
+                "Friday afternoon companion block beside Focus polish.",
+                .text("\(today)T15:00:00Z"),
+                .null,
+                "medium"
+            ),
+            (
+                projectIDValue,
+                "Team reminder buffer",
+                "planned",
+                "Friday evening timed block beside Stakeholder sync.",
+                .text(todayEvening),
+                .null,
+                "low"
             ),
             (
                 inboxProjectIDValue,
@@ -1628,6 +1723,42 @@ private func seedCaptureFixtures(
                 .text(tomorrow),
                 .text(yesterday),
                 "medium"
+            ),
+            (
+                completedProjectIDValue,
+                "Done desk sample: today",
+                "completed",
+                "Today completion densifies the Done history list.",
+                .text(today),
+                .text(todayCompleted),
+                "high"
+            ),
+            (
+                completedProjectIDValue,
+                "Done desk sample: focus wrap-up",
+                "completed",
+                "Second today completion keeps the Today section multi-row.",
+                .text(today),
+                .text(todayCompleted),
+                "medium"
+            ),
+            (
+                completedProjectIDValue,
+                "Done desk sample: last week",
+                "completed",
+                "Past-week completion densifies Last 7 days grouping.",
+                .text(yesterdayDay),
+                .text(threeDaysAgoCompleted),
+                "medium"
+            ),
+            (
+                completedProjectIDValue,
+                "Done desk sample: earlier week",
+                "completed",
+                "Additional past-week completion for Done desk density.",
+                .text(yesterdayDay),
+                .text(fiveDaysAgoCompleted),
+                "low"
             )
         ]
         for fixture in taskFixtures {
@@ -1809,6 +1940,45 @@ private func seedCaptureFixtures(
     }
 }
 
+private func seedDoneExecutionReceipts(referenceInstant: Date) throws {
+    // Receipt JSON lives under the isolated capture HOME Application Support so
+    // Done can show secret-free digest rows without writing Calendar or prompts.
+    let receiptsDirectory = try SuisuiAppDatabaseLocation.applicationSupportDirectoryURL(createDirectory: true)
+        .appendingPathComponent("ExecutionReceipts", isDirectory: true)
+    try? FileManager.default.removeItem(at: receiptsDirectory)
+    let store = try FileExecutionReceiptStore(directoryURL: receiptsDirectory)
+    let earlier = referenceInstant.addingTimeInterval(-3_600)
+    let later = referenceInstant.addingTimeInterval(-900)
+    try store.save(
+        ExecutionReceipt(
+            id: "ui-evidence-receipt-calendar",
+            runID: "ui-evidence-run-calendar",
+            createdAt: earlier,
+            startedAt: earlier,
+            finishedAt: earlier.addingTimeInterval(12),
+            status: .succeeded,
+            inputPreview: "Local schedule draft apply for evidence",
+            outputSummary: "Registered schedule to calendar",
+            primaryToolName: ActionTool.calendarCreateWorkBlock.rawValue,
+            visibleSurfaces: [.doneList, .auditLog]
+        )
+    )
+    try store.save(
+        ExecutionReceipt(
+            id: "ui-evidence-receipt-markdown",
+            runID: "ui-evidence-run-markdown",
+            createdAt: later,
+            startedAt: later,
+            finishedAt: later.addingTimeInterval(8),
+            status: .succeeded,
+            inputPreview: "Local markdown deliverable for evidence",
+            outputSummary: "Created Markdown note",
+            primaryToolName: ActionTool.taskUpdate.rawValue,
+            visibleSurfaces: [.doneList, .auditLog]
+        )
+    )
+}
+
 private func run(options: SeederOptions) throws {
     let preparedDatabase = try options.prepareDatabaseFile()
     let connection = try SQLiteConnection(
@@ -1844,6 +2014,9 @@ private func run(options: SeederOptions) throws {
 
     for item in [waiting] + waitingDensityItems + [approved, failed] {
         try store.save(item)
+    }
+    if options.captureReferenceInstant != nil {
+        try seedDoneExecutionReceipts(referenceInstant: options.captureReferenceInstant!)
     }
     try options.validatePreparedDatabase(preparedDatabase)
 

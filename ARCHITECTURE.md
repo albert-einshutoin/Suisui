@@ -17,6 +17,7 @@ before execution を維持する。例外と現行の所有範囲は
 | 変更 | 先に確認する正本 | 最低限の裏付け |
 | --- | --- | --- |
 | SwiftUI、AppKit、導線、AX | `docs/adr/0009-synchronous-ui-mutation-policy.md`、`docs/quality/ui-done-criteria.md` | 該当する UI done gate |
+| コックピット幅・split / stack | `docs/architecture/cockpit-layout.md`、`CockpitLayoutPolicy` | `CockpitLayoutPolicyTests` + 該当デスクの source 契約 |
 | 永続化・main thread・SQLite | `docs/architecture/main-thread-database-plan.md`、ADR 0012 | 関連テストと security gate |
 | 外部接続、同期、provider | `docs/architecture/suisui-paid-platform-assessment.md`、`docs/release/privacy-security.md` | approval / credential 境界のテスト |
 | 既存判断の変更 | `docs/adr/` | ADR を更新または追加して理由を残す |

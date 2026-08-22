@@ -52,7 +52,10 @@ struct MenuBarPanel: View {
 
             Spacer()
 
-            SettingsLink {
+            Button {
+                openWindow(id: "project-board")
+                sceneCoordinator.requestOpen(route: .settings)
+            } label: {
                 Label("Settings", systemImage: "gearshape")
                     .labelStyle(.iconOnly)
             }
@@ -145,7 +148,8 @@ struct MenuBarPanel: View {
             }
 
             Button {
-                openWindow(id: "voice-capture")
+                openWindow(id: "project-board")
+                SuisuiInAppVoiceNavigation.requestOpen()
             } label: {
                 Label("Voice Command", systemImage: "mic")
                     .frame(maxWidth: .infinity)

@@ -489,6 +489,165 @@ final class GoogleCalendarAppRuntimeTests: XCTestCase {
         XCTAssertEqual(httpClient.requests.count, 1)
     }
 
+    func testHTTPEventsReaderListsBoundedTimedAndAllDayEvents() throws {
+        let httpClient = GoogleCalendarRecordingHTTPDataClient(
+            responseBody: """
+            {
+              "items": [
+                {
+                  "id": "timed-event",
+                  "summary": "Interview",
+                  "location": "Meeting room A",
+                  "status": "confirmed",
+                  "start": { "dateTime": "2026-08-18T10:00:00+09:00" },
+                  "end": { "dateTime": "2026-08-18T11:00:00+09:00" }
+                },
+                {
+                  "id": "all-day-event",
+                  "summary": "Company holiday",
+                  "status": "confirmed",
+                  "start": { "date": "2026-08-19" },
+                  "end": { "date": "2026-08-20" }
+                }
+              ]
+            }
+            """.data(using: .utf8)!,
+            statusCode: 200
+        )
+        let reader = GoogleCalendarHTTPEventsReader(
+            tokenProvider: StaticGoogleCalendarBearerTokenProvider(token: "calendar-access-token"),
+            httpClient: httpClient,
+            configuration: GoogleCalendarHTTPConfiguration(baseURL: URL(string: "https://www.googleapis.com/calendar/v3")!)
+        )
+        let interval = DateInterval(
+            start: ISO8601DateFormatter().date(from: "2026-08-17T00:00:00Z")!,
+            end: ISO8601DateFormatter().date(from: "2026-08-24T00:00:00Z")!
+        )
+
+        let events = try reader.listEvents(
+            calendarID: "team@example.com",
+            timeZoneIdentifier: "Asia/Tokyo",
+            in: interval
+        )
+        let request = try XCTUnwrap(httpClient.requests.first)
+        let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
+        let query = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
+            item.value.map { (item.name, $0) }
+        })
+
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer calendar-access-token")
+        XCTAssertTrue(request.url?.path.hasSuffix("/calendars/team@example.com/events") == true)
+        XCTAssertEqual(query["singleEvents"], "true")
+        XCTAssertEqual(query["showDeleted"], "false")
+        XCTAssertEqual(query["orderBy"], "startTime")
+        XCTAssertEqual(query["maxResults"], "250")
+        XCTAssertEqual(query["timeZone"], "Asia/Tokyo")
+        XCTAssertNotNil(query["timeMin"])
+        XCTAssertNotNil(query["timeMax"])
+        XCTAssertEqual(events.map(\.id), ["timed-event", "all-day-event"])
+        XCTAssertEqual(events[1].allDayStartDateKey, "2026-08-19")
+        XCTAssertEqual(events[1].allDayEndDateKey, "2026-08-20")
+        XCTAssertEqual(events.map(\.isAllDay), [false, true])
+        XCTAssertEqual(events.first?.title, "Interview")
+        XCTAssertEqual(events.first?.location, "Meeting room A")
+        XCTAssertEqual(events.last?.title, "Company holiday")
+    }
+
+    func testHTTPEventsReaderPaginatesAndUsesPrivateEventFallbackTitle() throws {
+        let httpClient = GoogleCalendarRecordingHTTPDataClient(responses: [
+            (
+                #"{"nextPageToken":"page-2","items":[]}"#.data(using: .utf8)!,
+                200
+            ),
+            (
+                #"{"items":[{"id":"private-event","status":"confirmed","start":{"dateTime":"2026-08-18T01:00:00Z"},"end":{"dateTime":"2026-08-18T02:00:00Z"}}]}"#.data(using: .utf8)!,
+                200
+            )
+        ])
+        let reader = GoogleCalendarHTTPEventsReader(
+            tokenProvider: StaticGoogleCalendarBearerTokenProvider(token: "calendar-access-token"),
+            httpClient: httpClient
+        )
+
+        let events = try reader.listEvents(
+            calendarID: "primary",
+            timeZoneIdentifier: "UTC",
+            in: DateInterval(start: Date(timeIntervalSince1970: 0), duration: 604_800)
+        )
+
+        XCTAssertEqual(httpClient.requests.count, 2)
+        XCTAssertTrue(httpClient.requests[1].url?.absoluteString.contains("pageToken=page-2") == true)
+        XCTAssertEqual(events.first?.title, "Busy")
+    }
+
+    func testHTTPEventsReaderInterpretsOffsetlessDateTimeInEventTimezone() throws {
+        let httpClient = GoogleCalendarRecordingHTTPDataClient(
+            responseBody: #"{"items":[{"id":"floating","summary":"Focus","status":"confirmed","start":{"dateTime":"2026-08-18T10:00:00","timeZone":"Asia/Tokyo"},"end":{"dateTime":"2026-08-18T11:00:00","timeZone":"Asia/Tokyo"}}]}"#.data(using: .utf8)!,
+            statusCode: 200
+        )
+        let reader = GoogleCalendarHTTPEventsReader(
+            tokenProvider: StaticGoogleCalendarBearerTokenProvider(token: "calendar-access-token"),
+            httpClient: httpClient
+        )
+
+        let events = try reader.listEvents(
+            calendarID: "primary",
+            timeZoneIdentifier: "UTC",
+            in: DateInterval(start: Date(timeIntervalSince1970: 0), duration: 604_800)
+        )
+
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(
+            events.first?.startAt,
+            ISO8601DateFormatter().date(from: "2026-08-18T01:00:00Z")
+        )
+    }
+
+    func testHTTPEventsReaderInterpretsOffsetlessFractionalDateTime() throws {
+        let httpClient = GoogleCalendarRecordingHTTPDataClient(
+            responseBody: #"{"items":[{"id":"fractional","summary":"Focus","status":"confirmed","start":{"dateTime":"2026-08-18T10:00:00.123","timeZone":"Asia/Tokyo"},"end":{"dateTime":"2026-08-18T11:00:00.5","timeZone":"Asia/Tokyo"}}]}"#.data(using: .utf8)!,
+            statusCode: 200
+        )
+        let reader = GoogleCalendarHTTPEventsReader(
+            tokenProvider: StaticGoogleCalendarBearerTokenProvider(token: "calendar-access-token"),
+            httpClient: httpClient
+        )
+
+        let event = try XCTUnwrap(reader.listEvents(
+            calendarID: "primary",
+            timeZoneIdentifier: "UTC",
+            in: DateInterval(start: Date(timeIntervalSince1970: 0), duration: 604_800)
+        ).first)
+        let expected = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-08-18T01:00:00Z"))
+
+        XCTAssertEqual(event.startAt.timeIntervalSince(expected), 0.123, accuracy: 0.001)
+    }
+
+    func testHTTPEventsReaderReportsRateLimitWithoutLeakingResponseBody() throws {
+        let httpClient = GoogleCalendarRecordingHTTPDataClient(
+            responseBody: #"{"error":{"message":"private-event-title"}}"#.data(using: .utf8)!,
+            statusCode: 429,
+            headers: ["Retry-After": "30"]
+        )
+        let reader = GoogleCalendarHTTPEventsReader(
+            tokenProvider: StaticGoogleCalendarBearerTokenProvider(token: "calendar-access-token"),
+            httpClient: httpClient
+        )
+
+        XCTAssertThrowsError(try reader.listEvents(
+            calendarID: "primary",
+            timeZoneIdentifier: "UTC",
+            in: DateInterval(start: Date(timeIntervalSince1970: 0), duration: 604_800)
+        )) { error in
+            guard case GoogleCalendarRuntimeError.rateLimited(let retryAfterSeconds) = error else {
+                return XCTFail("Expected rate limited error, got \(error)")
+            }
+            XCTAssertEqual(retryAfterSeconds, 30)
+            XCTAssertFalse(String(describing: error).contains("private-event-title"))
+        }
+    }
+
     func testHTTPCalendarListClientListsWritableCalendarsWithOAuthToken() throws {
         let httpClient = GoogleCalendarRecordingHTTPDataClient(
             responseBody: """

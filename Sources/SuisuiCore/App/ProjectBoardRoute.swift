@@ -29,6 +29,8 @@ public enum BoardRoute: Hashable, Sendable {
     case project(Int64)
     case smartList(String)
     case review(ReviewRoute)
+    case settings
+    case voiceCommand
 }
 
 /// A contextual focus preserved while an older route is migrated into the
@@ -114,6 +116,12 @@ public enum ProjectBoardRouteCodec {
         case "assistant-queue", "review:assistant-queue":
             route = .review(.assistantQueue)
             focus = nil
+        case "settings":
+            route = .settings
+            focus = nil
+        case "voice-command":
+            route = .voiceCommand
+            focus = nil
         default:
             route = dynamicRoute(from: rawValue, availableProjectIDs: availableProjectIDs)
             focus = nil
@@ -144,6 +152,10 @@ public enum ProjectBoardRouteCodec {
             case .assistantQueue:
                 return "review:assistant-queue"
             }
+        case .settings:
+            return "settings"
+        case .voiceCommand:
+            return "voice-command"
         }
     }
 

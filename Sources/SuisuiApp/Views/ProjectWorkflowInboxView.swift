@@ -30,6 +30,7 @@ struct InboxWorkflowView: View {
     @State private var isQuickAddExpanded = false
     @State private var lastReviewRefreshMinute: Date?
     @FocusState private var isQuickAddFocused: Bool
+    @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
 
     init(
         viewModel: ProjectBoardViewModel,
@@ -109,50 +110,68 @@ struct InboxWorkflowView: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { timeline in
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 0) {
-                    // The wide reference keeps its title row fixed while the
-                    // tabs and list begin 10px lower; compact keeps natural flow.
-                    mainSurface(referenceContentTopPadding: 10)
-                    Divider()
-                        .padding(.vertical, 18)
-                    InboxTriageRail(
-                        task: viewModel.selectedTask,
-                        viewModel: viewModel,
-                        memoDraft: $voiceMemoDraft,
-                        memoCaptureID: $voiceMemoCaptureID,
-                        voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail",
-                        fillsAvailableHeight: true
-                    )
-                        .frame(minWidth: 340, idealWidth: 400, maxWidth: 420)
-                        .padding(.top, -12)
-                        .padding(.bottom, 18)
-                        .padding(.trailing, 30)
-                }
-                // The wide and compact branches contain AppKit-backed controls.
-                // Distinct identities prevent SwiftUI from reusing their native
-                // frames when a live resize moves the triage rail across columns.
-                .id("inbox-wide-workflow")
-
-                ScrollView(.vertical) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        mainSurface(referenceContentTopPadding: 0)
-                        InboxTriageRail(
-                            task: viewModel.selectedTask,
-                            viewModel: viewModel,
-                            memoDraft: $voiceMemoDraft,
-                            memoCaptureID: $voiceMemoCaptureID,
-                            voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail",
-                            fillsAvailableHeight: false
-                        )
-                            .padding(.horizontal, 18)
-                            .padding(.bottom, 18)
+            GeometryReader { proxy in
+                let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: proxy.size.width, authoritativeContentWidth: authoritativeContentWidth)
+                let isWide = CockpitSplitLayout.presentsSplitRail(
+                    measuredWidth: proxy.size.width,
+                    authoritativeContentWidth: authoritativeContentWidth
+                )
+                let railWidth = CockpitSplitLayout.railWidth(for: .inbox, contentWidth: layoutWidth)
+                Group {
+                    if isWide {
+                        VStack(alignment: .leading, spacing: 14) {
+                            inboxHeader(referenceContentTopPadding: 10)
+                                .padding(.horizontal, 18)
+                                .padding(.top, -12)
+                            HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
+                                inboxTaskList()
+                                    .padding(.leading, 18)
+                                    .cockpitSplitPrimaryColumn()
+                                InboxTriageRail(
+                                    task: viewModel.selectedTask,
+                                    viewModel: viewModel,
+                                    memoDraft: $voiceMemoDraft,
+                                    memoCaptureID: $voiceMemoCaptureID,
+                                    voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail",
+                                    fillsAvailableHeight: true
+                                )
+                                .cockpitSplitSecondaryRail(width: railWidth)
+                                .frame(maxHeight: .infinity, alignment: .topLeading)
+                                .padding(.trailing, 18)
+                                .padding(.bottom, 18)
+                            }
+                            .frame(
+                                width: layoutWidth,
+                                height: max(proxy.size.height - 14, 1),
+                                alignment: .topLeading
+                            )
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        // Distinct identities prevent SwiftUI from reusing AppKit-backed
+                        // frames when a live resize moves the triage rail across columns.
+                        .id("inbox-wide-workflow")
+                    } else {
+                        ScrollView(.vertical) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                mainSurface(referenceContentTopPadding: 0)
+                                InboxTriageRail(
+                                    task: viewModel.selectedTask,
+                                    viewModel: viewModel,
+                                    memoDraft: $voiceMemoDraft,
+                                    memoCaptureID: $voiceMemoCaptureID,
+                                    voiceDetailAccessibilityIdentifier: "inbox-voice-intake-detail",
+                                    fillsAvailableHeight: false
+                                )
+                                .padding(.horizontal, 18)
+                                .padding(.bottom, 18)
+                            }
+                        }
+                        .defaultScrollAnchor(.top)
+                        .scrollIndicators(.visible)
+                        .id("inbox-compact-workflow")
+                        .accessibilityIdentifier("inbox-compact-workflow-scroll")
                     }
                 }
-                .defaultScrollAnchor(.top)
-                .scrollIndicators(.visible)
-                .id("inbox-compact-workflow")
-                .accessibilityIdentifier("inbox-compact-workflow-scroll")
             }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inbox-workflow")
@@ -191,6 +210,13 @@ struct InboxWorkflowView: View {
     }
 
     private func synchronizeSelection(with visibleTaskIDs: [Int64]) {
+        if ProjectBoardTaskSelectionPersistence.environmentSuppressesInboxAutoSelection,
+           ProjectBoardTaskSelectionPersistence.environmentOverrideTaskID == nil {
+            if viewModel.selectedTaskID != nil {
+                viewModel.selectedTaskID = nil
+            }
+            return
+        }
         let visibleSelectionID = inboxVisibleSelectionID(
             current: viewModel.selectedTaskID,
             visibleTaskIDs: visibleTaskIDs
@@ -203,28 +229,36 @@ struct InboxWorkflowView: View {
 
     private func mainSurface(referenceContentTopPadding: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            InboxReferenceHeader(
-                sortOrder: $sortOrder,
-                viewModel: viewModel,
-                referenceFilter: $referenceFilter,
-                showUnprocessedOnly: $showUnprocessedOnly,
-                referenceContentTopPadding: referenceContentTopPadding
-            )
-            InboxReferenceTaskList(
-                tasks: tasks,
-                viewModel: viewModel,
-                referenceDate: Date(),
-                onSelectTask: selectInboxTask,
-                quickTitle: $quickTitle,
-                isQuickAddExpanded: $isQuickAddExpanded,
-                isQuickAddFocused: $isQuickAddFocused,
-                addInboxTask: addInboxTask
-            )
+            inboxHeader(referenceContentTopPadding: referenceContentTopPadding)
+            inboxTaskList()
         }
         .padding(.horizontal, 18)
         .padding(.top, -12)
         .padding(.bottom, 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func inboxHeader(referenceContentTopPadding: CGFloat) -> some View {
+        InboxReferenceHeader(
+            sortOrder: $sortOrder,
+            viewModel: viewModel,
+            referenceFilter: $referenceFilter,
+            showUnprocessedOnly: $showUnprocessedOnly,
+            referenceContentTopPadding: referenceContentTopPadding
+        )
+    }
+
+    private func inboxTaskList() -> some View {
+        InboxReferenceTaskList(
+            tasks: tasks,
+            viewModel: viewModel,
+            referenceDate: Date(),
+            onSelectTask: selectInboxTask,
+            quickTitle: $quickTitle,
+            isQuickAddExpanded: $isQuickAddExpanded,
+            isQuickAddFocused: $isQuickAddFocused,
+            addInboxTask: addInboxTask
+        )
     }
 
     private func addInboxTask() {
@@ -279,7 +313,7 @@ private struct InboxReferenceHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("Inbox")
                     .font(.system(size: 28, weight: .bold))
 
@@ -327,7 +361,7 @@ private struct InboxReferenceHeader: View {
                 .padding(.bottom, referenceContentTopPadding)
 
             HStack(alignment: .center, spacing: 8) {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     ForEach(InboxReferenceFilter.allCases) { filter in
                         Button {
                             referenceFilter = filter
@@ -335,9 +369,9 @@ private struct InboxReferenceHeader: View {
                             Text(filterTitle(filter))
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(referenceFilter == filter ? .white : .primary)
-                                .padding(.horizontal, 13)
-                                .padding(.vertical, 8)
-                                .frame(minHeight: 36)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .frame(minHeight: 32)
                                 .background(
                                     referenceFilter == filter ? Color.accentColor : Color.clear,
                                     in: RoundedRectangle(cornerRadius: 10)
@@ -764,7 +798,7 @@ private struct InboxActionPanel: View {
     @State private var showsAdvancedVoiceMetadata = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             InboxSelectedItemContext(
                 task: task,
                 viewModel: viewModel,
@@ -860,9 +894,9 @@ private struct InboxActionPanel: View {
                 capture: viewModel.selectedInboxCaptureRecords.first
             )
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 18)
-        .padding(.bottom, 30)
+        .padding(.horizontal, 14)
+        .padding(.top, 14)
+        .padding(.bottom, 24)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(accessibilityIdentifier)
         .accessibilityLabel("Inbox classification actions")
@@ -1141,7 +1175,7 @@ private struct InboxSelectedItemContext: View {
                         .keyboardShortcut("4", modifiers: [.command, .control])
                         .accessibilityIdentifier("inbox-action-review-later-menu")
                         if !viewModel.selectedInboxCaptureRecords.isEmpty {
-                            Button("Show AI Interpretation and Note", systemImage: "sparkles") {
+                            Button("Show Note", systemImage: "note.text") {
                                 onShowAdvancedVoiceMetadata()
                             }
                         }
@@ -1269,12 +1303,6 @@ private struct InboxVoiceIntakeDetail: View {
     var body: some View {
         if let capture = captures.first {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .center, spacing: 8) {
-                    Text("Voice Memo")
-                        .font(.headline)
-                    Spacer(minLength: 8)
-                }
-
                 voicePlayback(capture)
 
                 HStack(spacing: 8) {
@@ -1316,16 +1344,16 @@ private struct InboxVoiceIntakeDetail: View {
                     .accessibilityValue(transcriptReviewText(for: capture))
                 .accessibilityIdentifier("inbox-voice-transcript")
 
-                if showsAdvancedMetadata {
-                    DisclosureGroup("AI Interpretation", isExpanded: .constant(true)) {
-                        detailSection(
-                            title: "Interpretation",
-                            value: interpretationReviewText(for: capture),
-                            systemImage: interpretationSystemImage(for: capture)
-                        )
-                        .accessibilityIdentifier("inbox-voice-interpretation")
-                    }
+                // Keep interpretation on the desk with transcript so sample
+                // understanding density is visible without a More-menu hop.
+                detailSection(
+                    title: "Interpretation",
+                    value: interpretationReviewText(for: capture),
+                    systemImage: interpretationSystemImage(for: capture)
+                )
+                .accessibilityIdentifier("inbox-voice-interpretation")
 
+                if showsAdvancedMetadata {
                     DisclosureGroup("Note", isExpanded: .constant(true)) {
                         memoEditor(for: capture)
                     }

@@ -88,6 +88,7 @@ extension AppRuntimeFactory {
                 missedTaskReviewStateStore: SQLiteMissedTaskReviewStateStore(connection: connection),
                 missedTaskFollowUpNotificationClient: UserNotificationsNotificationClient(),
                 externalTaskLinkStore: externalTaskLinkStore,
+                externalScheduleEventSource: makeGoogleCalendarScheduleEventSource(connection: connection),
                 initialGoogleCalendarSyncStatus: googleCalendarSyncStatus,
                 googleCalendarSyncFactory: {
                     guard isGoogleCalendarRuntimeEnabled() else {

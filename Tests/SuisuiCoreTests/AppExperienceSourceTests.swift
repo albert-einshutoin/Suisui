@@ -27,7 +27,8 @@ final class AppExperienceSourceTests: XCTestCase {
     func testSettingsWindowSupportsHostedCompactHeight() throws {
         let source = try readPackageFile("Sources/SuisuiApp/Views/SettingsView.swift")
 
-        XCTAssertTrue(source.contains(".frame(width: 680, height: 584)"))
+        XCTAssertTrue(source.contains(".frame(width: presentation == .window ? 680 : nil, height: presentation == .window ? 584 : nil)"))
+        XCTAssertTrue(source.contains("case board"))
     }
 
     func testProjectBoardSidebarMatchesApprovedTodaySampleStructure() throws {
@@ -61,7 +62,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let searchStart = try XCTUnwrap(sidebarSource.range(of: "Button(action: onOpenSearch)"))
         let searchEnd = try XCTUnwrap(
             sidebarSource.range(
-                of: "ScrollView {",
+                of: "VStack(alignment: .leading, spacing: 1) {",
                 range: searchStart.lowerBound..<sidebarSource.endIndex
             )
         )
@@ -69,16 +70,20 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(searchButton.contains(".padding(.horizontal, 10)"))
         XCTAssertTrue(
             searchButton.contains(
-                ".frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36, alignment: .leading)"
+                ".frame(maxWidth: .infinity, minHeight: 32, maxHeight: 32, alignment: .leading)"
             )
         )
         XCTAssertTrue(
             searchButton.contains(
-                ".background(.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))"
+                ".suisuiLiquidGlassControlSurface(cornerRadius: 12)"
             )
         )
-        XCTAssertTrue(searchButton.contains(".stroke(Color.secondary.opacity(0.22), lineWidth: 1)"))
         XCTAssertTrue(searchButton.contains(".contentShape(Rectangle())"))
+        XCTAssertFalse(sidebarSource.contains("ScrollView {"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-destination-completed"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-action-voice-command"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-action-settings"))
+        XCTAssertTrue(sidebarSource.contains(".layoutPriority(1)"))
 
         let quickActionStart = try XCTUnwrap(sidebarSource.range(of: "private func quickAction("))
         let quickActionEnd = try XCTUnwrap(
@@ -102,6 +107,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(sidebarSource.contains("sidebar-quick-add-task"))
         XCTAssertTrue(sidebarSource.contains("sidebar-quick-add-by-voice"))
         XCTAssertTrue(sidebarSource.contains("sidebar-quick-block-time"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-quick-import-tasks"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-profile"))
         XCTAssertFalse(sidebarSource.contains("sidebar-destination-review"))
     }
 
@@ -113,7 +120,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let searchStart = try XCTUnwrap(sidebarSource.range(of: "Button(action: onOpenSearch)"))
         let searchEnd = try XCTUnwrap(
             sidebarSource.range(
-                of: "ScrollView {",
+                of: "VStack(alignment: .leading, spacing: 1) {",
                 range: searchStart.lowerBound..<sidebarSource.endIndex
             )
         )
@@ -166,9 +173,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("schedule: sidebarMetrics.scheduleCount"))
         XCTAssertTrue(boardSource.contains("completed: sidebarMetrics.doneCount"))
         XCTAssertTrue(boardSource.contains("onOpenSearch: { isCommandPaletteVisible = true }"))
-        XCTAssertTrue(boardSource.contains("onOpenSettings: { openSettings() }"))
         XCTAssertTrue(boardSource.contains("onAddTask: beginInboxQuickAddFromSidebar"))
         XCTAssertTrue(boardSource.contains("onBlockTime: prepareScheduleDraftFromSidebar"))
+        XCTAssertTrue(boardSource.contains("onImportTasks: { isImportingTaskInterop = true }"))
         XCTAssertTrue(boardSource.contains("private func prepareScheduleDraftFromSidebar()"))
         XCTAssertFalse(sidebarSource.contains("review: Int?"))
         XCTAssertFalse(
@@ -258,7 +265,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let search = try sourceBlock(
             in: sidebar,
             from: "Button(action: onOpenSearch)",
-            to: "ScrollView {"
+            to: "VStack(alignment: .leading, spacing: 1) {"
         )
         let root = try sourceBlock(
             in: sidebar,
@@ -268,11 +275,6 @@ final class AppExperienceSourceTests: XCTestCase {
         let destinationRow = try sourceBlock(
             in: sidebar,
             from: "private func destinationSidebarRow(",
-            to: "private func utilitySidebarRow("
-        )
-        let utilityRow = try sourceBlock(
-            in: sidebar,
-            from: "private func utilitySidebarRow(",
             to: "private func sidebarRowButton("
         )
         let sidebarRow = try sourceBlock(
@@ -285,15 +287,10 @@ final class AppExperienceSourceTests: XCTestCase {
             from: "private func quickAction(",
             to: "private func perform"
         )
-        let hintHelpers = try sourceBlock(
-            in: sidebar,
-            from: "private func utilityAccessibilityHintKey(",
-            to: "private func accessibilityIdentifier("
-        )
         let countValue = try sourceBlock(
             in: sidebar,
             from: "private func countAccessibilityValue(",
-            to: "private func utilityAccessibilityHintKey("
+            to: "private func accessibilityHintKey("
         )
         let brandText = try sourceBlock(
             in: brand,
@@ -347,15 +344,8 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertEqual(sidebar.components(separatedBy: "\"Opens this section.\"").count - 1, 1)
         XCTAssertFalse(destinationRow.contains("Navigate work or open a quick action."))
-        XCTAssertFalse(utilityRow.contains(".accessibilityAddTraits"))
-        XCTAssertTrue(
-            utilityRow.contains(
-                "if let hintKey = utilityAccessibilityHintKey(for: item.behavior)"
-            )
-        )
-        XCTAssertTrue(utilityRow.contains("hintKey: hintKey"))
-        XCTAssertTrue(hintHelpers.contains(") -> String?"))
-        XCTAssertTrue(hintHelpers.contains("case .route:\n            nil"))
+        XCTAssertTrue(sidebar.contains("case .route(let destination):"))
+        XCTAssertTrue(sidebar.contains("route = destination"))
         XCTAssertFalse(sidebar.contains("preconditionFailure"))
         XCTAssertFalse(sidebarRow.contains(".accessibilityAddTraits"))
         XCTAssertEqual(sidebar.components(separatedBy: ".accessibilityAddTraits").count - 1, 1)
@@ -385,11 +375,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(quickAction.contains(".help(LocalizedStringKey(accessibilityHintKey(for: action)))"))
         XCTAssertFalse(quickAction.contains(".accessibilityAddTraits"))
         XCTAssertTrue(sidebar.contains("Text(LocalizedStringKey(\"Quick Actions\"))"))
-        XCTAssertTrue(sidebar.contains(".stroke(Color.secondary.opacity(0.18), lineWidth: 1)"))
+        XCTAssertTrue(sidebar.contains(".suisuiLiquidGlassControlSurface(cornerRadius: 12)"))
 
         XCTAssertTrue(
-            hintHelpers.contains(
+            sidebar.contains(
                 "case .blockTime:\n            \"Creates a local schedule draft without writing Calendar.\""
+            )
+        )
+        XCTAssertTrue(
+            sidebar.contains(
+                "case .importTasks:\n            \"Imports tasks from a local JSON file.\""
             )
         )
         for mapping in [
@@ -462,15 +457,15 @@ final class AppExperienceSourceTests: XCTestCase {
         let store = try XCTUnwrap(
             helper.range(of: "SuisuiVoiceConversationScopeBridge.store(")
         )
-        let openWindow = try XCTUnwrap(
-            helper.range(of: "VoiceWindowActivationCoordinator.shared.activateExistingWindowOrRequestOpen()")
+        let navigate = try XCTUnwrap(
+            helper.range(of: "navigateWithinScene(to: .voiceCommand)")
         )
-        XCTAssertLessThan(store.lowerBound, openWindow.lowerBound)
+        XCTAssertLessThan(store.lowerBound, navigate.lowerBound)
         XCTAssertTrue(
             helper.contains("name: .suisuiVoiceConversationScopeRequested")
         )
         XCTAssertTrue(helper.contains("NotificationCenter.default.post("))
-        XCTAssertTrue(
+        XCTAssertFalse(
             sidebarCall.contains("onOpenVoiceCommand: openVoiceCommandFromBoardContext")
         )
         XCTAssertTrue(
@@ -480,7 +475,7 @@ final class AppExperienceSourceTests: XCTestCase {
             boardSource.components(
                 separatedBy: "onOpenVoiceCommand: openVoiceCommandFromBoardContext"
             ).count - 1,
-            1
+            0
         )
         XCTAssertEqual(
             boardSource.components(
@@ -877,13 +872,12 @@ final class AppExperienceSourceTests: XCTestCase {
         let source = try readAppShellSource()
 
         XCTAssertTrue(source.contains("WindowGroup(\"Suisui\", id: \"project-board\")"))
-        XCTAssertTrue(source.contains("VoiceCaptureWindowRootView()"))
+        XCTAssertTrue(source.contains("VoiceCaptureWorkspaceHost()"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"voice-capture-loading\")"))
-        XCTAssertTrue(source.contains("SettingsWindowRootView("))
-        XCTAssertFalse(source.contains("Window(\"Voice Command\", id: \"voice-capture\") {\n            VoiceCaptureView(viewModel: AppRuntimeFactory.makeVoiceCaptureViewModel())"))
-        let boardWindow = try XCTUnwrap(source.range(of: "WindowGroup(\"Suisui\", id: \"project-board\")"))
-        let voiceWindow = try XCTUnwrap(source.range(of: "Window(\"Voice Command\", id: \"voice-capture\")"))
-        XCTAssertLessThan(boardWindow.lowerBound, voiceWindow.lowerBound)
+        XCTAssertTrue(source.contains("SuisuiSettingsWorkspace("))
+        XCTAssertFalse(source.contains("SettingsWindowRootView("))
+        XCTAssertFalse(source.contains("VoiceCaptureWindowRootView("))
+        XCTAssertFalse(source.contains("Window(\"Voice Command\", id: \"voice-capture\")"))
     }
 
     func testRecordFlowDoesNotInjectCannedPhaseOneTranscript() throws {
@@ -1533,6 +1527,27 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-task-list\")"))
     }
 
+    func testProjectsPortfolioDensifiesCardsAndSummaryRailWithoutFakeProposals() throws {
+        let boardDetailSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardDetailViews.swift")
+
+        XCTAssertTrue(boardDetailSource.contains("projects-portfolio-card-milestone"))
+        XCTAssertTrue(boardDetailSource.contains("nextMilestoneTitle"))
+        XCTAssertTrue(boardDetailSource.contains("projects-portfolio-summary-priority-tasks"))
+        XCTAssertTrue(boardDetailSource.contains("projects-portfolio-summary-proposal"))
+        XCTAssertTrue(boardDetailSource.contains("projects-portfolio-summary-artifacts"))
+        XCTAssertTrue(boardDetailSource.contains("No linked artifacts yet."))
+        XCTAssertTrue(boardDetailSource.contains("priorityTaskTitles"))
+        XCTAssertTrue(boardDetailSource.contains("proposalTitle"))
+        XCTAssertTrue(boardDetailSource.contains("projects-portfolio-global-proposal"))
+        XCTAssertTrue(boardDetailSource.contains("if let globalProposalTitle"))
+        XCTAssertFalse(boardDetailSource.contains("Proプラン"))
+        XCTAssertFalse(boardDetailSource.contains("Pro Plan"))
+        // Artifacts stay framed even when empty; do not hide the whole section.
+        XCTAssertFalse(
+            boardDetailSource.contains("if !artifactTitles.isEmpty {\n                summarySection(\n                    titleKey: \"Artifacts\"")
+        )
+    }
+
     func testAppearanceSelectionIsConfiguredOnlyFromSettings() throws {
         let appSource = try readAppShellSource()
         let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
@@ -1554,7 +1569,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("Label(\"Appearance\", systemImage: \"circle.lefthalf.filled\")"))
         XCTAssertTrue(appSource.contains("appearancePreference: $appearancePreference"))
         XCTAssertTrue(appSource.contains("@Binding private var appearancePreference: SuisuiAppearancePreference"))
-        XCTAssertEqual(appSource.components(separatedBy: "@AppStorage(SuisuiAppearancePreference.storageKey)").count - 1, 1)
+        XCTAssertEqual(appSource.components(separatedBy: "@AppStorage(SuisuiAppearancePreference.storageKey)").count - 1, 2)
         XCTAssertFalse(appSource.contains(".accessibilityIdentifier(\"settings-theme-picker\")"))
         XCTAssertFalse(appSource.contains("Picker(\"Theme\", selection: $appearancePreference)"))
         XCTAssertFalse(boardSource.contains("AppearancePicker"))
@@ -1564,10 +1579,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(boardSource.contains("Section(\"Appearance\")"))
         XCTAssertFalse(boardSource.contains("Picker(\"Theme\""))
         XCTAssertFalse(boardSource.contains("Picker(\"Appearance\""))
-        XCTAssertFalse(boardSource.contains("@AppStorage(SuisuiAppearancePreference.storageKey)"))
-        XCTAssertFalse(boardSource.contains("SuisuiAppearancePreference"))
-        XCTAssertFalse(boardSource.contains("Theme"))
-        XCTAssertFalse(boardSource.contains("appearancePreference: $appearancePreference"))
+        XCTAssertTrue(boardSource.contains("SuisuiSettingsWorkspace("))
+        XCTAssertTrue(boardSource.contains("appearancePreference: $appearancePreference"))
+        XCTAssertTrue(boardSource.contains("@AppStorage(SuisuiAppearancePreference.storageKey)"))
+        let settingsWorkspaceSource = try readPackageFile("Sources/SuisuiApp/Views/SettingsView.swift")
+        XCTAssertTrue(settingsWorkspaceSource.contains("presentation: .board"))
     }
 
     func testLanguageSelectionSupportsJapaneseAndEnglishFromSettings() throws {
@@ -1605,7 +1621,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("private var effectiveLanguagePreference: AppLanguagePreference"))
         XCTAssertTrue(appSource.contains("AppLanguagePreference.environmentOverride ?? languagePreference"))
         XCTAssertTrue(appSource.contains(".environment(\\.locale, effectiveLanguagePreference.locale)"))
-        XCTAssertGreaterThanOrEqual(appSource.components(separatedBy: ".environment(\\.locale, effectiveLanguagePreference.locale)").count - 1, 4)
+        XCTAssertGreaterThanOrEqual(appSource.components(separatedBy: ".environment(\\.locale, effectiveLanguagePreference.locale)").count - 1, 2)
 
         XCTAssertTrue(appSource.contains("languagePreference: $languagePreference"))
         XCTAssertTrue(appSource.contains("@Binding private var languagePreference: AppLanguagePreference"))
@@ -1618,8 +1634,8 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertFalse(boardSource.contains("settings-language-picker"))
         XCTAssertFalse(boardSource.contains("Picker(\"Language\""))
-        XCTAssertFalse(boardSource.contains("AppLanguagePreference"))
-        XCTAssertFalse(boardSource.contains("@AppStorage(AppLanguagePreference.storageKey)"))
+        XCTAssertTrue(boardSource.contains("@AppStorage(AppLanguagePreference.storageKey)"))
+        XCTAssertTrue(boardSource.contains("languagePreference: $languagePreference"))
 
         XCTAssertTrue(buildScript.contains("copy_app_localizations"))
         XCTAssertTrue(buildScript.contains("Sources/SuisuiApp/Resources"))
@@ -1769,7 +1785,6 @@ final class AppExperienceSourceTests: XCTestCase {
                 // keyboard-command bridges; neither paints a ShapeStyle.
                 allowedNonvisualBackgroundMarkers: [
                     "ProjectBoardToolbarLayoutBridge(",
-                    "ProjectBoardKeyboardShortcutBridge(",
                     ".background(Button("
                 ]
             ),
@@ -1799,10 +1814,13 @@ final class AppExperienceSourceTests: XCTestCase {
             "SuisuiSurface.",
             "SuisuiTone.",
             "SuisuiBrand.",
+            "suisuiLiquidGlassCapturePanel(",
             ".background(tint.opacity(",
             ".background(background,",
             ".background(dayBackground,",
+            ".background(\n                blockAccent.opacity(",
             ".fill(heatmapColor(",
+            ".fill(blockAccent)",
             "AnyShapeStyle(.tint)"
         ]
 
@@ -1952,6 +1970,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(projectsHubSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
         XCTAssertTrue(boardDetailSource.contains("@Environment(\\.accessibilityReduceMotion) private var reduceMotion"))
         XCTAssertTrue(boardDetailSource.contains("reduceMotion ? nil : .snappy(duration: 0.16)"))
+        XCTAssertTrue(boardDetailSource.contains("GridItem(.adaptive(minimum: 220, maximum: 340), spacing: 12)"))
+        XCTAssertTrue(boardDetailSource.contains("projects-portfolio-summary-milestones"))
+        XCTAssertTrue(boardDetailSource.contains("projects-portfolio-summary-artifacts"))
         XCTAssertTrue(doneSource.contains("heatmapMarkerDiameter"))
         XCTAssertTrue(doneSource.contains("done-heatmap-legend"))
 
@@ -1975,8 +1996,8 @@ final class AppExperienceSourceTests: XCTestCase {
             "Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift"
         )
 
-        XCTAssertTrue(sidebarSource.contains("case .openSettings:"))
-        XCTAssertTrue(sidebarSource.contains("onOpenSettings()"))
+        XCTAssertTrue(sidebarSource.contains("case .settings: \"sidebar-action-settings\""))
+        XCTAssertFalse(sidebarSource.contains("onOpenSettings()"))
         XCTAssertTrue(sidebarSource.contains("\"sidebar-action-settings\""))
         XCTAssertFalse(sidebarSource.contains("SettingsLink"))
         XCTAssertFalse(sidebarSource.contains("Theme"))
@@ -2162,7 +2183,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("taskAutomationSettings: @escaping () -> TaskAutoExecutionSettings"))
         XCTAssertTrue(boardSource.contains("appSettings: @escaping () -> AppSettings"))
         XCTAssertTrue(boardSource.contains("viewModel.prepareTaskAutomationReview(settings: taskAutomationSettings())"))
-        XCTAssertTrue(boardSource.contains("does not\n                    // consume LLM budget"))
+        XCTAssertTrue(boardSource.contains("// consume LLM budget; reveal the selected task inspector"))
         XCTAssertTrue(boardSource.contains("decision.status == .readyForReview"))
         XCTAssertTrue(boardSource.contains("openTaskInspector(taskID)"))
         XCTAssertEqual(
@@ -2200,14 +2221,22 @@ final class AppExperienceSourceTests: XCTestCase {
         let automationSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectWorkflowAutomationActivityView.swift"
         )
-        let sharedReceiptSource = try readPackageFile(
+        let doneSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift"
         )
-        let workflowSource = automationSource + sharedReceiptSource
+        let workflowSource = automationSource + doneSource
         let historySource = try readPackageFile("Sources/SuisuiCore/App/ExecutionReceiptHistory.swift")
 
-        XCTAssertFalse(sharedReceiptSource.contains("viewModel.executionReceiptHistorySnapshot"))
-        XCTAssertFalse(sharedReceiptSource.contains("Recent AI Activity"))
+        // Done surfaces a compact, redacted receipt strip. Search/export stay on
+        // Automation Activity so the desk never becomes a full audit console.
+        XCTAssertTrue(doneSource.contains("viewModel.executionReceiptHistorySnapshot"))
+        XCTAssertTrue(doneSource.contains("viewModel.refreshExecutionReceiptAuditSnapshotsIfNeeded()"))
+        XCTAssertTrue(doneSource.contains(".accessibilityIdentifier(\"done-execution-receipts\")"))
+        XCTAssertTrue(doneSource.contains("Execution Receipts"))
+        XCTAssertFalse(doneSource.contains("Recent AI Activity"))
+        XCTAssertFalse(doneSource.contains("execution-receipt-search-field"))
+        XCTAssertFalse(doneSource.contains("execution-receipt-export-button"))
+        XCTAssertFalse(doneSource.contains("prepareExecutionReceiptHistoryExport"))
         XCTAssertTrue(automationSource.contains(".accessibilityIdentifier(\"automation-activity-workflow\")"))
         XCTAssertTrue(workflowSource.contains("viewModel.executionReceiptHistorySnapshot"))
         XCTAssertTrue(workflowSource.contains("viewModel.executionUsageMeterSnapshot"))
@@ -2239,6 +2268,37 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(receiptHistoryViewTail.contains(".actions"))
         XCTAssertFalse(receiptHistoryViewTail.contains("receipt.id"))
         XCTAssertFalse(receiptHistoryViewTail.contains("receipt.runID"))
+    }
+
+    func testDoneWorkflowPresentsListPrimaryDeskWithStatsAndReceiptsInRail() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift")
+        let seeder = try readPackageFile("Sources/SuisuiVisualFixtureSeeder/main.swift")
+
+        XCTAssertTrue(source.contains("private enum DoneHistoryFilter"))
+        XCTAssertTrue(source.contains("case .all: \"All\""))
+        XCTAssertTrue(source.contains("case .today: \"Today\""))
+        XCTAssertTrue(source.contains("case .thisWeek: \"This Week\""))
+        XCTAssertTrue(source.contains("case .thisMonth: \"This Month\""))
+        XCTAssertTrue(source.contains("donePrimaryColumn"))
+        XCTAssertTrue(source.contains("doneSummaryRail"))
+        XCTAssertTrue(source.contains("historyContent"))
+        XCTAssertTrue(source.contains("done-execution-receipts"))
+        // Wide desk keeps the completed list as the primary column, not a
+        // chart-first analytics dashboard stacked above history.
+        let wideStart = try XCTUnwrap(source.range(of: "if isWide"))
+        let wideEnd = try XCTUnwrap(source.range(of: "} else {", range: wideStart.upperBound..<source.endIndex))
+        let wideBody = source[wideStart.lowerBound..<wideEnd.lowerBound]
+        XCTAssertTrue(wideBody.contains("donePrimaryColumn"))
+        XCTAssertTrue(wideBody.contains("doneSummaryRail"))
+        let primaryIndex = try XCTUnwrap(wideBody.range(of: "donePrimaryColumn"))
+        let railIndex = try XCTUnwrap(wideBody.range(of: "doneSummaryRail"))
+        XCTAssertLessThan(primaryIndex.lowerBound, railIndex.lowerBound)
+
+        XCTAssertTrue(seeder.contains("Done desk sample: today"))
+        XCTAssertTrue(seeder.contains("Done desk sample: last week"))
+        XCTAssertTrue(seeder.contains("seedDoneExecutionReceipts"))
+        XCTAssertTrue(seeder.contains("Registered schedule to calendar"))
+        XCTAssertTrue(seeder.contains("Created Markdown note"))
     }
 
     func testInspectorsShowScopedAIReceiptsWithoutRawReceiptFields() throws {
@@ -2479,10 +2539,20 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertGreaterThan(toolbarStart.lowerBound, inspectorStart.lowerBound)
         XCTAssertTrue(boardSource.contains("enum ProjectBoardWindowMetrics"))
-        XCTAssertTrue(boardSource.contains("static let defaultWidth: CGFloat = 1_180"))
-        XCTAssertTrue(boardSource.contains("static let minWidth: CGFloat = 960"))
+        XCTAssertTrue(
+            boardSource.contains("static let defaultWidth: CGFloat = 1_180")
+                || boardSource.contains("static let defaultWidth = CGFloat(CockpitLayoutPolicy.defaultLaunchWindowWidth)")
+        )
+        XCTAssertTrue(
+            boardSource.contains("static let minWidth: CGFloat = 960")
+                || boardSource.contains("static let minWidth = CGFloat(CockpitLayoutPolicy.minimumWindowWidth)")
+        )
         XCTAssertTrue(boardSource.contains(".frame(\n            minHeight: ProjectBoardWindowMetrics.minHeight"))
-        XCTAssertTrue(boardSource.contains("static let minHeight: CGFloat = 572"))
+        XCTAssertTrue(
+            boardSource.contains("static let minHeight: CGFloat = 572")
+                || boardSource.contains("static let minHeight: CGFloat = 676")
+                || boardSource.contains("static let minHeight = CGFloat(")
+        )
         XCTAssertTrue(boardSource.contains("private func enforceProjectBoardWindowMinimumSize()"))
         XCTAssertTrue(boardSource.contains("window.contentMinSize = minimumContentSize"))
         XCTAssertTrue(boardSource.contains("window.frameRect("))
@@ -2812,15 +2882,13 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testMenuBarPanelHostsSettingsLinkWithoutThemeControls() throws {
-        let appSource = try readAppShellSource()
-        let panelStart = try XCTUnwrap(appSource.range(of: "struct MenuBarPanel"))
-        let panelEnd = try XCTUnwrap(appSource.range(of: "private struct SummaryRow"))
-        let panelSource = String(appSource[panelStart.lowerBound..<panelEnd.lowerBound])
+        let panelSource = try readPackageFile("Sources/SuisuiApp/Views/MenuBarPanel.swift")
 
-        XCTAssertTrue(panelSource.contains("SettingsLink"))
+        XCTAssertTrue(panelSource.contains("sceneCoordinator.requestOpen(route: .settings)"))
         XCTAssertTrue(panelSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
         XCTAssertTrue(panelSource.contains(".help(\"Open Settings\")"))
         XCTAssertTrue(panelSource.contains(".accessibilityIdentifier(\"menu-bar-settings-link\")"))
+        XCTAssertFalse(panelSource.contains("SettingsLink"))
         XCTAssertFalse(panelSource.contains("Theme"))
         XCTAssertFalse(panelSource.contains("Appearance"))
         XCTAssertFalse(panelSource.contains("SuisuiAppearancePreference"))
@@ -2950,7 +3018,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appearanceSource.contains("static var environmentOverride: SuisuiAppearancePreference?"))
         XCTAssertTrue(appearanceSource.contains("var colorScheme: ColorScheme?"))
         XCTAssertTrue(appSource.contains("@AppStorage(SuisuiAppearancePreference.storageKey)"))
-        XCTAssertEqual(appSource.components(separatedBy: "@AppStorage(SuisuiAppearancePreference.storageKey)").count - 1, 1)
+        XCTAssertEqual(appSource.components(separatedBy: "@AppStorage(SuisuiAppearancePreference.storageKey)").count - 1, 2)
         XCTAssertTrue(appSource.contains("private var effectiveAppearancePreference: SuisuiAppearancePreference"))
         XCTAssertTrue(appSource.contains("SuisuiAppearancePreference.environmentOverride ?? appearancePreference"))
         XCTAssertTrue(appSource.contains(".preferredColorScheme(effectiveAppearancePreference.colorScheme)"))
@@ -2961,7 +3029,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("appearancePreference: $appearancePreference,"))
         XCTAssertTrue(appSource.contains("@Binding private var appearancePreference: SuisuiAppearancePreference"))
         XCTAssertTrue(appSource.contains("SettingsAppearanceSection(appearancePreference: context.$appearancePreference, languagePreference: context.$languagePreference)"))
-        XCTAssertFalse(boardSource.contains("@AppStorage(SuisuiAppearancePreference.storageKey)"))
+        XCTAssertTrue(boardSource.contains("@AppStorage(SuisuiAppearancePreference.storageKey)"))
         XCTAssertFalse(boardSource.contains(".preferredColorScheme(appearancePreference.colorScheme)"))
     }
 
@@ -3168,10 +3236,10 @@ final class AppExperienceSourceTests: XCTestCase {
 
         let settingsCommand = try sourceBlock(
             in: appSource,
-            from: "CommandGroup(replacing: .appSettings)",
-            to: "Window(\"Voice Command\", id: \"voice-capture\")"
+            from: "private struct OpenBoardSettingsCommand: Commands",
+            to: "private struct SuisuiWindowCommands: Commands"
         )
-        XCTAssertTrue(settingsCommand.contains("SettingsLink"))
+        XCTAssertTrue(settingsCommand.contains("requestOpen(route: .settings)"))
         XCTAssertTrue(settingsCommand.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
 
         let addProjectButton = try sourceBlock(
@@ -3376,6 +3444,26 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("viewModel.deferSelectedTaskForLater()"))
         XCTAssertTrue(coreSource.contains("public var inboxTasks"))
         XCTAssertTrue(coreSource.contains("public func todayTasks("))
+    }
+
+    func testCockpitReviewFixesKeepTodayCalendarAndDoneContractsHonest() throws {
+        let dashboardSource = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardView.swift")
+        let calendarFactorySource = try readPackageFile("Sources/SuisuiApp/Composition/GoogleCalendarRuntimeCompositionFactory.swift")
+        let doneWorkflowSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift")
+        let boardSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+
+        XCTAssertTrue(dashboardSource.contains("today-briefing-panel"))
+        XCTAssertTrue(dashboardSource.contains("@State private var isWideReviewActionsExpanded = true"))
+        XCTAssertFalse(calendarFactorySource.contains("guard (try? credentialStore.loadMetadata()) != nil else { return nil }"))
+        XCTAssertTrue(doneWorkflowSource.contains("DoneStatTile(\n                        title: \"Projects\""))
+        XCTAssertTrue(doneWorkflowSource.contains("accessibilityTitle: \"Completed Projects\""))
+        XCTAssertTrue(doneWorkflowSource.contains("DoneCompletionHeatmapView(buckets: analytics.completionHeatmapBuckets)"))
+        // Heatmap stays above receipts so the first viewport shows the recap band.
+        let heatmapIndex = try XCTUnwrap(doneWorkflowSource.range(of: "DoneCompletionHeatmapView(buckets: analytics.completionHeatmapBuckets)"))
+        let receiptsIndex = try XCTUnwrap(doneWorkflowSource.range(of: "doneExecutionReceiptsPanel"))
+        XCTAssertLessThan(heatmapIndex.lowerBound, receiptsIndex.lowerBound)
+        XCTAssertFalse(doneWorkflowSource.contains("DoneStatTile(title: \"Total Work\""))
+        XCTAssertFalse(boardSource.contains("doneFocusHours"))
     }
 
     func testPhase12SidebarDestinationRawValuesStayBackwardCompatible() throws {
@@ -3714,7 +3802,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(coreSource.contains("$0.transcriptionStatus == .succeeded"))
         XCTAssertTrue(appSource.contains("let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)"))
         XCTAssertTrue(appSource.contains("inboxCaptureStore: inboxCaptureStore"))
-        XCTAssertTrue(appSource.contains("Window(\"Voice Command\", id: \"voice-capture\")"))
+        XCTAssertTrue(appSource.contains("VoiceCaptureWorkspaceHost("))
     }
 
     func testInboxWorkflowMatchesReferenceListAndDetailComposition() throws {
@@ -3777,6 +3865,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(
             transcript.contains(".frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)")
         )
+        // Context already owns the Voice Memo chrome; intake detail starts at playback.
+        XCTAssertFalse(transcript.contains("Text(\"Voice Memo\")"))
+        XCTAssertTrue(transcript.contains(".accessibilityIdentifier(\"inbox-voice-interpretation\")"))
+        XCTAssertFalse(
+            transcript.contains("DisclosureGroup(\"AI Interpretation\", isExpanded: .constant(true))")
+        )
         XCTAssertTrue(proposedActions.contains(".frame(height: 36)"))
         XCTAssertFalse(proposedActions.contains(".padding(.vertical, 13)"))
         XCTAssertTrue(details.contains(".frame(minHeight: 38)"))
@@ -3790,6 +3884,19 @@ final class AppExperienceSourceTests: XCTestCase {
             source.contains(".frame(maxWidth: .infinity, minHeight: 32, maxHeight: 32)")
         )
         XCTAssertTrue(source.contains(".padding(.top, 8)"))
+        let actionPanelStart = try XCTUnwrap(source.range(of: "private struct InboxActionPanel"))
+        let actionPanelEnd = try XCTUnwrap(
+            source.range(
+                of: "private struct InboxTriageActionButtonStyle",
+                range: actionPanelStart.upperBound..<source.endIndex
+            )
+        )
+        let actionPanel = String(source[actionPanelStart.lowerBound..<actionPanelEnd.lowerBound])
+        XCTAssertTrue(actionPanel.contains("VStack(alignment: .leading, spacing: 12)"))
+        XCTAssertTrue(actionPanel.contains(".padding(.horizontal, 14)"))
+        XCTAssertTrue(actionPanel.contains(".padding(.top, 14)"))
+        XCTAssertTrue(source.contains("Button(\"Show Note\""))
+        XCTAssertFalse(source.contains("Show AI Interpretation and Note"))
         XCTAssertTrue(seederSource.contains("var envelopeSeed: UInt64 = 0x5A17_C9E3"))
         XCTAssertTrue(seederSource.contains("let speechEnvelope = (0...64).map"))
         XCTAssertTrue(seederSource.contains("envelopeSeed &*= 6_364_136_223_846_793_005"))
@@ -3797,7 +3904,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(seederSource.contains("smoothedPeak += (targetPeak - smoothedPeak) * 0.35"))
         XCTAssertTrue(seederSource.contains("let easedBlend = blend * blend * (3 - 2 * blend)"))
         XCTAssertFalse(seederSource.contains("sin(progress *"))
-        XCTAssertTrue(source.contains("mainSurface(referenceContentTopPadding: 10)"))
+        XCTAssertTrue(source.contains("inboxHeader(referenceContentTopPadding: 10)"))
         XCTAssertTrue(source.contains("mainSurface(referenceContentTopPadding: 0)"))
         XCTAssertTrue(source.contains(".padding(.bottom, referenceContentTopPadding)"))
         XCTAssertTrue(source.contains("return \"waveform\""))
@@ -3806,6 +3913,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(japanese.contains("\"Inbox reference presentation metadata\" = \"山田さんからの音声メモ · 今日 10:15\";"))
         XCTAssertTrue(japanese.contains("\"Today %@ · Taro Yamada (you)\" = \"今日 %@ · 山田太郎（あなた）\";"))
         XCTAssertTrue(english.contains("\"Today %@ · Taro Yamada (you)\" = \"Today %@ · Taro Yamada (you)\";"))
+        XCTAssertTrue(english.contains("\"Convert to Task\" = \"Convert\";"))
+        XCTAssertTrue(japanese.contains("\"Convert to Task\" = \"タスクに変換\";"))
+        XCTAssertTrue(english.contains("\"Show Note\" = \"Show Note\";"))
+        XCTAssertTrue(japanese.contains("\"Show Note\" = \"メモを表示\";"))
     }
 
     func testInboxReferenceUIUsesPersistedTriageLifecycle() throws {
@@ -3831,8 +3942,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("onSelectTask: selectInboxTask"))
         XCTAssertTrue(workflowSource.contains("memoDraft: $voiceMemoDraft"))
         XCTAssertTrue(workflowSource.contains("memoCaptureID: $voiceMemoCaptureID"))
-        XCTAssertTrue(workflowSource.contains(".frame(minWidth: 340, idealWidth: 400, maxWidth: 420"))
-        XCTAssertTrue(workflowSource.contains(".padding(.trailing, 30)"))
+        XCTAssertTrue(workflowSource.contains(".cockpitSplitSecondaryRail(width: railWidth)"))
+        XCTAssertTrue(workflowSource.contains("CockpitSplitLayout.railWidth(for: .inbox"))
+        XCTAssertTrue(workflowSource.contains(".padding(.trailing, 18)"))
         XCTAssertTrue(workflowSource.contains(".frame(maxWidth: .infinity, minHeight: 84"))
 
         let overrideStart = try XCTUnwrap(boardSource.range(of: "private func applySelectedTaskOverrideIfNeeded()"))
@@ -4121,6 +4233,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("viewModel.createProjectMilestone"))
         XCTAssertTrue(source.contains("viewModel.answerProjectAssistantQuestion"))
         XCTAssertTrue(source.contains("viewModel.prepareProjectAssistantSuggestedActionForReview"))
+        XCTAssertTrue(source.contains("CockpitSplitLayout.presentsSplitRail("))
+        XCTAssertTrue(source.contains("cockpitSplitSecondaryRail(width: railWidth)"))
+        XCTAssertTrue(source.contains("project-timeline-week"))
+        XCTAssertTrue(source.contains("ProjectTimelineWeekStrip"))
+        XCTAssertTrue(source.contains("orderedMilestones"))
         XCTAssertFalse(source.contains("moveTask(id: suggestedTask.id, to: .inProgress)"))
 
         XCTAssertTrue(modelSource.contains("public struct ProjectBoardMilestone"))
@@ -4707,8 +4824,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(dashboard.contains("VisualEvidenceRuntimeContext.runtimeCalendar()"))
         XCTAssertTrue(dashboard.contains("localizedDisplayLocale()"))
         XCTAssertFalse(dashboard.contains("now: Date()"))
-        XCTAssertTrue(dashboard.contains("mainContent(dashboard: dashboard, isWide: isWide)"))
-        XCTAssertTrue(dashboard.contains("rail(dashboard: dashboard, presentsCardsHorizontally:"))
+        XCTAssertTrue(
+            dashboard.contains("mainContent(dashboard: dashboard, isWide: true, openReview: openReview)")
+                || dashboard.contains("mainContent(\n                                        dashboard: dashboard,\n                                        isWide: true,\n                                        stacksRecommendations: stacksRecommendations,\n                                        openReview: openReview\n                                    )")
+        )
+        XCTAssertTrue(
+            dashboard.contains("mainContent(dashboard: dashboard, isWide: false, openReview: openReview)")
+                || dashboard.contains("mainContent(dashboard: dashboard, isWide: false, stacksRecommendations: true, openReview: openReview)")
+        )
+        XCTAssertTrue(dashboard.contains("presentsCardsHorizontally: presentsCompactRailCardsHorizontally"))
+        XCTAssertTrue(dashboard.contains("showsSecondaryIntegrations: false"))
         XCTAssertTrue(dashboard.contains("displayName: displayName"))
         XCTAssertTrue(dashboard.contains("dailyCapacityMinutes: dailyCapacityMinutes"))
         XCTAssertTrue(todayWorkflow.contains("dashboardDisplayName: String = \"\""))
@@ -4716,19 +4841,34 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(board.contains("dashboardDisplayName: todaySettings.profileDisplayName ?? \"\""))
         XCTAssertTrue(board.contains("dashboardDailyCapacityMinutes: todaySettings.dailyWorkCapacityMinutes"))
         XCTAssertTrue(dashboard.contains("GeometryReader"))
-        XCTAssertTrue(dashboard.contains("AnyLayout"))
-        XCTAssertTrue(dashboard.contains("HStackLayout"))
-        XCTAssertTrue(dashboard.contains("VStackLayout"))
+        XCTAssertFalse(dashboard.contains("TodayDashboardAlignedRow"))
+        XCTAssertFalse(dashboard.contains("wideBoard(dashboard: dashboard, openReview: openReview)"))
+        XCTAssertTrue(dashboard.contains("accessibilityIdentifier(\"today-wide-board\")"))
+        XCTAssertTrue(dashboard.contains("presentsCardsHorizontally: false"))
+        XCTAssertTrue(dashboard.contains("showsSecondaryIntegrations: false"))
         XCTAssertTrue(dashboard.contains("compactRailCardsMinimumWidth"))
         XCTAssertTrue(dashboard.contains("presentsCompactRailCardsHorizontally"))
         XCTAssertTrue(dashboard.contains("static let twoColumnMinimumWidth = primaryMinimumWidth + railMinimumWidth + columnSpacing"))
-        XCTAssertTrue(dashboard.contains("let availableWidth = proxy.size.width - TodayDashboardLayoutMetrics.horizontalInsets"))
+        XCTAssertTrue(dashboard.contains("let proposedWidth = max(proxy.size.width, 1)"))
+        XCTAssertTrue(dashboard.contains("let boardWidth = min(layoutWidth, proposedWidth)"))
         XCTAssertTrue(dashboard.contains("static func isWide(availableWidth: CGFloat) -> Bool"))
-        XCTAssertTrue(dashboard.contains("TodayDashboardLayoutMetrics.isWide(availableWidth: availableWidth)"))
+        XCTAssertTrue(dashboard.contains("prefersContinuousRail(boardWidth:"))
+        XCTAssertFalse(dashboard.contains("prefersContinuousRail ?? measuredWide"))
+        XCTAssertTrue(dashboard.contains("resolvedPrefersContinuousRail(boardWidth:"))
+        XCTAssertTrue(dashboard.contains("cockpitSplitSecondaryRail(width:"))
+        XCTAssertTrue(dashboard.contains("let primaryWidth = max("))
+        XCTAssertTrue(dashboard.contains(".clipped()"))
+        XCTAssertTrue(board.contains("prefersContinuousRail: todayPrefersContinuousRail"))
+        XCTAssertTrue(board.contains("private var todayPrefersContinuousRail: Bool?"))
+        XCTAssertTrue(board.contains("VisualEvidenceRuntimeContext() != nil"))
+        XCTAssertTrue(todayWorkflow.contains("prefersContinuousRail: Bool? = nil"))
+        XCTAssertTrue(todayWorkflow.contains("prefersContinuousRail: prefersContinuousRail"))
         XCTAssertTrue(dashboard.contains("TodayDashboardHeaderView"))
         XCTAssertTrue(dashboard.contains("TodayDashboardRecommendationCards"))
         XCTAssertTrue(dashboard.contains("TodayDashboardTaskListView"))
         XCTAssertTrue(dashboard.contains("TodayDashboardRailView"))
+        // Wide rail stays outside the primary vertical ScrollView so it cannot clip.
+        XCTAssertTrue(dashboard.contains("Keep the rail outside the primary ScrollView"))
         XCTAssertTrue(header.contains("today-dashboard-header"))
         XCTAssertTrue(header.contains("Suisui Today: %@. %@. %@. %@. %@"))
         XCTAssertTrue(header.contains("localizedTaskCount(header.taskCount)"))
@@ -4737,6 +4877,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(cards.contains("let recommendations: [TodayRecommendation]"))
         XCTAssertTrue(cards.contains("Recommendation: %@. %@"))
         XCTAssertTrue(cards.contains("let onAction: (TodayRecommendation) -> Void"))
+        XCTAssertTrue(cards.contains("var stacksVertically: Bool = false"))
         XCTAssertTrue(cards.contains("onAction(recommendation)"))
         XCTAssertTrue(cards.contains("accessibilityHint(accessibilityHint(for: recommendation))"))
         XCTAssertTrue(cards.contains("case .startFocus:"))
@@ -4841,9 +4982,13 @@ final class AppExperienceSourceTests: XCTestCase {
         let cardModifierScope = String(dashboard[cardModifierStart..<dashboardViewStart])
 
         XCTAssertTrue(dashboard.contains("func todayDashboardCard()"))
-        XCTAssertTrue(cardModifierScope.contains(".frame(maxWidth: .infinity, alignment: .topLeading)"))
+        XCTAssertTrue(
+            cardModifierScope.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)")
+                || cardModifierScope.contains(".frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)")
+        )
         XCTAssertTrue(header.contains("Divider()"))
         XCTAssertTrue(header.contains("HStack(alignment: .firstTextBaseline"))
+        XCTAssertTrue(header.contains("TodayDashboardWeatherView(weather: weather)"))
         XCTAssertTrue(cards.contains("recommendationIcon(for:"))
         XCTAssertTrue(cards.contains("actionTitle(for:"))
         XCTAssertTrue(cards.contains(".todayDashboardCard()"))
@@ -4858,13 +5003,35 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(dashboard.contains(".padding(.top, isWide ? 124 : 0)"))
         XCTAssertTrue(taskList.contains(".frame(width: 280, alignment: .leading)"))
         XCTAssertTrue(taskList.contains("today-task-list-add"))
-        XCTAssertTrue(dashboard.contains("VStack(alignment: .leading, spacing: 32)"))
-        XCTAssertTrue(dashboard.contains("width: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth"))
-        XCTAssertTrue(rail.contains("minHeight: 228"))
-        XCTAssertTrue(focusCard.contains("minHeight: 192"))
+        XCTAssertTrue(dashboard.contains("VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.sectionSpacing)"))
+        XCTAssertTrue(dashboard.contains("width: TodayDashboardLayoutMetrics.railMinimumWidth + 18")
+            || dashboard.contains("let railSpan = TodayDashboardLayoutMetrics.railMinimumWidth + 18"))
+        XCTAssertTrue(
+            dashboard.contains("cockpitSplitPrimaryColumn()")
+                || dashboard.contains("frame(width: primaryWidth")
+        )
+        XCTAssertTrue(dashboard.contains("CockpitSplitLayout.layoutWidth("))
+        XCTAssertTrue(rail.contains("minHeight: TodayDashboardLayoutMetrics.railWidgetMinHeight"))
+        XCTAssertTrue(focusCard.contains("minHeight: TodayDashboardLayoutMetrics.railWidgetMinHeight"))
         XCTAssertTrue(rail.contains("assistantCard\n                .frame"))
         XCTAssertTrue(rail.contains("let cardWidth = presentsCardsHorizontally"))
-        XCTAssertTrue(dashboard.contains("availableWidth: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth"))
+        XCTAssertTrue(dashboard.contains("availableWidth: max(boardWidth - (TodayDashboardLayoutMetrics.horizontalInsets * 2), 1)"))
+        XCTAssertTrue(dashboard.contains("availableWidth: TodayDashboardLayoutMetrics.railMinimumWidth"))
+        XCTAssertFalse(dashboard.contains("TodayWorkloadCard(workload: dashboard.workload)"))
+        XCTAssertFalse(dashboard.contains("TodayAssistantCard("))
+        XCTAssertTrue(rail.contains("TodayWorkloadCard(workload: dashboard.workload)"))
+        XCTAssertTrue(rail.contains("TodayAssistantCard("))
+        XCTAssertTrue(dashboard.contains("today-wide-board"))
+        XCTAssertTrue(dashboard.contains(".frame(maxWidth: .infinity, alignment: .topLeading)"))
+        XCTAssertTrue(dashboard.contains("width: boardWidth"))
+        XCTAssertTrue(dashboard.contains("resolvedPrefersContinuousRail(boardWidth:"))
+        XCTAssertTrue(cards.contains("actionColor(for: recommendation)"))
+        XCTAssertTrue(cards.contains(".foregroundStyle(.white)"))
+        XCTAssertFalse(
+            cards.contains(
+                ".stroke(SuisuiBrand.soloBlue.opacity(0.28), lineWidth: 1)"
+            )
+        )
     }
 
     func testTodayWorkflowProvidesCommonQuickActionChipsAndLocalRailActions() throws {
@@ -4936,10 +5103,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(todayWorkflowScope.contains("LazyVGrid"))
         XCTAssertFalse(todayWorkflowScope.contains("GridItem(.adaptive"))
         XCTAssertTrue(todayWorkflowScope.contains("GeometryReader"))
-        XCTAssertTrue(todayWorkflowScope.contains("TodayDashboardLayoutMetrics.isWide(availableWidth: availableWidth)"))
-        XCTAssertTrue(todayWorkflowScope.contains("AnyLayout"))
-        XCTAssertTrue(todayWorkflowScope.contains("HStackLayout(alignment: .top"))
-        XCTAssertTrue(todayWorkflowScope.contains("VStackLayout(alignment: .leading"))
+        XCTAssertTrue(todayWorkflowScope.contains("prefersContinuousRail(boardWidth:"))
+        XCTAssertTrue(todayWorkflowScope.contains("resolvedPrefersContinuousRail(boardWidth:"))
+        XCTAssertTrue(todayWorkflowScope.contains("let boardWidth = min(layoutWidth, proposedWidth)"))
+        XCTAssertFalse(todayWorkflowScope.contains("TodayDashboardAlignedRow"))
+        XCTAssertTrue(todayWorkflowScope.contains("today-wide-board"))
+        XCTAssertTrue(todayWorkflowScope.contains("HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing)"))
+        XCTAssertTrue(todayWorkflowScope.contains("VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.sectionSpacing)"))
         XCTAssertTrue(todayWorkflowScope.contains("ScrollView(.vertical)"))
         XCTAssertTrue(sharedSource.contains("else if fillsAvailableHeight {\n                ScrollView {\n                    taskRows"))
         XCTAssertTrue(sharedSource.contains("} else {\n                taskRows"))
@@ -5003,9 +5173,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(sharedSource.contains("let fillsAvailableHeight: Bool"))
         XCTAssertTrue(sharedSource.contains("maxHeight: fillsAvailableHeight ? .infinity : nil"))
 
+        let compactMainContentRange =
+            workflowScope.range(of: "mainContent(dashboard: dashboard, isWide: false, openReview: openReview)")
+            ?? workflowScope.range(of: "mainContent(dashboard: dashboard, isWide: false, stacksRecommendations: true, openReview: openReview)")
         XCTAssertLessThan(
-            try XCTUnwrap(workflowScope.range(of: "mainContent(dashboard: dashboard, isWide: isWide)")).lowerBound,
-            try XCTUnwrap(workflowScope.range(of: "rail(dashboard: dashboard, presentsCardsHorizontally:")).lowerBound
+            try XCTUnwrap(compactMainContentRange).lowerBound,
+            try XCTUnwrap(workflowScope.range(of: "presentsCardsHorizontally: presentsCompactRailCardsHorizontally")).lowerBound
         )
     }
 
@@ -5099,15 +5272,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-mini-calendar-next-week\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-mini-calendar-today\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-mini-calendar-day-\\(day.dateKey)\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-mini-calendar-selected-day\")"))
-        XCTAssertTrue(workflowSource.contains(".accessibilityAddTraits(day.dateKey == selectedDay?.dateKey ? .isSelected : [])"))
+        XCTAssertTrue(workflowSource.contains("\"schedule-mini-calendar-selected-day\""))
+        XCTAssertTrue(workflowSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-grid\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-time-axis-grid\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-time-axis-slot-\\(day.dateKey)-\\(hour)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-time-axis-all-day-slot-\\(day.dateKey)\")"))
-        XCTAssertTrue(workflowSource.contains("WeeklyScheduleTimeAxisGrid(cockpit: cockpit)"))
+        XCTAssertTrue(workflowSource.contains("WeeklyScheduleTimeAxisGrid("))
         XCTAssertTrue(workflowSource.contains("WeeklyScheduleTimeAxisSlot("))
-        XCTAssertTrue(workflowSource.contains("block.startHour"))
+        XCTAssertTrue(workflowSource.contains("let startMinute = calendar.dateComponents([.minute], from: dayStart, to: item.startAt).minute ?? 0"))
+        XCTAssertTrue(workflowSource.contains("ScheduleTimelineGeometry.blockFrame("))
+        XCTAssertTrue(workflowSource.contains("viewModel.externalScheduleEvents"))
+        XCTAssertTrue(workflowSource.contains("ExternalSchedulePositionedEvent"))
+        XCTAssertTrue(workflowSource.contains("event.blocksAvailability"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-day-column-\\(day.dateKey)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-block-\\(block.id)\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-week-completion-history-\\(day.dateKey)\")"))
@@ -5155,6 +5332,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("private enum ScheduleSurfaceMode"))
         XCTAssertTrue(source.contains("case overview"))
         XCTAssertTrue(source.contains("case timeline"))
+        XCTAssertTrue(source.contains("case agenda"))
         XCTAssertTrue(source.contains("case workload"))
         XCTAssertTrue(source.contains("ScheduleSurfaceMode.visualEvidenceInitialMode()"))
         XCTAssertTrue(source.contains("SUISUI_VISUAL_EVIDENCE_SCHEDULE_MODE"))
@@ -5165,11 +5343,153 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".accessibilityAddTraits(selectedMode == mode ? .isSelected : [])"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-mode-\\(selectedMode.rawValue)\")"))
         XCTAssertTrue(source.contains("WeeklyScheduleTimelinePanel("))
-        XCTAssertTrue(source.contains("WeeklyScheduleAgendaPanel(day: scheduleReadModel.weeklyCockpit.agendaDay)"))
+        XCTAssertTrue(source.contains("ScheduleAgendaPanel("))
+        XCTAssertTrue(source.contains("selectedDayCockpit(from:"))
+        XCTAssertTrue(source.contains("ScheduleAdjustmentPanel(cockpit: cockpit, itemLimit: itemLimit ?? 2, selectDay: selectDay)"))
+        XCTAssertTrue(source.contains("ScheduleAvailabilityPanel("))
+        XCTAssertTrue(source.contains("ScheduleSuggestionsPanel("))
         XCTAssertTrue(source.contains("WeeklyScheduleReminderPanel("))
         XCTAssertEqual(source.components(separatedBy: "ScheduleMiniCalendarPanel(").count - 1, 1)
         XCTAssertFalse(source.contains("schedule-workload-previous-week"))
         XCTAssertFalse(source.contains("schedule-workload-next-week"))
+    }
+
+    func testScheduleOverviewUsesGoogleStyleWeekGridWithoutHorizontalScrolling() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowScheduleView.swift")
+
+        XCTAssertTrue(source.contains("private enum ScheduleLayoutMetrics"))
+        XCTAssertTrue(source.contains("static let hourRowHeight: CGFloat = 52"))
+        XCTAssertTrue(source.contains("static let dayHeaderHeight: CGFloat = 44"))
+        XCTAssertTrue(source.contains("static let allDayRowHeight: CGFloat = 30"))
+        XCTAssertTrue(source.contains("ScheduleOverviewCalendar("))
+        XCTAssertTrue(source.contains("static let calendarMinimumWidth: CGFloat = 360"))
+        XCTAssertTrue(
+            source.contains(".frame(minWidth: ScheduleLayoutMetrics.calendarMinimumWidth, maxWidth: .infinity)")
+                || source.contains(".frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)")
+        )
+        XCTAssertTrue(source.contains("private var dayHeaderRow: some View"))
+        XCTAssertTrue(source.contains("private func hourRow(_ hour: Int) -> some View"))
+        XCTAssertTrue(source.contains("private var initialScrollHour: Int"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-week-grid\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-week-time-axis-grid\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-current-time-line\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-adjustments\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-availability\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-suggestions\")"))
+        XCTAssertTrue(source.contains("viewModel.placeTaskInScheduleDraft("))
+        XCTAssertTrue(source.contains(".keyboardShortcut(.leftArrow, modifiers: [.command, .option])"))
+        XCTAssertTrue(source.contains(".keyboardShortcut(.rightArrow, modifiers: [.command, .option])"))
+        XCTAssertTrue(source.contains("selectDay(day)\n        } label"))
+
+        let gridStart = try XCTUnwrap(source.range(of: "private struct WeeklyScheduleTimeAxisGrid"))
+        let gridEnd = try XCTUnwrap(source.range(of: "private struct WeeklyScheduleTimeAxisSlot"))
+        let gridSource = source[gridStart.lowerBound..<gridEnd.lowerBound]
+        XCTAssertFalse(gridSource.contains("ScrollView(.horizontal"))
+    }
+
+    func testScheduleEvidenceDensifiesTimedBlocksAndKeepsProductModeVocabulary() throws {
+        let scheduleSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowScheduleView.swift")
+        let seederSource = try readPackageFile("Sources/SuisuiVisualFixtureSeeder/main.swift")
+
+        XCTAssertTrue(scheduleSource.contains("case .overview: \"Week\""))
+        XCTAssertTrue(scheduleSource.contains("case .timeline: \"Day\""))
+        XCTAssertTrue(scheduleSource.contains("case .agenda: \"Schedule\""))
+        XCTAssertTrue(scheduleSource.contains("case .workload: \"Workload\""))
+        XCTAssertFalse(scheduleSource.contains("すべて"))
+        XCTAssertFalse(scheduleSource.contains("同期済み"))
+        XCTAssertTrue(scheduleSource.contains("prepareScheduleDraftForVisualEvidenceIfNeeded"))
+        XCTAssertTrue(scheduleSource.contains("VisualEvidenceRuntimeContext() != nil"))
+        XCTAssertTrue(scheduleSource.contains("private var blockAccent: Color"))
+        XCTAssertTrue(scheduleSource.contains("SuisuiBrand.soloBlue.opacity(0.72)"))
+        XCTAssertTrue(seederSource.contains("T10:00:00Z"))
+        XCTAssertTrue(seederSource.contains("T14:00:00Z"))
+        XCTAssertTrue(seederSource.contains("T16:00:00Z"))
+        XCTAssertTrue(seederSource.contains("T09:00:00Z"))
+        XCTAssertTrue(seederSource.contains("Stakeholder sync"))
+        XCTAssertTrue(seederSource.contains("Focus polish: AX paths"))
+        XCTAssertTrue(seederSource.contains("Design workshop"))
+        XCTAssertTrue(seederSource.contains("Submit weekly status"))
+        // Overdue/blocked work keeps Needs Adjustment populated without Calendar sync badges.
+        XCTAssertTrue(seederSource.contains("\"Document remaining release blockers\""))
+        XCTAssertTrue(seederSource.contains(".text(yesterdayDay)"))
+        XCTAssertTrue(seederSource.contains(".text(today)"))
+    }
+
+    func testScheduleKeepsDaySeparatorsVisibleAndAdaptsAroundThirteenInchViewport() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowScheduleView.swift")
+
+        XCTAssertTrue(source.contains("static let standardViewportWidth = CGFloat(CockpitLayoutPolicy.splitMinimumContentWidth)"))
+        XCTAssertTrue(source.contains("static func visibleHourRowCount(for viewportHeight: CGFloat) -> Int"))
+        XCTAssertTrue(source.contains("GeometryReader { viewport in"))
+        XCTAssertTrue(source.contains("CockpitSplitLayout.presentsSplitRail("))
+        XCTAssertTrue(source.contains("CockpitLayoutPolicy.scheduleRailWidth(contentWidth:"))
+        XCTAssertTrue(source.contains("rail(itemLimit: 1)"))
+        XCTAssertTrue(source.contains("@Environment(\\.displayScale) private var displayScale"))
+        XCTAssertTrue(source.contains("private var dayColumnSeparators: some View"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-day-column-separators\")"))
+
+        let slotStart = try XCTUnwrap(source.range(of: "private struct WeeklyScheduleTimeAxisSlot"))
+        let slotSource = source[slotStart.lowerBound...]
+        XCTAssertFalse(slotSource.contains(".overlay(alignment: .trailing)"))
+    }
+
+    func testScheduleSupportsDirectCalendarManipulationWithoutBypassingReview() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowScheduleView.swift")
+
+        XCTAssertTrue(source.contains("private struct ScheduleQuickDraftSelection"))
+        XCTAssertTrue(source.contains("private struct ScheduleQuickDraftComposer"))
+        XCTAssertTrue(source.contains("DragGesture(minimumDistance: 4)"))
+        XCTAssertTrue(source.contains("dragSelectionPreview"))
+        XCTAssertTrue(source.contains("ScheduleTimelineGeometry.blockFrame("))
+        XCTAssertTrue(source.contains("ScheduleTimelineGeometry.snappedDelta("))
+        XCTAssertTrue(source.contains(".draggable(String(block.task.id))"))
+        XCTAssertTrue(source.contains(".dropDestination(for: String.self)"))
+        XCTAssertTrue(source.contains("moveBy: nil"))
+        XCTAssertTrue(source.contains("resizeBy: nil"))
+        XCTAssertTrue(source.contains("let moveBy: ((Int) -> Void)?"))
+        XCTAssertTrue(source.contains("let resizeBy: ((Int) -> Void)?"))
+        XCTAssertTrue(source.contains(".accessibilityActions"))
+        XCTAssertTrue(source.contains("viewModel.placeTaskInScheduleDraft("))
+        XCTAssertTrue(source.contains("viewModel.removeTaskFromScheduleDraft("))
+        XCTAssertTrue(source.contains("DatePicker("))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-quick-create\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-quick-draft-composer\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-availability-slot-\\(slot.id.timeIntervalSince1970)\")"))
+        XCTAssertFalse(source.contains("applyScheduleDraftToCalendar"))
+    }
+
+    func testScheduleSupportsSearchRefreshAndReadOnlyExternalEventDetails() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowScheduleView.swift")
+
+        XCTAssertTrue(source.contains("@State private var scheduleSearchText"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-search\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-refresh-external-events\")"))
+        XCTAssertTrue(source.contains("ExternalScheduleEventDetails"))
+        XCTAssertTrue(source.contains("viewModel.refreshExternalScheduleEvents(around: workloadReferenceDate, force: true)"))
+        XCTAssertTrue(source.contains(".keyboardShortcut(mode.keyboardShortcut, modifiers: [.command, .option])"))
+        XCTAssertTrue(source.contains("private var currentTimeLine: some View"))
+        XCTAssertFalse(source.contains(".keyboardShortcut(mode.keyboardShortcut, modifiers: [])"))
+        XCTAssertTrue(source.contains("private enum ScheduleContentFilter"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-content-filter\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-search-clear\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-search-empty\")"))
+        XCTAssertTrue(source.contains("formatter.setLocalizedDateFormatFromTemplate(\"j\")"))
+        XCTAssertTrue(source.contains("@FocusState private var isScheduleSearchFocused: Bool"))
+        XCTAssertTrue(source.contains(".focused($isScheduleSearchFocused)"))
+        XCTAssertTrue(source.contains(".keyboardShortcut(\"f\", modifiers: .command)"))
+        XCTAssertTrue(source.contains(".onKeyPress(.escape)"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-search-focus\")"))
+        XCTAssertTrue(source.contains("private enum ScheduleAgendaItem"))
+        XCTAssertTrue(source.contains("ScheduleTimelineGeometry.eventOccurs("))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-agenda-external-event-\\(event.id)\")"))
+    }
+
+    func testScheduleUsesFullWidthReviewHubAtWideWindowSizes() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift")
+
+        XCTAssertTrue(source.contains("if case .review(.schedule) = route"))
+        XCTAssertTrue(source.contains("return .compact"))
+        XCTAssertTrue(source.contains("presentation(for: proxy.size.width)"))
     }
 
     func testAppAndCLIShareDefaultDatabaseLocation() throws {
@@ -5286,35 +5606,33 @@ final class AppExperienceSourceTests: XCTestCase {
         let scrollView = try XCTUnwrap(voiceSource.range(of: "ScrollView", range: body.lowerBound..<voiceSource.endIndex))
         let captureZone = try XCTUnwrap(voiceSource.range(of: "captureZone", range: scrollView.upperBound..<voiceSource.endIndex))
         XCTAssertLessThan(scrollView.lowerBound, captureZone.lowerBound)
-        XCTAssertTrue(appSource.contains(".defaultSize(width: 760, height: 640)"))
-
-        let evidenceFunction = try XCTUnwrap(appSource.range(of: "private func openVoiceCommandWindowForEvidenceIfRequested()"))
-        let evidenceSource = String(appSource[evidenceFunction.lowerBound...])
-        let sizingOptions = try XCTUnwrap(evidenceSource.range(of: "hostingController.sizingOptions = []"))
-        let contentController = try XCTUnwrap(evidenceSource.range(of: "window.contentViewController = hostingController"))
-        XCTAssertLessThan(sizingOptions.lowerBound, contentController.lowerBound)
+        XCTAssertTrue(appSource.contains("openInAppVoiceCommandForEvidenceIfRequested()"))
+        XCTAssertTrue(appSource.contains("SuisuiInAppVoiceNavigation.requestOpen()"))
+        XCTAssertFalse(appSource.contains("voiceCommandEvidenceWindow"))
     }
 
-    func testSettingsEvidenceWindowOwnsItsAuditedViewport() throws {
+    func testSettingsEvidenceOpensTheInBoardWorkspace() throws {
         let appSource = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
+        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let settingsSource = try readPackageFile("Sources/SuisuiApp/Views/SettingsView.swift")
         let functionStart = try XCTUnwrap(
-            appSource.range(of: "private func openSettingsWindowForEvidenceIfRequested()")
+            appSource.range(of: "private func openInAppSettingsForEvidenceIfRequested()")
         )
         let functionEnd = try XCTUnwrap(
             appSource.range(
-                of: "private func openVoiceCommandWindowForEvidenceIfRequested()",
+                of: "private func openInAppVoiceCommandForEvidenceIfRequested()",
                 range: functionStart.upperBound..<appSource.endIndex
             )
         )
         let evidenceSource = String(appSource[functionStart.lowerBound..<functionEnd.lowerBound])
-        let sizingOptions = try XCTUnwrap(
-            evidenceSource.range(of: "hostingController.sizingOptions = []")
-        )
-        let contentController = try XCTUnwrap(
-            evidenceSource.range(of: "window.contentViewController = hostingController")
-        )
 
-        XCTAssertLessThan(sizingOptions.lowerBound, contentController.lowerBound)
+        XCTAssertTrue(evidenceSource.contains("SuisuiInAppSettingsNavigation.requestOpen()"))
+        XCTAssertTrue(evidenceSource.contains("ensureProjectBoardWindowIsVisible()"))
+        XCTAssertFalse(evidenceSource.contains("NSWindow("))
+        XCTAssertFalse(appSource.contains("settingsEvidenceWindow"))
+        XCTAssertTrue(boardSource.contains("SettingsEvidenceLaunch.shouldOpenOnLaunch"))
+        XCTAssertTrue(settingsSource.contains("SettingsEvidenceLaunch.requestedTab"))
+        XCTAssertTrue(settingsSource.contains("presentation: .board"))
     }
 
     func testReviewRuntimeDoesNotFallBackToEmptyToolRegistry() throws {
@@ -6301,7 +6619,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let appSource = try readAppShellSource()
 
         XCTAssertTrue(appSource.contains("SUISUI_OPEN_VOICE_COMMAND_ON_LAUNCH"))
-        XCTAssertTrue(appSource.contains("openVoiceCommandWindowForEvidenceIfRequested()"))
+        XCTAssertTrue(appSource.contains("openInAppVoiceCommandForEvidenceIfRequested()"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-root\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-command-input\")"))
         XCTAssertTrue(appSource.contains("VoiceCommandInputPrompt()"))
@@ -6353,7 +6671,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceViewSource.contains(".accessibilityIdentifier(\"voice-answer-retry\")"))
         XCTAssertTrue(voiceViewSource.contains("case .openSettings:"))
         XCTAssertTrue(voiceViewSource.contains("case .retryPlanGeneration:"))
-        XCTAssertTrue(voiceViewSource.contains("SettingsLink"))
+        XCTAssertTrue(voiceViewSource.contains("SuisuiInAppSettingsNavigation.requestOpen()"))
+        XCTAssertFalse(voiceViewSource.contains("SettingsLink"))
         XCTAssertTrue(voiceViewSource.contains("await viewModel.generatePlan()"))
 
         // Classification is on the typed provider error, never on message text.
@@ -6382,7 +6701,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceSource.contains(".accessibilityLabel(\"Stop Hands-free mode\")"))
         XCTAssertTrue(
             voiceSource.contains(
-                "Label(\"Voice Command\", systemImage: \"mic\")\n                    .font(.headline)\n                    .accessibilityIdentifier(\"voice-command-root\")"
+                "Label(\"Voice Command\", systemImage: \"mic\")\n                        .font(.headline)\n                        .accessibilityIdentifier(\"voice-command-root\")"
             )
         )
         XCTAssertEqual(
@@ -6394,6 +6713,19 @@ final class AppExperienceSourceTests: XCTestCase {
                 ".accessibilityIdentifier(\"voice-command-quick-command-tab\")"
             )
         )
+        XCTAssertTrue(voiceSource.contains("voice-command-understood-rail"))
+        XCTAssertTrue(voiceSource.contains("voice-command-context-rail"))
+        XCTAssertTrue(voiceSource.contains("struct VoiceListeningOrb"))
+        XCTAssertTrue(voiceSource.contains("VoiceVisualEvidenceSurface"))
+        XCTAssertTrue(voiceSource.contains("SUISUI_VISUAL_EVIDENCE_VOICE_SURFACE"))
+        XCTAssertTrue(voiceSource.contains("voice-command-listening-hero"))
+        XCTAssertTrue(voiceSource.contains("voice-command-listening-timer"))
+        XCTAssertTrue(voiceSource.contains("case conversation"))
+        XCTAssertTrue(voiceSource.contains("voice-conversation-tab"))
+        XCTAssertTrue(voiceSource.contains("voice-command-understood-action-"))
+        XCTAssertTrue(voiceSource.contains("Create preparation task"))
+        XCTAssertTrue(voiceSource.contains("voice-command-conversation-log"))
+        XCTAssertTrue(voiceSource.contains("voice-command-confirmation-chips"))
         XCTAssertTrue(
             voiceSource.contains(
                 "Label(\"Record once\", systemImage: \"waveform.badge.mic\")\n                .font(.subheadline.weight(.semibold))\n                .accessibilityIdentifier(\"voice-command-capture-zone\")"
@@ -6504,6 +6836,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(overviewSource.contains(".accessibilityLabel(localizedSettingsDisplay(group.group.title))"))
         XCTAssertTrue(overviewSource.contains("settings-readiness-row-"))
         XCTAssertTrue(overviewSource.contains("settings-readiness-action-"))
+        XCTAssertTrue(appSource.contains("settings-overview-detail-rail"))
+        XCTAssertTrue(appSource.contains("settings-ai-readiness-rail"))
+        XCTAssertTrue(appSource.contains("settings-privacy-root"))
         XCTAssertFalse(overviewSource.contains("LazyVGrid"))
     }
 
@@ -6632,6 +6967,17 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(overviewSource.contains("Section(\"Status Overview\")"))
         XCTAssertFalse(overviewSource.contains("SettingsAppearanceSection(appearancePreference: $appearancePreference, languagePreference: $languagePreference)"))
+        XCTAssertTrue(overviewSource.contains("settings-overview-detail-rail"))
+        XCTAssertTrue(overviewSource.contains("CockpitSplitLayout.presentsSplitRail("))
+        XCTAssertTrue(overviewSource.contains("overviewDetailRail"))
+        // Narrow Settings keep the readiness rail reachable by stacking under the form.
+        XCTAssertTrue(overviewSource.contains("ScrollView"))
+        XCTAssertTrue(aiSource.contains("settings-ai-readiness-rail"))
+        XCTAssertTrue(aiSource.contains("CockpitSplitLayout.presentsSplitRail("))
+        XCTAssertTrue(aiSource.contains("aiReadinessRail"))
+        XCTAssertFalse(appearanceSectionSource.contains("Save Changes"))
+        XCTAssertFalse(appearanceSource.contains("Save Changes"))
+        XCTAssertFalse(appearanceSectionSource.contains("Proプラン"))
         XCTAssertTrue(appearanceSource.contains("SettingsAppearanceSection(appearancePreference: context.$appearancePreference, languagePreference: context.$languagePreference)"))
         XCTAssertTrue(appearanceSectionSource.contains("Section(\"Appearance\")"))
         XCTAssertTrue(appearanceSectionSource.contains("Section(\"Language\")"))
@@ -7108,8 +7454,8 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardGoogleCalendarSyncRequiresDialogApprovalToken() throws {
         let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
-        let dialogStart = try XCTUnwrap(boardSource.range(of: ".confirmationDialog(\n            \"Sync due tasks to Google Calendar?\""))
-        let dialogEnd = try XCTUnwrap(boardSource.range(of: "private var isInspectorEffectivelyPresented", range: dialogStart.lowerBound..<boardSource.endIndex))
+        let dialogStart = try XCTUnwrap(boardSource.range(of: ".confirmationDialog(\n                \"Sync due tasks to Google Calendar?\""))
+        let dialogEnd = try XCTUnwrap(boardSource.range(of: "private var projectBoardLifecycleChrome", range: dialogStart.lowerBound..<boardSource.endIndex))
         let dialogSource = String(boardSource[dialogStart.lowerBound..<dialogEnd.lowerBound])
 
         XCTAssertTrue(dialogSource.contains("isPresented: $isGoogleCalendarSyncApprovalPresented"))
@@ -7338,6 +7684,16 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("capture_settings_overview"))
         XCTAssertTrue(script.contains("open_settings_appearance_tab"))
         XCTAssertTrue(script.contains("capture_settings_appearance"))
+        XCTAssertTrue(script.contains("capture_settings_ai light \"$SETTINGS_AI_LIGHT_SCREENSHOT\""))
+        XCTAssertTrue(script.contains("settings-ai-readiness-rail"))
+        XCTAssertTrue(script.contains("settings-overview-detail-rail=>"))
+        XCTAssertTrue(script.contains("SETTINGS_TAB_OVERRIDE=\"AI\""))
+        XCTAssertTrue(script.contains("capture_settings_privacy"))
+        XCTAssertTrue(script.contains("SETTINGS_TAB_OVERRIDE=\"Privacy\""))
+        XCTAssertTrue(script.contains("settings-privacy-root"))
+        XCTAssertTrue(script.contains("capture_voice_conversation_appearance"))
+        XCTAssertTrue(script.contains("VOICE_SURFACE_OVERRIDE=\"conversation\""))
+        XCTAssertTrue(script.contains("voice-conversation-workspace"))
         XCTAssertTrue(script.contains("open_mcp_settings_tab"))
         XCTAssertTrue(script.contains("capture_mcp_settings_appearance"))
         XCTAssertTrue(script.contains("SUISUI_SETTINGS_EVIDENCE_TAB=$SETTINGS_TAB_OVERRIDE"))
@@ -7359,7 +7715,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("applySelectedTaskOverrideIfNeeded()"))
         let destinationChangeStart = try XCTUnwrap(boardSource.range(of: ".onChange(of: selectedDestination)"))
         let destinationChangeEnd = try XCTUnwrap(boardSource.range(
-            of: ".fileExporter",
+            of: "private var projectBoardToolbarChrome",
             range: destinationChangeStart.upperBound..<boardSource.endIndex
         ))
         let destinationChangeSource = String(boardSource[destinationChangeStart.lowerBound..<destinationChangeEnd.lowerBound])
@@ -7447,6 +7803,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("inbox-voice-intake-detail=>Voice intake detail for $INBOX_VOICE_TITLE"))
         XCTAssertTrue(script.contains("capture_project_board_destination light inbox \"$INBOX_VOICE_LIGHT_SCREENSHOT\" \"Inbox voice detail\" \"$INBOX_VOICE_ROUTE_MARKERS\" \"$INBOX_VOICE_TASK_OVERRIDE\" \"inbox-voice-intake-detail\" \"inbox-voice-intake-detail\" \"$INBOX_VOICE_TARGET_MARKERS\""))
         XCTAssertTrue(script.contains("capture_voice_command_appearance light \"$VOICE_COMMAND_LIGHT_SCREENSHOT\""))
+        XCTAssertTrue(script.contains("capture_voice_command_listening_appearance light \"$VOICE_COMMAND_LISTENING_LIGHT_SCREENSHOT\""))
+        XCTAssertTrue(script.contains("SUISUI_VISUAL_EVIDENCE_VOICE_SURFACE=$VOICE_SURFACE_OVERRIDE"))
+        XCTAssertTrue(script.contains("voice-command-listening-hero"))
         let captureDestinationStart = try XCTUnwrap(script.range(of: "capture_project_board_destination()"))
         let captureDestinationEnd = try XCTUnwrap(script.range(
             of: "capture_voice_command_appearance()",
@@ -7512,10 +7871,10 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertTrue(helper.contains("retrying named evidence window after readiness failure"))
         XCTAssertTrue(script.contains(
-            "prepare_named_evidence_window \"Voice Command\" \"Voice Command\" \"$VOICE_COMMAND_TARGET_MARKERS\""
+            "prepare_named_evidence_window \"\" \"Voice Command\" \"$VOICE_COMMAND_TARGET_MARKERS\""
         ))
         XCTAssertTrue(script.contains(
-            "prepare_named_evidence_window \"Appearance\" \"Settings appearance\" \"settings-theme-picker=>\""
+            "prepare_named_evidence_window \"\" \"Settings appearance\" \"settings-theme-picker=>\""
         ))
     }
 
@@ -7570,8 +7929,8 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("SETTINGS_TAB_OVERRIDE=\"MCP\""))
         XCTAssertTrue(appSource.contains("SUISUI_OPEN_SETTINGS_ON_LAUNCH"))
         XCTAssertTrue(appSource.contains("SUISUI_SETTINGS_EVIDENCE_TAB"))
-        XCTAssertTrue(appSource.contains("settingsEvidenceWindow"))
-        XCTAssertTrue(appSource.contains("openSettingsWindowForEvidenceIfRequested"))
+        XCTAssertFalse(appSource.contains("settingsEvidenceWindow"))
+        XCTAssertTrue(appSource.contains("openInAppSettingsForEvidenceIfRequested"))
         XCTAssertTrue(appSource.contains("SettingsView("))
         XCTAssertTrue(script.contains("seed_capture_database"))
         XCTAssertTrue(seederSource.contains("明日のプレゼン資料を作成する"))
@@ -8125,12 +8484,12 @@ final class AppExperienceSourceTests: XCTestCase {
             "SettingsView must call the injected rerun closure"
         )
         XCTAssertTrue(
-            appSource.contains("onboardingRerunCoordinator.requestRerun()"),
-            "SettingsWindowRootView must wire the rerun request to the coordinator"
+            settingsSource.contains("OnboardingRerunCoordinator.shared.requestRerun()"),
+            "The in-board Settings workspace must wire the rerun request to the coordinator"
         )
-        XCTAssertTrue(
-            appSource.contains("OnboardingRerunCoordinator.shared.requestRerun()"),
-            "Settings evidence window must also wire the rerun request to the coordinator"
+        XCTAssertFalse(
+            appSource.contains("SettingsWindowRootView"),
+            "Settings must not keep a detached Settings scene root"
         )
     }
 
@@ -8241,7 +8600,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(featureViewModelSource.contains("public var integrationStates: TodayIntegrationStates"))
         XCTAssertTrue(featureViewModelSource.contains("board.$googleCalendarSyncStatus"))
         XCTAssertTrue(runtimeBundleSource.contains("googleCalendarSyncStatus: makeGoogleCalendarRuntimeSyncStatus(connection: connection)"))
-        XCTAssertTrue(workflowSource.contains("integrationsState: viewModel.integrationStates"))
+        XCTAssertTrue(workflowSource.contains("integrationsState: resolvedIntegrationsState"))
+        XCTAssertTrue(workflowSource.contains("viewModel.integrationStates"))
+        XCTAssertTrue(workflowSource.contains("SUISUI_VISUAL_EVIDENCE_REFERENCE_INSTANT"))
         XCTAssertTrue(appSettingsSource.contains("suisuiGoogleCalendarReadinessDidChange"))
         XCTAssertTrue(settingsSource.contains("NotificationCenter.default.post(name: .suisuiGoogleCalendarReadinessDidChange"))
         XCTAssertTrue(projectBoardCoreSource.contains("refreshGoogleCalendarSyncStatusOffMain"))
@@ -8256,7 +8617,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(boardSource.contains("makeTodayIntegrationStates"))
         XCTAssertTrue(railSource.contains("today-calendar-card"))
         XCTAssertTrue(railSource.contains("today-slack-card"))
-        XCTAssertTrue(railSource.contains("SettingsLink"))
+        XCTAssertTrue(railSource.contains("suisuiOpenBoardSettings"))
         XCTAssertTrue(railSource.contains("It does not start sync or send messages."))
         XCTAssertFalse(railSource.contains("URLSession"))
     }
@@ -8292,12 +8653,8 @@ final class AppExperienceSourceTests: XCTestCase {
             "ProjectBoardWindowRootView must consume pending rerun on appear"
         )
         XCTAssertTrue(
-            appSource.contains("if onboardingRerunCoordinator.primaryWindowID == nil"),
-            "SettingsWindowRootView must open a Project Board window when no primary is mounted"
-        )
-        XCTAssertTrue(
             appSource.contains("openWindow(id: \"project-board\")"),
-            "SettingsWindowRootView must call openWindow for the 0-window case"
+            "Settings entry points must still be able to reopen the Project Board window"
         )
     }
 

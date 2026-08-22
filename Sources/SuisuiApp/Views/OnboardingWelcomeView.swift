@@ -212,7 +212,10 @@ struct OnboardingWelcomeView: View {
                 .accessibilityIdentifier("onboarding-provider-status")
             }
 
-            SettingsLink {
+            Button {
+                openWindow(id: "project-board")
+                SuisuiInAppSettingsNavigation.requestOpen()
+            } label: {
                 Label("Open Settings", systemImage: "gearshape")
             }
             .accessibilityIdentifier("onboarding-open-settings")
@@ -238,7 +241,8 @@ struct OnboardingWelcomeView: View {
             Button {
                 if displayedPlanningState.isReady {
                     completeOnboarding()
-                    openWindow(id: "voice-capture")
+                    openWindow(id: "project-board")
+                    SuisuiInAppVoiceNavigation.requestOpen()
                 } else {
                     completeOnboarding()
                 }
@@ -251,7 +255,7 @@ struct OnboardingWelcomeView: View {
             .accessibilityIdentifier("onboarding-open-voice-command")
             .accessibilityHint(
                 displayedPlanningState.isReady
-                    ? "Finishes setup and opens the Voice Command window."
+                    ? "Finishes setup and opens Voice Command."
                     : "Closes setup. You can run setup again from Settings."
             )
         }

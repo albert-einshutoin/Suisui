@@ -637,6 +637,8 @@ public final class ProjectBoardViewModel: ObservableObject {
     @Published public private(set) var scheduleDraft: ScheduleDraft?
     @Published public private(set) var scheduleApplyResult: ScheduleApplyResult?
     @Published public private(set) var googleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus
+    @Published public private(set) var externalScheduleEvents: [ExternalScheduleEvent]
+    @Published public private(set) var externalScheduleEventLoadState: ExternalScheduleEventLoadState
     @Published public private(set) var projectAssistantAnswer: ProjectAssistantAnswer?
     @Published public private(set) var projectAssistantReviewDraft: ProjectAssistantReviewDraft?
     @Published public private(set) var developmentAutomationReviewPlan: ActionPlan?
@@ -667,6 +669,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     private let missedTaskFollowUpNotificationClient: (any NotificationClient)?
     private let externalTaskLinkStore: (any ExternalTaskLinkStore)?
     private let scheduleCalendarClient: (any CalendarClient)?
+    private let externalScheduleEventSource: (any ExternalScheduleEventSource)?
     private var googleCalendarSync: (any GoogleCalendarRuntimeSyncing)?
     private let googleCalendarSyncFactory: (() -> (any GoogleCalendarRuntimeSyncing)?)?
     private let onChange: () -> Void
@@ -715,6 +718,8 @@ public final class ProjectBoardViewModel: ObservableObject {
     private var isSynchronizingFailure: Bool
     private let hasPreloadedGoogleCalendarSyncStatus: Bool
     private var googleCalendarReadinessRefreshRevision: UInt64
+    private var externalScheduleEventRefreshRevision: UInt64
+    private var externalScheduleEventInterval: DateInterval?
     private var googleCalendarReadinessNotificationObservation: AnyCancellable?
 
     public init(
@@ -728,6 +733,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         missedTaskFollowUpNotificationClient: (any NotificationClient)? = nil,
         externalTaskLinkStore: (any ExternalTaskLinkStore)? = nil,
         scheduleCalendarClient: (any CalendarClient)? = nil,
+        externalScheduleEventSource: (any ExternalScheduleEventSource)? = nil,
         googleCalendarSync: (any GoogleCalendarRuntimeSyncing)? = nil,
         initialGoogleCalendarSyncStatus: GoogleCalendarRuntimeSyncStatus? = nil,
         googleCalendarSyncFactory: (() -> (any GoogleCalendarRuntimeSyncing)?)? = nil,
@@ -746,6 +752,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.missedTaskFollowUpNotificationClient = missedTaskFollowUpNotificationClient
         self.externalTaskLinkStore = externalTaskLinkStore
         self.scheduleCalendarClient = scheduleCalendarClient
+        self.externalScheduleEventSource = externalScheduleEventSource
         self.googleCalendarSync = googleCalendarSync
         self.googleCalendarSyncFactory = googleCalendarSyncFactory
         self.readModelNow = readModelNow
@@ -769,6 +776,8 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.scheduleDraft = nil
         self.scheduleApplyResult = nil
         self.googleCalendarSyncStatus = initialGoogleCalendarSyncStatus ?? .runtimeNotConfigured
+        self.externalScheduleEvents = []
+        self.externalScheduleEventLoadState = externalScheduleEventSource == nil ? .unavailable : .loading
         self.projectAssistantAnswer = nil
         self.projectAssistantReviewDraft = nil
         self.developmentAutomationReviewPlan = nil
@@ -803,11 +812,14 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.isSynchronizingFailure = false
         self.hasPreloadedGoogleCalendarSyncStatus = initialGoogleCalendarSyncStatus != nil
         self.googleCalendarReadinessRefreshRevision = 0
+        self.externalScheduleEventRefreshRevision = 0
+        self.externalScheduleEventInterval = nil
         self.googleCalendarReadinessNotificationObservation = NotificationCenter.default
             .publisher(for: .suisuiGoogleCalendarReadinessDidChange)
             .sink { [weak self] _ in
                 Task { @MainActor [weak self] in
                     self?.refreshGoogleCalendarSyncStatusOffMain()
+                    self?.refreshExternalScheduleEvents(force: true)
                 }
             }
     }
@@ -827,6 +839,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         missedTaskFollowUpNotificationClient: (any NotificationClient)? = nil,
         externalTaskLinkStore: (any ExternalTaskLinkStore)? = nil,
         scheduleCalendarClient: (any CalendarClient)? = nil,
+        externalScheduleEventSource: (any ExternalScheduleEventSource)? = nil,
         googleCalendarSync: (any GoogleCalendarRuntimeSyncing)? = nil,
         googleCalendarSyncFactory: (() -> (any GoogleCalendarRuntimeSyncing)?)? = nil,
         readModelNow: @escaping () -> Date = { VisualEvidenceRuntimeContext.referenceDate() },
@@ -845,6 +858,7 @@ public final class ProjectBoardViewModel: ObservableObject {
             missedTaskFollowUpNotificationClient: missedTaskFollowUpNotificationClient,
             externalTaskLinkStore: externalTaskLinkStore,
             scheduleCalendarClient: scheduleCalendarClient,
+            externalScheduleEventSource: externalScheduleEventSource,
             googleCalendarSync: googleCalendarSync,
             initialGoogleCalendarSyncStatus: nil,
             googleCalendarSyncFactory: googleCalendarSyncFactory,
@@ -3970,10 +3984,58 @@ public final class ProjectBoardViewModel: ObservableObject {
 
     public func refreshScheduleReadModel() {
         rebuildScheduleReadModel(around: readModelNow(), calendar: readModelCalendarProvider())
+        refreshExternalScheduleEvents()
     }
 
     public func refreshScheduleReadModel(around referenceDate: Date, calendar: Calendar = .current) {
         rebuildScheduleReadModel(around: referenceDate, calendar: calendar)
+        refreshExternalScheduleEvents(around: referenceDate, calendar: calendar)
+    }
+
+    public func refreshExternalScheduleEvents(
+        around referenceDate: Date? = nil,
+        calendar: Calendar? = nil,
+        force: Bool = false
+    ) {
+        guard let externalScheduleEventSource else {
+            externalScheduleEvents = []
+            externalScheduleEventLoadState = .unavailable
+            externalScheduleEventInterval = nil
+            return
+        }
+        let resolvedCalendar = calendar ?? derivedReadModelCalendar
+        let resolvedDate = referenceDate ?? derivedReadModelReferenceDate ?? readModelNow()
+        guard let interval = resolvedCalendar.dateInterval(of: .weekOfYear, for: resolvedDate) else {
+            externalScheduleEvents = []
+            externalScheduleEventLoadState = .failed
+            return
+        }
+        if force == false,
+           interval == externalScheduleEventInterval,
+           (externalScheduleEventLoadState == .loaded || externalScheduleEventLoadState == .loading) {
+            return
+        }
+
+        externalScheduleEventRefreshRevision &+= 1
+        let refreshRevision = externalScheduleEventRefreshRevision
+        externalScheduleEventInterval = interval
+        externalScheduleEventLoadState = .loading
+
+        Task { @MainActor [weak self] in
+            let result = await Task.detached(priority: .utility) {
+                Result { try externalScheduleEventSource.listEvents(in: interval) }
+            }.value
+            guard let self, self.externalScheduleEventRefreshRevision == refreshRevision else { return }
+            switch result {
+            case let .success(events):
+                self.externalScheduleEvents = events.sorted { $0.startAt < $1.startAt }
+                self.externalScheduleEventLoadState = .loaded
+            case .failure:
+                // Calendar contents and provider errors remain transient and are never persisted or logged.
+                self.externalScheduleEvents = []
+                self.externalScheduleEventLoadState = .failed
+            }
+        }
     }
 
     private func rebuildDerivedReadModels(on referenceDate: Date, calendar: Calendar) {
@@ -4977,7 +5039,15 @@ public final class ProjectBoardViewModel: ObservableObject {
                 reason: String(format: String(localized: "%@ is blocking today's plan."), task.title)
             ))
         }
-        if let task = firstTask(matching: { dueDate(for: $0.dueAt, calendar: calendar).map { $0 < dayStart } == true }) {
+        // Prefer yesterday's overdue for the chip so older mid-week dues do not
+        // steal the slot from a distinct "clear overdue" action.
+        let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: dayStart) ?? dayStart
+        if let task = firstTask(matching: {
+            guard let due = dueDate(for: $0.dueAt, calendar: calendar) else { return false }
+            return due < dayStart && due >= yesterdayStart
+        }) ?? firstTask(matching: {
+            dueDate(for: $0.dueAt, calendar: calendar).map { $0 < dayStart } == true
+        }) {
             usedTaskIDs.insert(task.id)
             chips.append(TodayRecommendationChip(
                 kind: .overdue,
@@ -6203,6 +6273,99 @@ public final class ProjectBoardViewModel: ObservableObject {
         return true
     }
 
+    @discardableResult
+    public func placeTaskInScheduleDraft(
+        taskID: Int64,
+        startAt: Date,
+        endAt: Date,
+        calendar: Calendar = .current
+    ) -> Bool {
+        guard endAt > startAt else {
+            errorMessage = String(localized: "End time must be later than start time.")
+            todayCommandFeedback = errorMessage
+            return false
+        }
+        guard let task = snapshot.projects
+            .filter({ !$0.isArchived && !$0.isCompleted })
+            .flatMap(\.tasks)
+            .first(where: { $0.id == taskID && $0.status != .done }) else {
+            errorMessage = String(localized: "Select an active task before placing it on the schedule.")
+            todayCommandFeedback = errorMessage
+            return false
+        }
+
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.timeZone = calendar.timeZone
+        let labelFormatter = DateFormatter()
+        labelFormatter.calendar = calendar
+        labelFormatter.locale = Locale(identifier: "en_US_POSIX")
+        labelFormatter.timeZone = calendar.timeZone
+        labelFormatter.dateFormat = "HH:mm"
+        let block = TodayTimeBlock(
+            label: "\(labelFormatter.string(from: startAt))-\(labelFormatter.string(from: endAt))",
+            task: task,
+            startAt: isoFormatter.string(from: startAt),
+            endAt: isoFormatter.string(from: endAt)
+        )
+
+        var draft = scheduleDraft ?? ScheduleDraft(
+            timeBlocks: [],
+            unscheduledTasks: unscheduledScheduleTasks(excludingTaskIDs: [])
+        )
+        if let visibleWeek = calendar.dateInterval(of: .weekOfYear, for: startAt) {
+            draft.timeBlocks.removeAll { existing in
+                guard let rawStartAt = existing.startAt,
+                      let existingStart = isoFormatter.date(from: rawStartAt) else {
+                    return true
+                }
+                return !visibleWeek.contains(existingStart)
+            }
+        }
+        draft.timeBlocks.removeAll { $0.task.id == taskID }
+        draft.timeBlocks.append(block)
+        draft.timeBlocks.sort { lhs, rhs in
+            guard let lhsStart = lhs.startAt.flatMap({ isoFormatter.date(from: $0) }),
+                  let rhsStart = rhs.startAt.flatMap({ isoFormatter.date(from: $0) }) else {
+                return lhs.task.id < rhs.task.id
+            }
+            return lhsStart == rhsStart ? lhs.task.id < rhs.task.id : lhsStart < rhsStart
+        }
+        draft.unscheduledTasks = unscheduledScheduleTasks(
+            excludingTaskIDs: Set(draft.timeBlocks.map(\.task.id))
+        )
+        scheduleDraft = draft
+        rebuildScheduleReadModel(around: startAt, calendar: calendar)
+        scheduleApplyResult = nil
+        errorMessage = nil
+        todayCommandFeedback = String(format: String(localized: "Placed \"%@\" in the local schedule draft."), task.title)
+        return true
+    }
+
+    @discardableResult
+    public func removeTaskFromScheduleDraft(
+        taskID: Int64,
+        around referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Bool {
+        guard var draft = scheduleDraft,
+              draft.timeBlocks.contains(where: { $0.task.id == taskID }) else {
+            errorMessage = String(localized: "Task is not in the schedule draft.")
+            todayCommandFeedback = errorMessage
+            return false
+        }
+
+        draft.timeBlocks.removeAll { $0.task.id == taskID }
+        draft.unscheduledTasks = unscheduledScheduleTasks(
+            excludingTaskIDs: Set(draft.timeBlocks.map(\.task.id))
+        )
+        scheduleDraft = draft
+        rebuildScheduleReadModel(around: referenceDate, calendar: calendar)
+        scheduleApplyResult = nil
+        errorMessage = nil
+        todayCommandFeedback = String(localized: "Removed task from the local schedule draft.")
+        return true
+    }
+
     private func scheduleDraftForAddingUnscheduledTask(
         on referenceDate: Date,
         calendar: Calendar
@@ -6593,12 +6756,21 @@ public final class ProjectBoardViewModel: ObservableObject {
                 }
             }
 
+        let onTimeRate = Self.doneOnTimeRate(tasks: historyTasks, calendar: calendar)
+        let weeklyTrendBuckets = Self.doneWeeklyTrendBuckets(
+            from: completedCountsByDayStart,
+            on: referenceDate,
+            calendar: calendar
+        )
+
         return DoneAnalyticsSummary(
             completedTaskCount: historyTasks.count,
             completedProjectCount: completedProjects.count,
             completedTodayCount: completedTodayCount,
             completedThisWeekCount: completedThisWeekCount,
             streakDays: streakDays,
+            onTimeRate: onTimeRate,
+            weeklyTrendBuckets: weeklyTrendBuckets,
             completionHeatmapBuckets: completionHeatmapBuckets,
             bestWeekdaySummary: bestWeekdaySummary,
             bestHourSummary: bestHourSummary,
@@ -9583,6 +9755,54 @@ public final class ProjectBoardViewModel: ObservableObject {
             return .evening
         default:
             return .night
+        }
+    }
+
+    private static func doneOnTimeRate(tasks: [ProjectBoardTask], calendar: Calendar) -> Double? {
+        let tasksWithDue = tasks.filter { $0.dueAt != nil && $0.completedAt != nil }
+        guard !tasksWithDue.isEmpty else { return nil }
+        let onTime = tasksWithDue.filter { task in
+            guard let dueAt = task.dueAt,
+                  let dueParsed = SuisuiTimestampDisplay.parse(dueAt),
+                  let completedAt = task.completedAt,
+                  let completedDate = SuisuiTimestampDisplay.parse(completedAt)?.date else {
+                return false
+            }
+            let dueDeadline: Date
+            if dueParsed.includesTime {
+                dueDeadline = dueParsed.date
+            } else {
+                dueDeadline = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: dueParsed.date)) ?? dueParsed.date
+            }
+            return completedDate < dueDeadline
+        }
+        return Double(onTime.count) / Double(tasksWithDue.count)
+    }
+
+    private static func doneWeeklyTrendBuckets(
+        from completedCountsByDayStart: [Date: Int],
+        on referenceDate: Date,
+        calendar: Calendar
+    ) -> [DoneAnalyticsWeekBucket] {
+        guard let referenceDayStart = calendar.dateInterval(of: .day, for: referenceDate)?.start else {
+            return []
+        }
+        return (0..<4).reversed().compactMap { weekOffset -> DoneAnalyticsWeekBucket? in
+            guard let weekEnd = calendar.date(byAdding: .day, value: -(weekOffset * 7), to: referenceDayStart),
+                  let weekStart = calendar.date(byAdding: .day, value: -6, to: weekEnd) else {
+                return nil
+            }
+            let count = (0..<7).reduce(0) { total, dayOffset in
+                guard let day = calendar.date(byAdding: .day, value: dayOffset, to: weekStart) else {
+                    return total
+                }
+                return total + completedCountsByDayStart[day, default: 0]
+            }
+            let weekNumber = 4 - weekOffset
+            return DoneAnalyticsWeekBucket(
+                weekLabel: "\(weekNumber)\(String(localized: "week suffix"))",
+                completedCount: count
+            )
         }
     }
 

@@ -34,7 +34,9 @@ final class ReleasePipelineTests: XCTestCase {
         // runner. In that state, stale baseline provenance is expected and
         // must not make this contract test fail before the blocker is read.
         if receipt["status"] as? String == "blocked" {
-            XCTAssertNotEqual(englishSourceCommit, latestProductSourceCommit)
+            // 1024 visual baselines can refresh independently while the wide
+            // runtime AX receipt stays blocked on hosted runner capacity.
+            XCTAssertNotEqual(receipt["sourceCommit"] as? String, englishSourceCommit)
         } else {
             XCTAssertEqual(englishSourceCommit, latestProductSourceCommit)
         }
@@ -6798,7 +6800,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("payload_json LIKE '%\\\"requiresApproval\\\":true%'"))
         XCTAssertTrue(script.contains("status='planned' AND due_at IS NULL"))
         XCTAssertTrue(script.contains("status='planned' AND due_at='$runtime_day_key'"))
-        XCTAssertTrue(script.contains("OK: runtime schedule cockpit smoke covered overview-to-timeline navigation, unscheduled add-to-draft, and approval-gated Calendar apply"))
+        XCTAssertTrue(script.contains("OK: runtime schedule cockpit smoke covered overview-to-day-to-agenda navigation, unscheduled add-to-draft, and approval-gated Calendar apply"))
         XCTAssertFalse(script.contains(":memory:"))
         XCTAssertFalse(script.contains("not implemented yet"))
         XCTAssertFalse(script.contains("fake success"))
@@ -10176,7 +10178,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("section \"UI screenshot evidence\""))
         XCTAssertTrue(script.contains("docs/release/evidence/ui-screenshots.md"))
         XCTAssertTrue(script.contains("visual_manifest_artifact_rows"))
-        XCTAssertTrue(script.contains("EXPECTED_UI_SCREENSHOT_COUNT=39"))
+        XCTAssertTrue(script.contains("EXPECTED_UI_SCREENSHOT_COUNT=47"))
         XCTAssertTrue(script.contains("inbox-voice-light.png"))
         XCTAssertTrue(script.contains("projects-overview-light.png"))
         XCTAssertTrue(script.contains("schedule-light.png"))
@@ -10349,9 +10351,13 @@ final class ReleasePipelineTests: XCTestCase {
             "schedule-workload",
             "done",
             "settings-integrations",
+            "settings-ai",
+            "settings-privacy",
             "assistant-queue-waiting-review",
             "assistant-queue-approved",
-            "assistant-queue-failed"
+            "assistant-queue-failed",
+            "voice-command-listening",
+            "voice-conversation"
         ]
         XCTAssertEqual(screenIDs, coreSystemScreens.union(sampleDerivedScreens))
         let expectedViewports: [String: (width: Int, height: Int)] = [
@@ -10366,11 +10372,15 @@ final class ReleasePipelineTests: XCTestCase {
             "assistant-queue-waiting-review": (1_024, 676),
             "assistant-queue-approved": (1_024, 676),
             "assistant-queue-failed": (1_024, 676),
-            "settings-overview": (720, 676),
-            "settings-integrations": (720, 676),
-            "settings-appearance": (720, 676),
-            "mcp-settings": (720, 676),
-            "voice-command": (760, 640)
+            "settings-overview": (1024, 676),
+            "settings-integrations": (1024, 676),
+            "settings-appearance": (1024, 676),
+            "settings-ai": (1024, 676),
+            "settings-privacy": (1024, 676),
+            "mcp-settings": (1024, 676),
+            "voice-command": (1_024, 676),
+            "voice-command-listening": (1_024, 676),
+            "voice-conversation": (1_024, 676)
         ]
         let expectedAXTargets: [String: String] = [
             "project-board": "project-board-detail",
@@ -10387,8 +10397,12 @@ final class ReleasePipelineTests: XCTestCase {
             "settings-overview": "settings-status-overview",
             "settings-integrations": "sync-paid-value-row",
             "settings-appearance": "settings-theme-picker",
+            "settings-ai": "settings-ai-readiness-rail",
+            "settings-privacy": "settings-privacy-root",
             "mcp-settings": "mcp-paid-execution-boundary-row",
-            "voice-command": "voice-command-root"
+            "voice-command": "voice-command-root",
+            "voice-command-listening": "voice-command-listening-hero",
+            "voice-conversation": "voice-conversation-workspace"
         ]
 
         for screen in screens {
@@ -10447,10 +10461,10 @@ final class ReleasePipelineTests: XCTestCase {
             JSONSerialization.jsonObject(with: todayReceiptData) as? [String: Any]
         )
         if todayReceipt["status"] as? String == "blocked" {
-            // The retained visual evidence is intentionally stale while the
-            // required 1448x1086 capture runner is unavailable. Its blocked
-            // receipt is the release gate; never retag the manifest here.
-            XCTAssertNotEqual(baselineSourceCommit, currentEvidenceSourceCommit)
+            // The today-sidebar wide-viewport receipt remains a separate unsupported
+            // proof (1448×1086). The 1024 visual baseline set is the live contract and
+            // must stay aligned with the current evidence-source commit.
+            XCTAssertEqual(baselineSourceCommit, currentEvidenceSourceCommit)
         } else {
             XCTAssertEqual(baselineSourceCommit, currentEvidenceSourceCommit)
         }
@@ -10546,7 +10560,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("Light/Dark/System visual baseline manifest"))
         XCTAssertTrue(
             captureScript.contains(
-                "prepare_named_evidence_window \"Voice Command\" \"Voice Command\" \"$VOICE_COMMAND_TARGET_MARKERS\" \"voice-command-quick-command-tab\""
+                "prepare_named_evidence_window \"\" \"Voice Command\" \"$VOICE_COMMAND_TARGET_MARKERS\" \"voice-command-quick-command-tab\""
             )
         )
 
@@ -10771,6 +10785,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(seeder.contains("'$ROOT_DIR'"))
         XCTAssertTrue(captureScript.contains("capture_settings_overview system"))
         XCTAssertTrue(captureScript.contains("capture_settings_appearance system"))
+        XCTAssertTrue(captureScript.contains("capture_settings_ai light \"$SETTINGS_AI_LIGHT_SCREENSHOT\""))
         XCTAssertTrue(captureScript.contains("capture_mcp_settings_appearance system"))
         XCTAssertTrue(captureScript.contains("VOICE_COMMAND_SYSTEM_SCREENSHOT"))
         XCTAssertTrue(captureScript.contains("\"$AX_RESIZE_WINDOW_HELPER_BINARY\""))
@@ -14219,8 +14234,8 @@ final class ReleasePipelineTests: XCTestCase {
           "sourceManifest": "docs/quality/visual-baseline-manifest.json",
           "screenshotDirectory": "docs/release/evidence/ui-screenshots",
           "mainViewport": "999x999",
-          "settingsViewport": "720x676",
-          "voiceCommandViewport": "760x640",
+          "settingsViewport": "1024x676",
+          "voiceCommandViewport": "1024x676",
           "comparison": "bytewise"
         }
         """.write(
@@ -14251,8 +14266,8 @@ final class ReleasePipelineTests: XCTestCase {
           "sourceManifest": "docs/quality/visual-baseline-manifest-ja.json",
           "screenshotDirectory": "docs/release/evidence/ui-screenshots-ja",
           "mainViewport": "999x999",
-          "settingsViewport": "720x676",
-          "voiceCommandViewport": "760x640",
+          "settingsViewport": "1024x676",
+          "voiceCommandViewport": "1024x676",
           "comparison": "bytewise"
         }
         """.write(
@@ -14331,8 +14346,8 @@ final class ReleasePipelineTests: XCTestCase {
           "sourceManifest": "docs/quality/visual-baseline-manifest.json",
           "screenshotDirectory": "docs/release/evidence/ui-screenshots",
           "mainViewport": "1024x676",
-          "settingsViewport": "720x676",
-          "voiceCommandViewport": "760x640",
+          "settingsViewport": "1024x676",
+          "voiceCommandViewport": "1024x676",
           "comparison": "semantic"
         }
         """.write(
@@ -14363,8 +14378,8 @@ final class ReleasePipelineTests: XCTestCase {
           "sourceManifest": "docs/quality/visual-baseline-manifest-ja.json",
           "screenshotDirectory": "docs/release/evidence/ui-screenshots-ja",
           "mainViewport": "1024x676",
-          "settingsViewport": "720x676",
-          "voiceCommandViewport": "760x640",
+          "settingsViewport": "1024x676",
+          "voiceCommandViewport": "1024x676",
           "comparison": "semantic"
         }
         """.write(
@@ -14419,7 +14434,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(script.contains("docs/quality/visual-baseline-manifest.json"))
         XCTAssertTrue(script.contains("docs/quality/visual-baseline-manifest-ja.json"))
-        XCTAssertTrue(script.contains("EXPECTED_UI_SCREENSHOT_COUNT=39"))
+        XCTAssertTrue(script.contains("EXPECTED_UI_SCREENSHOT_COUNT=47"))
         XCTAssertTrue(script.contains("visual_manifest_artifact_rows"))
         XCTAssertTrue(script.contains("unexpected screenshot coverage"))
         XCTAssertTrue(script.contains("screenshot dimensions do not match manifest viewport"))
@@ -17978,7 +17993,7 @@ final class ReleasePipelineTests: XCTestCase {
             }
             try require(control["role"] as? String == "AXButton", "\(identifier).role")
             try require((control["actions"] as? [String])?.contains("AXPress") == true, "\(identifier).actions")
-            let expectedStatus = identifier == "sidebar-action-settings" ? "passed_with_retry" : "passed"
+            let expectedStatus = "passed"
             try require(control["status"] as? String == expectedStatus, "\(identifier).status")
             let frame = try dictionary(control["frame"], "\(identifier).frame")
             try require(frame["visible"] as? Bool == true, "\(identifier).frame.visible")
@@ -18015,13 +18030,13 @@ final class ReleasePipelineTests: XCTestCase {
 
         let voice = try outcome(for: "sidebar-action-voice-command")
         try require(voice["marker"] as? String == "voice-command-quick-command-tab", "voice.marker")
-        try require(voice["window"] as? String == "Voice Command", "voice.window")
-        try require(voice["routeUnchanged"] as? String == "projects", "voice.routeUnchanged")
+        try require(voice["selectedDestination"] as? String == "voice-command", "voice.selection")
+        try require(voice["window"] == nil, "voice.window")
 
         let settings = try outcome(for: "sidebar-action-settings")
-        try require(settings["window"] as? String == "Overview", "settings.window")
-        try require(settings["routeUnchanged"] as? String == "projects", "settings.routeUnchanged")
-        try require(settings["boundedRetrySucceeded"] as? Bool == true, "settings.boundedRetrySucceeded")
+        try require(settings["marker"] as? String == "settings-status-overview", "settings.marker")
+        try require(settings["selectedDestination"] as? String == "settings", "settings.selection")
+        try require(settings["window"] == nil, "settings.window")
 
         let addTask = try outcome(for: "sidebar-quick-add-task")
         try require(addTask["marker"] as? String == "inbox-workflow", "addTask.marker")
@@ -18030,8 +18045,8 @@ final class ReleasePipelineTests: XCTestCase {
 
         let addByVoice = try outcome(for: "sidebar-quick-add-by-voice")
         try require(addByVoice["marker"] as? String == "voice-command-quick-command-tab", "addByVoice.marker")
-        try require(addByVoice["window"] as? String == "Voice Command", "addByVoice.window")
-        try require(addByVoice["routeUnchanged"] as? String == "projects", "addByVoice.routeUnchanged")
+        try require(addByVoice["selectedDestination"] as? String == "voice-command", "addByVoice.selection")
+        try require(addByVoice["window"] == nil, "addByVoice.window")
 
         let blockTime = try outcome(for: "sidebar-quick-block-time")
         try require(blockTime["marker"] as? String == "schedule-workflow", "blockTime.marker")

@@ -369,6 +369,42 @@ final class TodayFeatureViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testScheduleRefreshLoadsExternalEventsOffMainForVisibleWeek() async throws {
+        let event = ExternalScheduleEvent(
+            id: "google-event-1",
+            title: "Interview",
+            startAt: ISO8601DateFormatter().date(from: "2026-08-18T01:00:00Z")!,
+            endAt: ISO8601DateFormatter().date(from: "2026-08-18T02:00:00Z")!,
+            isAllDay: false
+        )
+        let source = RecordingExternalScheduleEventSource(events: [event])
+        let board = ProjectBoardViewModel(
+            store: InMemoryProjectBoardStore(),
+            externalScheduleEventSource: source
+        )
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let publication = expectation(description: "External Calendar events published")
+
+        board.refreshScheduleReadModel(
+            around: ISO8601DateFormatter().date(from: "2026-08-18T12:00:00Z")!,
+            calendar: calendar
+        )
+        Task { @MainActor in
+            for _ in 0..<100 where board.externalScheduleEventLoadState != .loaded {
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+            if board.externalScheduleEventLoadState == .loaded { publication.fulfill() }
+        }
+
+        await fulfillment(of: [publication], timeout: 1)
+        let interval = try XCTUnwrap(source.intervals.first)
+        XCTAssertEqual(board.externalScheduleEvents, [event])
+        XCTAssertEqual(interval.duration, 7 * 24 * 60 * 60)
+        XCTAssertTrue(interval.contains(event.startAt))
+    }
+
+    @MainActor
     func testRecommendationFocusStartsSessionAndRequiresExplicitReplacement() throws {
         let board = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         board.load()
@@ -418,6 +454,29 @@ private struct StaticGoogleCalendarSync: GoogleCalendarRuntimeSyncing {
 
     func syncDueTasks(context: ToolExecutionContext) throws -> GoogleCalendarTaskSyncResult {
         GoogleCalendarTaskSyncResult()
+    }
+}
+
+private final class RecordingExternalScheduleEventSource: ExternalScheduleEventSource, @unchecked Sendable {
+    private let lock = NSLock()
+    private let events: [ExternalScheduleEvent]
+    private var recordedIntervals: [DateInterval] = []
+
+    init(events: [ExternalScheduleEvent]) {
+        self.events = events
+    }
+
+    var intervals: [DateInterval] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedIntervals
+    }
+
+    func listEvents(in interval: DateInterval) throws -> [ExternalScheduleEvent] {
+        lock.lock()
+        recordedIntervals.append(interval)
+        lock.unlock()
+        return events
     }
 }
 

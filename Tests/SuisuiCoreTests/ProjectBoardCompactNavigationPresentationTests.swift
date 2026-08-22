@@ -73,6 +73,7 @@ final class ProjectBoardCompactNavigationPresentationTests: XCTestCase {
             .primary(.projects),
             .project(42),
             .smartList("custom"),
+            .settings,
         ]
 
         for route in fallbackRoutes {
@@ -227,6 +228,7 @@ final class ProjectBoardCompactNavigationPresentationTests: XCTestCase {
             .review(.completed),
             .review(.automationActivity),
             .review(.assistantQueue),
+            .settings,
         ]
 
         for route in fallbackRoutes {

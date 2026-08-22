@@ -3,14 +3,14 @@
   "artifactRoot": "docs/release/evidence/ui-screenshots-ja",
   "baselineRoot": "docs/quality/visual-baselines-ja",
   "baselineContext": {
-    "sourceCommit": "036f3996f824706c323c6694b6038daaba6d1a90",
+    "sourceCommit": "0f96c688050d5653621eb8b126b960495d02e5c9",
     "normalRoute": "normal",
     "locale": "ja-JP",
     "timeZoneIdentifier": "UTC",
     "referenceInstant": "2026-07-10T12:00:00Z"
   },
   "rasterComparison": {
-    "perChannelDeltaThreshold": 0.10,
+    "perChannelDeltaThreshold": 0.1,
     "maximumChangedPixelRatio": 0.005,
     "maximumMeanAbsoluteError": 0.01
   },
@@ -29,7 +29,11 @@
     {
       "id": "project-board",
       "title": "Project Board",
-      "themes": ["light", "dark", "system"],
+      "themes": [
+        "light",
+        "dark",
+        "system"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -38,8 +42,9 @@
       "axTargetIdentifier": "project-board-detail",
       "requiredVisibleTextLines": [
         "project board to task card to",
-        "進行中 高",
-        "7月10日"
+        "\u9032\u884c\u4e2d",
+        "\u9ad8",
+        "7\u670810\u65e5"
       ],
       "artifacts": {
         "light": "project-board-light.png",
@@ -50,7 +55,11 @@
     {
       "id": "inbox",
       "title": "Inbox",
-      "themes": ["light", "dark", "system"],
+      "themes": [
+        "light",
+        "dark",
+        "system"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -66,7 +75,11 @@
     {
       "id": "today",
       "title": "Today",
-      "themes": ["light", "dark", "system"],
+      "themes": [
+        "light",
+        "dark",
+        "system"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -82,7 +95,10 @@
     {
       "id": "inbox-voice",
       "title": "Inbox Voice",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -97,7 +113,10 @@
     {
       "id": "projects-overview",
       "title": "Projects Overview",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -112,7 +131,10 @@
     {
       "id": "schedule",
       "title": "Schedule",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -127,7 +149,10 @@
     {
       "id": "schedule-workload",
       "title": "Schedule Workload",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -142,7 +167,10 @@
     {
       "id": "done",
       "title": "Done",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -157,7 +185,10 @@
     {
       "id": "assistant-queue-waiting-review",
       "title": "Assistant Queue Waiting Review",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -172,7 +203,10 @@
     {
       "id": "assistant-queue-approved",
       "title": "Assistant Queue Approved",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -187,7 +221,10 @@
     {
       "id": "assistant-queue-failed",
       "title": "Assistant Queue Failed",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "viewport": {
         "width": 1024,
         "height": 676
@@ -202,9 +239,13 @@
     {
       "id": "settings-overview",
       "title": "Settings Overview",
-      "themes": ["light", "dark", "system"],
+      "themes": [
+        "light",
+        "dark",
+        "system"
+      ],
       "viewport": {
-        "width": 720,
+        "width": 1024,
         "height": 676
       },
       "axFrameAudit": true,
@@ -218,9 +259,12 @@
     {
       "id": "settings-integrations",
       "title": "Settings Integrations",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "viewport": {
-        "width": 720,
+        "width": 1024,
         "height": 676
       },
       "axFrameAudit": true,
@@ -233,9 +277,13 @@
     {
       "id": "settings-appearance",
       "title": "Settings Appearance",
-      "themes": ["light", "dark", "system"],
+      "themes": [
+        "light",
+        "dark",
+        "system"
+      ],
       "viewport": {
-        "width": 720,
+        "width": 1024,
         "height": 676
       },
       "axFrameAudit": true,
@@ -247,11 +295,33 @@
       }
     },
     {
+      "id": "settings-ai",
+      "title": "Settings AI",
+      "themes": [
+        "light",
+        "dark"
+      ],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "settings-ai-readiness-rail",
+      "artifacts": {
+        "light": "settings-ai-light.png",
+        "dark": "settings-ai-dark.png"
+      }
+    },
+    {
       "id": "mcp-settings",
       "title": "MCP Settings",
-      "themes": ["light", "dark", "system"],
+      "themes": [
+        "light",
+        "dark",
+        "system"
+      ],
       "viewport": {
-        "width": 720,
+        "width": 1024,
         "height": 676
       },
       "axFrameAudit": true,
@@ -265,10 +335,14 @@
     {
       "id": "voice-command",
       "title": "Voice Command",
-      "themes": ["light", "dark", "system"],
+      "themes": [
+        "light",
+        "dark",
+        "system"
+      ],
       "viewport": {
-        "width": 760,
-        "height": 640
+        "width": 1024,
+        "height": 676
       },
       "axFrameAudit": true,
       "axTargetIdentifier": "voice-command-root",
@@ -276,6 +350,60 @@
         "light": "voice-command-light.png",
         "dark": "voice-command-dark.png",
         "system": "voice-command-system.png"
+      }
+    },
+    {
+      "id": "voice-command-listening",
+      "title": "Voice Command Listening",
+      "themes": [
+        "light",
+        "dark"
+      ],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "voice-command-listening-hero",
+      "artifacts": {
+        "light": "voice-command-listening-light.png",
+        "dark": "voice-command-listening-dark.png"
+      }
+    },
+    {
+      "id": "settings-privacy",
+      "title": "Settings Privacy",
+      "themes": [
+        "light",
+        "dark"
+      ],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "settings-privacy-root",
+      "artifacts": {
+        "light": "settings-privacy-light.png",
+        "dark": "settings-privacy-dark.png"
+      }
+    },
+    {
+      "id": "voice-conversation",
+      "title": "Voice Conversation",
+      "themes": [
+        "light",
+        "dark"
+      ],
+      "viewport": {
+        "width": 1024,
+        "height": 676
+      },
+      "axFrameAudit": true,
+      "axTargetIdentifier": "voice-conversation-workspace",
+      "artifacts": {
+        "light": "voice-conversation-light.png",
+        "dark": "voice-conversation-dark.png"
       }
     }
   ]

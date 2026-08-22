@@ -39,7 +39,12 @@ struct ProjectBoardLaunchRecoveryView: View {
             TodayWorkflowView(
                 viewModel: viewModel,
                 selectTodayTask: selectWorkflowTask,
-                openInspectorForTodayRailTask: openInspectorForWorkflowTask
+                openInspectorForTodayRailTask: openInspectorForWorkflowTask,
+                prefersContinuousRail: VisualEvidenceRuntimeContext() != nil
+                    ? CockpitLayoutPolicy.presentsSplitRail(
+                        contentWidth: CockpitLayoutPolicy.standardContentWidth
+                    )
+                    : nil
             )
         case .done:
             DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())
@@ -592,12 +597,18 @@ private enum ProjectBoardRuntimeCRUDRecoveryEnvironment {
 }
 
 private struct ProjectBoardRuntimeCRUDRecoveryView: View {
-    @Environment(\.openSettings) private var openSettings
-    @Environment(\.openWindow) private var openWindow
     let projectID: Int64?
     @ObservedObject var viewModel: ProjectBoardViewModel
+    @StateObject private var settingsViewModel = AppRuntimeFactory.makeAppSettingsViewModel(
+        refreshProviderSecretStatusesOnInit: false
+    )
+    @ObservedObject private var shortcutSettingsViewModel = GlobalShortcutRuntime.shared.settingsViewModel
+    @AppStorage(SuisuiAppearancePreference.storageKey) private var appearancePreference: SuisuiAppearancePreference = .system
+    @AppStorage(AppLanguagePreference.storageKey) private var languagePreference: AppLanguagePreference = .system
 
     @State private var projectTitle = ""
+    @State private var isShowingEmbeddedSettings = false
+    @State private var isShowingEmbeddedVoice = false
     @State private var isTaskComposerVisible = false
     @State private var taskTitle = ""
     @State private var taskDetail = ""
@@ -628,7 +639,16 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
         HStack(alignment: .top, spacing: 16) {
             projectsColumn
 
-            if let project {
+            if isShowingEmbeddedSettings {
+                SuisuiSettingsWorkspace(
+                    settingsViewModel: settingsViewModel,
+                    shortcutSettingsViewModel: shortcutSettingsViewModel,
+                    appearancePreference: $appearancePreference,
+                    languagePreference: $languagePreference
+                )
+            } else if isShowingEmbeddedVoice {
+                VoiceCaptureWorkspaceHost()
+            } else if let project {
                 projectColumn(project)
             } else {
                 ContentUnavailableView(
@@ -659,6 +679,8 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
 
             Button {
                 viewModel.selectedTaskID = nil
+                isShowingEmbeddedSettings = false
+                isShowingEmbeddedVoice = false
             } label: {
                 Label("Inbox", systemImage: "tray")
             }
@@ -669,6 +691,8 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
 
             Button {
                 viewModel.selectedTaskID = nil
+                isShowingEmbeddedSettings = false
+                isShowingEmbeddedVoice = false
             } label: {
                 Label("Today", systemImage: "sun.max")
             }
@@ -687,12 +711,38 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
             .accessibilityIdentifier("project-board-add-project")
             .accessibilityHint("Creates a new local project in the Suisui database.")
 
+            Button {
+                viewModel.selectedTaskID = nil
+                isShowingEmbeddedVoice = false
+                isShowingEmbeddedSettings.toggle()
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+            }
+            .buttonStyle(.bordered)
+            .help("Open Settings")
+            .accessibilityIdentifier("project-board-settings-link")
+            .accessibilityHint("Opens Settings.")
+
+            Button {
+                viewModel.selectedTaskID = nil
+                isShowingEmbeddedSettings = false
+                isShowingEmbeddedVoice.toggle()
+            } label: {
+                Label("Voice Command", systemImage: "mic")
+            }
+            .buttonStyle(.bordered)
+            .help("Open Voice Command")
+            .accessibilityIdentifier("project-board-voice-command")
+            .accessibilityHint("Opens Voice Command.")
+
             ForEach(viewModel.snapshot.projects) { project in
                 Button {
                     viewModel.selectedProjectID = project.id
                     viewModel.selectedTaskID = nil
                     projectTitle = project.title
                     isConfirmingProjectDelete = false
+                    isShowingEmbeddedSettings = false
+                isShowingEmbeddedVoice = false
                 } label: {
                     Text(project.title)
                         .lineLimit(1)
@@ -710,30 +760,6 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Project Details", systemImage: "folder")
                 .font(.headline)
-
-            HStack(spacing: 8) {
-                Button {
-                    viewModel.selectedTaskID = nil
-                    openSettings()
-                } label: {
-                    Label("Settings", systemImage: "gearshape")
-                }
-                .buttonStyle(.bordered)
-                .help("Open Settings")
-                .accessibilityIdentifier("project-board-settings-link")
-                .accessibilityHint("Opens Settings.")
-
-                Button {
-                    viewModel.selectedTaskID = nil
-                    openWindow(id: "voice-capture")
-                } label: {
-                    Label("Voice Command", systemImage: "mic")
-                }
-                .buttonStyle(.bordered)
-                .help("Open Voice Command")
-                .accessibilityIdentifier("project-board-voice-command")
-                .accessibilityHint("Opens Voice Command.")
-            }
 
             TextField("Project title", text: $projectTitle)
                 .textFieldStyle(.roundedBorder)

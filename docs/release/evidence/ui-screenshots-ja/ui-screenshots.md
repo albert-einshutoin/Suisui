@@ -2,11 +2,11 @@
 
 Generated with `script/capture_ui_evidence.sh`.
 
-- Generated at: `2026-08-09T14:55:22Z`
-- Source commit: `036f3996`
+- Generated at: `2026-08-21T16:12:59Z`
+- Source commit: `6f923564`
 - App bundle: `dist/Suisui.app`
 - Visual baseline manifest: `docs/quality/visual-baseline-manifest-ja.json`
-- Viewport contract: `SUISUI_VISUAL_BASELINE_VIEWPORT=1024x676`, `SUISUI_SETTINGS_VISUAL_BASELINE_VIEWPORT=720x676`, `SUISUI_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT=760x640`
+- Viewport contract: `SUISUI_VISUAL_BASELINE_VIEWPORT=1024x676`, `SUISUI_SETTINGS_VISUAL_BASELINE_VIEWPORT=1024x676`, `SUISUI_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT=1024x676`
 - Runtime context: locale `ja-JP`, timezone `UTC`, reference instant `2026-07-10T12:00:00Z`
 - Launch mode: normal `ProjectBoardView` route with explicit selected destination; recovery flags are excluded from release evidence.
 - Data isolation: isolated temporary HOME via `HOME` and `CFFIXED_USER_HOME`
@@ -62,6 +62,8 @@ Generated with `script/capture_ui_evidence.sh`.
 - Settings Appearance Light: `docs/release/evidence/ui-screenshots-ja/settings-appearance-light.png`
 - Settings Appearance Dark: `docs/release/evidence/ui-screenshots-ja/settings-appearance-dark.png`
 - Settings Appearance System: `docs/release/evidence/ui-screenshots-ja/settings-appearance-system.png`
+- Settings AI Light: `docs/release/evidence/ui-screenshots-ja/settings-ai-light.png`
+- Settings AI Dark: `docs/release/evidence/ui-screenshots-ja/settings-ai-dark.png`
 - MCP Settings Light: `docs/release/evidence/ui-screenshots-ja/settings-mcp-light.png`
 - MCP Settings Dark: `docs/release/evidence/ui-screenshots-ja/settings-mcp-dark.png`
 - MCP Settings System: `docs/release/evidence/ui-screenshots-ja/settings-mcp-system.png`

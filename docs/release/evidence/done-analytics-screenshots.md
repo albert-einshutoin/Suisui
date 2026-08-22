@@ -3,15 +3,15 @@
 Generated with `script/capture_ui_evidence.sh --done-analytics`.
 This targeted evidence covers issue #10 Done analytics light/dark closeout without rewriting the full release screenshot set.
 
-- Generated at: `2026-07-02T12:34:19Z`
-- Source commit: `32fa827e`
+- Generated at: `2026-08-21T17:07:34Z`
+- Source commit: `224c4681`
 - Screen Recording preflight: `script/capture_ui_evidence.sh --doctor`
 - Target markers: `done-workflow`, `done-completion-heatmap`, `done-productivity-insight`, `done-local-rule-insight`
 
 ## Done Analytics
 
-- Light: `docs/release/evidence/ui-screenshots/done-light.png`
-- Dark: `docs/release/evidence/ui-screenshots/done-dark.png`
+- Light: `docs/release/evidence/ui-screenshots-ja/done-light.png`
+- Dark: `docs/release/evidence/ui-screenshots-ja/done-dark.png`
 
 ## Guardrails
 

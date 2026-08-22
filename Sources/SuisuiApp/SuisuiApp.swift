@@ -57,22 +57,10 @@ struct Suisui: App {
         // near its 1180pt ideal and reject compact/manual AX resizing.
         .windowResizability(.automatic)
         .commands {
-            CommandGroup(replacing: .appSettings) {
-                SettingsLink {
-                    Label("Settings...", systemImage: "gearshape")
-                }
-                .keyboardShortcut(",", modifiers: [.command])
-            }
+            OpenBoardSettingsCommand()
             SuisuiWindowCommands()
             SuisuiProjectBoardUndoCommands()
         }
-
-        Window("Voice Command", id: "voice-capture") {
-            VoiceCaptureWindowRootView()
-                .preferredColorScheme(effectiveAppearancePreference.colorScheme)
-                .environment(\.locale, effectiveLanguagePreference.locale)
-        }
-        .defaultSize(width: 760, height: 640)
 
         MenuBarExtra {
             MenuBarPanel(
@@ -86,18 +74,6 @@ struct Suisui: App {
             MenuBarExtraLabel(controller: menuBarController)
         }
         .menuBarExtraStyle(.window)
-
-        Settings {
-            SettingsWindowRootView(
-                settingsViewModel: settingsViewModel,
-                shortcutSettingsViewModel: shortcutSettingsViewModel,
-                onboardingRerunCoordinator: onboardingRerunCoordinator,
-                appearancePreference: $appearancePreference,
-                languagePreference: $languagePreference
-            )
-            .preferredColorScheme(effectiveAppearancePreference.colorScheme)
-            .environment(\.locale, effectiveLanguagePreference.locale)
-        }
     }
 
     private var effectiveAppearancePreference: SuisuiAppearancePreference {
@@ -118,7 +94,8 @@ private struct GlobalVoiceShortcutBridge: View {
             .accessibilityHidden(true)
             .onAppear {
                 VoiceWindowActivationCoordinator.shared.installOpenRequest {
-                    openWindow(id: "voice-capture")
+                    openWindow(id: "project-board")
+                    SuisuiInAppVoiceNavigation.requestOpen()
                 }
             }
     }
@@ -140,7 +117,8 @@ private struct MenuBarExtraLabel: View {
         labelContent
             .onAppear {
                 VoiceWindowActivationCoordinator.shared.installOpenRequest {
-                    openWindow(id: "voice-capture")
+                    openWindow(id: "project-board")
+                    SuisuiInAppVoiceNavigation.requestOpen()
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .suisuiProjectBoardCommandReady)) { _ in
@@ -176,6 +154,23 @@ private struct MenuBarExtraLabel: View {
     }
 }
 
+/// App-menu Settings opens the in-board workspace instead of a detached window.
+private struct OpenBoardSettingsCommand: Commands {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button {
+                openWindow(id: "project-board")
+                ProjectBoardSceneCoordinator.shared.requestOpen(route: .settings)
+            } label: {
+                Label("Settings...", systemImage: "gearshape")
+            }
+            .keyboardShortcut(",", modifiers: [.command])
+        }
+    }
+}
+
 /// App-menu window commands so the primary surfaces are reachable from the
 /// keyboard anywhere in the app (File menu, next to New Suisui Window).
 private struct SuisuiWindowCommands: Commands {
@@ -194,7 +189,8 @@ private struct SuisuiWindowCommands: Commands {
             .keyboardShortcut("0", modifiers: [.command])
 
             Button {
-                openWindow(id: "voice-capture")
+                openWindow(id: "project-board")
+                SuisuiInAppVoiceNavigation.requestOpen()
             } label: {
                 Label("Voice Command", systemImage: "mic")
             }
@@ -437,6 +433,8 @@ private struct ProjectBoardWindowRootView: View {
         } else {
             ProjectBoardView(
                 viewModel: viewModel,
+                settingsViewModel: settingsViewModel,
+                shortcutSettingsViewModel: GlobalShortcutRuntime.shared.settingsViewModel,
                 sceneID: sceneID,
                 restoresPrimaryPresentationState: isPrimaryOnboardingWindow,
                 sceneCoordinator: sceneCoordinator,
@@ -450,90 +448,6 @@ private struct ProjectBoardWindowRootView: View {
                     restoresPrimaryWindow: isPrimaryOnboardingWindow
                 )
             )
-        }
-    }
-}
-
-private struct SettingsWindowRootView: View {
-    @ObservedObject var settingsViewModel: AppSettingsViewModel
-    @ObservedObject var shortcutSettingsViewModel: ShortcutSettingsViewModel
-    @ObservedObject var onboardingRerunCoordinator: OnboardingRerunCoordinator
-    @Binding var appearancePreference: SuisuiAppearancePreference
-    @Binding var languagePreference: AppLanguagePreference
-    @State private var didScheduleProviderSecretStatusRefresh = false
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        SettingsView(
-            settingsViewModel: settingsViewModel,
-            shortcutSettingsViewModel: shortcutSettingsViewModel,
-            launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
-            integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),
-            watcherDiagnosticsSnapshotFactory: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot,
-            externalMCPSettingsViewModelFactory: AppRuntimeFactory.makeExternalMCPSettingsViewModel,
-            syncSettingsViewModelFactory: AppRuntimeFactory.makeSyncSettingsViewModel,
-            isGoogleCalendarRuntimeEnabled: AppRuntimeFactory.isGoogleCalendarRuntimeEnabled(),
-            googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
-            googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
-            googleCalendarOAuthDisconnecter: AppRuntimeFactory.makeGoogleCalendarOAuthDisconnecter(),
-            googleCalendarListProviderFactory: AppRuntimeFactory.makeGoogleCalendarListProvider,
-            textToSpeechPreviewerFactory: AppRuntimeFactory.makeTextToSpeechPreviewer,
-            appearancePreference: $appearancePreference,
-            languagePreference: $languagePreference,
-            onboardingRerunRequest: {
-                // When no Project Board window is mounted we must open one
-                // before the coordinator publishes the token; otherwise the
-                // `onAppear` consumer would register too late and miss the
-                // rerun. If a primary already exists, just request the rerun
-                // and the existing window will consume it.
-                if onboardingRerunCoordinator.primaryWindowID == nil {
-                    openWindow(id: "project-board")
-                }
-                onboardingRerunCoordinator.requestRerun()
-            }
-        )
-        .task {
-            guard !didScheduleProviderSecretStatusRefresh else {
-                return
-            }
-            didScheduleProviderSecretStatusRefresh = true
-            // Provider secret status reads are Settings-shell work and should
-            // not block the first paint of the Settings window. The async
-            // refresh runs the Ollama probe and the Keychain reads off the
-            // MainActor, then applies the typed state on the MainActor.
-            await settingsViewModel.refreshProviderReadiness()
-        }
-    }
-}
-
-private struct VoiceCaptureWindowRootView: View {
-    @State private var viewModel: VoiceCaptureViewModel?
-
-    var body: some View {
-        Group {
-            if let viewModel {
-                VoiceCaptureView(viewModel: viewModel)
-            } else {
-                ProgressView("Opening Voice Command")
-                    .frame(minWidth: 680, minHeight: 640)
-                    .accessibilityIdentifier("voice-capture-loading")
-            }
-        }
-        .background(VoiceWindowIdentifierInstaller())
-        .task {
-            guard viewModel == nil else {
-                return
-            }
-            // Voice runtime construction touches audio, model providers, audit
-            // logging, and local stores. Defer it until this secondary window is
-            // opened so primary Project Board launch is not blocked.
-            viewModel = AppRuntimeFactory.makeVoiceCaptureViewModel()
-        }
-        .onAppear {
-            VoiceWindowActivationCoordinator.shared.markVoiceWindowVisible()
-        }
-        .onDisappear {
-            VoiceWindowActivationCoordinator.shared.markVoiceWindowClosed()
         }
     }
 }
@@ -660,6 +574,7 @@ private enum SuisuiWindowlessFallbackEnvironment {
 private struct ProjectBoardFallbackRootView: View {
     private let taskAutomationSettings: () -> TaskAutoExecutionSettings
     private let appSettings: () -> AppSettings
+    @StateObject private var settingsViewModel: AppSettingsViewModel
     @State private var viewModel: ProjectBoardViewModel?
     @State private var isProjectBoardReady = false
     @State private var sceneID = UUID()
@@ -670,6 +585,11 @@ private struct ProjectBoardFallbackRootView: View {
     ) {
         self.taskAutomationSettings = taskAutomationSettings
         self.appSettings = appSettings
+        _settingsViewModel = StateObject(
+            wrappedValue: AppRuntimeFactory.makeAppSettingsViewModel(
+                refreshProviderSecretStatusesOnInit: false
+            )
+        )
     }
 
     var body: some View {
@@ -682,6 +602,8 @@ private struct ProjectBoardFallbackRootView: View {
             } else if let viewModel, isProjectBoardReady {
                 ProjectBoardView(
                     viewModel: viewModel,
+                    settingsViewModel: settingsViewModel,
+                    shortcutSettingsViewModel: GlobalShortcutRuntime.shared.settingsViewModel,
                     sceneID: sceneID,
                     restoresPrimaryPresentationState: false,
                     sceneCoordinator: ProjectBoardSceneCoordinator.shared,
@@ -817,8 +739,6 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
 #endif
     private var projectBoardWindowRestoreAttempts = 0
     private var fallbackProjectBoardWindow: NSWindow?
-    private var settingsEvidenceWindow: NSWindow?
-    private var voiceCommandEvidenceWindow: NSWindow?
     private var digestNotificationOpenedObserver: (any NSObjectProtocol)?
     private var commandReadyRuntimeObserver: (any NSObjectProtocol)?
     private var backgroundRuntimesStarted = false
@@ -858,8 +778,8 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
                 self?.ensureProjectBoardWindowIsVisible()
             }
         }
-        openSettingsWindowForEvidenceIfRequested()
-        openVoiceCommandWindowForEvidenceIfRequested()
+        openInAppSettingsForEvidenceIfRequested()
+        openInAppVoiceCommandForEvidenceIfRequested()
 
 #if canImport(Sparkle)
         guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String != nil,
@@ -1024,92 +944,32 @@ private final class SuisuiAppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
-    private func openSettingsWindowForEvidenceIfRequested() {
-        guard ProcessInfo.processInfo.environment["SUISUI_OPEN_SETTINGS_ON_LAUNCH"] == "1" else {
+    private func openInAppSettingsForEvidenceIfRequested() {
+        guard SettingsEvidenceLaunch.shouldOpenOnLaunch else {
             return
         }
-        let selectedTab = SettingsTab(
-            rawValue: ProcessInfo.processInfo.environment["SUISUI_SETTINGS_EVIDENCE_TAB"] ?? ""
-        ) ?? .overview
 
-        // The release evidence harness opens Settings directly so captures do not depend on keyboard focus, AppleScript toolbar access, or localized menu state.
+        // Evidence opens the in-board Settings workspace so captures do not
+        // depend on keyboard focus, AppleScript toolbar access, or a detached
+        // Settings scene.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             NSApplication.shared.activate(ignoringOtherApps: true)
-            let hostingController = NSHostingController(
-                rootView: SettingsView(
-                    settingsViewModel: AppRuntimeFactory.makeAppSettingsViewModel(),
-                    shortcutSettingsViewModel: GlobalShortcutRuntime.shared.settingsViewModel,
-                    launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
-                    integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),
-                    watcherDiagnosticsSnapshotFactory: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot,
-                    externalMCPSettingsViewModelFactory: AppRuntimeFactory.makeExternalMCPSettingsViewModel,
-                    syncSettingsViewModelFactory: AppRuntimeFactory.makeSyncSettingsViewModel,
-                    isGoogleCalendarRuntimeEnabled: AppRuntimeFactory.isGoogleCalendarRuntimeEnabled(),
-                    googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
-                    googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
-                    googleCalendarOAuthDisconnecter: AppRuntimeFactory.makeGoogleCalendarOAuthDisconnecter(),
-                    googleCalendarListProviderFactory: AppRuntimeFactory.makeGoogleCalendarListProvider,
-                    textToSpeechPreviewerFactory: AppRuntimeFactory.makeTextToSpeechPreviewer,
-                    appearancePreference: .constant(SuisuiAppearancePreference.environmentOverride ?? .system),
-                    languagePreference: .constant(AppLanguagePreference.environmentOverride ?? .system),
-                    initialTab: selectedTab,
-                    onboardingRerunRequest: { OnboardingRerunCoordinator.shared.requestRerun() }
-                )
-                .preferredColorScheme(SuisuiAppearancePreference.environmentOverride?.colorScheme)
-                .environment(\.locale, (AppLanguagePreference.environmentOverride ?? .system).locale)
-            )
-            // This deterministic evidence window owns the audited outer
-            // viewport. SwiftUI fitting hints would otherwise race the AX
-            // resizer and restore the view's natural 720x652 frame.
-            hostingController.sizingOptions = []
-            let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 680, height: 572),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                backing: .buffered,
-                defer: false
-            )
-            window.title = selectedTab.rawValue
-            window.contentViewController = hostingController
-            window.isReleasedWhenClosed = false
-            window.setFrame(NSRect(x: 120, y: 160, width: 680, height: 572), display: true)
-            self.settingsEvidenceWindow = window
-            window.makeKeyAndOrderFront(nil)
-            window.orderFrontRegardless()
+            SuisuiInAppSettingsNavigation.requestOpen()
+            self.ensureProjectBoardWindowIsVisible()
         }
     }
 
-    private func openVoiceCommandWindowForEvidenceIfRequested() {
-        guard ProcessInfo.processInfo.environment["SUISUI_OPEN_VOICE_COMMAND_ON_LAUNCH"] == "1" else {
+    private func openInAppVoiceCommandForEvidenceIfRequested() {
+        guard VoiceEvidenceLaunch.shouldOpenOnLaunch else {
             return
         }
 
-        // Runtime evidence opens Voice Command directly so AX tests do not rely
-        // on menu focus, menu bar state, or localized window-opening commands.
+        // Evidence opens the in-board Voice Command workspace so captures do
+        // not depend on keyboard focus, menu state, or a detached window.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             NSApplication.shared.activate(ignoringOtherApps: true)
-            let hostingController = NSHostingController(
-                rootView: VoiceCaptureView(viewModel: AppRuntimeFactory.makeVoiceCaptureViewModel())
-                    .preferredColorScheme(SuisuiAppearancePreference.environmentOverride?.colorScheme)
-                    .environment(\.locale, (AppLanguagePreference.environmentOverride ?? .system).locale)
-            )
-            // This deterministic evidence window owns its outer viewport.
-            // Prevent SwiftUI fitting hints from becoming AppKit min/max
-            // constraints that silently clamp the audited 760x640 frame.
-            hostingController.sizingOptions = []
-            let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 760, height: 640),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                backing: .buffered,
-                defer: false
-            )
-            window.title = "Voice Command"
-            window.identifier = NSUserInterfaceItemIdentifier(VoiceWindowIdentity.identifierRawValue)
-            window.contentViewController = hostingController
-            window.isReleasedWhenClosed = false
-            window.setFrame(NSRect(x: 160, y: 140, width: 760, height: 640), display: true)
-            self.voiceCommandEvidenceWindow = window
-            window.makeKeyAndOrderFront(nil)
-            window.orderFrontRegardless()
+            SuisuiInAppVoiceNavigation.requestOpen()
+            self.ensureProjectBoardWindowIsVisible()
         }
     }
 

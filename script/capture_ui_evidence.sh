@@ -24,8 +24,8 @@ EVIDENCE_TMPDIR="${SUISUI_UI_EVIDENCE_TMPDIR:-$ROOT_DIR/.tmp}"
 VISUAL_BASELINE_MANIFEST="${SUISUI_VISUAL_BASELINE_MANIFEST:-$ROOT_DIR/docs/quality/visual-baseline-manifest.json}"
 SUISUI_VISUAL_AX_AUDIT_RESULT="${SUISUI_VISUAL_AX_AUDIT_RESULT:-$EVIDENCE_TMPDIR/visual-ax-audit-receipt.json}"
 VISUAL_BASELINE_VIEWPORT="${SUISUI_VISUAL_BASELINE_VIEWPORT:-1024x676}"
-SETTINGS_VISUAL_BASELINE_VIEWPORT="${SUISUI_SETTINGS_VISUAL_BASELINE_VIEWPORT:-720x676}"
-VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT="${SUISUI_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT:-760x640}"
+SETTINGS_VISUAL_BASELINE_VIEWPORT="${SUISUI_SETTINGS_VISUAL_BASELINE_VIEWPORT:-1024x676}"
+VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT="${SUISUI_VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT:-1024x676}"
 TARGET_TIMEOUT_SECONDS="${SUISUI_UI_EVIDENCE_TARGET_TIMEOUT_SECONDS:-30}"
 EVIDENCE_WINDOW_ATTEMPTS=2
 EVIDENCE_ROUTE_ATTEMPTS=2
@@ -33,7 +33,7 @@ AX_MARKER_MAX_NODES="${SUISUI_UI_EVIDENCE_AX_MAX_NODES:-6000}"
 EVIDENCE_LOCALE="${SUISUI_UI_EVIDENCE_LOCALE:-english}"
 EVIDENCE_LOCALES=("english" "japanese")
 # A fixed instant keeps relative seed dates and UI read models on one day even
-# when a long 39-screen capture crosses midnight. These capture-only variables
+# when a long 47-screen capture crosses midnight. These capture-only variables
 # are ignored by normal launches, which continue to use the system clock.
 EVIDENCE_REFERENCE_INSTANT="${SUISUI_VISUAL_EVIDENCE_REFERENCE_INSTANT:-2026-07-10T12:00:00Z}"
 EVIDENCE_TIME_ZONE="${SUISUI_VISUAL_EVIDENCE_TIME_ZONE:-UTC}"
@@ -77,6 +77,8 @@ APPEARANCE_OVERRIDE=""
 SETTINGS_WINDOW_OVERRIDE=""
 SETTINGS_TAB_OVERRIDE=""
 VOICE_COMMAND_WINDOW_OVERRIDE=""
+VOICE_SURFACE_OVERRIDE=""
+INBOX_EVIDENCE_CLEAR_SELECTION=""
 POSITIONED_WINDOW_WIDTH=""
 POSITIONED_WINDOW_HEIGHT=""
 EVIDENCE_APP_PID=""
@@ -442,6 +444,9 @@ app_env_args() {
   if [[ -n "$PROJECT_BOARD_SELECTED_TASK_OVERRIDE" ]]; then
     args+=("SUISUI_PROJECT_BOARD_SELECTED_TASK_ID=$PROJECT_BOARD_SELECTED_TASK_OVERRIDE")
   fi
+  if [[ "$INBOX_EVIDENCE_CLEAR_SELECTION" == "1" ]]; then
+    args+=("SUISUI_INBOX_EVIDENCE_CLEAR_SELECTION=1")
+  fi
   if [[ -n "$SCHEDULE_MODE_OVERRIDE" ]]; then
     args+=("SUISUI_VISUAL_EVIDENCE_SCHEDULE_MODE=$SCHEDULE_MODE_OVERRIDE")
   fi
@@ -461,6 +466,9 @@ app_env_args() {
   fi
   if [[ "$VOICE_COMMAND_WINDOW_OVERRIDE" == "1" ]]; then
     args+=("SUISUI_OPEN_VOICE_COMMAND_ON_LAUNCH=1")
+  fi
+  if [[ -n "$VOICE_SURFACE_OVERRIDE" ]]; then
+    args+=("SUISUI_VISUAL_EVIDENCE_VOICE_SURFACE=$VOICE_SURFACE_OVERRIDE")
   fi
   printf '%s\0' "${args[@]}"
 }
@@ -1078,9 +1086,11 @@ position_window_for_capture() {
   local origin_x=0
   local origin_y=0
 
-  if [[ "$window_name" == "Voice Command" ]]; then
+  if [[ "$SETTINGS_WINDOW_OVERRIDE" == "1" ]]; then
+    viewport="$SETTINGS_VISUAL_BASELINE_VIEWPORT"
+  elif [[ "$VOICE_COMMAND_WINDOW_OVERRIDE" == "1" ]]; then
     viewport="$VOICE_COMMAND_VISUAL_BASELINE_VIEWPORT"
-  elif [[ -n "$window_name" ]]; then
+  elif [[ -n "$window_name" && "$window_name" != "Voice Command" ]]; then
     viewport="$SETTINGS_VISUAL_BASELINE_VIEWPORT"
   fi
 
@@ -1560,19 +1570,19 @@ capture_visible_window() {
 }
 
 open_mcp_settings_tab() {
-  wait_for_window_capture_metadata "MCP" >/dev/null
+  wait_for_window_capture_metadata >/dev/null
 }
 
 open_settings_appearance_tab() {
-  wait_for_window_capture_metadata "Appearance" >/dev/null
+  wait_for_window_capture_metadata >/dev/null
 }
 
 open_settings_overview_tab() {
-  wait_for_window_capture_metadata "Overview" >/dev/null
+  wait_for_window_capture_metadata >/dev/null
 }
 
 open_settings_sync_tab() {
-  wait_for_window_capture_metadata "Sync" >/dev/null
+  wait_for_window_capture_metadata >/dev/null
 }
 
 prepare_named_evidence_window() {
@@ -1583,12 +1593,12 @@ prepare_named_evidence_window() {
   local window_attempt
   local readiness_diagnostic
 
-  # The process-level readiness probe can succeed on the Project Board while a
-  # separately-created Settings or Voice Command window is still publishing.
-  # Reacquire the named window after AX marker traversal; hosted WindowServer
-  # has twice withdrawn that auxiliary window between the first probe and the
-  # capture, so retry the complete owned-process launch instead of accepting a
-  # stale window or weakening the visual gate.
+  # The process-level readiness probe can succeed on the Project Board before
+  # the requested Settings or Voice Command workspace is ready. Reacquire the
+  # board window after AX marker traversal; hosted WindowServer has twice
+  # withdrawn an auxiliary window between the first probe and the capture, so
+  # retry the complete owned-process launch instead of accepting a stale window
+  # or weakening the visual gate.
   for ((window_attempt = 1; window_attempt <= EVIDENCE_ROUTE_ATTEMPTS; window_attempt++)); do
     readiness_diagnostic="$EVIDENCE_TMPDIR/named-evidence-window.$$.attempt-$window_attempt.err"
     : >"$readiness_diagnostic"
@@ -1629,12 +1639,13 @@ capture_settings_overview() {
   local output_path="$2"
 
   APPEARANCE_OVERRIDE="$appearance"
+  PROJECT_BOARD_SELECTION_OVERRIDE=""
   SETTINGS_WINDOW_OVERRIDE=1
   SETTINGS_TAB_OVERRIDE="Overview"
   VOICE_COMMAND_WINDOW_OVERRIDE=""
-  prepare_named_evidence_window "Overview" "Settings overview" "settings-status-overview=>"
+  prepare_named_evidence_window "" "Settings overview" "settings-status-overview=>|settings-overview-detail-rail=>"
 
-  capture_visible_window "$appearance Settings overview" "$output_path" "Overview" "settings-status-overview"
+  capture_visible_window "$appearance Settings overview" "$output_path" "" "settings-status-overview"
 }
 
 capture_settings_sync() {
@@ -1642,12 +1653,13 @@ capture_settings_sync() {
   local output_path="$2"
 
   APPEARANCE_OVERRIDE="$appearance"
+  PROJECT_BOARD_SELECTION_OVERRIDE=""
   SETTINGS_WINDOW_OVERRIDE=1
   SETTINGS_TAB_OVERRIDE="Sync"
   VOICE_COMMAND_WINDOW_OVERRIDE=""
-  prepare_named_evidence_window "Sync" "Settings integrations" "sync-paid-value-row=>"
+  prepare_named_evidence_window "" "Settings integrations" "sync-paid-value-row=>"
 
-  capture_visible_window "$appearance Settings integrations" "$output_path" "Sync" "sync-paid-value-row"
+  capture_visible_window "$appearance Settings integrations" "$output_path" "" "sync-paid-value-row"
 }
 
 capture_settings_appearance() {
@@ -1655,12 +1667,41 @@ capture_settings_appearance() {
   local output_path="$2"
 
   APPEARANCE_OVERRIDE="$appearance"
+  PROJECT_BOARD_SELECTION_OVERRIDE=""
   SETTINGS_WINDOW_OVERRIDE=1
   SETTINGS_TAB_OVERRIDE="Appearance"
   VOICE_COMMAND_WINDOW_OVERRIDE=""
-  prepare_named_evidence_window "Appearance" "Settings appearance" "settings-theme-picker=>"
+  prepare_named_evidence_window "" "Settings appearance" "settings-theme-picker=>"
 
-  capture_visible_window "$appearance Settings appearance" "$output_path" "Appearance" "settings-theme-picker"
+  capture_visible_window "$appearance Settings appearance" "$output_path" "" "settings-theme-picker"
+}
+
+capture_settings_ai() {
+  local appearance="$1"
+  local output_path="$2"
+
+  APPEARANCE_OVERRIDE="$appearance"
+  PROJECT_BOARD_SELECTION_OVERRIDE=""
+  SETTINGS_WINDOW_OVERRIDE=1
+  SETTINGS_TAB_OVERRIDE="AI"
+  VOICE_COMMAND_WINDOW_OVERRIDE=""
+  prepare_named_evidence_window "" "Settings AI" "settings-ai-readiness-rail=>"
+
+  capture_visible_window "$appearance Settings AI" "$output_path" "" "settings-ai-readiness-rail"
+}
+
+capture_settings_privacy() {
+  local appearance="$1"
+  local output_path="$2"
+
+  APPEARANCE_OVERRIDE="$appearance"
+  PROJECT_BOARD_SELECTION_OVERRIDE=""
+  SETTINGS_WINDOW_OVERRIDE=1
+  SETTINGS_TAB_OVERRIDE="Privacy"
+  VOICE_COMMAND_WINDOW_OVERRIDE=""
+  prepare_named_evidence_window "" "Settings Privacy" "settings-privacy-root=>"
+
+  capture_visible_window "$appearance Settings Privacy" "$output_path" "" "settings-privacy-root"
 }
 
 capture_mcp_settings_appearance() {
@@ -1668,14 +1709,15 @@ capture_mcp_settings_appearance() {
   local output_path="$2"
 
   APPEARANCE_OVERRIDE="$appearance"
+  PROJECT_BOARD_SELECTION_OVERRIDE=""
   SETTINGS_WINDOW_OVERRIDE=1
   SETTINGS_TAB_OVERRIDE="MCP"
   VOICE_COMMAND_WINDOW_OVERRIDE=""
-  prepare_named_evidence_window "MCP" "MCP settings" "mcp-paid-execution-boundary-row=>"
+  prepare_named_evidence_window "" "MCP settings" "mcp-paid-execution-boundary-row=>"
   scroll_ax_target_into_view "mcp-paid-execution-boundary-row" "MCP settings"
   sleep 1.0
 
-  capture_visible_window "$appearance MCP settings" "$output_path" "MCP" "mcp-paid-execution-boundary-row"
+  capture_visible_window "$appearance MCP settings" "$output_path" "" "mcp-paid-execution-boundary-row"
 }
 
 capture_appearance() {
@@ -1716,10 +1758,16 @@ capture_project_board_destination() {
   APPEARANCE_OVERRIDE="$appearance"
   PROJECT_BOARD_SELECTION_OVERRIDE="$launch_destination"
   PROJECT_BOARD_SELECTED_TASK_OVERRIDE="$selected_task_id"
+  if [[ "$launch_destination" == "inbox" && -z "$selected_task_id" ]]; then
+    INBOX_EVIDENCE_CLEAR_SELECTION=1
+  else
+    INBOX_EVIDENCE_CLEAR_SELECTION=""
+  fi
   SCHEDULE_MODE_OVERRIDE="$schedule_mode_override"
   SETTINGS_WINDOW_OVERRIDE=""
   SETTINGS_TAB_OVERRIDE=""
   VOICE_COMMAND_WINDOW_OVERRIDE=""
+  VOICE_SURFACE_OVERRIDE=""
   for ((route_attempt = 1; route_attempt <= EVIDENCE_ROUTE_ATTEMPTS; route_attempt++)); do
     marker_diagnostic="$EVIDENCE_TMPDIR/project-board-destination.$$.attempt-$route_attempt.err"
     : >"$marker_diagnostic"
@@ -1793,6 +1841,12 @@ capture_project_board_destination() {
   if [[ -n "$post_scroll_target_markers" ]]; then
     wait_for_project_board_destination "$label after scroll" "$post_scroll_target_markers"
   fi
+  if [[ "$scroll_target_identifier" == "inbox-voice-intake-detail" ]]; then
+    # Voice intake detail can publish its AX subtree before the split rail
+    # finishes compositing on dark/system evidence runs.
+    activate_evidence_app
+    sleep 1.5
+  fi
 
   capture_visible_window "$appearance $label" "$output_path" "" "$target_audit_identifier"
 }
@@ -1803,12 +1857,46 @@ capture_voice_command_appearance() {
 
   APPEARANCE_OVERRIDE="$appearance"
   PROJECT_BOARD_SELECTION_OVERRIDE=""
+  INBOX_EVIDENCE_CLEAR_SELECTION=""
   SETTINGS_WINDOW_OVERRIDE=""
   SETTINGS_TAB_OVERRIDE=""
   VOICE_COMMAND_WINDOW_OVERRIDE=1
-  prepare_named_evidence_window "Voice Command" "Voice Command" "$VOICE_COMMAND_TARGET_MARKERS" "voice-command-quick-command-tab"
+  VOICE_SURFACE_OVERRIDE=""
+  prepare_named_evidence_window "" "Voice Command" "$VOICE_COMMAND_TARGET_MARKERS" "voice-command-quick-command-tab"
 
-  capture_visible_window "$appearance Voice Command" "$output_path" "Voice Command" "voice-command-root"
+  capture_visible_window "$appearance Voice Command" "$output_path" "" "voice-command-root"
+}
+
+capture_voice_command_listening_appearance() {
+  local appearance="$1"
+  local output_path="$2"
+
+  APPEARANCE_OVERRIDE="$appearance"
+  PROJECT_BOARD_SELECTION_OVERRIDE=""
+  INBOX_EVIDENCE_CLEAR_SELECTION=""
+  SETTINGS_WINDOW_OVERRIDE=""
+  SETTINGS_TAB_OVERRIDE=""
+  VOICE_COMMAND_WINDOW_OVERRIDE=1
+  VOICE_SURFACE_OVERRIDE="listening"
+  prepare_named_evidence_window "" "Voice Command" "$VOICE_COMMAND_LISTENING_TARGET_MARKERS" "voice-command-quick-command-tab"
+
+  capture_visible_window "$appearance Voice Command Listening" "$output_path" "" "voice-command-listening-hero"
+}
+
+capture_voice_conversation_appearance() {
+  local appearance="$1"
+  local output_path="$2"
+
+  APPEARANCE_OVERRIDE="$appearance"
+  PROJECT_BOARD_SELECTION_OVERRIDE=""
+  INBOX_EVIDENCE_CLEAR_SELECTION=""
+  SETTINGS_WINDOW_OVERRIDE=""
+  SETTINGS_TAB_OVERRIDE=""
+  VOICE_COMMAND_WINDOW_OVERRIDE=1
+  VOICE_SURFACE_OVERRIDE="conversation"
+  prepare_named_evidence_window "" "Voice Conversation" "$VOICE_CONVERSATION_TARGET_MARKERS"
+
+  capture_visible_window "$appearance Voice Conversation" "$output_path" "" "voice-conversation-workspace"
 }
 
 write_evidence_file() {
@@ -1898,6 +1986,8 @@ write_evidence_file() {
     printf -- '- Settings Appearance Light: `%s`\n' "$(relative_path "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT")"
     printf -- '- Settings Appearance Dark: `%s`\n' "$(relative_path "$SETTINGS_APPEARANCE_DARK_SCREENSHOT")"
     printf -- '- Settings Appearance System: `%s`\n' "$(relative_path "$SETTINGS_APPEARANCE_SYSTEM_SCREENSHOT")"
+    printf -- '- Settings AI Light: `%s`\n' "$(relative_path "$SETTINGS_AI_LIGHT_SCREENSHOT")"
+    printf -- '- Settings AI Dark: `%s`\n' "$(relative_path "$SETTINGS_AI_DARK_SCREENSHOT")"
     printf -- '- MCP Settings Light: `%s`\n' "$(relative_path "$MCP_SETTINGS_LIGHT_SCREENSHOT")"
     printf -- '- MCP Settings Dark: `%s`\n' "$(relative_path "$MCP_SETTINGS_DARK_SCREENSHOT")"
     printf -- '- MCP Settings System: `%s`\n' "$(relative_path "$MCP_SETTINGS_SYSTEM_SCREENSHOT")"
@@ -2233,6 +2323,10 @@ SETTINGS_OVERVIEW_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-overview-light.png"
 SETTINGS_OVERVIEW_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-overview-dark.png"
 SETTINGS_APPEARANCE_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-appearance-light.png"
 SETTINGS_APPEARANCE_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-appearance-dark.png"
+SETTINGS_AI_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-ai-light.png"
+SETTINGS_AI_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-ai-dark.png"
+SETTINGS_PRIVACY_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-privacy-light.png"
+SETTINGS_PRIVACY_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-privacy-dark.png"
 MCP_SETTINGS_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/settings-mcp-light.png"
 MCP_SETTINGS_DARK_SCREENSHOT="$SCREENSHOT_DIR/settings-mcp-dark.png"
 INBOX_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/inbox-light.png"
@@ -2247,6 +2341,10 @@ MCP_SETTINGS_SYSTEM_SCREENSHOT="$SCREENSHOT_DIR/settings-mcp-system.png"
 VOICE_COMMAND_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/voice-command-light.png"
 VOICE_COMMAND_DARK_SCREENSHOT="$SCREENSHOT_DIR/voice-command-dark.png"
 VOICE_COMMAND_SYSTEM_SCREENSHOT="$SCREENSHOT_DIR/voice-command-system.png"
+VOICE_COMMAND_LISTENING_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/voice-command-listening-light.png"
+VOICE_COMMAND_LISTENING_DARK_SCREENSHOT="$SCREENSHOT_DIR/voice-command-listening-dark.png"
+VOICE_CONVERSATION_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/voice-conversation-light.png"
+VOICE_CONVERSATION_DARK_SCREENSHOT="$SCREENSHOT_DIR/voice-conversation-dark.png"
 INBOX_VOICE_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/inbox-voice-light.png"
 INBOX_VOICE_DARK_SCREENSHOT="$SCREENSHOT_DIR/inbox-voice-dark.png"
 PROJECTS_OVERVIEW_LIGHT_SCREENSHOT="$SCREENSHOT_DIR/projects-overview-light.png"
@@ -2274,6 +2372,7 @@ case "$EVIDENCE_LOCALE" in
     SCHEDULE_ROUTE_LABEL="Schedule"
     DONE_ROUTE_LABEL="Done"
     VOICE_COMMAND_LABEL="Voice Command"
+    VOICE_COMMAND_LISTENING_LABEL="Listening"
     INBOX_CLASSIFICATION_ACTIONS_LABEL="Inbox classification actions"
     INBOX_VOICE_TITLE="Create tomorrow's presentation materials"
     ;;
@@ -2284,6 +2383,7 @@ case "$EVIDENCE_LOCALE" in
     SCHEDULE_ROUTE_LABEL="予定"
     DONE_ROUTE_LABEL="完了"
     VOICE_COMMAND_LABEL="音声コマンド"
+    VOICE_COMMAND_LISTENING_LABEL="聞き取り中"
     INBOX_CLASSIFICATION_ACTIONS_LABEL="インボックス分類操作"
     INBOX_VOICE_TITLE="明日のプレゼン資料を作成する"
     ;;
@@ -2309,6 +2409,8 @@ SCHEDULE_WORKLOAD_DETAIL_MARKERS="schedule-workload-attention-banner=>|schedule-
 DONE_TARGET_MARKERS="done-workflow=>$DONE_ROUTE_LABEL"
 DONE_ANALYTICS_TARGET_MARKERS="done-workflow=>$DONE_ROUTE_LABEL|done-completion-heatmap=>|done-productivity-insight=>|done-local-rule-insight=>"
 VOICE_COMMAND_TARGET_MARKERS="voice-command-root=>$VOICE_COMMAND_LABEL"
+VOICE_COMMAND_LISTENING_TARGET_MARKERS="voice-command-listening-hero=>$VOICE_COMMAND_LISTENING_LABEL"
+VOICE_CONVERSATION_TARGET_MARKERS="voice-conversation-workspace=>"
 # The compact destination lives inside a closed Menu and is not guaranteed to
 # appear in the AX tree. The selected workflow itself is the stable route proof.
 ASSISTANT_QUEUE_ROUTE_MARKERS="assistant-queue-workflow=>"
@@ -2407,14 +2509,23 @@ capture_settings_overview system "$SETTINGS_OVERVIEW_SYSTEM_SCREENSHOT"
 capture_settings_appearance light "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT"
 capture_settings_appearance dark "$SETTINGS_APPEARANCE_DARK_SCREENSHOT"
 capture_settings_appearance system "$SETTINGS_APPEARANCE_SYSTEM_SCREENSHOT"
+capture_settings_ai light "$SETTINGS_AI_LIGHT_SCREENSHOT"
+capture_settings_ai dark "$SETTINGS_AI_DARK_SCREENSHOT"
+capture_settings_privacy light "$SETTINGS_PRIVACY_LIGHT_SCREENSHOT"
+capture_settings_privacy dark "$SETTINGS_PRIVACY_DARK_SCREENSHOT"
 capture_mcp_settings_appearance light "$MCP_SETTINGS_LIGHT_SCREENSHOT"
 capture_mcp_settings_appearance dark "$MCP_SETTINGS_DARK_SCREENSHOT"
 capture_mcp_settings_appearance system "$MCP_SETTINGS_SYSTEM_SCREENSHOT"
-# Voice Command is a separate singleton window. Capture it last so closing it
-# never has to restore a Project Board/Settings scene in the same evidence run.
+# Voice Command is an in-board workspace. Capture it after Settings so the
+# evidence launch flag can replace the previous destination without restoring
+# a second scene.
 capture_voice_command_appearance light "$VOICE_COMMAND_LIGHT_SCREENSHOT"
 capture_voice_command_appearance dark "$VOICE_COMMAND_DARK_SCREENSHOT"
 capture_voice_command_appearance system "$VOICE_COMMAND_SYSTEM_SCREENSHOT"
+capture_voice_command_listening_appearance light "$VOICE_COMMAND_LISTENING_LIGHT_SCREENSHOT"
+capture_voice_command_listening_appearance dark "$VOICE_COMMAND_LISTENING_DARK_SCREENSHOT"
+capture_voice_conversation_appearance light "$VOICE_CONVERSATION_LIGHT_SCREENSHOT"
+capture_voice_conversation_appearance dark "$VOICE_CONVERSATION_DARK_SCREENSHOT"
 
 GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 write_visual_ax_audit_receipt "$SOURCE_COMMIT"
@@ -2434,6 +2545,8 @@ echo "- $(relative_path "$TODAY_SYSTEM_SCREENSHOT")"
 echo "- $(relative_path "$VOICE_COMMAND_LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$VOICE_COMMAND_DARK_SCREENSHOT")"
 echo "- $(relative_path "$VOICE_COMMAND_SYSTEM_SCREENSHOT")"
+echo "- $(relative_path "$VOICE_COMMAND_LISTENING_LIGHT_SCREENSHOT")"
+echo "- $(relative_path "$VOICE_COMMAND_LISTENING_DARK_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_OVERVIEW_LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_OVERVIEW_DARK_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_OVERVIEW_SYSTEM_SCREENSHOT")"
@@ -2456,6 +2569,8 @@ echo "- $(relative_path "$ASSISTANT_QUEUE_FAILED_DARK_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_APPEARANCE_LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_APPEARANCE_DARK_SCREENSHOT")"
 echo "- $(relative_path "$SETTINGS_APPEARANCE_SYSTEM_SCREENSHOT")"
+echo "- $(relative_path "$SETTINGS_AI_LIGHT_SCREENSHOT")"
+echo "- $(relative_path "$SETTINGS_AI_DARK_SCREENSHOT")"
 echo "- $(relative_path "$MCP_SETTINGS_LIGHT_SCREENSHOT")"
 echo "- $(relative_path "$MCP_SETTINGS_DARK_SCREENSHOT")"
 echo "- $(relative_path "$MCP_SETTINGS_SYSTEM_SCREENSHOT")"

@@ -17,6 +17,11 @@ enum SettingsTab: String {
     case privacy = "Privacy"
 }
 
+enum SettingsPresentationStyle: Equatable {
+    case window
+    case board
+}
+
 extension VoiceModelID {
     var voiceModelSystemImage: String {
         switch self {
@@ -98,6 +103,7 @@ struct SettingsView: View {
     let googleCalendarListProviderFactory: () -> (any GoogleCalendarListProviding)?
     let textToSpeechPreviewerFactory: (AppSettings) -> any TextToSpeechPreviewing
     let onboardingRerunRequest: () -> Void
+    let presentation: SettingsPresentationStyle
     @StateObject private var settingsViewModel: AppSettingsViewModel
     @ObservedObject private var shortcutSettingsViewModel: ShortcutSettingsViewModel
     @StateObject private var launchAtLoginViewModel: LaunchAtLoginSettingsViewModel
@@ -142,6 +148,7 @@ struct SettingsView: View {
         appearancePreference: Binding<SuisuiAppearancePreference>,
         languagePreference: Binding<AppLanguagePreference>,
         initialTab: SettingsTab = .overview,
+        presentation: SettingsPresentationStyle = .window,
         onboardingRerunRequest: @escaping () -> Void = {}
     ) {
         self.integrationPermissionSnapshot = integrationPermissionSnapshot
@@ -152,6 +159,7 @@ struct SettingsView: View {
         self.googleCalendarListProviderFactory = googleCalendarListProviderFactory
         self.textToSpeechPreviewerFactory = textToSpeechPreviewerFactory
         self.onboardingRerunRequest = onboardingRerunRequest
+        self.presentation = presentation
         _settingsViewModel = StateObject(wrappedValue: settingsViewModel)
         _shortcutSettingsViewModel = ObservedObject(wrappedValue: shortcutSettingsViewModel)
         _launchAtLoginViewModel = StateObject(wrappedValue: launchAtLoginViewModel)
@@ -237,7 +245,8 @@ struct SettingsView: View {
             shortcutSettingsViewModel: shortcutSettingsViewModel,
             makeTextToSpeechPreviewer: { [settingsViewModel, textToSpeechPreviewerFactory] in
                 textToSpeechPreviewerFactory(settingsViewModel.settings)
-            }
+            },
+            readinessGroups: settingsOverviewDependencies.groups
         )
     }
 
@@ -401,7 +410,8 @@ SettingsPrivacyFeatureView(
                 .tabItem { Label("Privacy", systemImage: "lock.shield") }
                 .tag(SettingsTab.privacy)
         }
-        .frame(width: 680, height: 584)
+        .frame(width: presentation == .window ? 680 : nil, height: presentation == .window ? 584 : nil)
+        .frame(maxWidth: presentation == .board ? .infinity : nil, maxHeight: presentation == .board ? .infinity : nil, alignment: .topLeading)
         .scenePadding()
         .onAppear {
             launchAtLoginViewModel.refresh()
@@ -1434,4 +1444,60 @@ struct SettingsPrivacyProjectionBuilder {
         }
     }
 
+}
+
+enum SettingsEvidenceLaunch {
+    static var shouldOpenOnLaunch: Bool {
+        ProcessInfo.processInfo.environment["SUISUI_OPEN_SETTINGS_ON_LAUNCH"] == "1"
+    }
+
+    static var requestedTab: SettingsTab {
+        SettingsTab(rawValue: ProcessInfo.processInfo.environment["SUISUI_SETTINGS_EVIDENCE_TAB"] ?? "") ?? .overview
+    }
+}
+
+@MainActor
+enum SuisuiInAppSettingsNavigation {
+    static func requestOpen() {
+        _ = ProjectBoardSceneCoordinator.shared.requestOpen(route: .settings)
+        NotificationCenter.default.post(name: .suisuiOpenBoardSettings, object: nil)
+    }
+}
+
+struct SuisuiSettingsWorkspace: View {
+    @ObservedObject var settingsViewModel: AppSettingsViewModel
+    @ObservedObject var shortcutSettingsViewModel: ShortcutSettingsViewModel
+    @Binding var appearancePreference: SuisuiAppearancePreference
+    @Binding var languagePreference: AppLanguagePreference
+    var initialTab: SettingsTab = SettingsEvidenceLaunch.requestedTab
+    var onboardingRerunRequest: () -> Void = {
+        OnboardingRerunCoordinator.shared.requestRerun()
+    }
+
+    var body: some View {
+        SettingsView(
+            settingsViewModel: settingsViewModel,
+            shortcutSettingsViewModel: shortcutSettingsViewModel,
+            launchAtLoginViewModel: AppRuntimeFactory.makeLaunchAtLoginSettingsViewModel(),
+            integrationPermissionSnapshot: AppRuntimeFactory.makeIntegrationPermissionSnapshot(),
+            watcherDiagnosticsSnapshotFactory: AppRuntimeFactory.makeWatcherDiagnosticsSnapshot,
+            externalMCPSettingsViewModelFactory: AppRuntimeFactory.makeExternalMCPSettingsViewModel,
+            syncSettingsViewModelFactory: AppRuntimeFactory.makeSyncSettingsViewModel,
+            isGoogleCalendarRuntimeEnabled: AppRuntimeFactory.isGoogleCalendarRuntimeEnabled(),
+            googleCalendarStatusProvider: AppRuntimeFactory.makeGoogleCalendarRuntimeSyncStatus,
+            googleCalendarOAuthConnector: AppRuntimeFactory.makeGoogleCalendarOAuthConnector(),
+            googleCalendarOAuthDisconnecter: AppRuntimeFactory.makeGoogleCalendarOAuthDisconnecter(),
+            googleCalendarListProviderFactory: AppRuntimeFactory.makeGoogleCalendarListProvider,
+            textToSpeechPreviewerFactory: AppRuntimeFactory.makeTextToSpeechPreviewer,
+            appearancePreference: $appearancePreference,
+            languagePreference: $languagePreference,
+            initialTab: initialTab,
+            presentation: .board,
+            onboardingRerunRequest: onboardingRerunRequest
+        )
+        .task {
+            await settingsViewModel.refreshProviderReadiness()
+        }
+        .accessibilityIdentifier("board-settings-workspace")
+    }
 }

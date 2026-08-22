@@ -149,10 +149,10 @@ final class ArchitectureBoundaryTests: XCTestCase {
 
         for compositionMarker in [
             "WindowGroup(\"Suisui\", id: \"project-board\")",
-            "VoiceCaptureWindowRootView()",
+            "SuisuiInAppVoiceNavigation.requestOpen()",
             "quickCaptureController: menuBarQuickCaptureController,",
             "sceneCoordinator: projectBoardSceneCoordinator",
-            "SettingsView(",
+            "SuisuiInAppSettingsNavigation.requestOpen()",
             "AppRuntimeFactory.prepareProjectBoardRuntimeBundle()"
         ] {
             XCTAssertTrue(appSource.contains(compositionMarker), "SuisuiApp.swift must keep runtime composition marker \(compositionMarker)")

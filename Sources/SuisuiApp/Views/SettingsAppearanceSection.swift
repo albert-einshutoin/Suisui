@@ -17,6 +17,8 @@ struct SettingsAppearanceSection: View {
                 }
             }
             .pickerStyle(.segmented)
+            .padding(8)
+            .suisuiLiquidGlassControlSurface(cornerRadius: 12, interactive: true)
             .accessibilityIdentifier("settings-theme-picker")
             .accessibilityHint("Changes the appearance for all Suisui windows.")
         }
@@ -33,6 +35,8 @@ struct SettingsAppearanceSection: View {
                 }
             }
             .pickerStyle(.segmented)
+            .padding(8)
+            .suisuiLiquidGlassControlSurface(cornerRadius: 12, interactive: true)
             .accessibilityIdentifier("settings-language-picker")
             .accessibilityHint("Changes the language for all Suisui windows.")
         }

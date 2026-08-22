@@ -173,10 +173,10 @@ UI_VISUAL_EVIDENCE_CONTRACTS=(
   "English|docs/release/evidence/ui-screenshots.md|docs/release/evidence/ui-screenshots/visual-baseline-capture-manifest.json|docs/quality/visual-baseline-manifest.json|docs/release/evidence/ui-screenshots|docs/quality/visual-baselines|en-US"
   "Japanese|docs/release/evidence/ui-screenshots-ja/ui-screenshots.md|docs/release/evidence/ui-screenshots-ja/visual-baseline-capture-manifest.json|docs/quality/visual-baseline-manifest-ja.json|docs/release/evidence/ui-screenshots-ja|docs/quality/visual-baselines-ja|ja-JP"
 )
-EXPECTED_UI_SCREENSHOT_COUNT=39
+EXPECTED_UI_SCREENSHOT_COUNT=47
 EXPECTED_UI_MAIN_VIEWPORT="1024x676"
-EXPECTED_UI_SETTINGS_VIEWPORT="720x676"
-EXPECTED_UI_VOICE_COMMAND_VIEWPORT="760x640"
+EXPECTED_UI_SETTINGS_VIEWPORT="1024x676"
+EXPECTED_UI_VOICE_COMMAND_VIEWPORT="1024x676"
 UI_CRITICAL_SCREENSHOTS=(
   "inbox-voice-light.png"
   "inbox-voice-dark.png"
