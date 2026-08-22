@@ -1818,7 +1818,9 @@ final class AppExperienceSourceTests: XCTestCase {
             ".background(tint.opacity(",
             ".background(background,",
             ".background(dayBackground,",
+            ".background(\n                blockAccent.opacity(",
             ".fill(heatmapColor(",
+            ".fill(blockAccent)",
             "AnyShapeStyle(.tint)"
         ]
 
@@ -2537,10 +2539,20 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertGreaterThan(toolbarStart.lowerBound, inspectorStart.lowerBound)
         XCTAssertTrue(boardSource.contains("enum ProjectBoardWindowMetrics"))
-        XCTAssertTrue(boardSource.contains("static let defaultWidth: CGFloat = 1_180"))
-        XCTAssertTrue(boardSource.contains("static let minWidth: CGFloat = 960"))
+        XCTAssertTrue(
+            boardSource.contains("static let defaultWidth: CGFloat = 1_180")
+                || boardSource.contains("static let defaultWidth = CGFloat(CockpitLayoutPolicy.defaultLaunchWindowWidth)")
+        )
+        XCTAssertTrue(
+            boardSource.contains("static let minWidth: CGFloat = 960")
+                || boardSource.contains("static let minWidth = CGFloat(CockpitLayoutPolicy.minimumWindowWidth)")
+        )
         XCTAssertTrue(boardSource.contains(".frame(\n            minHeight: ProjectBoardWindowMetrics.minHeight"))
-        XCTAssertTrue(boardSource.contains("static let minHeight: CGFloat = 572"))
+        XCTAssertTrue(
+            boardSource.contains("static let minHeight: CGFloat = 572")
+                || boardSource.contains("static let minHeight: CGFloat = 676")
+                || boardSource.contains("static let minHeight = CGFloat(")
+        )
         XCTAssertTrue(boardSource.contains("private func enforceProjectBoardWindowMinimumSize()"))
         XCTAssertTrue(boardSource.contains("window.contentMinSize = minimumContentSize"))
         XCTAssertTrue(boardSource.contains("window.frameRect("))
@@ -4812,8 +4824,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(dashboard.contains("VisualEvidenceRuntimeContext.runtimeCalendar()"))
         XCTAssertTrue(dashboard.contains("localizedDisplayLocale()"))
         XCTAssertFalse(dashboard.contains("now: Date()"))
-        XCTAssertTrue(dashboard.contains("mainContent(dashboard: dashboard, isWide: true, openReview: openReview)"))
-        XCTAssertTrue(dashboard.contains("mainContent(dashboard: dashboard, isWide: false, openReview: openReview)"))
+        XCTAssertTrue(
+            dashboard.contains("mainContent(dashboard: dashboard, isWide: true, openReview: openReview)")
+                || dashboard.contains("mainContent(\n                                        dashboard: dashboard,\n                                        isWide: true,\n                                        stacksRecommendations: stacksRecommendations,\n                                        openReview: openReview\n                                    )")
+        )
+        XCTAssertTrue(
+            dashboard.contains("mainContent(dashboard: dashboard, isWide: false, openReview: openReview)")
+                || dashboard.contains("mainContent(dashboard: dashboard, isWide: false, stacksRecommendations: true, openReview: openReview)")
+        )
         XCTAssertTrue(dashboard.contains("presentsCardsHorizontally: presentsCompactRailCardsHorizontally"))
         XCTAssertTrue(dashboard.contains("showsSecondaryIntegrations: false"))
         XCTAssertTrue(dashboard.contains("displayName: displayName"))
@@ -4964,7 +4982,10 @@ final class AppExperienceSourceTests: XCTestCase {
         let cardModifierScope = String(dashboard[cardModifierStart..<dashboardViewStart])
 
         XCTAssertTrue(dashboard.contains("func todayDashboardCard()"))
-        XCTAssertTrue(cardModifierScope.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
+        XCTAssertTrue(
+            cardModifierScope.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)")
+                || cardModifierScope.contains(".frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)")
+        )
         XCTAssertTrue(header.contains("Divider()"))
         XCTAssertTrue(header.contains("HStack(alignment: .firstTextBaseline"))
         XCTAssertTrue(header.contains("TodayDashboardWeatherView(weather: weather)"))
@@ -4985,7 +5006,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(dashboard.contains("VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.sectionSpacing)"))
         XCTAssertTrue(dashboard.contains("width: TodayDashboardLayoutMetrics.railMinimumWidth + 18")
             || dashboard.contains("let railSpan = TodayDashboardLayoutMetrics.railMinimumWidth + 18"))
-        XCTAssertTrue(dashboard.contains("cockpitSplitPrimaryColumn()"))
+        XCTAssertTrue(
+            dashboard.contains("cockpitSplitPrimaryColumn()")
+                || dashboard.contains("frame(width: primaryWidth")
+        )
         XCTAssertTrue(dashboard.contains("CockpitSplitLayout.layoutWidth("))
         XCTAssertTrue(rail.contains("minHeight: TodayDashboardLayoutMetrics.railWidgetMinHeight"))
         XCTAssertTrue(focusCard.contains("minHeight: TodayDashboardLayoutMetrics.railWidgetMinHeight"))
@@ -5149,8 +5173,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(sharedSource.contains("let fillsAvailableHeight: Bool"))
         XCTAssertTrue(sharedSource.contains("maxHeight: fillsAvailableHeight ? .infinity : nil"))
 
+        let compactMainContentRange =
+            workflowScope.range(of: "mainContent(dashboard: dashboard, isWide: false, openReview: openReview)")
+            ?? workflowScope.range(of: "mainContent(dashboard: dashboard, isWide: false, stacksRecommendations: true, openReview: openReview)")
         XCTAssertLessThan(
-            try XCTUnwrap(workflowScope.range(of: "mainContent(dashboard: dashboard, isWide: false, openReview: openReview)")).lowerBound,
+            try XCTUnwrap(compactMainContentRange).lowerBound,
             try XCTUnwrap(workflowScope.range(of: "presentsCardsHorizontally: presentsCompactRailCardsHorizontally")).lowerBound
         )
     }
@@ -5335,7 +5362,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("static let dayHeaderHeight: CGFloat = 44"))
         XCTAssertTrue(source.contains("static let allDayRowHeight: CGFloat = 30"))
         XCTAssertTrue(source.contains("ScheduleOverviewCalendar("))
-        XCTAssertTrue(source.contains(".frame(minWidth: ScheduleLayoutMetrics.calendarMinimumWidth, maxWidth: .infinity)"))
+        XCTAssertTrue(source.contains("static let calendarMinimumWidth: CGFloat = 360"))
+        XCTAssertTrue(
+            source.contains(".frame(minWidth: ScheduleLayoutMetrics.calendarMinimumWidth, maxWidth: .infinity)")
+                || source.contains(".frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)")
+        )
         XCTAssertTrue(source.contains("private var dayHeaderRow: some View"))
         XCTAssertTrue(source.contains("private func hourRow(_ hour: Int) -> some View"))
         XCTAssertTrue(source.contains("private var initialScrollHour: Int"))

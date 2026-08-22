@@ -63,7 +63,7 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
             let artifactCount = try screens.reduce(into: 0) { count, screen in
                 count += try XCTUnwrap(screen["artifacts"] as? [String: String]).count
             }
-            XCTAssertEqual(artifactCount, 39, "\(manifestName) must describe all 39 locale-specific captures")
+            XCTAssertEqual(artifactCount, 47, "\(manifestName) must describe all 47 locale-specific captures")
         }
     }
 

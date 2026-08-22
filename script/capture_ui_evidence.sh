@@ -33,7 +33,7 @@ AX_MARKER_MAX_NODES="${SUISUI_UI_EVIDENCE_AX_MAX_NODES:-6000}"
 EVIDENCE_LOCALE="${SUISUI_UI_EVIDENCE_LOCALE:-english}"
 EVIDENCE_LOCALES=("english" "japanese")
 # A fixed instant keeps relative seed dates and UI read models on one day even
-# when a long 39-screen capture crosses midnight. These capture-only variables
+# when a long 47-screen capture crosses midnight. These capture-only variables
 # are ignored by normal launches, which continue to use the system clock.
 EVIDENCE_REFERENCE_INSTANT="${SUISUI_VISUAL_EVIDENCE_REFERENCE_INSTANT:-2026-07-10T12:00:00Z}"
 EVIDENCE_TIME_ZONE="${SUISUI_VISUAL_EVIDENCE_TIME_ZONE:-UTC}"

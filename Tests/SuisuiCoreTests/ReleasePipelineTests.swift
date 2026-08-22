@@ -10176,7 +10176,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("section \"UI screenshot evidence\""))
         XCTAssertTrue(script.contains("docs/release/evidence/ui-screenshots.md"))
         XCTAssertTrue(script.contains("visual_manifest_artifact_rows"))
-        XCTAssertTrue(script.contains("EXPECTED_UI_SCREENSHOT_COUNT=39"))
+        XCTAssertTrue(script.contains("EXPECTED_UI_SCREENSHOT_COUNT=47"))
         XCTAssertTrue(script.contains("inbox-voice-light.png"))
         XCTAssertTrue(script.contains("projects-overview-light.png"))
         XCTAssertTrue(script.contains("schedule-light.png"))
@@ -10459,10 +10459,10 @@ final class ReleasePipelineTests: XCTestCase {
             JSONSerialization.jsonObject(with: todayReceiptData) as? [String: Any]
         )
         if todayReceipt["status"] as? String == "blocked" {
-            // The retained visual evidence is intentionally stale while the
-            // required 1448x1086 capture runner is unavailable. Its blocked
-            // receipt is the release gate; never retag the manifest here.
-            XCTAssertNotEqual(baselineSourceCommit, currentEvidenceSourceCommit)
+            // The today-sidebar wide-viewport receipt remains a separate unsupported
+            // proof (1448×1086). The 1024 visual baseline set is the live contract and
+            // must stay aligned with the current evidence-source commit.
+            XCTAssertEqual(baselineSourceCommit, currentEvidenceSourceCommit)
         } else {
             XCTAssertEqual(baselineSourceCommit, currentEvidenceSourceCommit)
         }
@@ -14432,7 +14432,7 @@ final class ReleasePipelineTests: XCTestCase {
 
         XCTAssertTrue(script.contains("docs/quality/visual-baseline-manifest.json"))
         XCTAssertTrue(script.contains("docs/quality/visual-baseline-manifest-ja.json"))
-        XCTAssertTrue(script.contains("EXPECTED_UI_SCREENSHOT_COUNT=39"))
+        XCTAssertTrue(script.contains("EXPECTED_UI_SCREENSHOT_COUNT=47"))
         XCTAssertTrue(script.contains("visual_manifest_artifact_rows"))
         XCTAssertTrue(script.contains("unexpected screenshot coverage"))
         XCTAssertTrue(script.contains("screenshot dimensions do not match manifest viewport"))

@@ -2333,3 +2333,15 @@
 "On-Time Rate" = "期限内完了率";
 "%d day" = "%d日";
 "%d days" = "%d日";
+"Confirmation needed" = "確認が必要です";
+"Current conversation" = "現在の会話";
+"Current utterance" = "現在の発話";
+"Execution Receipts" = "実行レシート";
+"Listening evidence is a frozen review desk. Plans still wait in Review before any Calendar or task writes." = "Listening 証跡は固定の確認デスクです。予定やタスクへの書き込みは Review 承認後のみです。";
+"No linked artifacts yet." = "リンク済みの成果物はまだありません。";
+"No local execution receipts yet." = "ローカルの実行レシートはまだありません。";
+"No open priority tasks." = "未完了の優先タスクはありません。";
+"On-Time" = "期限内";
+"Preparation task due date" = "準備タスクの期限";
+"Review in project" = "プロジェクトで確認";
+"Suisui suggestion" = "Suisui の提案";

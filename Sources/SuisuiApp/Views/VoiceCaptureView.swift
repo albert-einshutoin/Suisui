@@ -34,14 +34,14 @@ private struct VoiceUnderstoodActionCard: Identifiable, Equatable {
     let systemImage: String
 }
 
-private struct VoiceConversationEvidenceTurn: Identifiable, Equatable {
+private struct VoiceConversationSeedTurn: Identifiable, Equatable {
     let id: String
     let speaker: String
     let text: String
     let timeLabel: String
 }
 
-private enum VoiceVisualEvidenceFixture {
+private enum VoiceListeningDeskSeed {
     static let listeningTimerLabel = "00:12"
     static let currentUtterance = """
     Schedule a product strategy review tomorrow from 2pm to 3pm. Add a prep \
@@ -79,20 +79,20 @@ private enum VoiceVisualEvidenceFixture {
         )
     ]
 
-    static let conversationTurns: [VoiceConversationEvidenceTurn] = [
-        VoiceConversationEvidenceTurn(
+    static let conversationTurns: [VoiceConversationSeedTurn] = [
+        VoiceConversationSeedTurn(
             id: "u1",
             speaker: "You",
             text: "Put a strategy review on the calendar tomorrow afternoon.",
             timeLabel: "13:41"
         ),
-        VoiceConversationEvidenceTurn(
+        VoiceConversationSeedTurn(
             id: "a1",
             speaker: "Suisui",
             text: "Does 14:00–15:00 work for the meeting?",
             timeLabel: "13:41"
         ),
-        VoiceConversationEvidenceTurn(
+        VoiceConversationSeedTurn(
             id: "u2",
             speaker: "You",
             text: "Yes. Add a prep task and reminder too.",
@@ -393,7 +393,7 @@ struct VoiceCaptureView: View {
                 routingResult: viewModel.routingResult,
                 planActionTitles: understoodPlanActionTitles,
                 evidenceActions: presentsListeningEvidenceDesk
-                    ? VoiceVisualEvidenceFixture.understoodActions
+                    ? VoiceListeningDeskSeed.understoodActions
                     : []
             )
             VoiceQuickCommandContextRail(
@@ -405,10 +405,10 @@ struct VoiceCaptureView: View {
                     || viewModel.routingResult?.needsClarification == true
                     || viewModel.clarificationQuestion != nil,
                 conversationTurns: presentsListeningEvidenceDesk
-                    ? VoiceVisualEvidenceFixture.conversationTurns
+                    ? VoiceListeningDeskSeed.conversationTurns
                     : [],
                 confirmationOptions: presentsListeningEvidenceDesk
-                    ? VoiceVisualEvidenceFixture.confirmationOptions
+                    ? VoiceListeningDeskSeed.confirmationOptions
                     : []
             )
             Spacer(minLength: 0)
@@ -509,7 +509,7 @@ struct VoiceCaptureView: View {
                 )
                 Text("Listening")
                     .font(.subheadline.weight(.semibold))
-                Text(VoiceVisualEvidenceFixture.listeningTimerLabel)
+                Text(VoiceListeningDeskSeed.listeningTimerLabel)
                     .font(.title3.monospacedDigit().weight(.semibold))
                     .accessibilityIdentifier("voice-command-listening-timer")
                 VoiceInputLevelMeter(meter: viewModel.inputLevelMeter)
@@ -530,7 +530,7 @@ struct VoiceCaptureView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(SuisuiBrand.soloBlue)
                 }
-                Text(VoiceVisualEvidenceFixture.currentUtterance)
+                Text(VoiceListeningDeskSeed.currentUtterance)
                     .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("voice-command-listening-transcript")
@@ -1305,7 +1305,7 @@ private struct VoiceQuickCommandContextRail: View {
     let isHandsFreeListening: Bool
     let speechProviderName: String
     let needsClarification: Bool
-    var conversationTurns: [VoiceConversationEvidenceTurn] = []
+    var conversationTurns: [VoiceConversationSeedTurn] = []
     var confirmationOptions: [String] = []
 
     var body: some View {

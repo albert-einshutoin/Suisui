@@ -2333,3 +2333,15 @@
 "On-Time Rate" = "On-Time Rate";
 "%d day" = "%d day";
 "%d days" = "%d days";
+"Confirmation needed" = "Confirmation needed";
+"Current conversation" = "Current conversation";
+"Current utterance" = "Current utterance";
+"Execution Receipts" = "Execution Receipts";
+"Listening evidence is a frozen review desk. Plans still wait in Review before any Calendar or task writes." = "Listening evidence is a frozen review desk. Plans still wait in Review before any Calendar or task writes.";
+"No linked artifacts yet." = "No linked artifacts yet.";
+"No local execution receipts yet." = "No local execution receipts yet.";
+"No open priority tasks." = "No open priority tasks.";
+"On-Time" = "On-Time";
+"Preparation task due date" = "Preparation task due date";
+"Review in project" = "Review in project";
+"Suisui suggestion" = "Suisui suggestion";

@@ -1672,7 +1672,7 @@ private struct WeeklyScheduleTimeAxisBlock: View {
         case .high:
             return SuisuiBrand.soloBlue
         case .medium:
-            return SuisuiTone.attention.color
+            return SuisuiBrand.soloBlue.opacity(0.72)
         case .low:
             return SuisuiTone.neutral.color
         }
