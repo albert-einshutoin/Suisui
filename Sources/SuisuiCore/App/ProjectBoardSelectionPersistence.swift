@@ -187,4 +187,8 @@ public enum ProjectBoardTaskSelectionPersistence {
         }
         return taskID
     }
+
+    public static var environmentSuppressesInboxAutoSelection: Bool {
+        ProcessInfo.processInfo.environment["SUISUI_INBOX_EVIDENCE_CLEAR_SELECTION"] == "1"
+    }
 }

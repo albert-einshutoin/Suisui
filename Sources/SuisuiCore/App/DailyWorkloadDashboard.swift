@@ -62,6 +62,29 @@ public struct DailyWorkloadDay: Identifiable, Equatable, Sendable {
         self.progress = progress
         self.projectContributions = projectContributions
     }
+
+    /// Text-first workload summary for day cells. Schedule keeps icon cues
+    /// alongside this label so status is never color-only.
+    public var loadLabel: String {
+        if totalTaskCount == 0 {
+            return String(localized: "Open day")
+        }
+        if overdueTaskCount > 0 {
+            return String(
+                format: String(localized: "%d open, %d overdue"),
+                openTaskCount,
+                overdueTaskCount
+            )
+        }
+        if blockedTaskCount > 0 {
+            return String(
+                format: String(localized: "%d open, %d blocked"),
+                openTaskCount,
+                blockedTaskCount
+            )
+        }
+        return String(format: String(localized: openTaskCount == 1 ? "%d open task" : "%d open tasks"), openTaskCount)
+    }
 }
 
 public struct DailyWorkloadOverview: Equatable, Sendable {

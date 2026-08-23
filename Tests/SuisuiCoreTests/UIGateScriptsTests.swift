@@ -728,10 +728,10 @@ final class UIGateScriptsTests: XCTestCase {
         let captureScript = try readPackageFile("script/capture_ui_evidence.sh")
         XCTAssertTrue(captureScript.contains("hashed audit receipt"))
         XCTAssertFalse(captureScript.contains("signed receipt"))
-        XCTAssertTrue(script.contains("EXPECTED_SCREENSHOT_COUNT=39"))
-        XCTAssertFalse(script.contains("EXPECTED_SCREENSHOT_COUNT=33"))
-        XCTAssertTrue(script.contains("39-artifact capture"))
-        XCTAssertFalse(script.contains("33-screen capture"))
+        XCTAssertTrue(script.contains("EXPECTED_SCREENSHOT_COUNT=47"))
+        XCTAssertFalse(script.contains("EXPECTED_SCREENSHOT_COUNT=39"))
+        XCTAssertTrue(script.contains("47-artifact capture"))
+        XCTAssertFalse(script.contains("39-artifact capture"))
         XCTAssertTrue(script.contains("printf 'expected_screenshot_count=%s\\n' \"$EXPECTED_SCREENSHOT_COUNT\""))
         XCTAssertTrue(script.contains("if [[ \"$MANIFEST_SCREENSHOT_COUNT\" != \"$EXPECTED_SCREENSHOT_COUNT\" ]]"))
         XCTAssertTrue(script.contains("if [[ \"$SCREENSHOT_COUNT\" != \"$EXPECTED_SCREENSHOT_COUNT\" ]]"))
@@ -927,7 +927,7 @@ final class UIGateScriptsTests: XCTestCase {
     }
 
     private func writeVisualGateManifest(_ manifest: URL) throws {
-        let screens = (0..<39).map { index in
+        let screens = (0..<47).map { index in
             [
                 "id": "screen-\(index)",
                 "artifacts": ["light": "screen-\(index).png"]
@@ -975,7 +975,7 @@ final class UIGateScriptsTests: XCTestCase {
             printf 'capture artifactRoot mismatch: %s != %s\\n' "$ARTIFACT_ROOT" "$EXPECTED_ROOT" >&2
             exit 93
           }
-          for index in $(seq 0 38); do
+          for index in $(seq 0 46); do
             : >"$SUISUI_UI_EVIDENCE_DIR/screen-$index.png"
           done
           printf '{"status":"passed"}\\n' >"$SUISUI_VISUAL_AX_AUDIT_RESULT"

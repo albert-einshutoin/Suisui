@@ -88,7 +88,10 @@ struct AssistantQueueWorkflowView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8) {
+                    // Keep all triage rows in the AX tree. LazyVStack omitted the
+                    // failed landmark until scroll materialization, which broke
+                    // visual evidence for the last queue state.
+                    VStack(alignment: .leading, spacing: 8) {
                         ForEach(snapshot.rows) { row in
                             AssistantQueueRow(
                                 row: row,

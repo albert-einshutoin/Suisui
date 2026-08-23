@@ -1,26 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
 import SuisuiCore
-import SwiftUI
-
-struct VoiceWindowIdentifierInstaller: NSViewRepresentable {
-    private static let identifier = NSUserInterfaceItemIdentifier(VoiceWindowIdentity.identifierRawValue)
-
-    func makeNSView(context: Context) -> NSView {
-        WindowIdentifierView()
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        nsView.window?.identifier = Self.identifier
-    }
-
-    private final class WindowIdentifierView: NSView {
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            window?.identifier = VoiceWindowIdentifierInstaller.identifier
-        }
-    }
-}
 
 final class SystemShortcutClient: ShortcutClient, @unchecked Sendable {
     private static let voiceHotKeyID = EventHotKeyID(
@@ -191,7 +171,6 @@ final class SystemShortcutClient: ShortcutClient, @unchecked Sendable {
 final class VoiceWindowActivationCoordinator {
     static let shared = VoiceWindowActivationCoordinator()
 
-    private let openRequestGate = VoiceShortcutOpenRequestGate()
     private var openVoiceWindow: (() -> Void)?
 
     func installOpenRequest(_ openVoiceWindow: @escaping () -> Void) {
@@ -200,39 +179,7 @@ final class VoiceWindowActivationCoordinator {
 
     func activateExistingWindowOrRequestOpen() {
         NSApplication.shared.activate(ignoringOtherApps: true)
-        let voiceWindow = visibleVoiceWindow
-        openRequestGate.handle(
-            isWindowVisible: voiceWindow != nil,
-            activateExisting: {
-                voiceWindow?.makeKeyAndOrderFront(nil)
-                voiceWindow?.orderFrontRegardless()
-            },
-            requestOpen: { [openVoiceWindow] in
-                if let openVoiceWindow {
-                    openVoiceWindow()
-                    return true
-                }
-                return self.performVoiceCommandShortcutMenuItem()
-            }
-        )
-    }
-
-    func markVoiceWindowVisible() {
-        openRequestGate.markWindowVisible()
-    }
-
-    func markVoiceWindowClosed() {
-        openRequestGate.markWindowClosed()
-    }
-
-    private var visibleVoiceWindow: NSWindow? {
-        NSApplication.shared.windows.first { window in
-            VoiceWindowIdentity.matches(
-                identifierRawValue: window.identifier?.rawValue,
-                title: window.title
-            )
-                && (window.isVisible || window.isMiniaturized)
-        }
+        openVoiceWindow?()
     }
 
     private func performVoiceCommandShortcutMenuItem() -> Bool {

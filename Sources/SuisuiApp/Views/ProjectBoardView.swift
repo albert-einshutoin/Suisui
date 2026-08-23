@@ -10,10 +10,11 @@ import AppKit
 enum ProjectBoardWindowMetrics {
     // The primary window must keep one stable content contract across sidebar
     // destinations; otherwise SwiftUI can re-fit the window when Inbox/Today
-    // switch between compact and rail-heavy workflow surfaces.
-    static let defaultWidth: CGFloat = 1_180
+    // switch between compact and rail-heavy workflow surfaces. Widths come from
+    // CockpitLayoutPolicy so launch / minimum / visual 1024 stay one ladder.
+    static let defaultWidth = CGFloat(CockpitLayoutPolicy.defaultLaunchWindowWidth)
     static let defaultHeight: CGFloat = 760
-    static let minWidth: CGFloat = 960
+    static let minWidth = CGFloat(CockpitLayoutPolicy.minimumWindowWidth)
     static let minHeight: CGFloat = 572
 }
 
@@ -36,7 +37,9 @@ enum ProjectBoardLayoutMetrics {
     // minimum. With the compact inspector open, that floor prevents the product
     // from reaching its supported 1024pt compact window width.
     static let detailColumnMinWidth: CGFloat = 440
-    static let detailColumnIdealWidth: CGFloat = 700
+    // Prefer the 1024pt detail remainder (≈784) so cockpit split rails and the
+    // Today continuous rail stay beside primary content instead of clipping.
+    static let detailColumnIdealWidth: CGFloat = 784
     static let terminalPanelMinHeight: CGFloat = 220
     static let terminalPanelIdealHeight: CGFloat = 280
     static let terminalPanelMaxHeight: CGFloat = 360
@@ -85,7 +88,8 @@ struct ProjectBoardMissedTaskFollowUpDateProvider: DateProvider {
 
 struct ProjectBoardView: View {
     @Environment(\.openWindow) private var openWindow
-    @Environment(\.openSettings) private var openSettings
+    @ObservedObject private var settingsViewModel: AppSettingsViewModel
+    @ObservedObject private var shortcutSettingsViewModel: ShortcutSettingsViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var viewModel: ProjectBoardViewModel
     @ObservedObject private var sceneCoordinator: ProjectBoardSceneCoordinator
@@ -97,6 +101,8 @@ struct ProjectBoardView: View {
     private let commandPaletteContentSearch: CommandPaletteContentSearch?
     private let developmentAutomationReviewSession: (ActionPlan) -> ReviewSessionViewModel
     @AppStorage(ProjectBoardSelectionPersistence.storageKey) private var initialRouteRawValue = ProjectBoardSelectionPersistence.defaultRawValue
+    @AppStorage(SuisuiAppearancePreference.storageKey) private var appearancePreference: SuisuiAppearancePreference = .system
+    @AppStorage(AppLanguagePreference.storageKey) private var languagePreference: AppLanguagePreference = .system
     @SceneStorage(ProjectBoardScenePersistence.routeStorageKey) private var currentSceneRouteRawValue = ""
     @SceneStorage("projectBoard.userRequestedInspector") private var userRequestedInspector = false
     @SceneStorage("projectBoard.sidebarHidden") private var storedSidebarHidden = false
@@ -132,6 +138,8 @@ struct ProjectBoardView: View {
 
     init(
         viewModel: ProjectBoardViewModel,
+        settingsViewModel: AppSettingsViewModel,
+        shortcutSettingsViewModel: ShortcutSettingsViewModel,
         sceneID: UUID,
         restoresPrimaryPresentationState: Bool,
         sceneCoordinator: ProjectBoardSceneCoordinator = .shared,
@@ -142,6 +150,8 @@ struct ProjectBoardView: View {
         developmentAutomationReviewSession: @escaping (ActionPlan) -> ReviewSessionViewModel
     ) {
         _viewModel = StateObject(wrappedValue: viewModel)
+        _settingsViewModel = ObservedObject(wrappedValue: settingsViewModel)
+        _shortcutSettingsViewModel = ObservedObject(wrappedValue: shortcutSettingsViewModel)
         _sceneCoordinator = ObservedObject(wrappedValue: sceneCoordinator)
         self.sceneID = sceneID
         self.restoresPrimaryPresentationState = restoresPrimaryPresentationState
@@ -153,6 +163,11 @@ struct ProjectBoardView: View {
     }
 
     var body: some View {
+        projectBoardOverlayChrome
+    }
+
+    @ViewBuilder
+    private var projectBoardNavigationShell: some View {
         let sidebarMetrics = viewModel.derivedReadModels.sidebarMetrics
         NavigationSplitView(columnVisibility: $columnVisibility) {
             ProjectBoardSidebarView(
@@ -164,12 +179,13 @@ struct ProjectBoardView: View {
                     schedule: sidebarMetrics.scheduleCount,
                     completed: sidebarMetrics.doneCount
                 ),
+                profileDisplayName: appSettings().normalizedForRuntime.profileDisplayName ?? "",
+                planLabel: nil,
                 onOpenSearch: { isCommandPaletteVisible = true },
-                onOpenVoiceCommand: openVoiceCommandFromBoardContext,
-                onOpenSettings: { openSettings() },
                 onAddTask: beginInboxQuickAddFromSidebar,
                 onAddByVoice: openVoiceCommandFromBoardContext,
-                onBlockTime: prepareScheduleDraftFromSidebar
+                onBlockTime: prepareScheduleDraftFromSidebar,
+                onImportTasks: { isImportingTaskInterop = true }
             )
             .id(toolbarLayoutRefreshToken)
             .projectBoardSynchronizedColumnBounds()
@@ -245,243 +261,277 @@ struct ProjectBoardView: View {
             minHeight: ProjectBoardWindowMetrics.minHeight,
             alignment: .topLeading
         )
+        .environment(\.cockpitAuthoritativeContentWidth, cockpitAuthoritativeContentWidth)
         .inspector(isPresented: wideInspectorBinding) {
             inspectorContent
                 .inspectorColumnWidth(min: 240, ideal: 280, max: 420)
         }
-        .sheet(isPresented: $isCompactInspectorSheetPresented, onDismiss: {
-            // A user-dismissed compact sheet must clear the persisted intent.
-            // During a compact-to-wide resize, the width is already wide and
-            // the same intent is preserved for the native inspector instead.
-            if usesCompactInspectorPresentation {
-                dismissInspector()
+    }
+
+    @MainActor
+    private func bootstrapProjectBoard() async {
+        sceneCoordinator.register(sceneID: sceneID)
+        restorePrimaryPresentationStateIfNeeded()
+        columnVisibility = storedSidebarHidden ? .detailOnly : .all
+        LaunchPerformanceSignposts.measureFirstBoardLoadOnce {
+            viewModel.load()
+        }
+        LaunchPerformanceMilestones.record("command-ready")
+        NotificationCenter.default.post(name: .suisuiProjectBoardCommandReady, object: nil)
+        viewModel.scheduleMissedTaskDailyFollowUp(
+            settings: appSettings(),
+            dateProvider: ProjectBoardMissedTaskFollowUpDateProvider()
+        )
+        reloadSavedSmartLists()
+        restoreSelectedDestinationIfNeeded()
+        consumePendingSceneOpenRequests()
+        LaunchPerformanceMilestones.record("today-ready")
+    }
+
+    private var projectBoardOverlayChrome: some View {
+        projectBoardAttachmentChrome
+            .overlay {
+                ZStack {
+                    if isCommandPaletteVisible {
+                        CommandPaletteView(
+                            projects: commandPaletteProjects,
+                            smartLists: commandPaletteSmartLists,
+                            contentSearch: commandPaletteContentSearch,
+                            onExecute: executeCommandPaletteAction,
+                            onDismiss: { isCommandPaletteVisible = false }
+                        )
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                    }
+                }
+                // Brief fade/scale on palette open and close; Reduce Motion makes
+                // the palette appear and disappear instantly instead.
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isCommandPaletteVisible)
             }
-        }) {
-            NavigationStack {
-                inspectorContent
-                    .frame(minWidth: 360, minHeight: 480)
+    }
+
+    private var projectBoardAttachmentChrome: some View {
+        projectBoardLifecycleChrome
+            .fileExporter(
+                isPresented: $isExportingTaskInterop,
+                document: taskInteropExportDocument,
+                contentType: .json,
+                defaultFilename: taskInteropDefaultExportFilename
+            ) { result in
+                switch result {
+                case .success:
+                    viewModel.recordTaskInteropExportCompleted()
+                case .failure(let error):
+                    viewModel.recordTaskInteropFileFailure(error)
+                }
             }
-            .onChange(of: inspectorSelectionContext) { previousSelection, selection in
-                if isCompactInspectorSheetPresented,
-                   selection == .none || (previousSelection == .task && selection != .task) {
-                    // Deleting a selected task otherwise swaps the modal to
-                    // its parent project, while deleting a project leaves an
-                    // EmptyView. Close either compact flow so the user returns
-                    // to the board action they just completed.
+            .fileImporter(
+                isPresented: $isImportingTaskInterop,
+                allowedContentTypes: [.json],
+                allowsMultipleSelection: false
+            ) { result in
+                handleTaskInteropImport(result)
+            }
+            .confirmationDialog(
+                "Sync due tasks to Google Calendar?",
+                isPresented: $isGoogleCalendarSyncApprovalPresented,
+                titleVisibility: .visible
+            ) {
+                Button("Approve Google Calendar Sync") {
+                    approveGoogleCalendarSync()
+                }
+                .accessibilityIdentifier("project-board-google-calendar-sync-approval-confirm")
+
+                Button("Cancel", role: .cancel) {
+                    isGoogleCalendarSyncApprovalPresented = false
+                }
+                .accessibilityIdentifier("project-board-google-calendar-sync-approval-cancel")
+            } message: {
+                Text("Suisui will create Google Calendar events for due, unfinished tasks. Existing linked tasks are skipped.")
+            }
+            .sheet(item: $developmentAutomationReviewSheet) { sheet in
+                ActionReviewPanel(viewModel: sheet.viewModel) {
+                    viewModel.clearDevelopmentAutomationReviewPlan()
+                    developmentAutomationReviewSheet = nil
+                }
+                .padding(16)
+                .frame(minWidth: 520, minHeight: 360)
+                .accessibilityIdentifier("project-development-automation-review-sheet")
+            }
+            .sheet(isPresented: $isPresentingSmartListEditor) {
+                SmartListEditorSheet(
+                    onSave: { smartList in
+                        saveSmartList(smartList)
+                        isPresentingSmartListEditor = false
+                    },
+                    onCancel: { isPresentingSmartListEditor = false }
+                )
+            }
+    }
+
+    private var projectBoardLifecycleChrome: some View {
+        projectBoardToolbarChrome
+            .task {
+                await bootstrapProjectBoard()
+            }
+            .onDisappear {
+                sceneCoordinator.unregister(sceneID: sceneID)
+            }
+            .modifier(ProjectBoardTodayRefreshLifecycleModifier {
+                viewModel.refreshDerivedReadModels()
+            })
+            .onReceive(NotificationCenter.default.publisher(for: .suisuiProjectBoardDidChange)) { _ in
+                viewModel.load()
+                viewModel.scheduleMissedTaskDailyFollowUp(
+                    settings: appSettings(),
+                    dateProvider: ProjectBoardMissedTaskFollowUpDateProvider()
+                )
+                restoreSelectedDestinationIfNeeded()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .suisuiProjectBoardShortcutRequested)) { notification in
+                guard let request = notification.object as? ProjectBoardShortcutRequest,
+                      request.sceneID == sceneID else {
+                    return
+                }
+                switch request.action {
+                case .commandPalette:
+                    isCommandPaletteVisible = true
+                case let .destination(destination):
+                    boardRouteBinding.wrappedValue = .primary(destination)
+                case let .route(route):
+                    if route == .voiceCommand {
+                        openVoiceCommandFromBoardContext()
+                    } else {
+                        boardRouteBinding.wrappedValue = route
+                    }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .suisuiVoiceDailyPlanningReviewRequested)) { notification in
+                handleVoiceDailyPlanningReviewRequest(notification)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .suisuiVoiceInboxTriageRequested)) { notification in
+                handleVoiceInboxTriageRequest(notification)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .suisuiAssistantQueueRequested)) { notification in
+                handleAssistantQueueOpenRequest(notification)
+            }
+            .onChange(of: sceneCoordinator.deliveryRevision) { _, _ in
+                consumePendingSceneOpenRequests()
+            }
+            .onChange(of: restoresPrimaryPresentationState) { _, restoresPrimary in
+                if restoresPrimary {
+                    restorePrimaryPresentationStateIfNeeded()
+                    columnVisibility = storedSidebarHidden ? .detailOnly : .all
+                }
+            }
+            .onChange(of: selectedDestination) { previousDestination, destination in
+                allowsCompactInspectorPresentation = false
+                if destination != nil {
+                    selectedSmartListID = nil
+                }
+                if let suppression = pendingDestinationPersistenceSuppression,
+                   suppression.destination == destination {
+                    pendingDestinationPersistenceSuppression = nil
+                } else {
+                    // A stale suppression can remain when programmatic A -> B -> A
+                    // changes coalesce without onChange. A later user destination
+                    // differs, clears it here, and persists normally.
+                    pendingDestinationPersistenceSuppression = nil
+                    if let destination,
+                       ProjectBoardSelectionPersistence.environmentOverrideRawValue != nil {
+                        transientBoardRoute = validatedRoute(typedRoute(for: destination))
+                    } else {
+                        persistSelectedDestination(destination)
+                    }
+                }
+                applySelectedDestination(
+                    destination,
+                    previousDestination: previousDestination
+                )
+                // Destination changes intentionally clear normal user selection; the
+                // env-only override is reapplied so deterministic release evidence
+                // can open Inbox with a seeded capture selected.
+                applySelectedTaskOverrideIfNeeded()
+                applyPendingCommandPaletteRevealIfNeeded()
+            }
+    }
+
+    private var projectBoardToolbarChrome: some View {
+        projectBoardNavigationShell
+            .onReceive(NotificationCenter.default.publisher(for: .suisuiOpenBoardSettings)) { _ in
+                navigateWithinScene(to: .settings)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .suisuiOpenBoardVoiceCommand)) { _ in
+                openVoiceCommandFromBoardContext()
+            }
+            .sheet(isPresented: $isCompactInspectorSheetPresented, onDismiss: {
+                // A user-dismissed compact sheet must clear the persisted intent.
+                // During a compact-to-wide resize, the width is already wide and
+                // the same intent is preserved for the native inspector instead.
+                if usesCompactInspectorPresentation {
                     dismissInspector()
                 }
-            }
-        }
-        .navigationTitle("Suisui")
-        // The Edit-menu board undo command targets the key Project Board
-        // window through this focused scene value; text-field undo keeps the
-        // standard responder-chain Undo item.
-        .focusedSceneValue(\.projectBoardUndo, ProjectBoardUndoCommandAction(viewModel: viewModel))
-        .toolbar {
-            ProjectBoardToolbarContent(
-                context: projectBoardToolbarContext,
-                sidebarToggleHelp: sidebarToggleHelp,
-                undoFeedback: viewModel.boardUndoFeedback,
-                isInspectorPresented: isInspectorEffectivelyPresented,
-                canSyncGoogleCalendar: viewModel.canSyncGoogleCalendar,
-                googleCalendarSyncHelp: viewModel.googleCalendarSyncHelp,
-                onToggleSidebar: toggleSidebarVisibility,
-                onToggleInspector: toggleInspectorPresentation,
-                onExportTasks: beginTaskInteropExport,
-                onImportTasks: { isImportingTaskInterop = true },
-                onRequestGoogleCalendarSync: { isGoogleCalendarSyncApprovalPresented = true },
-                onReviewTaskAutomation: {
-                    // Preparing the deterministic review decision does not
-                    // consume LLM budget; reveal the selected task inspector
-                    // so the toolbar action always lands on reviewable output.
-                    let decision = viewModel.prepareTaskAutomationReview(settings: taskAutomationSettings())
-                    if decision.status == .readyForReview,
-                       let taskID = decision.selectedTasks.first?.id {
-                        openTaskInspector(taskID)
+            }) {
+                NavigationStack {
+                    inspectorContent
+                        .frame(minWidth: 360, minHeight: 480)
+                }
+                .onChange(of: inspectorSelectionContext) { previousSelection, selection in
+                    if isCompactInspectorSheetPresented,
+                       selection == .none || (previousSelection == .task && selection != .task) {
+                        // Deleting a selected task otherwise swaps the modal to
+                        // its parent project, while deleting a project leaves an
+                        // EmptyView. Close either compact flow so the user returns
+                        // to the board action they just completed.
+                        dismissInspector()
                     }
-                },
-                onToggleTerminal: { isTerminalPanelPresented.toggle() }
-            )
-        }
-        .toolbar(removing: .sidebarToggle)
-        // The Inbox reference surface owns its sort/filter controls in the
-        // content header; hiding the global command toolbar keeps that review
-        // surface aligned with the compact reference composition.
-        .toolbar(
-            selectedDestination == .inbox ? .hidden : .automatic,
-            for: .windowToolbar
-        )
-        .background(
-            ProjectBoardToolbarLayoutBridge(
-                columnVisibility: columnVisibility,
-                onToolbarLayoutChanged: refreshProjectBoardColumnsAfterToolbarDisplayModeChange,
-                onWindowWidthChanged: updateProjectBoardWindowWidth
-            )
-        )
-        .task {
-            sceneCoordinator.register(sceneID: sceneID)
-            restorePrimaryPresentationStateIfNeeded()
-            columnVisibility = storedSidebarHidden ? .detailOnly : .all
-            LaunchPerformanceSignposts.measureFirstBoardLoadOnce {
-                viewModel.load()
-            }
-            LaunchPerformanceMilestones.record("command-ready")
-            NotificationCenter.default.post(name: .suisuiProjectBoardCommandReady, object: nil)
-            viewModel.scheduleMissedTaskDailyFollowUp(
-                settings: appSettings(),
-                dateProvider: ProjectBoardMissedTaskFollowUpDateProvider()
-            )
-            reloadSavedSmartLists()
-            restoreSelectedDestinationIfNeeded()
-            consumePendingSceneOpenRequests()
-            LaunchPerformanceMilestones.record("today-ready")
-        }
-        .onDisappear {
-            sceneCoordinator.unregister(sceneID: sceneID)
-        }
-        .modifier(ProjectBoardTodayRefreshLifecycleModifier {
-            viewModel.refreshDerivedReadModels()
-        })
-        .onReceive(NotificationCenter.default.publisher(for: .suisuiProjectBoardDidChange)) { _ in
-            viewModel.load()
-            viewModel.scheduleMissedTaskDailyFollowUp(
-                settings: appSettings(),
-                dateProvider: ProjectBoardMissedTaskFollowUpDateProvider()
-            )
-            restoreSelectedDestinationIfNeeded()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .suisuiProjectBoardShortcutRequested)) { notification in
-            guard let request = notification.object as? ProjectBoardShortcutRequest,
-                  request.sceneID == sceneID else {
-                return
-            }
-            switch request.action {
-            case .commandPalette:
-                isCommandPaletteVisible = true
-            case let .destination(destination):
-                boardRouteBinding.wrappedValue = .primary(destination)
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .suisuiVoiceDailyPlanningReviewRequested)) { notification in
-            handleVoiceDailyPlanningReviewRequest(notification)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .suisuiVoiceInboxTriageRequested)) { notification in
-            handleVoiceInboxTriageRequest(notification)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .suisuiAssistantQueueRequested)) { notification in
-            handleAssistantQueueOpenRequest(notification)
-        }
-        .onChange(of: sceneCoordinator.deliveryRevision) { _, _ in
-            consumePendingSceneOpenRequests()
-        }
-        .onChange(of: restoresPrimaryPresentationState) { _, restoresPrimary in
-            if restoresPrimary {
-                restorePrimaryPresentationStateIfNeeded()
-                columnVisibility = storedSidebarHidden ? .detailOnly : .all
-            }
-        }
-        .onChange(of: selectedDestination) { previousDestination, destination in
-            allowsCompactInspectorPresentation = false
-            if destination != nil {
-                selectedSmartListID = nil
-            }
-            if let suppression = pendingDestinationPersistenceSuppression,
-               suppression.destination == destination {
-                pendingDestinationPersistenceSuppression = nil
-            } else {
-                // A stale suppression can remain when programmatic A -> B -> A
-                // changes coalesce without onChange. A later user destination
-                // differs, clears it here, and persists normally.
-                pendingDestinationPersistenceSuppression = nil
-                if let destination,
-                   ProjectBoardSelectionPersistence.environmentOverrideRawValue != nil {
-                    transientBoardRoute = validatedRoute(typedRoute(for: destination))
-                } else {
-                    persistSelectedDestination(destination)
                 }
             }
-            applySelectedDestination(
-                destination,
-                previousDestination: previousDestination
+            .navigationTitle("Suisui")
+            // The Edit-menu board undo command targets the key Project Board
+            // window through this focused scene value; text-field undo keeps the
+            // standard responder-chain Undo item.
+            .focusedSceneValue(\.projectBoardUndo, ProjectBoardUndoCommandAction(viewModel: viewModel))
+            .toolbar {
+                ProjectBoardToolbarContent(
+                    context: projectBoardToolbarContext,
+                    sidebarToggleHelp: sidebarToggleHelp,
+                    undoFeedback: viewModel.boardUndoFeedback,
+                    isInspectorPresented: isInspectorEffectivelyPresented,
+                    canSyncGoogleCalendar: viewModel.canSyncGoogleCalendar,
+                    googleCalendarSyncHelp: viewModel.googleCalendarSyncHelp,
+                    onToggleSidebar: toggleSidebarVisibility,
+                    onToggleInspector: toggleInspectorPresentation,
+                    onExportTasks: beginTaskInteropExport,
+                    onImportTasks: { isImportingTaskInterop = true },
+                    onRequestGoogleCalendarSync: { isGoogleCalendarSyncApprovalPresented = true },
+                    onReviewTaskAutomation: {
+                        // Preparing the deterministic review decision does not
+                        // consume LLM budget; reveal the selected task inspector
+                        // so the toolbar action always lands on reviewable output.
+                        let decision = viewModel.prepareTaskAutomationReview(settings: taskAutomationSettings())
+                        if decision.status == .readyForReview,
+                           let taskID = decision.selectedTasks.first?.id {
+                            openTaskInspector(taskID)
+                        }
+                    },
+                    onToggleTerminal: { isTerminalPanelPresented.toggle() }
+                )
+            }
+            .toolbar(removing: .sidebarToggle)
+            // The Inbox reference surface owns its sort/filter controls in the
+            // content header; hiding the global command toolbar keeps that review
+            // surface aligned with the compact reference composition.
+            .toolbar(
+                selectedDestination == .inbox ? .hidden : .automatic,
+                for: .windowToolbar
             )
-            // Destination changes intentionally clear normal user selection; the
-            // env-only override is reapplied so deterministic release evidence
-            // can open Inbox with a seeded capture selected.
-            applySelectedTaskOverrideIfNeeded()
-            applyPendingCommandPaletteRevealIfNeeded()
-        }
-        .fileExporter(
-            isPresented: $isExportingTaskInterop,
-            document: taskInteropExportDocument,
-            contentType: .json,
-            defaultFilename: taskInteropDefaultExportFilename
-        ) { result in
-            switch result {
-            case .success:
-                viewModel.recordTaskInteropExportCompleted()
-            case .failure(let error):
-                viewModel.recordTaskInteropFileFailure(error)
-            }
-        }
-        .fileImporter(
-            isPresented: $isImportingTaskInterop,
-            allowedContentTypes: [.json],
-            allowsMultipleSelection: false
-        ) { result in
-            handleTaskInteropImport(result)
-        }
-        .confirmationDialog(
-            "Sync due tasks to Google Calendar?",
-            isPresented: $isGoogleCalendarSyncApprovalPresented,
-            titleVisibility: .visible
-        ) {
-            Button("Approve Google Calendar Sync") {
-                approveGoogleCalendarSync()
-            }
-            .accessibilityIdentifier("project-board-google-calendar-sync-approval-confirm")
-
-            Button("Cancel", role: .cancel) {
-                isGoogleCalendarSyncApprovalPresented = false
-            }
-            .accessibilityIdentifier("project-board-google-calendar-sync-approval-cancel")
-        } message: {
-            Text("Suisui will create Google Calendar events for due, unfinished tasks. Existing linked tasks are skipped.")
-        }
-        .sheet(item: $developmentAutomationReviewSheet) { sheet in
-            ActionReviewPanel(viewModel: sheet.viewModel) {
-                viewModel.clearDevelopmentAutomationReviewPlan()
-                developmentAutomationReviewSheet = nil
-            }
-            .padding(16)
-            .frame(minWidth: 520, minHeight: 360)
-            .accessibilityIdentifier("project-development-automation-review-sheet")
-        }
-        .sheet(isPresented: $isPresentingSmartListEditor) {
-            SmartListEditorSheet(
-                onSave: { smartList in
-                    saveSmartList(smartList)
-                    isPresentingSmartListEditor = false
-                },
-                onCancel: { isPresentingSmartListEditor = false }
+            .background(
+                ProjectBoardToolbarLayoutBridge(
+                    columnVisibility: columnVisibility,
+                    onToolbarLayoutChanged: refreshProjectBoardColumnsAfterToolbarDisplayModeChange,
+                    onWindowWidthChanged: updateProjectBoardWindowWidth
+                )
             )
-        }
-        .overlay {
-            ZStack {
-                if isCommandPaletteVisible {
-                    CommandPaletteView(
-                        projects: commandPaletteProjects,
-                        smartLists: commandPaletteSmartLists,
-                        contentSearch: commandPaletteContentSearch,
-                        onExecute: executeCommandPaletteAction,
-                        onDismiss: { isCommandPaletteVisible = false }
-                    )
-                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                }
-            }
-            // Brief fade/scale on palette open and close; Reduce Motion makes
-            // the palette appear and disappear instantly instead.
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isCommandPaletteVisible)
-        }
     }
 
     private var commandPaletteProjects: [(id: Int64, title: String, isArchived: Bool)] {
@@ -596,7 +646,8 @@ struct ProjectBoardView: View {
                     consumedCatchUpFocusRevision = revision
                     activeBoardRouteFocus = nil
                     return true
-                }
+                },
+                prefersContinuousRail: todayPrefersContinuousRail
             )
         case .primary(.inbox):
             InboxWorkflowView(
@@ -632,6 +683,10 @@ struct ProjectBoardView: View {
             ) {
                 reviewHubContent
             }
+        case .settings:
+            embeddedSettingsWorkspace
+        case .voiceCommand:
+            embeddedVoiceWorkspace
         }
     }
 
@@ -668,7 +723,7 @@ struct ProjectBoardView: View {
             } else {
                 ContentUnavailableView("Smart List Not Found", systemImage: "line.3.horizontal.decrease.circle")
             }
-        case .primary, .review:
+        case .primary, .review, .settings, .voiceCommand:
             EmptyView()
         }
     }
@@ -694,9 +749,23 @@ struct ProjectBoardView: View {
             )
         case .review(.assistantQueue):
             AssistantQueueWorkflowView(viewModel: viewModel)
-        case .primary, .project, .smartList:
+        case .primary, .project, .smartList, .settings, .voiceCommand:
             EmptyView()
         }
+    }
+
+    private var embeddedSettingsWorkspace: some View {
+        SuisuiSettingsWorkspace(
+            settingsViewModel: settingsViewModel,
+            shortcutSettingsViewModel: shortcutSettingsViewModel,
+            appearancePreference: $appearancePreference,
+            languagePreference: $languagePreference
+        )
+    }
+
+    private var embeddedVoiceWorkspace: some View {
+        VoiceCaptureWorkspaceHost()
+            .accessibilityIdentifier("board-voice-workspace")
     }
 
     private func openVoiceCommandFromBoardContext() {
@@ -711,7 +780,7 @@ struct ProjectBoardView: View {
                 taskName: task?.title
             )
         )
-        VoiceWindowActivationCoordinator.shared.activateExistingWindowOrRequestOpen()
+        navigateWithinScene(to: .voiceCommand)
         NotificationCenter.default.post(
             name: .suisuiVoiceConversationScopeRequested,
             object: nil
@@ -753,9 +822,9 @@ struct ProjectBoardView: View {
                 selectSmartList(smartList)
             }
         case .openVoiceCommandWindow:
-            openWindow(id: "voice-capture")
+            openVoiceCommandFromBoardContext()
         case .openSettingsWindow:
-            openSettings()
+            navigateWithinScene(to: .settings)
         case .revealTask(let taskID, let projectID, _):
             revealTaskFromCommandPalette(taskID: taskID, projectID: projectID)
         case .openKnowledgeFrame:
@@ -848,6 +917,33 @@ struct ProjectBoardView: View {
 
     private var usesCompactInspectorPresentation: Bool {
         projectBoardWindowWidth < InspectorPresentationPolicy.wideMinimumWidth
+    }
+
+    /// AppKit window width is authoritative for every cockpit desk; GeometryReader
+    /// can under-report NavigationSplitView detail width and incorrectly stack
+    /// secondary rails below the fold at 1024×676. Visual evidence always pins
+    /// that contract, so publish the standard content width instead of a still-zero
+    /// or mid-resize window width.
+    private var cockpitAuthoritativeContentWidth: Double? {
+        if VisualEvidenceRuntimeContext() != nil {
+            return CockpitLayoutPolicy.standardContentWidth
+        }
+        guard projectBoardWindowWidth > 0 else {
+            return nil
+        }
+        if columnVisibility == .detailOnly {
+            return Double(projectBoardWindowWidth)
+        }
+        return CockpitLayoutPolicy.contentWidth(
+            forWindowWidth: Double(projectBoardWindowWidth)
+        )
+    }
+
+    private var todayPrefersContinuousRail: Bool? {
+        guard let contentWidth = cockpitAuthoritativeContentWidth else {
+            return nil
+        }
+        return CockpitLayoutPolicy.presentsSplitRail(contentWidth: contentWidth)
     }
 
     private var wideInspectorBinding: Binding<Bool> {
@@ -1047,6 +1143,10 @@ struct ProjectBoardView: View {
             .project
         case .smartList:
             .smartList
+        case .settings:
+            .settings
+        case .voiceCommand:
+            .voiceCommand
         }
     }
 
@@ -1071,6 +1171,20 @@ struct ProjectBoardView: View {
         // data-change reload must not clobber it by restoring the persisted
         // destination underneath the visible smart list.
         guard selectedSmartListID == nil else {
+            return
+        }
+        if VoiceEvidenceLaunch.shouldOpenOnLaunch {
+            let route = BoardRoute.voiceCommand
+            transientBoardRoute = route
+            applyRouteToLegacyUI(route)
+            applySelectedTaskOverrideIfNeeded()
+            return
+        }
+        if SettingsEvidenceLaunch.shouldOpenOnLaunch {
+            let route = BoardRoute.settings
+            transientBoardRoute = route
+            applyRouteToLegacyUI(route)
+            applySelectedTaskOverrideIfNeeded()
             return
         }
         let availableProjectIDs = Set(viewModel.snapshot.projects.map(\.id))
@@ -1168,7 +1282,7 @@ struct ProjectBoardView: View {
             return allSmartLists.contains(where: { $0.id == smartListID })
                 ? route
                 : .primary(.today)
-        case .primary, .review:
+        case .primary, .review, .settings, .voiceCommand:
             return route
         }
     }
@@ -1206,6 +1320,9 @@ struct ProjectBoardView: View {
             smartListID = nil
         case .review(.automationActivity), .review(.assistantQueue):
             destination = .assistantQueue
+            smartListID = nil
+        case .settings, .voiceCommand:
+            destination = nil
             smartListID = nil
         }
         selectedSmartListID = smartListID
@@ -1259,7 +1376,7 @@ struct ProjectBoardView: View {
         case .review(.assistantQueue):
             consumePendingVoiceDailyPlanningReviewRequestIfNeeded(id: request.id)
             consumePendingAssistantQueueRequestIfNeeded(id: request.id)
-        case .primary, .project, .smartList, .review:
+        case .primary, .project, .smartList, .review, .settings, .voiceCommand:
             break
         }
         // Acknowledge only after route state and any feature payload are
@@ -2061,6 +2178,8 @@ extension Notification.Name {
     static let suisuiVoiceDailyPlanningReviewRequested = Notification.Name("dev.suisui.voiceDailyPlanningReviewRequested")
     static let suisuiVoiceInboxTriageRequested = Notification.Name("dev.suisui.voiceInboxTriageRequested")
     static let suisuiAssistantQueueRequested = Notification.Name("dev.suisui.assistantQueueRequested")
+    static let suisuiOpenBoardSettings = Notification.Name("dev.suisui.openBoardSettings")
+    static let suisuiOpenBoardVoiceCommand = Notification.Name("dev.suisui.openBoardVoiceCommand")
 }
 
 @MainActor

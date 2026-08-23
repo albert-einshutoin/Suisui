@@ -12,6 +12,7 @@ struct VoiceTaskConversationWorkspaceView: View {
     let onPauseSession: () -> Void
     let onResumeSession: () -> Void
     let onArchiveSession: () -> Void
+    @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
 
     init(
         viewModel: VoiceCaptureViewModel,
@@ -31,7 +32,15 @@ struct VoiceTaskConversationWorkspaceView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let layout = VoiceTaskConversationWorkspaceLayout(width: proxy.size.width)
+            let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: proxy.size.width, authoritativeContentWidth: authoritativeContentWidth)
+            let layout = VoiceTaskConversationWorkspaceLayout(
+                measuredWidth: proxy.size.width,
+                authoritativeContentWidth: authoritativeContentWidth
+            )
+            let understandingWidth = CockpitSplitLayout.railWidth(
+                for: .voiceConversation,
+                contentWidth: layoutWidth
+            )
             let presentation = currentPresentation
             VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
                 VoiceTaskConversationWorkspaceHeader(
@@ -47,14 +56,15 @@ struct VoiceTaskConversationWorkspaceView: View {
                         case .regular:
                             HStack(alignment: .top, spacing: SuisuiSpacing.md) {
                                 conversationColumn(presentation)
-                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)
                                 VoiceTaskConversationUnderstandingView(
                                     presentation: presentation,
                                     isCompact: false,
                                     onOpenAssistantQueue: onOpenAssistantQueue
                                 )
-                                .frame(maxWidth: 330, alignment: .topLeading)
+                                .cockpitSplitSecondaryRail(width: understandingWidth)
                             }
+                            .frame(width: max(layoutWidth - CGFloat(SuisuiSpacing.lg) * 2, 1), alignment: .topLeading)
                         case .compact:
                             VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
                                 conversationColumn(presentation)
@@ -74,8 +84,9 @@ struct VoiceTaskConversationWorkspaceView: View {
             .padding(SuisuiSpacing.lg)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        // Keep structural proof on a leaf heading. Container identifiers are
+        // absorbed by SwiftUI descendants and disappear from AX marker waits.
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("voice-conversation-workspace")
         .onAppear {
             viewModel.refreshConversationWorkspaceCloseout()
         }
@@ -174,8 +185,11 @@ private enum VoiceTaskConversationWorkspaceLayout {
     case compact
     case regular
 
-    init(width: CGFloat) {
-        self = width < 840 ? .compact : .regular
+    init(measuredWidth: CGFloat, authoritativeContentWidth: Double?) {
+        self = CockpitSplitLayout.presentsSplitRail(
+            measuredWidth: measuredWidth,
+            authoritativeContentWidth: authoritativeContentWidth
+        ) ? .regular : .compact
     }
 }
 
@@ -235,6 +249,7 @@ private struct VoiceTaskConversationTurnList: View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
             Label("Conversation", systemImage: "text.bubble")
                 .font(.headline)
+                .accessibilityIdentifier("voice-conversation-workspace")
             switch presentation.turnListState {
             case .empty:
                 ContentUnavailableView(
@@ -310,8 +325,28 @@ private struct VoiceTaskConversationComposer: View {
         return false
     }
 
+    private var isTranscribing: Bool {
+        if case .transcribing = viewModel.phase { return true }
+        return false
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
+            if isRecording || isTranscribing {
+                HStack(spacing: SuisuiSpacing.sm) {
+                    VoiceConversationInputLevelMeter(meter: viewModel.inputLevelMeter)
+                    Label(
+                        isRecording ? "Recording" : "Transcribing",
+                        systemImage: isRecording ? "mic.fill" : "waveform"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("voice-conversation-recording-status")
+            }
+
             TextField(
                 viewModel.clarificationQuestion == nil
                     ? "Type a voice task request"
@@ -403,6 +438,41 @@ private struct VoiceTaskConversationComposer: View {
     private func recordingOutputURL() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("suisui-conversation-\(UUID().uuidString).m4a")
+    }
+}
+
+private struct VoiceConversationInputLevelMeter: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject var meter: MicrophoneInputLevelMeter
+
+    private static let barThresholds: [Double] = [0.05, 0.2, 0.4, 0.6, 0.8]
+
+    var body: some View {
+        Group {
+            if reduceMotion {
+                Text("Recording")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tint)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(SuisuiSurface.groupedContent, in: Capsule())
+            } else {
+                HStack(alignment: .bottom, spacing: 3) {
+                    ForEach(Array(Self.barThresholds.enumerated()), id: \.offset) { index, threshold in
+                        Capsule()
+                            .fill(meter.inputLevel >= threshold ? AnyShapeStyle(.tint) : SuisuiSurface.groupedContent)
+                            .frame(width: 4, height: 8 + CGFloat(index) * 3)
+                    }
+                }
+                .animation(
+                    SuisuiMotion.animation(duration: SuisuiMotion.quick, reduceMotion: reduceMotion),
+                    value: meter.inputLevel
+                )
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Microphone input level")
+        .accessibilityIdentifier("voice-conversation-input-level-meter")
     }
 }
 

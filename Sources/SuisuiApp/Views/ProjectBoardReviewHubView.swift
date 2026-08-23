@@ -8,9 +8,7 @@ struct ProjectBoardReviewHubView<Content: View>: View {
 
     var body: some View {
         GeometryReader { proxy in
-            switch ProjectBoardHubPresentationPolicy.presentation(
-                for: Double(proxy.size.width)
-            ) {
+            switch presentation(for: proxy.size.width) {
             case .wide:
                 HSplitView {
                     reviewNavigation
@@ -29,6 +27,13 @@ struct ProjectBoardReviewHubView<Content: View>: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("review-hub")
+    }
+
+    private func presentation(for availableWidth: CGFloat) -> ProjectBoardHubPresentation {
+        if case .review(.schedule) = route {
+            return .compact
+        }
+        return ProjectBoardHubPresentationPolicy.presentation(for: Double(availableWidth))
     }
 
     private var reviewNavigation: some View {

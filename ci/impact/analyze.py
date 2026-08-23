@@ -199,20 +199,13 @@ def analyze(
             reason="unsupported adapter detected: " + ", ".join(sorted(unsupported_types)),
             smoke_targets=smoke_targets,
         )
-    if any(
-        change["status"].startswith("D")
-        and (
-            change["path"].startswith("Sources/")
-            or change["path"].startswith("Tests/")
-        )
-        for change in normalized_changes
-    ):
+    if any(change["status"].startswith("D") for change in normalized_changes):
         return _full_plan(
             base_revision=base_revision,
             head_revision=head_revision,
             changes=normalized_changes,
             projects=projects,
-            reason="deleted source or test file has ambiguous impact",
+            reason="deleted file has ambiguous impact",
             smoke_targets=smoke_targets,
         )
 

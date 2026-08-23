@@ -52,7 +52,7 @@ OUTPUT_DIR="${SUISUI_CI_VISUAL_GATE_OUTPUT_DIR:-$ROOT_DIR/.tmp/ci-visual-gate/$L
 ROOT_CANONICAL="$(cd "$ROOT_DIR" && pwd -P)"
 OUTPUT_CANONICAL=""
 SUMMARY_FILE=""
-EXPECTED_SCREENSHOT_COUNT=39
+EXPECTED_SCREENSHOT_COUNT=47
 STATUS="blocked"
 FAILURE_CATEGORY="internal"
 FAILURE_REASON="gate-not-completed"
@@ -390,7 +390,7 @@ if ! run_logged capability \
 fi
 
 # Removing the receipt before capture makes a stale successful receipt
-# impossible to reuse if the 39-artifact capture exits partway through.
+# impossible to reuse if the 47-artifact capture exits partway through.
 rm -f "$AX_RECEIPT"
 if ! run_logged capture \
   /usr/bin/env \

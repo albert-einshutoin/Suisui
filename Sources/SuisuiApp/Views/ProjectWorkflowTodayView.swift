@@ -15,6 +15,9 @@ struct TodayWorkflowView: View {
     let initiallyExpandsCatchUp: Bool
     var catchUpFocusRevision: Int? = nil
     var onCatchUpFocusConsumed: (Int) -> Bool = { _ in true }
+    /// Board window width drives the continuous rail at 1024×676; GeometryReader
+    /// alone can under-measure the NavigationSplitView detail column.
+    var prefersContinuousRail: Bool? = nil
     @State private var commandTitle = ""
     @State private var isCatchUpExpanded = false
     @AccessibilityFocusState private var isCatchUpFocused: Bool
@@ -30,7 +33,8 @@ struct TodayWorkflowView: View {
         weatherModel: TodayWeatherModel? = nil,
         initiallyExpandsCatchUp: Bool = false,
         catchUpFocusRevision: Int? = nil,
-        onCatchUpFocusConsumed: @escaping (Int) -> Bool = { _ in true }
+        onCatchUpFocusConsumed: @escaping (Int) -> Bool = { _ in true },
+        prefersContinuousRail: Bool? = nil
     ) {
         _viewModel = StateObject(wrappedValue: TodayFeatureViewModel(board: viewModel))
         _weatherModel = StateObject(wrappedValue: weatherModel ?? AppRuntimeFactory.makeTodayWeatherModel())
@@ -43,6 +47,7 @@ struct TodayWorkflowView: View {
         self.initiallyExpandsCatchUp = initiallyExpandsCatchUp
         self.catchUpFocusRevision = catchUpFocusRevision
         self.onCatchUpFocusConsumed = onCatchUpFocusConsumed
+        self.prefersContinuousRail = prefersContinuousRail
         _isCatchUpExpanded = State(initialValue: initiallyExpandsCatchUp)
     }
 
@@ -72,15 +77,16 @@ struct TodayWorkflowView: View {
             commandTitle: $commandTitle,
             displayName: dashboardDisplayName,
             dailyCapacityMinutes: dashboardDailyCapacityMinutes,
-            weatherState: dashboardWeatherState ?? weatherModel.state,
-            integrationsState: viewModel.integrationStates,
+            weatherState: resolvedWeatherState,
+            integrationsState: resolvedIntegrationsState,
             selectTodayTask: selectTodayTask,
             openInspectorForTodayRailTask: openInspectorForTodayRailTask,
             playDailyPlanningReadout: playDailyPlanningReadout,
             openCatchUp: {
                 isCatchUpExpanded = true
                 isCatchUpFocused = true
-            }
+            },
+            prefersContinuousRail: prefersContinuousRail
         ) {
             catchUpSection
         }
@@ -89,6 +95,39 @@ struct TodayWorkflowView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-workflow")
+    }
+
+    /// Evidence pins a sample-like weather chip without calling WeatherKit.
+    private var resolvedWeatherState: TodayWeatherState {
+        if let dashboardWeatherState {
+            return dashboardWeatherState
+        }
+        // Capture sets the reference instant even when the full locale triplet
+        // is still resolving; weather density must not wait on WeatherKit.
+        if ProcessInfo.processInfo.environment["SUISUI_VISUAL_EVIDENCE_REFERENCE_INSTANT"] != nil {
+            return .available(
+                temperatureCelsius: 23,
+                location: "Shibuya",
+                updatedAt: VisualEvidenceRuntimeContext.referenceDate()
+            )
+        }
+        return weatherModel.state
+    }
+
+    /// Evidence fills Needs Review with sanitized synced rows (counts only),
+    /// never Calendar “synced” chrome on the Schedule desk.
+    private var resolvedIntegrationsState: TodayIntegrationStates {
+        guard ProcessInfo.processInfo.environment["SUISUI_VISUAL_EVIDENCE_REFERENCE_INSTANT"] != nil else {
+            return viewModel.integrationStates
+        }
+        let reference = VisualEvidenceRuntimeContext.referenceDate()
+        return TodayIntegrationStates(
+            calendar: .synced(lastSyncedAt: reference, itemCount: 3),
+            slack: .synced(
+                lastSyncedAt: reference.addingTimeInterval(-3_600),
+                itemCount: 2
+            )
+        )
     }
 
     private var catchUpSection: some View {

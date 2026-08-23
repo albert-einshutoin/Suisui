@@ -5,6 +5,7 @@ import SuisuiCore
 enum ProjectBoardShortcutAction {
     case commandPalette
     case destination(BoardPrimaryDestination)
+    case route(BoardRoute)
 }
 
 struct ProjectBoardShortcutRequest {
@@ -81,12 +82,20 @@ final class ProjectBoardSceneCoordinator: ObservableObject {
         setActive(sceneID: sceneID)
     }
 
-    func requestShortcut(_ action: ProjectBoardShortcutAction) {
-        guard let activeSceneID else { return }
+    @discardableResult
+    func requestShortcut(_ action: ProjectBoardShortcutAction) -> Bool {
+        guard let activeSceneID else { return false }
         NotificationCenter.default.post(
             name: .suisuiProjectBoardShortcutRequested,
             object: ProjectBoardShortcutRequest(sceneID: activeSceneID, action: action)
         )
+        return true
+    }
+
+    func openInActiveSceneOrRequestNew(route: BoardRoute, openWindow: () -> Void) {
+        guard !requestShortcut(.route(route)) else { return }
+        _ = requestOpen(route: route)
+        openWindow()
     }
 
     @discardableResult

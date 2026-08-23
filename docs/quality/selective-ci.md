@@ -87,7 +87,7 @@ JSON planは `.tmp/ci-impact/test-plan.json`、実行履歴は `.tmp/ci-impact/e
 
 `ci/config/impact.json` が危険変更の単一source of truthである。CI/planner/config、dependency manifest/lock、compiler/build/test設定、DB/migration、schema/serialization、security、permission、共通test support、共通scriptは全件になる。
 
-source/test削除、未分類file、base/merge-base/diff/shallow recovery失敗、manifest/graph/config/JSON解析失敗、unsupported adapter、存在しない変更source、対象test 0件、filterが実行0件、実行件数の解析不能も全件になる。
+あらゆるfile削除、未分類file、base/merge-base/diff/shallow recovery失敗、manifest/graph/config/JSON解析失敗、unsupported adapter、存在しない変更source、対象test 0件、filterが実行0件、実行件数の解析不能も全件になる。
 
 選択runnerのsetup失敗は、完全SwiftPMを実行するだけでなくJSON plan自体を`full`へ昇格し、fallback理由と全UI gateを後続jobへ渡す。これにより、実行0件などで選択結果の信頼性が失われた後に、狭いE2E対象だけが残ることを防ぐ。
 

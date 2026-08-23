@@ -7,26 +7,25 @@ struct TodayDashboardHeaderView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
-            HStack(alignment: .firstTextBaseline, spacing: SuisuiSpacing.md) {
-                Text("Today")
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
-                Text(header.title)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
+            HStack(alignment: .top, spacing: SuisuiSpacing.lg) {
+                HStack(alignment: .firstTextBaseline, spacing: SuisuiSpacing.md) {
+                    Text("Today")
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                    Text(header.title)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                }
+                TodayDashboardWeatherView(weather: weather)
             }
             Divider()
-            HStack(alignment: .top, spacing: SuisuiSpacing.lg) {
-                VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
+            VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
                 Text(header.greeting)
                     .font(.title3.weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
                 Text("\(localizedTaskCount(header.taskCount)) · \(scheduledTodayLabel)")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: SuisuiSpacing.sm)
-                TodayDashboardWeatherView(weather: weather)
             }
         }
         // Keep weather attribution/retry as separate VoiceOver controls. A

@@ -17,13 +17,67 @@ enum SettingsFeatureLoadState<Value> {
 @MainActor
 struct SettingsOverviewFeatureView: View {
     let dependencies: SettingsOverviewDependencies
+    @State private var selectedRowID: String?
+    @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
+
+    private var selectedRow: SettingsReadinessRow? {
+        let rows = dependencies.groups.flatMap(\.rows)
+        if let selectedRowID {
+            return rows.first { $0.id == selectedRowID } ?? rows.first
+        }
+        return rows.first
+    }
 
     var body: some View {
-        return Form {
+        GeometryReader { proxy in
+            let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: proxy.size.width, authoritativeContentWidth: authoritativeContentWidth)
+            let isWide = CockpitSplitLayout.presentsSplitRail(
+                measuredWidth: proxy.size.width,
+                authoritativeContentWidth: authoritativeContentWidth
+            )
+            let railWidth = CockpitSplitLayout.railWidth(for: .settings, contentWidth: layoutWidth)
+            Group {
+                if isWide {
+                    HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
+                        overviewForm
+                            .cockpitSplitPrimaryColumn()
+                        overviewDetailRail
+                            .cockpitSplitSecondaryRail(width: railWidth)
+                    }
+                    .frame(width: layoutWidth, height: proxy.size.height, alignment: .topLeading)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
+                            overviewForm
+                            overviewDetailRail
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
+            }
+        }
+        .onAppear {
+            if selectedRowID == nil {
+                selectedRowID = dependencies.groups.flatMap(\.rows).first?.id
+            }
+        }
+        .onChange(of: dependencies.groups.map(\.group)) { _, _ in
+            let rows = dependencies.groups.flatMap(\.rows)
+            if let selectedRowID, rows.contains(where: { $0.id == selectedRowID }) {
+                return
+            }
+            self.selectedRowID = rows.first?.id
+        }
+    }
+
+    private var overviewForm: some View {
+        Form {
             Section("Status Overview") {
                 SettingsStatusOverviewView(
                     groups: dependencies.groups,
-                    performAction: dependencies.performReadinessAction
+                    performAction: dependencies.performReadinessAction,
+                    selectedRowID: selectedRowID,
+                    onSelectRow: { selectedRowID = $0.id }
                 )
 
                 Button {
@@ -64,7 +118,61 @@ struct SettingsOverviewFeatureView: View {
             }
 
         }
-            .formStyle(.grouped)
+        .formStyle(.grouped)
+    }
+
+    @ViewBuilder
+    private var overviewDetailRail: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+            Label("Selected readiness", systemImage: "sidebar.right")
+                .font(SuisuiTypography.sectionTitle)
+
+            if let selectedRow {
+                Text(localizedSettingsDisplay(selectedRow.title))
+                    .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(localizedSettingsDisplay(selectedRow.detail))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let action = selectedRow.action {
+                    Button(actionTitle(for: action)) {
+                        dependencies.performReadinessAction(action)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .accessibilityIdentifier("settings-overview-detail-action")
+                } else {
+                    Text("No action needed now.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text("Select a readiness row to review details.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-overview-detail-rail")
+    }
+
+    private func actionTitle(for action: SettingsReadinessAction) -> String {
+        switch action {
+        case .openAI: localizedSettingsDisplay("Open AI")
+        case .openPrivacy: localizedSettingsDisplay("Open Privacy")
+        case .showAdvanced: localizedSettingsDisplay("Show Advanced")
+        case .openMCP: localizedSettingsDisplay("Open MCP")
+        case .openSync: localizedSettingsDisplay("Open Sync")
+        case .retry: localizedSettingsDisplay("Retry")
+        }
     }
 }
 
@@ -84,8 +192,46 @@ struct SettingsAppearanceFeatureView: View {
 struct SettingsAIFeatureView: View {
     @ObservedObject var settingsViewModel: AppSettingsViewModel
     let context: SettingsAIDependencies
+    @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
+
+    private var aiReadinessRows: [SettingsReadinessRow] {
+        let preferredIDs: Set<String> = ["ai", "stt", "tts", "privacy", "data-location"]
+        return context.readinessGroups
+            .flatMap(\.rows)
+            .filter { preferredIDs.contains($0.id) }
+    }
 
     var body: some View {
+        GeometryReader { proxy in
+            let layoutWidth = CockpitSplitLayout.layoutWidth(measuredWidth: proxy.size.width, authoritativeContentWidth: authoritativeContentWidth)
+            let isWide = CockpitSplitLayout.presentsSplitRail(
+                measuredWidth: proxy.size.width,
+                authoritativeContentWidth: authoritativeContentWidth
+            )
+            let railWidth = CockpitSplitLayout.railWidth(for: .settings, contentWidth: layoutWidth)
+            Group {
+                if isWide {
+                    HStack(alignment: .top, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
+                        aiSettingsForm
+                            .cockpitSplitPrimaryColumn()
+                        aiReadinessRail
+                            .cockpitSplitSecondaryRail(width: railWidth)
+                    }
+                    .frame(width: layoutWidth, height: proxy.size.height, alignment: .topLeading)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: CGFloat(CockpitLayoutPolicy.splitSpacing)) {
+                            aiSettingsForm
+                            aiReadinessRail
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
+            }
+        }
+    }
+
+    private var aiSettingsForm: some View {
         Form {
             Section("AI") {
                 Picker(
@@ -555,6 +701,44 @@ struct SettingsAIFeatureView: View {
         .onReceive(NotificationCenter.default.publisher(for: .suisuiAppleSpeechAuthorizationDidChange)) { _ in
             settingsViewModel.refreshAppleSpeechReadiness()
         }
+    }
+
+    private var aiReadinessRail: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+            Label("Readiness", systemImage: "gauge.with.dots.needle.bottom.50percent")
+                .font(SuisuiTypography.sectionTitle)
+
+            if aiReadinessRows.isEmpty {
+                Text("Readiness details appear once Overview has loaded provider status.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(aiReadinessRows, id: \.id) { row in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(localizedSettingsDisplay(row.title))
+                            .font(.subheadline.weight(.semibold))
+                        Text(localizedSettingsDisplay(row.detail))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        SuisuiTone.neutral.color.opacity(0.12),
+                        in: RoundedRectangle(cornerRadius: SuisuiRadius.control, style: .continuous)
+                    )
+                    .accessibilityIdentifier("settings-ai-readiness-\(row.id)")
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-ai-readiness-rail")
     }
 
     private var unavailableSystemSpeechVoiceID: String? {
@@ -1043,6 +1227,8 @@ struct SettingsPrivacyFeatureView: View {
 
         }
         .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-privacy-root")
         .confirmationDialog(
             "Restore from backup?",
             isPresented: context.$isConfirmingBackupRestore,
@@ -1798,6 +1984,7 @@ extension SettingsAIFeatureView {
 struct SettingsAIDependencies {
     let shortcutSettingsViewModel: ShortcutSettingsViewModel
     let makeTextToSpeechPreviewer: () -> any TextToSpeechPreviewing
+    let readinessGroups: [SettingsReadinessRowGroup]
 }
 
 @MainActor

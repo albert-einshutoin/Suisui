@@ -4,16 +4,30 @@ import SwiftUI
 
 enum TodayDashboardLayoutMetrics {
     // Main needs room for task metadata and rail needs room for assistant actions.
-    static let primaryMinimumWidth: CGFloat = 760
-    static let railMinimumWidth: CGFloat = 280
-    static let columnSpacing: CGFloat = 16
-    static let horizontalInsets: CGFloat = 36
+    static let primaryMinimumWidth: CGFloat = 480
+    static let railMinimumWidth = CGFloat(CockpitLayoutPolicy.railWidth)
+    static let columnSpacing = CGFloat(CockpitLayoutPolicy.splitSpacing)
+    static let sectionSpacing = SuisuiSpacing.lg
+    static let widgetSpacing = SuisuiSpacing.md
+    static let railWidgetMinHeight: CGFloat = 168
+    static let recommendationCardMinHeight: CGFloat = 102
+    static let recommendationCardStackedMinHeight: CGFloat = 72
+    static let horizontalInsets: CGFloat = 18
     // 900pt windows leave 864pt after the dashboard's horizontal insets.
     static let compactRailCardsMinimumWidth: CGFloat = 864
     static let twoColumnMinimumWidth = primaryMinimumWidth + railMinimumWidth + columnSpacing
 
+    /// Prefer continuous rail only when the *laid-out* board width can host
+    /// primary + rail. Authoritative window width alone can force split while
+    /// GeometryReader still proposes a narrower detail column, which paints the
+    /// rail over the task list.
+    static func prefersContinuousRail(boardWidth: CGFloat) -> Bool {
+        boardWidth + 0.5 >= twoColumnMinimumWidth
+            && CockpitLayoutPolicy.presentsSplitRail(contentWidth: Double(boardWidth))
+    }
+
     static func isWide(availableWidth: CGFloat) -> Bool {
-        availableWidth >= twoColumnMinimumWidth
+        prefersContinuousRail(boardWidth: availableWidth)
     }
 }
 
@@ -22,7 +36,7 @@ extension View {
     /// this treatment local avoids changing established cards elsewhere while
     /// preserving one shared border, inset, and elevation across the dashboard.
     func todayDashboardCard() -> some View {
-        self.frame(maxWidth: .infinity, alignment: .topLeading)
+        self.frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(SuisuiSpacing.lg)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -33,6 +47,10 @@ extension View {
                     .stroke(SuisuiBorder.subtle.opacity(0.72), lineWidth: 0.75)
             }
             .shadow(color: .black.opacity(0.045), radius: 5, y: 2)
+    }
+
+    func todayDashboardFillRow() -> some View {
+        frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
@@ -50,10 +68,16 @@ struct TodayDashboardView<CatchUpContent: View>: View {
     let openInspectorForTodayRailTask: (Int64) -> Void
     let playDailyPlanningReadout: () -> Void
     let openCatchUp: () -> Void
+    /// When set, prefer this over GeometryReader width. NavigationSplitView can
+    /// under-report the detail column during the first layout passes, which would
+    /// otherwise keep the continuous rail stacked below the fold at 1024×676.
+    let prefersContinuousRail: Bool?
     @ViewBuilder let catchUpContent: () -> CatchUpContent
     @AccessibilityFocusState private var isReviewFocused: Bool
     @AccessibilityFocusState private var isReviewActionsFocused: Bool
     @State private var focusTaskPendingReplacement: Int64?
+    @State private var isWideReviewActionsExpanded = true
+    @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
     private func makeDashboard(now: Date, calendar: Calendar, locale: Locale) -> TodayDashboardSnapshot {
         TodayDashboardSnapshotBuilder.make(
             today: snapshot,
@@ -77,45 +101,136 @@ struct TodayDashboardView<CatchUpContent: View>: View {
             locale: localizedDisplayLocale()
         )
         GeometryReader { proxy in
+            let proposedWidth = max(proxy.size.width, 1)
+            // Authoritative AppKit width keeps 1024 evidence in split when the
+            // GeometryReader under-measures, but never lay out wider than the
+            // proposal — that is what stacked the rail on top of the task list.
+            let layoutWidth = CockpitSplitLayout.layoutWidth(
+                measuredWidth: proposedWidth,
+                authoritativeContentWidth: authoritativeContentWidth
+            )
+            let boardWidth = min(layoutWidth, proposedWidth)
+            let isWide = resolvedPrefersContinuousRail(boardWidth: boardWidth)
+            let presentsCompactRailCardsHorizontally = !isWide
+                && proposedWidth >= TodayDashboardLayoutMetrics.compactRailCardsMinimumWidth
             ScrollViewReader { scrollProxy in
-                ScrollView(.vertical) {
-                    let availableWidth = proxy.size.width - TodayDashboardLayoutMetrics.horizontalInsets
-                    let isWide = TodayDashboardLayoutMetrics.isWide(availableWidth: availableWidth)
-                    let presentsCompactRailCardsHorizontally = !isWide && availableWidth >= TodayDashboardLayoutMetrics.compactRailCardsMinimumWidth
-                    let layout: AnyLayout = isWide
-                        ? AnyLayout(HStackLayout(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing))
-                        : AnyLayout(VStackLayout(alignment: .leading, spacing: SuisuiSpacing.lg))
-                    VStack(alignment: .leading, spacing: 32) {
-                        TodayDashboardHeaderView(header: dashboard.header, weather: dashboard.weather)
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                        layout {
-                            mainContent(dashboard: dashboard, isWide: isWide) {
-                                // These summaries come from Today planning and Catch Up,
-                                // so keep users in that workflow instead of routing to the
-                                // unrelated global Review overview.
-                                withAnimation {
-                                    scrollProxy.scrollTo("today-review-actions", anchor: .top)
+                let openReview = {
+                    // These summaries come from Today planning and Catch Up,
+                    // so keep users in that workflow instead of routing to the
+                    // unrelated global Review overview.
+                    withAnimation {
+                        scrollProxy.scrollTo("today-review-actions", anchor: .top)
+                    }
+                    DispatchQueue.main.async {
+                        isReviewActionsFocused = true
+                    }
+                }
+                Group {
+                    if isWide {
+                        // Keep the rail outside the primary ScrollView so vertical
+                        // scrolling cannot let maxWidth: .infinity children clip it.
+                        // Pin the HStack to the GeometryReader proposal: recommendation
+                        // cards otherwise publish a ~1050pt ideal width that expands the
+                        // reader and clips Workload/Focus/Assistant off the visible desk.
+                        let railSpan = TodayDashboardLayoutMetrics.railMinimumWidth + 18
+                        let primaryWidth = max(
+                            boardWidth
+                                - railSpan
+                                - TodayDashboardLayoutMetrics.columnSpacing,
+                            1
+                        )
+                        // Three recommendation cards need room beside the rail; when the
+                        // primary column is too tight, stack them so none sit under the
+                        // column scroller / rail edge.
+                        let stacksRecommendations = primaryWidth < 560
+                        HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
+                            ScrollView(.vertical) {
+                                VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.sectionSpacing) {
+                                    TodayDashboardHeaderView(header: dashboard.header, weather: dashboard.weather)
+                                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                                    mainContent(
+                                        dashboard: dashboard,
+                                        isWide: true,
+                                        stacksRecommendations: stacksRecommendations,
+                                        openReview: openReview
+                                    )
+                                    reviewActionsCard(isWide: true)
+                                    HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
+                                        TodayIntegrationCard(integration: dashboard.integrations.calendar)
+                                            .todayDashboardFillRow()
+                                        TodayIntegrationCard(integration: dashboard.integrations.slack)
+                                            .todayDashboardFillRow()
+                                    }
                                 }
-                                DispatchQueue.main.async {
-                                    isReviewActionsFocused = true
+                                .padding(.leading, 18)
+                                .padding(.trailing, 8)
+                                .padding(.vertical, 18)
+                                .frame(width: max(primaryWidth - 8, 1), alignment: .topLeading)
+                            }
+                            .scrollIndicators(.never)
+                            .frame(width: primaryWidth, alignment: .topLeading)
+                            .clipped()
+
+                            ScrollView(.vertical) {
+                                rail(
+                                    dashboard: dashboard,
+                                    presentsCardsHorizontally: false,
+                                    showsSecondaryIntegrations: false,
+                                    availableWidth: TodayDashboardLayoutMetrics.railMinimumWidth
+                                )
+                                .padding(.trailing, 18)
+                                .padding(.vertical, 18)
+                                .frame(
+                                    width: TodayDashboardLayoutMetrics.railMinimumWidth,
+                                    alignment: .topLeading
+                                )
+                            }
+                            .scrollIndicators(.never)
+                            .cockpitSplitSecondaryRail(width: railSpan)
+                        }
+                        .frame(
+                            width: boardWidth,
+                            height: proxy.size.height,
+                            alignment: .topLeading
+                        )
+                        .clipped()
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("today-wide-board")
+                    } else {
+                        ScrollView(.vertical) {
+                            VStack(alignment: .leading, spacing: TodayDashboardLayoutMetrics.sectionSpacing) {
+                                TodayDashboardHeaderView(header: dashboard.header, weather: dashboard.weather)
+                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                                mainContent(dashboard: dashboard, isWide: false, stacksRecommendations: true, openReview: openReview)
+                                reviewActionsCard(isWide: false)
+                                rail(
+                                    dashboard: dashboard,
+                                    presentsCardsHorizontally: presentsCompactRailCardsHorizontally,
+                                    showsSecondaryIntegrations: false,
+                                    availableWidth: max(boardWidth - (TodayDashboardLayoutMetrics.horizontalInsets * 2), 1)
+                                )
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                                HStack(alignment: .top, spacing: TodayDashboardLayoutMetrics.columnSpacing) {
+                                    TodayIntegrationCard(integration: dashboard.integrations.calendar)
+                                        .todayDashboardFillRow()
+                                    TodayIntegrationCard(integration: dashboard.integrations.slack)
+                                        .todayDashboardFillRow()
                                 }
                             }
-                                .frame(
-                                    minWidth: isWide ? TodayDashboardLayoutMetrics.primaryMinimumWidth : nil,
-                                    maxWidth: .infinity,
-                                    alignment: .topLeading
-                                )
-                            rail(dashboard: dashboard, presentsCardsHorizontally: presentsCompactRailCardsHorizontally, availableWidth: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth)
-                                .frame(
-                                    width: isWide ? TodayDashboardLayoutMetrics.railMinimumWidth : availableWidth,
-                                    alignment: .topLeading
-                                )
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 18)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
                         }
+                        .frame(width: boardWidth, alignment: .topLeading)
+                        .frame(maxHeight: .infinity, alignment: .topLeading)
+                        .clipped()
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("today-compact-board")
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 18)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("today-briefing-panel")
+                .accessibilityLabel("Today briefing")
             }
             .alert(
                 "Replace active Focus?",
@@ -140,68 +255,97 @@ struct TodayDashboardView<CatchUpContent: View>: View {
                 Text("Starting a new Focus ends the active local session. It does not change task status or Calendar.")
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func resolvedPrefersContinuousRail(boardWidth: CGFloat) -> Bool {
+        // Prefer continuous rail only when the laid-out board width clears the
+        // two-column floor. Forcing split from a larger authoritative width
+        // while GeometryReader proposes less paints the rail over the task list.
+        if let prefersContinuousRail, prefersContinuousRail == false {
+            return false
+        }
+        return TodayDashboardLayoutMetrics.prefersContinuousRail(boardWidth: boardWidth)
     }
 
     private func mainContent(
         dashboard: TodayDashboardSnapshot,
         isWide: Bool,
+        stacksRecommendations: Bool,
         openReview: @escaping () -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.lg) {
             TodayDashboardRecommendationCards(
                 recommendations: dashboard.recommendations,
-                onAction: performRecommendationAction
+                onAction: performRecommendationAction,
+                stacksVertically: stacksRecommendations
             )
-            TodayDashboardTaskListView(
-                tasks: snapshot.plan.tasks,
-                rows: dashboard.tasks,
-                selectedTaskID: viewModel.selectedTaskID,
-                isWide: isWide,
-                toggleCompletion: viewModel.toggleTaskCompletion,
-                selectTask: selectTodayTask,
-                addTask: {
-                    commandTitle = String(localized: "New task: ")
-                    isReviewFocused = true
-                }
+            // Keep Needs Review above the long task list so the first viewport
+            // still surfaces catch-up pressure when the continuous rail is beside.
+            TodayDashboardReviewCard(
+                review: dashboard.review,
+                externalActivity: dashboard.externalActivity,
+                openReview: openReview
             )
-            let lowerLayout: AnyLayout = isWide
-                ? AnyLayout(HStackLayout(alignment: .top, spacing: SuisuiSpacing.lg))
-                : AnyLayout(VStackLayout(alignment: .leading, spacing: SuisuiSpacing.lg))
-            lowerLayout {
-                TodayDashboardWeeklyScheduleCard(schedule: dashboard.weeklySchedule)
-                    .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, alignment: .topLeading)
-                VStack(alignment: .leading, spacing: SuisuiSpacing.lg) {
-                    TodayDashboardReviewCard(
-                        review: dashboard.review,
-                        externalActivity: dashboard.externalActivity,
-                        openReview: openReview
-                    )
-                    .accessibilityFocused($isReviewFocused)
-
-                    VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
-                        Label("Review actions", systemImage: "checklist")
-                            .font(SuisuiTypography.sectionTitle)
-                        TodayCommandPanel(
-                            commandTitle: $commandTitle,
-                            plan: snapshot.plan,
-                            recommendationChips: snapshot.recommendationChips,
-                            viewModel: viewModel,
-                            dailyPlanningReview: viewModel.dailyPlanningReview ?? snapshot.dailyPlanningReviewPreview,
-                            playDailyPlanningReadout: playDailyPlanningReadout
-                        )
-                        TodaySuggestionPanel(plan: snapshot.plan, viewModel: viewModel)
-                        catchUpContent()
-                    }
-                    .todayDashboardCard()
-                    .id("today-review-actions")
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("today-review-actions")
-                    .accessibilityFocused($isReviewActionsFocused)
-                }
-                .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, alignment: .topLeading)
-            }
+            .accessibilityFocused($isReviewFocused)
+            taskList(dashboard: dashboard, isWide: isWide)
+            TodayDashboardWeeklyScheduleCard(schedule: dashboard.weeklySchedule)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private func taskList(dashboard: TodayDashboardSnapshot, isWide: Bool) -> some View {
+        TodayDashboardTaskListView(
+            tasks: snapshot.plan.tasks,
+            rows: dashboard.tasks,
+            selectedTaskID: viewModel.selectedTaskID,
+            isWide: isWide,
+            toggleCompletion: viewModel.toggleTaskCompletion,
+            selectTask: selectTodayTask,
+            addTask: {
+                commandTitle = String(localized: "New task: ")
+                isReviewFocused = true
+            }
+        )
+    }
+
+    private func reviewActionsCard(isWide: Bool) -> some View {
+        Group {
+            if isWide {
+                DisclosureGroup(isExpanded: $isWideReviewActionsExpanded) {
+                    reviewActionsContent
+                } label: {
+                    Label("Planning & commands", systemImage: "checklist")
+                        .font(SuisuiTypography.sectionTitle)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+                    Label("Review actions", systemImage: "checklist")
+                        .font(SuisuiTypography.sectionTitle)
+                    reviewActionsContent
+                }
+            }
+        }
+        .todayDashboardCard()
+        .id("today-review-actions")
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("today-review-actions")
+        .accessibilityFocused($isReviewActionsFocused)
+    }
+
+    private var reviewActionsContent: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.md) {
+            TodayCommandPanel(
+                commandTitle: $commandTitle,
+                plan: snapshot.plan,
+                recommendationChips: snapshot.recommendationChips,
+                viewModel: viewModel,
+                dailyPlanningReview: viewModel.dailyPlanningReview ?? snapshot.dailyPlanningReviewPreview,
+                playDailyPlanningReadout: playDailyPlanningReadout
+            )
+            TodaySuggestionPanel(plan: snapshot.plan, viewModel: viewModel)
+            catchUpContent()
+        }
     }
 
     private func performRecommendationAction(_ recommendation: TodayRecommendation) {
@@ -242,6 +386,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
     private func rail(
         dashboard: TodayDashboardSnapshot,
         presentsCardsHorizontally: Bool,
+        showsSecondaryIntegrations: Bool,
         availableWidth: CGFloat
     ) -> some View {
         TodayDashboardRailView(
@@ -251,6 +396,7 @@ struct TodayDashboardView<CatchUpContent: View>: View {
             commandTitle: $commandTitle,
             openInspector: openInspectorForTodayRailTask,
             presentsCardsHorizontally: presentsCardsHorizontally,
+            showsSecondaryIntegrations: showsSecondaryIntegrations,
             availableWidth: availableWidth
         )
     }

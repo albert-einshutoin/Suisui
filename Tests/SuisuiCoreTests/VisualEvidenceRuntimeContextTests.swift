@@ -15,7 +15,8 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
         XCTAssertEqual(manifest["baselineRoot"] as? String, "docs/quality/visual-baselines-ja")
         XCTAssertEqual(requiredVisibleTextLines, [
             "project board to task card to",
-            "進行中 高",
+            "進行中",
+            "高",
             "7月10日"
         ])
         XCTAssertFalse(requiredVisibleTextLines.contains("In Progress High"))
@@ -62,7 +63,7 @@ final class VisualEvidenceRuntimeContextTests: XCTestCase {
             let artifactCount = try screens.reduce(into: 0) { count, screen in
                 count += try XCTUnwrap(screen["artifacts"] as? [String: String]).count
             }
-            XCTAssertEqual(artifactCount, 39, "\(manifestName) must describe all 39 locale-specific captures")
+            XCTAssertEqual(artifactCount, 47, "\(manifestName) must describe all 47 locale-specific captures")
         }
     }
 
