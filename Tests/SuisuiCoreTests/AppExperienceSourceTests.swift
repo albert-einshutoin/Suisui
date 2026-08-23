@@ -3241,7 +3241,7 @@ final class AppExperienceSourceTests: XCTestCase {
             from: "private struct OpenBoardSettingsCommand: Commands",
             to: "private struct SuisuiWindowCommands: Commands"
         )
-        XCTAssertTrue(settingsCommand.contains("requestOpen(route: .settings)"))
+        XCTAssertTrue(settingsCommand.contains("openInActiveSceneOrRequestNew(route: .settings)"))
         XCTAssertTrue(settingsCommand.contains(".keyboardShortcut(\",\", modifiers: [.command])"))
 
         let addProjectButton = try sourceBlock(
