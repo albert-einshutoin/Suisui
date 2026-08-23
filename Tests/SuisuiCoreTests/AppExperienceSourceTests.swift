@@ -1540,6 +1540,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardDetailSource.contains("proposalTitle"))
         XCTAssertTrue(boardDetailSource.contains("projects-portfolio-global-proposal"))
         XCTAssertTrue(boardDetailSource.contains("if let globalProposalTitle"))
+        XCTAssertTrue(boardDetailSource.contains("String(localized: String.LocalizationValue(filter.title))"))
         XCTAssertFalse(boardDetailSource.contains("Proプラン"))
         XCTAssertFalse(boardDetailSource.contains("Pro Plan"))
         // Artifacts stay framed even when empty; do not hide the whole section.
@@ -2279,6 +2280,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("case .today: \"Today\""))
         XCTAssertTrue(source.contains("case .thisWeek: \"This Week\""))
         XCTAssertTrue(source.contains("case .thisMonth: \"This Month\""))
+        XCTAssertFalse(source.contains("return historyFilter == .thisMonth"))
         XCTAssertTrue(source.contains("donePrimaryColumn"))
         XCTAssertTrue(source.contains("doneSummaryRail"))
         XCTAssertTrue(source.contains("historyContent"))
@@ -2884,7 +2886,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testMenuBarPanelHostsSettingsLinkWithoutThemeControls() throws {
         let panelSource = try readPackageFile("Sources/SuisuiApp/Views/MenuBarPanel.swift")
 
-        XCTAssertTrue(panelSource.contains("sceneCoordinator.requestOpen(route: .settings)"))
+        XCTAssertTrue(panelSource.contains("sceneCoordinator.openInActiveSceneOrRequestNew(route: .settings)"))
         XCTAssertTrue(panelSource.contains("Label(\"Settings\", systemImage: \"gearshape\")"))
         XCTAssertTrue(panelSource.contains(".help(\"Open Settings\")"))
         XCTAssertTrue(panelSource.contains(".accessibilityIdentifier(\"menu-bar-settings-link\")"))
@@ -6671,7 +6673,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceViewSource.contains(".accessibilityIdentifier(\"voice-answer-retry\")"))
         XCTAssertTrue(voiceViewSource.contains("case .openSettings:"))
         XCTAssertTrue(voiceViewSource.contains("case .retryPlanGeneration:"))
-        XCTAssertTrue(voiceViewSource.contains("SuisuiInAppSettingsNavigation.requestOpen()"))
+        XCTAssertTrue(voiceViewSource.contains("openInActiveSceneOrRequestNew(route: .settings)"))
         XCTAssertFalse(voiceViewSource.contains("SettingsLink"))
         XCTAssertTrue(voiceViewSource.contains("await viewModel.generatePlan()"))
 

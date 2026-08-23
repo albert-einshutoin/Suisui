@@ -94,8 +94,9 @@ private struct GlobalVoiceShortcutBridge: View {
             .accessibilityHidden(true)
             .onAppear {
                 VoiceWindowActivationCoordinator.shared.installOpenRequest {
-                    openWindow(id: "project-board")
-                    SuisuiInAppVoiceNavigation.requestOpen()
+                    ProjectBoardSceneCoordinator.shared.openInActiveSceneOrRequestNew(route: .voiceCommand) {
+                        openWindow(id: "project-board")
+                    }
                 }
             }
     }
@@ -117,8 +118,9 @@ private struct MenuBarExtraLabel: View {
         labelContent
             .onAppear {
                 VoiceWindowActivationCoordinator.shared.installOpenRequest {
-                    openWindow(id: "project-board")
-                    SuisuiInAppVoiceNavigation.requestOpen()
+                    ProjectBoardSceneCoordinator.shared.openInActiveSceneOrRequestNew(route: .voiceCommand) {
+                        openWindow(id: "project-board")
+                    }
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .suisuiProjectBoardCommandReady)) { _ in
@@ -161,8 +163,9 @@ private struct OpenBoardSettingsCommand: Commands {
     var body: some Commands {
         CommandGroup(replacing: .appSettings) {
             Button {
-                openWindow(id: "project-board")
-                ProjectBoardSceneCoordinator.shared.requestOpen(route: .settings)
+                ProjectBoardSceneCoordinator.shared.openInActiveSceneOrRequestNew(route: .settings) {
+                    openWindow(id: "project-board")
+                }
             } label: {
                 Label("Settings...", systemImage: "gearshape")
             }
@@ -189,8 +192,9 @@ private struct SuisuiWindowCommands: Commands {
             .keyboardShortcut("0", modifiers: [.command])
 
             Button {
-                openWindow(id: "project-board")
-                SuisuiInAppVoiceNavigation.requestOpen()
+                ProjectBoardSceneCoordinator.shared.openInActiveSceneOrRequestNew(route: .voiceCommand) {
+                    openWindow(id: "project-board")
+                }
             } label: {
                 Label("Voice Command", systemImage: "mic")
             }

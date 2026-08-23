@@ -221,6 +221,7 @@ final class LaunchExperienceTests: XCTestCase {
     func testGlobalVoiceShortcutIsProcessOwnedAndReusesExistingVoiceWindow() throws {
         let appSource = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
         let adapterSource = try readPackageFile("Sources/SuisuiApp/Adapters/SystemShortcutClient.swift")
+        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
 
         XCTAssertTrue(appSource.contains("@StateObject private var shortcutSettingsViewModel"))
         XCTAssertTrue(adapterSource.contains("SystemShortcutClient"))
@@ -229,7 +230,9 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(adapterSource.contains("activateExistingWindowOrRequestOpen"))
         XCTAssertTrue(appSource.contains(".background(GlobalVoiceShortcutBridge())"))
         XCTAssertTrue(appSource.contains("installOpenRequest"))
-        XCTAssertTrue(appSource.contains("SuisuiInAppVoiceNavigation.requestOpen()"))
+        XCTAssertTrue(appSource.contains("openInActiveSceneOrRequestNew(route: .voiceCommand)"))
+        XCTAssertTrue(boardSource.contains("if route == .voiceCommand"))
+        XCTAssertTrue(boardSource.contains("openVoiceCommandFromBoardContext()"))
         XCTAssertTrue(appSource.contains("openWindow(id: \"project-board\")"))
         XCTAssertTrue(appSource.contains("private struct MenuBarExtraLabel: View"))
         XCTAssertTrue(adapterSource.contains("performVoiceCommandShortcutMenuItem"))
@@ -237,10 +240,7 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(adapterSource.contains("modifiers.contains(.shift)"))
         XCTAssertFalse(adapterSource.contains("item.title == \"Voice Command\""))
         XCTAssertFalse(appSource.contains("openWindow(id: \"voice-capture\")"))
-        XCTAssertTrue(adapterSource.contains("markVoiceWindowVisible"))
-        XCTAssertTrue(adapterSource.contains("markVoiceWindowClosed"))
-        XCTAssertTrue(adapterSource.contains("NSUserInterfaceItemIdentifier(VoiceWindowIdentity.identifierRawValue)"))
-        XCTAssertTrue(adapterSource.contains("VoiceWindowIdentity.matches("))
+        XCTAssertFalse(adapterSource.contains("SuisuiInAppVoiceNavigation.requestOpen()"))
         XCTAssertFalse(adapterSource.contains("window.title == \"Voice Command\""))
         XCTAssertTrue(adapterSource.contains("RegisterEventHotKey"))
         XCTAssertTrue(adapterSource.contains("UnregisterEventHotKey"))
@@ -399,7 +399,7 @@ final class LaunchExperienceTests: XCTestCase {
 
         // The menu bar summary shares the coordinator instead of creating a
         // second notification-driven routing implementation.
-        XCTAssertTrue(menuBarSource.contains("sceneCoordinator.requestOpen(route: .primary(.today))"))
+        XCTAssertTrue(menuBarSource.contains("sceneCoordinator.openInActiveSceneOrRequestNew(route: .primary(.today))"))
         XCTAssertTrue(menuBarSource.contains("openWindow(id: \"project-board\")"))
         XCTAssertTrue(menuBarSource.contains(".accessibilityIdentifier(\"menu-bar-open-today\")"))
         XCTAssertTrue(menuBarSource.contains("Label(\"Open Today\", systemImage: \"chevron.right.circle\")"))

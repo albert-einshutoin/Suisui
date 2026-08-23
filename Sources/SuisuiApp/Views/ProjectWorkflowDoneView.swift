@@ -278,7 +278,7 @@ struct DoneWorkflowView: View {
         guard let completedAt = task.completedAt.flatMap({
             SuisuiTimestampDisplay.parse($0, calendar: calendar)?.date
         }) else {
-            return historyFilter == .thisMonth
+            return false
         }
         switch historyFilter {
         case .all:

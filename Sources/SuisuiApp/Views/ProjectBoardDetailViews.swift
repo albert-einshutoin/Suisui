@@ -401,7 +401,7 @@ struct ProjectsPortfolioOverview: View {
                 return summary.health == .completed
             }
         }.count
-        return "\(filter.title) (\(count))"
+        return "\(String(localized: String.LocalizationValue(filter.title))) (\(count))"
     }
 
     private func filtered(_ summaries: [ProjectPortfolioSummary]) -> [ProjectPortfolioSummary] {

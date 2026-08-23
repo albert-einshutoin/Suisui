@@ -667,8 +667,9 @@ struct VoiceCaptureView: View {
             switch viewModel.failureRecovery {
             case .openSettings:
                 Button {
-                    openWindow(id: "project-board")
-                    SuisuiInAppSettingsNavigation.requestOpen()
+                    ProjectBoardSceneCoordinator.shared.openInActiveSceneOrRequestNew(route: .settings) {
+                        openWindow(id: "project-board")
+                    }
                 } label: {
                     Label("Open Settings", systemImage: "gearshape")
                 }
@@ -801,8 +802,9 @@ struct VoiceCaptureView: View {
 
             if let result = viewModel.inboxCaptureResult {
                 VoiceInboxCaptureSavedPanel(result: result) {
-                    _ = ProjectBoardSceneCoordinator.shared.requestOpen(route: .primary(.inbox))
-                    openWindow(id: "project-board")
+                    ProjectBoardSceneCoordinator.shared.openInActiveSceneOrRequestNew(route: .primary(.inbox)) {
+                        openWindow(id: "project-board")
+                    }
                 }
             }
 

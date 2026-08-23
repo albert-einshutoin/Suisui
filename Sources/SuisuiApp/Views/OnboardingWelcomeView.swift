@@ -213,8 +213,9 @@ struct OnboardingWelcomeView: View {
             }
 
             Button {
-                openWindow(id: "project-board")
-                SuisuiInAppSettingsNavigation.requestOpen()
+                ProjectBoardSceneCoordinator.shared.openInActiveSceneOrRequestNew(route: .settings) {
+                    openWindow(id: "project-board")
+                }
             } label: {
                 Label("Open Settings", systemImage: "gearshape")
             }
@@ -241,8 +242,9 @@ struct OnboardingWelcomeView: View {
             Button {
                 if displayedPlanningState.isReady {
                     completeOnboarding()
-                    openWindow(id: "project-board")
-                    SuisuiInAppVoiceNavigation.requestOpen()
+                    ProjectBoardSceneCoordinator.shared.openInActiveSceneOrRequestNew(route: .voiceCommand) {
+                        openWindow(id: "project-board")
+                    }
                 } else {
                     completeOnboarding()
                 }

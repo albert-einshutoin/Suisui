@@ -397,6 +397,12 @@ struct ProjectBoardView: View {
                     isCommandPaletteVisible = true
                 case let .destination(destination):
                     boardRouteBinding.wrappedValue = .primary(destination)
+                case let .route(route):
+                    if route == .voiceCommand {
+                        openVoiceCommandFromBoardContext()
+                    } else {
+                        boardRouteBinding.wrappedValue = route
+                    }
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .suisuiVoiceDailyPlanningReviewRequested)) { notification in

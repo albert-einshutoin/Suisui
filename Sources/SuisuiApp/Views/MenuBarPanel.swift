@@ -53,8 +53,9 @@ struct MenuBarPanel: View {
             Spacer()
 
             Button {
-                openWindow(id: "project-board")
-                sceneCoordinator.requestOpen(route: .settings)
+                sceneCoordinator.openInActiveSceneOrRequestNew(route: .settings) {
+                    openWindow(id: "project-board")
+                }
             } label: {
                 Label("Settings", systemImage: "gearshape")
                     .labelStyle(.iconOnly)
@@ -134,8 +135,9 @@ struct MenuBarPanel: View {
     private func openBoardOnToday() {
         // A broadcast is claimed atomically by one registered board. The
         // persisted value remains only the initial route for a new window.
-        _ = sceneCoordinator.requestOpen(route: .primary(.today))
-        openWindow(id: "project-board")
+        sceneCoordinator.openInActiveSceneOrRequestNew(route: .primary(.today)) {
+            openWindow(id: "project-board")
+        }
     }
 
     private var windowShortcutsRow: some View {
@@ -148,8 +150,9 @@ struct MenuBarPanel: View {
             }
 
             Button {
-                openWindow(id: "project-board")
-                SuisuiInAppVoiceNavigation.requestOpen()
+                sceneCoordinator.openInActiveSceneOrRequestNew(route: .voiceCommand) {
+                    openWindow(id: "project-board")
+                }
             } label: {
                 Label("Voice Command", systemImage: "mic")
                     .frame(maxWidth: .infinity)
