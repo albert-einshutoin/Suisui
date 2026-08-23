@@ -851,15 +851,30 @@ struct VoiceCaptureView: View {
             .appendingPathComponent("suisui-recording-\(UUID().uuidString).m4a")
     }
 
+    private func requestBoardOpen(id: UUID, route: BoardRoute) -> Bool {
+        let coordinator = ProjectBoardSceneCoordinator.shared
+        let targetSceneID = coordinator.activeSceneID
+        guard coordinator.requestOpen(
+            id: id,
+            targetSceneID: targetSceneID,
+            route: route
+        ) != nil else {
+            return false
+        }
+        if targetSceneID == nil {
+            openWindow(id: "project-board")
+        }
+        return true
+    }
+
     private func postDailyPlanningReviewRequest(_ request: VoiceDailyPlanningReviewRequest) {
-        openWindow(id: "project-board")
         let route: BoardRoute = request.requestedActionDraftKind == nil
             ? .primary(.today)
             : .review(.assistantQueue)
         guard let bridgeRequest = SuisuiVoiceDailyPlanningReviewBridge.storePendingRequest(request) else {
             return
         }
-        guard ProjectBoardSceneCoordinator.shared.requestOpen(id: request.id, route: route) != nil else {
+        guard requestBoardOpen(id: request.id, route: route) else {
             SuisuiVoiceDailyPlanningReviewBridge.discardPendingRequest(id: bridgeRequest.id)
             return
         }
@@ -871,14 +886,13 @@ struct VoiceCaptureView: View {
     }
 
     private func postInboxTriageRequest(_ request: VoiceInboxTriageRequest) {
-        openWindow(id: "project-board")
         guard let bridgeRequest = SuisuiVoiceInboxTriageBridge.storePendingRequest(request) else {
             return
         }
-        guard ProjectBoardSceneCoordinator.shared.requestOpen(
+        guard requestBoardOpen(
             id: request.id,
             route: .primary(.inbox)
-        ) != nil else {
+        ) else {
             SuisuiVoiceInboxTriageBridge.discardPendingRequest(id: bridgeRequest.id)
             return
         }
@@ -896,14 +910,13 @@ struct VoiceCaptureView: View {
         ) else {
             return
         }
-        guard ProjectBoardSceneCoordinator.shared.requestOpen(
+        guard requestBoardOpen(
             id: bridgeRequest.id,
             route: .review(.assistantQueue)
-        ) != nil else {
+        ) else {
             SuisuiAssistantQueueBridge.discardPendingOpen(id: bridgeRequest.id)
             return
         }
-        openWindow(id: "project-board")
         NotificationCenter.default.post(
             name: .suisuiAssistantQueueRequested,
             object: nil,

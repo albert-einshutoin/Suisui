@@ -4587,7 +4587,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains(".onReceive(NotificationCenter.default.publisher(for: .suisuiVoiceDailyPlanningReviewRequested))"))
         XCTAssertTrue(boardSource.contains("consumePendingVoiceDailyPlanningReviewRequestIfNeeded"))
         XCTAssertTrue(boardSource.contains("SuisuiVoiceDailyPlanningReviewBridge.consumePendingRequest(id: id)"))
-        XCTAssertTrue(appSource.contains("ProjectBoardSceneCoordinator.shared.requestOpen(id: request.id, route: route)"))
+        XCTAssertTrue(appSource.contains("requestBoardOpen(id: request.id, route: route)"))
         XCTAssertTrue(boardSource.contains("sceneCoordinator.consume(requestID: request.id, for: sceneID)"))
         XCTAssertFalse(boardSource.contains("consumedRequestIDs"))
         XCTAssertTrue(boardSource.contains("actionDraftKind: request.actionDraftKind"))
@@ -4624,21 +4624,21 @@ final class AppExperienceSourceTests: XCTestCase {
             (
                 "postDailyPlanningReviewRequest",
                 "SuisuiVoiceDailyPlanningReviewBridge.storePendingRequest(request)",
-                "ProjectBoardSceneCoordinator.shared.requestOpen(id: request.id, route: route)",
+                "requestBoardOpen(id: request.id, route: route)",
                 "SuisuiVoiceDailyPlanningReviewBridge.discardPendingRequest(id: bridgeRequest.id)",
                 "private func postInboxTriageRequest"
             ),
             (
                 "postInboxTriageRequest",
                 "SuisuiVoiceInboxTriageBridge.storePendingRequest(request)",
-                "ProjectBoardSceneCoordinator.shared.requestOpen(",
+                "requestBoardOpen(",
                 "SuisuiVoiceInboxTriageBridge.discardPendingRequest(id: bridgeRequest.id)",
                 "private func postAssistantQueueOpenRequest"
             ),
             (
                 "postAssistantQueueOpenRequest",
                 "SuisuiAssistantQueueBridge.storePendingOpen",
-                "ProjectBoardSceneCoordinator.shared.requestOpen(",
+                "requestBoardOpen(",
                 "SuisuiAssistantQueueBridge.discardPendingOpen(id: bridgeRequest.id)",
                 "extension Notification.Name"
             )
@@ -4655,9 +4655,12 @@ final class AppExperienceSourceTests: XCTestCase {
             XCTAssertLessThan(store.lowerBound, request.lowerBound)
             XCTAssertLessThan(request.lowerBound, notification.lowerBound)
             XCTAssertTrue(block.contains(discardMarker))
+            XCTAssertFalse(block.contains("openWindow(id: \"project-board\")"))
         }
 
         XCTAssertTrue(boardSource.contains("static func discardPendingRequest(id: UUID)"))
+        XCTAssertTrue(voiceSource.contains("targetSceneID: targetSceneID"))
+        XCTAssertTrue(voiceSource.contains("if targetSceneID == nil"))
         XCTAssertTrue(boardSource.contains("static func discardPendingOpen(id: UUID)"))
         XCTAssertTrue(boardSource.contains("ProjectBoardRequestPayloadStore<Request>"))
         XCTAssertTrue(boardSource.contains("consumePendingVoiceDailyPlanningReviewRequestIfNeeded(id: request.id)"))
