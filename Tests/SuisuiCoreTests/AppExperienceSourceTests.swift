@@ -1593,7 +1593,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let appearanceSectionSource = try readPackageFile("Sources/SuisuiApp/Views/SettingsAppearanceSection.swift")
         let languagePreferenceSource = try readPackageFile("Sources/SuisuiApp/Views/AppLanguagePreference.swift")
         let localizedDisplaySource = try readPackageFile("Sources/SuisuiApp/LocalizedDisplay.swift")
-        let settingsSource = try readPackageFile("Sources/SuisuiApp/Views/SettingsFeatureViews.swift")
+        let settingsSource = try readSettingsSurfaceSources()
         let doneSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift")
         let buildScript = try readPackageFile("script/build_and_run.sh")
         let englishStrings = try readPackageFile("Sources/SuisuiApp/Resources/en.lproj/Localizable.strings")
@@ -4202,7 +4202,7 @@ final class AppExperienceSourceTests: XCTestCase {
             return
         }
         let componentSource = try readPackageFile("Sources/SuisuiApp/Views/LocalPathSelectionField.swift")
-        let settingsSource = try readPackageFile("Sources/SuisuiApp/Views/SettingsFeatureViews.swift")
+        let settingsSource = try readSettingsSurfaceSources()
         let projectSource = try readProjectBoardInspectorSource()
 
         XCTAssertTrue(componentSource.contains("TextField("))
@@ -4818,7 +4818,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let workload = try readPackageFile("Sources/SuisuiCore/App/TodayWorkloadSnapshot.swift")
         let focusSession = try readPackageFile("Sources/SuisuiCore/App/FocusSession.swift")
         let settings = try readPackageFile("Sources/SuisuiCore/App/AppSettingsModel.swift")
-        let settingsView = try readPackageFile("Sources/SuisuiApp/Views/SettingsFeatureViews.swift")
+        let settingsView = try readSettingsSurfaceSources()
         let snapshotBuilder = try readPackageFile("Sources/SuisuiCore/App/TodayDashboardSnapshot.swift")
         let featureViewModel = try readPackageFile("Sources/SuisuiCore/App/TodayFeatureViewModel.swift")
         let todayWorkflow = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift")
@@ -7032,9 +7032,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("var openRouterProviderSettingsFields: some View"))
         XCTAssertTrue(appSource.contains("var ollamaProviderSettingsFields: some View"))
 
-        let aiStart = try XCTUnwrap(appSource.range(of: "struct SettingsAIFeatureView"))
-        let syncStart = try XCTUnwrap(appSource.range(of: "struct SettingsSyncFeatureView"))
-        let aiSource = String(appSource[aiStart.lowerBound..<syncStart.lowerBound])
+        let aiFileSource = try readPackageFile("Sources/SuisuiApp/Views/SettingsAIFeatureView.swift")
+        let aiStart = try XCTUnwrap(aiFileSource.range(of: "struct SettingsAIFeatureView"))
+        let aiExtensionStart = try XCTUnwrap(aiFileSource.range(of: "extension SettingsAIFeatureView"))
+        let aiSource = String(aiFileSource[aiStart.lowerBound..<aiExtensionStart.lowerBound])
 
         XCTAssertTrue(aiSource.contains("selectedProviderConfigurationFields"))
         XCTAssertFalse(aiSource.contains("LabeledContent(\"Anthropic API Key\""))
@@ -7500,9 +7501,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let investorReview = try readPackageFile("docs/product/investor-review.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
-        let mcpStart = try XCTUnwrap(appSource.range(of: "struct SettingsMCPFeatureView: View"))
-        let dependenciesStart = try XCTUnwrap(appSource.range(of: "struct SettingsOverviewDependencies"))
-        let mcpTabSource = String(appSource[mcpStart.lowerBound..<dependenciesStart.lowerBound])
+        let mcpTabSource = try readPackageFile("Sources/SuisuiApp/Views/SettingsMCPFeatureView.swift")
 
         XCTAssertTrue(appSource.contains("MCPPaidExecutionBoundaryRow("))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"mcp-paid-execution-boundary-row\")"))
@@ -8429,7 +8428,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testExtractedBoardAndSettingsLeafViewsKeepAccessibilityAndActionClosures() throws {
         let inspectorSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardInspectors.swift")
         let detailSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardDetailViews.swift")
-        let settingsSource = try readPackageFile("Sources/SuisuiApp/Views/SettingsFeatureViews.swift")
+        let settingsSource = try readSettingsSurfaceSources()
 
         XCTAssertTrue(inspectorSource.contains("accessibilityIdentifier(\"project-inspector\")"))
         XCTAssertTrue(inspectorSource.contains("let onClose: () -> Void"))
@@ -8798,7 +8797,11 @@ final class AppExperienceSourceTests: XCTestCase {
             "Sources/SuisuiApp/Views/VoiceCaptureView.swift",
             "Sources/SuisuiApp/Views/ActionReviewPanel.swift",
             "Sources/SuisuiApp/Views/SettingsView.swift",
-            "Sources/SuisuiApp/Views/SettingsFeatureViews.swift"
+            "Sources/SuisuiApp/Views/SettingsFeatureViews.swift",
+            "Sources/SuisuiApp/Views/SettingsAIFeatureView.swift",
+            "Sources/SuisuiApp/Views/SettingsSyncFeatureView.swift",
+            "Sources/SuisuiApp/Views/SettingsPrivacyFeatureView.swift",
+            "Sources/SuisuiApp/Views/SettingsMCPFeatureView.swift"
         ].map(readPackageFile).joined(separator: "\n\n")
         let runtimeCompositionSources = try [
             "Sources/SuisuiApp/Composition/AppRuntimeFactory.swift",
@@ -8845,7 +8848,11 @@ final class AppExperienceSourceTests: XCTestCase {
     private func readSettingsSurfaceSources() throws -> String {
         try [
             "Sources/SuisuiApp/Views/SettingsView.swift",
-            "Sources/SuisuiApp/Views/SettingsFeatureViews.swift"
+            "Sources/SuisuiApp/Views/SettingsFeatureViews.swift",
+            "Sources/SuisuiApp/Views/SettingsAIFeatureView.swift",
+            "Sources/SuisuiApp/Views/SettingsSyncFeatureView.swift",
+            "Sources/SuisuiApp/Views/SettingsPrivacyFeatureView.swift",
+            "Sources/SuisuiApp/Views/SettingsMCPFeatureView.swift"
         ].map(readPackageFile).joined(separator: "\n\n")
     }
 

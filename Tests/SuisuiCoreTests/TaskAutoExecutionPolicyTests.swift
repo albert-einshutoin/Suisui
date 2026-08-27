@@ -1098,7 +1098,11 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
         // while its leaf view may live outside the scene-owning root file.
         let settingsSource = try [
             "Sources/SuisuiApp/Views/SettingsView.swift",
-            "Sources/SuisuiApp/Views/SettingsFeatureViews.swift"
+            "Sources/SuisuiApp/Views/SettingsFeatureViews.swift",
+            "Sources/SuisuiApp/Views/SettingsAIFeatureView.swift",
+            "Sources/SuisuiApp/Views/SettingsSyncFeatureView.swift",
+            "Sources/SuisuiApp/Views/SettingsPrivacyFeatureView.swift",
+            "Sources/SuisuiApp/Views/SettingsMCPFeatureView.swift"
         ].map(readPackageFile).joined(separator: "\n\n")
         let productDoc = try readPackageFile("docs/product/role-and-strengths.md")
 

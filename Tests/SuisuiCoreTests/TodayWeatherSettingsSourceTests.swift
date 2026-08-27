@@ -3,7 +3,7 @@ import XCTest
 
 final class TodayWeatherSettingsSourceTests: XCTestCase {
     func testManualWeatherSettingsExposeLabelAndCoordinatesWithoutCurrentLocationLabelReuse() throws {
-        let settings = try source("Sources/SuisuiApp/Views/SettingsFeatureViews.swift")
+        let settings = try source("Sources/SuisuiApp/Views/SettingsPrivacyFeatureView.swift")
 
         XCTAssertTrue(settings.contains("value: weatherLatitudeBinding"))
         XCTAssertTrue(settings.contains("value: weatherLongitudeBinding"))
