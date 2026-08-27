@@ -264,7 +264,14 @@ final class ArchitectureBoundaryTests: XCTestCase {
         let inspectors = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardInspectors.swift")
         let details = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardDetailViews.swift")
         let settingsRoot = try readPackageFile("Sources/SuisuiApp/Views/SettingsView.swift")
-        let settingsFeatures = try readPackageFile("Sources/SuisuiApp/Views/SettingsFeatureViews.swift")
+        let settingsFeaturePaths = [
+            "Sources/SuisuiApp/Views/SettingsFeatureViews.swift",
+            "Sources/SuisuiApp/Views/SettingsAIFeatureView.swift",
+            "Sources/SuisuiApp/Views/SettingsSyncFeatureView.swift",
+            "Sources/SuisuiApp/Views/SettingsPrivacyFeatureView.swift",
+            "Sources/SuisuiApp/Views/SettingsMCPFeatureView.swift"
+        ]
+        let settingsFeatures = try settingsFeaturePaths.map(readPackageFile).joined(separator: "\n\n")
 
         for ownershipMarker in [
             "@StateObject private var viewModel: ProjectBoardViewModel",
@@ -301,7 +308,36 @@ final class ArchitectureBoundaryTests: XCTestCase {
             "struct SettingsPrivacyFeatureView: View",
             "struct SettingsMCPFeatureView: View"
         ] {
-            XCTAssertTrue(settingsFeatures.contains(leafType), "SettingsFeatureViews must own \(leafType)")
+            XCTAssertTrue(settingsFeatures.contains(leafType), "Settings feature sources must own \(leafType)")
+        }
+        for (path, ownedTypes) in [
+            ("Sources/SuisuiApp/Views/SettingsFeatureViews.swift", [
+                "struct SettingsOverviewFeatureView: View",
+                "struct SettingsAppearanceFeatureView: View",
+                "struct SettingsOverviewDependencies",
+                "struct SettingsAppearanceDependencies"
+            ]),
+            ("Sources/SuisuiApp/Views/SettingsAIFeatureView.swift", [
+                "struct SettingsAIFeatureView: View",
+                "struct SettingsAIDependencies"
+            ]),
+            ("Sources/SuisuiApp/Views/SettingsSyncFeatureView.swift", [
+                "struct SettingsSyncFeatureView: View",
+                "struct SettingsSyncDependencies"
+            ]),
+            ("Sources/SuisuiApp/Views/SettingsPrivacyFeatureView.swift", [
+                "struct SettingsPrivacyFeatureView: View",
+                "struct SettingsPrivacyDependencies"
+            ]),
+            ("Sources/SuisuiApp/Views/SettingsMCPFeatureView.swift", [
+                "struct SettingsMCPFeatureView: View",
+                "struct SettingsMCPDependencies"
+            ])
+        ] {
+            let source = try readPackageFile(path)
+            for ownedType in ownedTypes {
+                XCTAssertTrue(source.contains(ownedType), "\(path) must own \(ownedType)")
+            }
         }
         XCTAssertFalse(settingsFeatures.contains("extension SettingsView"))
         XCTAssertFalse(settingsFeatures.contains("context.overviewSettingsTab"))
