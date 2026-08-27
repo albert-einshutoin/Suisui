@@ -8629,7 +8629,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProductionSettingsFactoryWiresURLSessionOllamaHealthChecker() throws {
         let factorySource = try readPackageFile("Sources/SuisuiApp/Composition/SettingsRuntimeFactory.swift")
-        let coreSource = try readPackageFile("Sources/SuisuiCore/App/AppSettings.swift")
+        let ollamaSource = try readPackageFile("Sources/SuisuiCore/App/OllamaEndpointHealth.swift")
 
         XCTAssertTrue(
             factorySource.contains("ollamaHealthChecker: URLSessionOllamaEndpointHealthChecker()"),
@@ -8640,7 +8640,7 @@ final class AppExperienceSourceTests: XCTestCase {
             "Production composition must not fall back to the Unchecked default"
         )
         XCTAssertTrue(
-            coreSource.contains("public struct URLSessionOllamaEndpointHealthChecker: OllamaEndpointHealthChecking"),
+            ollamaSource.contains("public struct URLSessionOllamaEndpointHealthChecker: OllamaEndpointHealthChecking"),
             "Core must own the URLSession-backed checker so production can use it"
         )
     }
