@@ -17191,6 +17191,7 @@ final class ReleasePipelineTests: XCTestCase {
         try scopedSourceCommit(paths: [
             "Sources/SuisuiCore/Voice",
             "Sources/SuisuiCore/App/AppSettings.swift",
+            "Sources/SuisuiCore/App/AppSettingsModel.swift",
             "Sources/SuisuiCore/App/DailyPlanningReviewReadout.swift",
             "Sources/SuisuiApp",
             "Package.swift",

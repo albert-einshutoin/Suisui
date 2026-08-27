@@ -73,6 +73,7 @@ local_voice_evidence_source_commit() {
     git -C "$ROOT_DIR" -c core.abbrev=8 log -1 --format=%h -- \
       Sources/SuisuiCore/Voice \
       Sources/SuisuiCore/App/AppSettings.swift \
+      Sources/SuisuiCore/App/AppSettingsModel.swift \
       Sources/SuisuiCore/App/DailyPlanningReviewReadout.swift \
       Sources/SuisuiApp \
       Package.swift \

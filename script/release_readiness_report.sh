@@ -540,6 +540,7 @@ local_voice_evidence_source_commit() {
     release_git -C "$ROOT_DIR" log -1 --format=%h -- \
       Sources/SuisuiCore/Voice \
       Sources/SuisuiCore/App/AppSettings.swift \
+      Sources/SuisuiCore/App/AppSettingsModel.swift \
       Sources/SuisuiCore/App/DailyPlanningReviewReadout.swift \
       Sources/SuisuiApp \
       Package.swift \

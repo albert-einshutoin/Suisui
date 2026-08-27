@@ -4817,7 +4817,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let focusCard = try readPackageFile("Sources/SuisuiApp/Views/TodayFocusCard.swift")
         let workload = try readPackageFile("Sources/SuisuiCore/App/TodayWorkloadSnapshot.swift")
         let focusSession = try readPackageFile("Sources/SuisuiCore/App/FocusSession.swift")
-        let settings = try readPackageFile("Sources/SuisuiCore/App/AppSettings.swift")
+        let settings = try readPackageFile("Sources/SuisuiCore/App/AppSettingsModel.swift")
         let settingsView = try readPackageFile("Sources/SuisuiApp/Views/SettingsFeatureViews.swift")
         let snapshotBuilder = try readPackageFile("Sources/SuisuiCore/App/TodayDashboardSnapshot.swift")
         let featureViewModel = try readPackageFile("Sources/SuisuiCore/App/TodayFeatureViewModel.swift")
