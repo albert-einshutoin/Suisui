@@ -2191,45 +2191,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     }
 
     private static func containsConnectorSignal(_ signal: String, in foldedTranscript: String) -> Bool {
-        guard usesOnlyASCIILettersOrDigits(signal) else {
-            return foldedTranscript.contains(signal)
-        }
-
-        var searchStart = foldedTranscript.startIndex
-        while let range = foldedTranscript.range(of: signal, range: searchStart..<foldedTranscript.endIndex) {
-            if isLatinWordBoundary(before: range.lowerBound, after: range.upperBound, in: foldedTranscript) {
-                return true
-            }
-            searchStart = range.upperBound
-        }
-        return false
-    }
-
-    private static func usesOnlyASCIILettersOrDigits(_ signal: String) -> Bool {
-        signal.unicodeScalars.allSatisfy { scalar in
-            let value = scalar.value
-            return (97...122).contains(value) || (48...57).contains(value)
-        }
-    }
-
-    private static func isLatinWordBoundary(
-        before lowerBound: String.Index,
-        after upperBound: String.Index,
-        in text: String
-    ) -> Bool {
-        let hasLatinWordBefore = lowerBound > text.startIndex && isLatinWordCharacter(text[text.index(before: lowerBound)])
-        let hasLatinWordAfter = upperBound < text.endIndex && isLatinWordCharacter(text[upperBound])
-        return !hasLatinWordBefore && !hasLatinWordAfter
-    }
-
-    private static func isLatinWordCharacter(_ character: Character) -> Bool {
-        character.unicodeScalars.allSatisfy { scalar in
-            let value = scalar.value
-            return (65...90).contains(value)
-                || (97...122).contains(value)
-                || (48...57).contains(value)
-                || value == 95
-        }
+        VoiceCommandRouter.matchesSignal(signal, in: foldedTranscript)
     }
 
     private func makeInboxTriageRoute(
