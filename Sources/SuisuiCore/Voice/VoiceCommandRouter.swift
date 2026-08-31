@@ -441,7 +441,7 @@ public struct VoiceCommandRouter: VoiceCommandRouting {
 
     private func score(candidate: RouteCandidate, foldedTranscript: String) -> RouteScore {
         let matches = candidate.signals.filter { signal in
-            matchesSignal(signal.phrase, in: foldedTranscript)
+            Self.matchesSignal(signal.phrase, in: foldedTranscript)
         }
         let score = matches.reduce(0) { partialResult, signal in
             partialResult + signal.weight
@@ -455,16 +455,16 @@ public struct VoiceCommandRouter: VoiceCommandRouting {
     }
 
     private func firstMatchedSignal(in foldedTranscript: String, from signals: [String]) -> String? {
-        signals.first { matchesSignal($0, in: foldedTranscript) }
+        signals.first { Self.matchesSignal($0, in: foldedTranscript) }
     }
 
     private func containsExternalDestination(_ foldedTranscript: String) -> Bool {
         ["slack", "line", "discord", "mail", "email", "メール", "通知", "連絡"].contains {
-            matchesSignal($0, in: foldedTranscript)
+            Self.matchesSignal($0, in: foldedTranscript)
         }
     }
 
-    private func matchesSignal(_ signal: String, in foldedTranscript: String) -> Bool {
+    static func matchesSignal(_ signal: String, in foldedTranscript: String) -> Bool {
         guard usesOnlyASCIILettersOrDigits(signal) else {
             return foldedTranscript.contains(signal)
         }
@@ -479,14 +479,14 @@ public struct VoiceCommandRouter: VoiceCommandRouting {
         return false
     }
 
-    private func usesOnlyASCIILettersOrDigits(_ signal: String) -> Bool {
+    private static func usesOnlyASCIILettersOrDigits(_ signal: String) -> Bool {
         signal.unicodeScalars.allSatisfy { scalar in
             let value = scalar.value
             return (97...122).contains(value) || (48...57).contains(value)
         }
     }
 
-    private func isLatinWordBoundary(
+    private static func isLatinWordBoundary(
         before lowerBound: String.Index,
         after upperBound: String.Index,
         in text: String
@@ -496,7 +496,7 @@ public struct VoiceCommandRouter: VoiceCommandRouting {
         return !hasLatinWordBefore && !hasLatinWordAfter
     }
 
-    private func isLatinWordCharacter(_ character: Character) -> Bool {
+    private static func isLatinWordCharacter(_ character: Character) -> Bool {
         character.unicodeScalars.allSatisfy { scalar in
             let value = scalar.value
             return (65...90).contains(value)
