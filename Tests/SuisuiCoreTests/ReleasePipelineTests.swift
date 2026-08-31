@@ -58,10 +58,15 @@ final class ReleasePipelineTests: XCTestCase {
             captureManifests: captureManifests
         ))
 
-        let captureDates = try captureManifests.values.map {
-            try evidenceTimestamp($0["generatedAt"], field: "capture.generatedAt")
+        let activeCaptureDate = sourceCommitDate.addingTimeInterval(1)
+        let activeCaptureDateString = ISO8601DateFormatter().string(from: activeCaptureDate)
+        let activeCaptureManifests = captureManifests.mapValues { manifest in
+            var activeManifest = manifest
+            activeManifest["sourceCommit"] = englishSourceCommit
+            activeManifest["generatedAt"] = activeCaptureDateString
+            return activeManifest
         }
-        let activeGeneratedAt = ([sourceCommitDate] + captureDates).max()!.addingTimeInterval(1)
+        let activeGeneratedAt = activeCaptureDate.addingTimeInterval(1)
         let activeGeneratedAtString = ISO8601DateFormatter().string(from: activeGeneratedAt)
         var activeReceipt = receipt
         activeReceipt["status"] = "partial"
@@ -84,7 +89,7 @@ final class ReleasePipelineTests: XCTestCase {
             serialized: try JSONSerialization.data(withJSONObject: activeReceipt),
             expectedSourceCommit: englishSourceCommit,
             expectedSourceCommitTimestamp: sourceCommitDate,
-            captureManifests: captureManifests
+            captureManifests: activeCaptureManifests
         ))
 
         var missingControl = activeReceipt
@@ -97,7 +102,7 @@ final class ReleasePipelineTests: XCTestCase {
                 serialized: try JSONSerialization.data(withJSONObject: missingControl),
                 expectedSourceCommit: englishSourceCommit,
                 expectedSourceCommitTimestamp: sourceCommitDate,
-                captureManifests: captureManifests
+                captureManifests: activeCaptureManifests
             )
         )
 
@@ -109,7 +114,7 @@ final class ReleasePipelineTests: XCTestCase {
                 serialized: try JSONSerialization.data(withJSONObject: mismatchedCommit),
                 expectedSourceCommit: englishSourceCommit,
                 expectedSourceCommitTimestamp: sourceCommitDate,
-                captureManifests: captureManifests
+                captureManifests: activeCaptureManifests
             )
         )
 
@@ -120,7 +125,7 @@ final class ReleasePipelineTests: XCTestCase {
             serialized: try JSONSerialization.data(withJSONObject: sourceOnlyRewrite),
             expectedSourceCommit: englishSourceCommit,
             expectedSourceCommitTimestamp: sourceCommitDate,
-            captureManifests: captureManifests
+            captureManifests: activeCaptureManifests
         ))
 
         var missingArtifact = activeReceipt
@@ -130,7 +135,7 @@ final class ReleasePipelineTests: XCTestCase {
             serialized: try JSONSerialization.data(withJSONObject: missingArtifact),
             expectedSourceCommit: englishSourceCommit,
             expectedSourceCommitTimestamp: sourceCommitDate,
-            captureManifests: captureManifests
+            captureManifests: activeCaptureManifests
         ))
 
         var mismatchedArtifactSource = activeReceipt
@@ -142,7 +147,7 @@ final class ReleasePipelineTests: XCTestCase {
             serialized: try JSONSerialization.data(withJSONObject: mismatchedArtifactSource),
             expectedSourceCommit: englishSourceCommit,
             expectedSourceCommitTimestamp: sourceCommitDate,
-            captureManifests: captureManifests
+            captureManifests: activeCaptureManifests
         ))
     }
 
