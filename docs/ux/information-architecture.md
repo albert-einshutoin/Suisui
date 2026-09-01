@@ -232,7 +232,7 @@ replacement is reachable.
 | Settings: Overview | AI/Calendar/Voice/Notification readiness, Advanced toggle (5) | `SettingsView.swift`, `SettingsStatusOverviewView.swift` | `AppSettingsModel` / readiness presentation | change |
 | Settings: Appearance | Theme, language (2) | `SettingsAppearanceSection.swift` | `AppSettingsModel` | reuse |
 | Settings: AI & Voice | Provider/auth, STT/TTS, basic model, shortcut (5) | `SettingsAIFeatureView.swift`, `VoiceModelManagement.swift` | Keychain-backed settings + speech providers | change |
-| Settings: Calendar | Apple Calendar auth/disconnect, calendar selection, sync setting (3) | `SettingsView.swift`, `GoogleCalendarAppRuntime.swift` | Calendar adapter; Google live sync remains Post-MVP | change |
+| Settings: Calendar | Google Calendar auth/disconnect, calendar selection, sync setting (3) | `SettingsView.swift`, `SettingsSyncFeatureView.swift` | Calendar adapter + Keychain; external writes remain Review-gated | change |
 | Settings: Privacy | Audio retention, retention policy, quiet hours, backup, data location (5) | `SettingsPrivacyFeatureView.swift`, `SettingsFeatureViews.swift` | Privacy/settings stores | change |
 | Menu Bar | Overdue summary, Inbox quick add, Today open, Voice Capture entry (4) | `MenuBarPanel.swift`, `MenuBarSummary.swift`, `MenuBarQuickCaptureController.swift` | Work Management read model + route coordinator | move |
 | Onboarding | First capture, first triage, optional AI, optional Calendar, completion (5) | `OnboardingWelcomeView.swift`, `FirstRunOnboarding.swift`, `OnboardingExperience.swift` | Onboarding gate + Work Management | change |
@@ -275,7 +275,7 @@ flowchart LR
     Planning[Planning]
     Speech["STT / TTS"]
     Execution["Canonical reviewed-action executor"]
-    Calendar["Apple Calendar adapter"]
+    Calendar["Calendar adapter"]
     Receipt["Receipt / recoverable failure"]
     Preferences["App settings + Keychain"]
   end
