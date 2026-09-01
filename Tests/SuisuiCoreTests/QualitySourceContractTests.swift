@@ -161,7 +161,7 @@ final class QualitySourceContractTests: XCTestCase {
             "Inbox intake",
             "Document draft studio",
             "Secretary queue",
-            "Right assistant rail",
+            "contextual Inspector or Review surface",
             "review-before-execution",
             "VoiceOver task listing",
             "local-first"
