@@ -6826,27 +6826,48 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(runtimeSmoke.contains("waitForControlEnabledState \"voice-command-generate-plan\" \"true\""))
         XCTAssertTrue(runtimeSmoke.contains("OK: Generate Plan stayed disabled for whitespace and enabled for a valid draft"))
         XCTAssertTrue(runtimeSmoke.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
+        XCTAssertTrue(runtimeSmoke.contains("AX_CONTROL_STATE_HELPER=\"${AX_CONTROL_STATE_HELPER:-$ROOT_DIR/script/ui_evidence_ax_control_state.swift}\""))
+        XCTAssertTrue(runtimeSmoke.contains("AX_TEXT_INPUT_HELPER=\"${AX_TEXT_INPUT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_input.swift}\""))
+        XCTAssertTrue(runtimeSmoke.contains("AX_TEXT_MARKER_HELPER=\"${AX_TEXT_MARKER_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_marker.swift}\""))
+        XCTAssertTrue(runtimeSmoke.contains("AX_PRESS_ELEMENT_HELPER=\"${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}\""))
         XCTAssertTrue(runtimeSmoke.contains("ax_wait_for_owned_app_pid"))
         XCTAssertTrue(runtimeSmoke.contains("ax_wait_for_owned_process_identity"))
         XCTAssertTrue(runtimeSmoke.contains("ax_process_matches_identity"))
         XCTAssertTrue(runtimeSmoke.contains("ax_terminate_owned_process"))
-        XCTAssertTrue(runtimeSmoke.contains("application processes whose unix id is appPID"))
         XCTAssertTrue(runtimeSmoke.contains("SUISUI_LANGUAGE_PREFERENCE=\"$locale\""))
         XCTAssertTrue(runtimeSmoke.contains("run_voice_readiness_matrix english 1024"))
         XCTAssertTrue(runtimeSmoke.contains("run_voice_readiness_matrix japanese 1024"))
-        XCTAssertTrue(runtimeSmoke.contains("local osascript_pid=$!"))
-        XCTAssertTrue(runtimeSmoke.contains("kill \"$osascript_pid\""))
-        XCTAssertTrue(runtimeSmoke.contains("wait \"$osascript_pid\""))
-        XCTAssertFalse(runtimeSmoke.contains("pkill -x"))
-        XCTAssertFalse(runtimeSmoke.contains("pgrep -x"))
-        XCTAssertFalse(runtimeSmoke.contains("tell process appName"))
-        XCTAssertFalse(runtimeSmoke.contains("window 1"))
+        XCTAssertTrue(runtimeSmoke.contains("waitForTextContaining \"voice-command-capture-zone\""))
+        XCTAssertTrue(runtimeSmoke.contains("waitForTextContaining \"voice-agent-panel\""))
+        XCTAssertTrue(runtimeSmoke.contains("waitForTextContaining \"voice-hands-free-provider-privacy\""))
+        XCTAssertTrue(runtimeSmoke.contains("/usr/bin/swift \"$AX_PRESS_ELEMENT_HELPER\" \"$app_pid\" \"$fragment\""))
+        XCTAssertTrue(runtimeSmoke.contains("/usr/bin/swift \"$AX_TEXT_INPUT_HELPER\" \"$app_pid\" \"$fragment\" \"$text_value\""))
+        XCTAssertTrue(runtimeSmoke.contains("/usr/bin/swift \"$AX_CONTROL_STATE_HELPER\" \"$app_pid\" \"$fragment\" \"$expected_enabled\""))
         XCTAssertGreaterThanOrEqual(
             runtimeSmoke.components(
                 separatedBy: "SELECT count(*) FROM assistant_queue_items WHERE id LIKE 'action-plan:daily-planning:%';"
             ).count - 1,
             4
         )
+    }
+
+    func testCoreValueLoopRuntimeSmokeUsesNormalRoutesAndRedactedEvidence() throws {
+        let coreLoop = try readPackageFile("script/check_runtime_core_value_loop_smoke.sh")
+
+        for stage in ["Capture", "Interpret", "Review", "Move", "Evidence"] {
+            XCTAssertTrue(coreLoop.contains("\"\(stage)\": \"$"))
+        }
+        XCTAssertTrue(coreLoop.contains("./script/check_runtime_inbox_triage_smoke.sh"))
+        XCTAssertTrue(coreLoop.contains("./script/check_runtime_voice_review_smoke.sh"))
+        XCTAssertTrue(coreLoop.contains("./script/check_runtime_schedule_cockpit_smoke.sh"))
+        XCTAssertTrue(coreLoop.contains("testScheduleApplyPersistsExecutionReceiptForCreatedCalendarEvents"))
+        XCTAssertTrue(coreLoop.contains("testApprovedItemEditReturnsToWaitingReviewAndClearsApproval"))
+        XCTAssertTrue(coreLoop.contains("route\": \"normal-product\""))
+        XCTAssertTrue(coreLoop.contains("externalWrites\": 0"))
+        XCTAssertTrue(coreLoop.contains("rawTranscriptStored\": false"))
+        XCTAssertTrue(coreLoop.contains("requires a clean source worktree"))
+        XCTAssertFalse(coreLoop.contains("check_runtime_voice_task_continuity_smoke.sh"))
+        XCTAssertFalse(coreLoop.contains("SUISUI_VISUAL_EVIDENCE_VOICE_SURFACE"))
     }
 
     func testSettingsPrivacyDiagnosticsExportIsMetadataOnlyWithInlineError() throws {
