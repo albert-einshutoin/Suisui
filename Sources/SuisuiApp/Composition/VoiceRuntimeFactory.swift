@@ -114,6 +114,7 @@ extension AppRuntimeFactory {
             workspaceAnswerReadout: { answer in
                 speakWorkspaceAnswer(answer)
             },
+            maximumQuickCaptureClarificationTurns: 1,
             taskAutomationSettingsProvider: { loadRuntimeSettings().settings.taskAutoExecution },
             lowRiskTaskAutoExecutor: { plan in
                 try await executeLowRiskAutoCreation(plan: plan)

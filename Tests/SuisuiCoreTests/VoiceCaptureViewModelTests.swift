@@ -1107,6 +1107,32 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         }
     }
 
+    func testQuickCaptureStopsAfterOneClarificationWithoutCallingProvider() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider,
+            maximumQuickCaptureClarificationTurns: 1
+        )
+
+        viewModel.updateDraftText("いい感じにして")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .taskTitle)
+
+        await viewModel.submitClarificationAnswer("リリースメモを書く")
+
+        XCTAssertNil(viewModel.clarificationQuestion)
+        XCTAssertEqual(viewModel.phase, .idle)
+        XCTAssertEqual(provider.requests.count, 0)
+        XCTAssertTrue(viewModel.auditErrorMessage?.contains("One clarification") == true)
+    }
+
     func testUnsafeExternalSendCommandCreatesBlockedGateWithoutProviderCall() async throws {
         let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
             providerID: "fake",

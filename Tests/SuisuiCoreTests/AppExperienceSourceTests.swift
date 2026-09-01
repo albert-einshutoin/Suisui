@@ -6713,7 +6713,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceSource.contains(".accessibilityLabel(\"Stop Hands-free mode\")"))
         XCTAssertTrue(
             voiceSource.contains(
-                "Label(\"Voice Command\", systemImage: \"mic\")\n                        .font(.headline)\n                        .accessibilityIdentifier(\"voice-command-root\")"
+                "Label(\"Voice Quick Capture\", systemImage: \"mic\")\n                        .font(.headline)\n                        .accessibilityIdentifier(\"voice-command-root\")"
             )
         )
         XCTAssertEqual(
@@ -6733,7 +6733,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceSource.contains("voice-command-listening-hero"))
         XCTAssertTrue(voiceSource.contains("voice-command-listening-timer"))
         XCTAssertTrue(voiceSource.contains("case conversation"))
-        XCTAssertTrue(voiceSource.contains("voice-conversation-tab"))
+        XCTAssertFalse(voiceSource.contains("voice-conversation-tab"))
+        XCTAssertFalse(voiceSource.contains("TabView(selection: $selectedVoiceEvidenceTab)"))
+        XCTAssertTrue(voiceSource.contains("Voice Quick"))
+        XCTAssertTrue(voiceSource.contains("Capture desk"))
+        XCTAssertTrue(voiceSource.contains("voice-command-clarification-limit"))
+        XCTAssertTrue(voiceSource.contains("Pending Actions"))
         XCTAssertTrue(voiceSource.contains("voice-command-understood-action-"))
         XCTAssertTrue(voiceSource.contains("Create preparation task"))
         XCTAssertTrue(voiceSource.contains("voice-command-conversation-log"))
@@ -6768,10 +6773,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(examplesSource.contains("Task {"))
 
         for localization in [english, japanese] {
+            XCTAssertTrue(localization.contains("\"Voice Quick Capture\" = "))
             XCTAssertTrue(localization.contains("\"Record once\" = "))
             XCTAssertTrue(localization.contains("\"Hands-free mode\" = "))
             XCTAssertTrue(localization.contains("\"Speech provider: %@\" = "))
             XCTAssertTrue(localization.contains("\"Audio is processed by the selected speech-to-text provider only while Hands-free mode is listening.\" = "))
+            XCTAssertTrue(localization.contains("\"One clarification is allowed. Edit the capture or save it to Inbox.\" = "))
         }
 
         XCTAssertTrue(runtimeSmoke.contains("setTextAreaContaining \"voice-command-input\" \"   \""))

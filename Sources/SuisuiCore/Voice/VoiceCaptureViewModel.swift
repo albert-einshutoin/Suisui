@@ -153,6 +153,10 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private let managedCostRateCardProvider: @Sendable (PlanningResponse) -> AssistantQueueCostRateCard?
     private let workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])?
     private let workspaceAnswerReadout: (@Sendable (String) -> Void)?
+    /// Quick Capture can opt into a bounded clarification loop. nil keeps
+    /// the legacy Conversation workspace contract, which may ask more than
+    /// one scoped question.
+    private let maximumQuickCaptureClarificationTurns: Int?
     private let taskAutomationSettingsProvider: (@Sendable () -> TaskAutoExecutionSettings)?
     private let lowRiskTaskAutoExecutor: (@Sendable (ActionPlan) async throws -> LowRiskAutoCreationOutcome)?
     private let taskDeleter: (@Sendable (Int64) throws -> Void)?
@@ -174,6 +178,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private var microphoneSilenceDetector: MicrophoneSilenceDetector
     private var inputLevelMonitorTask: Task<Void, Never>?
     private var activeConversationSourceTurnID: UUID?
+    private var clarificationQuestionCount = 0
     private var conversationCancellationTask: Task<Void, Never>?
     private var conversationWorkspaceStore: (any VoiceTaskConversationStore)?
     private var conversationWorkspaceTurnCursor:
@@ -208,6 +213,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         managedCostRateCardProvider: @escaping @Sendable (PlanningResponse) -> AssistantQueueCostRateCard? = { _ in nil },
         workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])? = nil,
         workspaceAnswerReadout: (@Sendable (String) -> Void)? = nil,
+        maximumQuickCaptureClarificationTurns: Int? = nil,
         taskAutomationSettingsProvider: (@Sendable () -> TaskAutoExecutionSettings)? = nil,
         lowRiskTaskAutoExecutor: (@Sendable (ActionPlan) async throws -> LowRiskAutoCreationOutcome)? = nil,
         taskDeleter: (@Sendable (Int64) throws -> Void)? = nil,
@@ -242,6 +248,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.managedCostRateCardProvider = managedCostRateCardProvider
         self.workspaceContextRetriever = workspaceContextRetriever
         self.workspaceAnswerReadout = workspaceAnswerReadout
+        self.maximumQuickCaptureClarificationTurns = maximumQuickCaptureClarificationTurns.map { max(1, $0) }
         self.taskAutomationSettingsProvider = taskAutomationSettingsProvider
         self.lowRiskTaskAutoExecutor = lowRiskTaskAutoExecutor
         self.taskDeleter = taskDeleter
@@ -267,6 +274,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.savedInboxSourceAudioURL = nil
         self.lowLatencyStreamID = UUID()
         self.activeConversationSourceTurnID = nil
+        self.clarificationQuestionCount = 0
         self.conversationCancellationTask = nil
     }
 
@@ -287,6 +295,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         managedCostRateCardProvider: @escaping @Sendable (PlanningResponse) -> AssistantQueueCostRateCard? = { _ in nil },
         workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])? = nil,
         workspaceAnswerReadout: (@Sendable (String) -> Void)? = nil,
+        maximumQuickCaptureClarificationTurns: Int? = nil,
         taskAutomationSettingsProvider: (@Sendable () -> TaskAutoExecutionSettings)? = nil,
         lowRiskTaskAutoExecutor: (@Sendable (ActionPlan) async throws -> LowRiskAutoCreationOutcome)? = nil,
         taskDeleter: (@Sendable (Int64) throws -> Void)? = nil,
@@ -319,6 +328,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             managedCostRateCardProvider: managedCostRateCardProvider,
             workspaceContextRetriever: workspaceContextRetriever,
             workspaceAnswerReadout: workspaceAnswerReadout,
+            maximumQuickCaptureClarificationTurns: maximumQuickCaptureClarificationTurns,
             taskAutomationSettingsProvider: taskAutomationSettingsProvider,
             lowRiskTaskAutoExecutor: lowRiskTaskAutoExecutor,
             taskDeleter: taskDeleter,
@@ -730,6 +740,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         clarificationSession = nil
         cancelOrchestratedClarificationIfNeeded()
         activeConversationSourceTurnID = nil
+        clarificationQuestionCount = 0
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
@@ -760,6 +771,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         clarificationSession = nil
         cancelOrchestratedClarificationIfNeeded()
         activeConversationSourceTurnID = nil
+        clarificationQuestionCount = 0
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
@@ -876,6 +888,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         removeUnsavedTemporaryRecording()
         recordedAudio = nil
         lastTranscribedAudioURL = nil
+        clarificationQuestionCount = 0
         do {
             try await audioRecorder.start(at: date)
             recordingState = audioRecorder.state
@@ -902,6 +915,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             draft = TranscriptDraft(text: transcript.text)
             planningResponse = nil
             clarificationSession = nil
+            clarificationQuestionCount = 0
             assistantQueueItem = nil
             dailyPlanningReviewRequest = nil
             inboxTriageRequest = nil
@@ -1155,6 +1169,14 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
         switch session.answer(answer, inputMode: inputMode) {
         case .needsClarification:
+            let acceptedTurnCount = session.turns.count
+            if let maximum = maximumQuickCaptureClarificationTurns,
+               acceptedTurnCount >= maximum
+            {
+                clarificationSession = session
+                finishUnresolvedQuickCapture()
+                return
+            }
             clarificationSession = session
             phase = .needsClarification(session.currentQuestion?.prompt ?? "Voice command needs clarification.")
         case .resolved:
@@ -1268,6 +1290,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
     public func cancelClarification() {
         clarificationSession = nil
+        clarificationQuestionCount = 0
         cancelOrchestratedClarificationIfNeeded()
         if case .needsClarification = phase {
             phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
@@ -1327,7 +1350,29 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private func beginClarification(for route: VoiceCommandRoutingResult) {
         let session = ClarificationSession(route: route)
         clarificationSession = session
+        clarificationQuestionCount = 1
         phase = .needsClarification(session.currentQuestion?.prompt ?? route.clarificationReason ?? "Voice command needs clarification.")
+    }
+
+    private func finishUnresolvedQuickCapture() {
+        clarificationSession = nil
+        orchestratedClarificationQuestion = nil
+        activeConversationSourceTurnID = nil
+        planningResponse = nil
+        assistantQueueItem = nil
+        dailyPlanningReviewRequest = nil
+        inboxTriageRequest = nil
+        developmentPullRequestAutomationRequest = nil
+        if canSaveDraftToInbox {
+            saveDraftToInbox()
+            if inboxCaptureResult != nil {
+                phase = .reviewReady
+                auditErrorMessage = "Clarification limit reached; the capture was saved to Inbox for later triage."
+                return
+            }
+        }
+        phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
+        auditErrorMessage = "One clarification is allowed. Edit the capture or save it to Inbox."
     }
 
     private func applyConversationOutcome(
@@ -1348,11 +1393,19 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
         switch outcome {
         case .clarification(let question):
+            if let maximum = maximumQuickCaptureClarificationTurns,
+               clarificationQuestionCount >= maximum
+            {
+                finishUnresolvedQuickCapture()
+                return
+            }
             conversationWorkspaceLocalAnswerItems = []
             clarificationSession = nil
             orchestratedClarificationQuestion = question
+            clarificationQuestionCount += 1
             phase = .needsClarification(question.prompt)
         case .review(let plan):
+            clarificationQuestionCount = 0
             conversationWorkspaceLocalAnswerItems = []
             orchestratedClarificationQuestion = nil
             let validation = ActionPlanValidator().validate(plan)
