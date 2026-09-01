@@ -219,6 +219,13 @@ Goal: produce a signed, notarized, stapled release artifact with production Spar
 
 Tracking issue: [#246 Release closeout: configure signed notarized Sparkle release machine evidence](https://github.com/albert-einshutoin/suisui/issues/246)
 
+Prerequisite: #617 の通常route証跡と #244 の同一candidate向けVoiceOver
+確認を先に完了する。`./script/check_runtime_core_value_loop_smoke.sh` の
+`.tmp/suisui-core-value-loop/manifest.json` が `status: "passed"` で、ここで
+生成する release evidence の source commit と一致することを確認する。
+これは署名・公証・Sparkleの手動確認を置き換えず、candidateの取り違えを
+防ぐための入口ゲートである。
+
 Generated helpers:
 
 - `.tmp/release-machine/release-machine-worksheet.md`

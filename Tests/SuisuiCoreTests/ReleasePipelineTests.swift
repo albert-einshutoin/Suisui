@@ -1177,6 +1177,9 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(runbook.contains("voice-agent-panel"))
         XCTAssertTrue(runbook.contains("assistant-queue-workflow"))
         XCTAssertTrue(runbook.contains("recovery-only Conversation"))
+        XCTAssertTrue(runbook.contains("#244 の同一candidate向けVoiceOver"))
+        XCTAssertTrue(runbook.contains("status: \"passed\""))
+        XCTAssertTrue(runbook.contains("candidateの取り違えを"))
 
         for lane in ["VoiceOver", "Competitor hands-on", "Release machine"] {
             XCTAssertTrue(runbook.contains("## \(lane)"), "Missing lane: \(lane)")
