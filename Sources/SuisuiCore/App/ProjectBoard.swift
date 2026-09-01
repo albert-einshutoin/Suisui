@@ -554,8 +554,6 @@ public enum TodaySnapshotInvalidationReason: String, Sendable {
 
 @MainActor
 public final class ProjectBoardViewModel: ObservableObject {
-    private static let doneAnalyticsHeatmapWindowDays = 28
-
     private enum ProjectBoardFailureRetryAction {
         case load
         case saveTask(taskID: Int64, draft: ProjectBoardTaskDraft)
@@ -6664,17 +6662,11 @@ public final class ProjectBoardViewModel: ObservableObject {
         calendar: Calendar,
         inputs: ProjectBoardDerivedReadModelInputs
     ) -> [ProjectPortfolioSummary] {
-        inputs.portfolioProjects
-            .map { projectPortfolioSummary(for: $0, on: referenceDate, calendar: calendar) }
-            .sorted { lhs, rhs in
-                if lhs.health.sortRank != rhs.health.sortRank {
-                    return lhs.health.sortRank < rhs.health.sortRank
-                }
-                if lhs.overdueTaskCount != rhs.overdueTaskCount {
-                    return lhs.overdueTaskCount > rhs.overdueTaskCount
-                }
-                return lhs.projectID > rhs.projectID
-            }
+        WorkManagementAnalyticsBuilder.projectPortfolioSummaries(
+            projects: inputs.portfolioProjects,
+            on: referenceDate,
+            calendar: calendar
+        )
     }
 
     public func doneAnalytics(
@@ -6696,86 +6688,11 @@ public final class ProjectBoardViewModel: ObservableObject {
         calendar: Calendar,
         inputs: ProjectBoardDerivedReadModelInputs
     ) -> DoneAnalyticsSummary {
-        let completedProjects = inputs.completedProjects
-        // Reopened tasks keep their completedAt timestamp so Done analytics can preserve actual completion history.
-        let historyTasks = inputs.nonArchivedTasks.filter { task in task.completedAt != nil || task.status == .done }
-        let dayInterval = calendar.dateInterval(of: .day, for: referenceDate)
-        let rollingWeekStart = calendar.date(byAdding: .day, value: -6, to: dayInterval?.start ?? referenceDate) ?? referenceDate
-        let completedTodayCount = historyTasks.filter { task in
-            guard let dayInterval, let completedDate = completedDate(for: task) else {
-                return false
-            }
-            return completedDate >= dayInterval.start && completedDate < dayInterval.end
-        }.count
-        let completedThisWeekCount = historyTasks.filter { task in
-            guard let completedDate = completedDate(for: task) else {
-                return false
-            }
-            return completedDate >= rollingWeekStart && completedDate <= referenceDate
-        }.count
-        let completedDates = historyTasks.compactMap(completedDate(for:))
-        let completedCountsByDayStart = completedDates.reduce(into: [Date: Int]()) { partialResult, completedDate in
-            guard let dayStart = calendar.dateInterval(of: .day, for: completedDate)?.start else {
-                return
-            }
-            partialResult[dayStart, default: 0] += 1
-        }
-        let completedDayStarts = Set(completedCountsByDayStart.keys)
-        let completionHeatmapBuckets = Self.doneAnalyticsHeatmapBuckets(
-            from: completedCountsByDayStart,
+        WorkManagementAnalyticsBuilder.doneAnalytics(
+            completedProjects: inputs.completedProjects,
+            tasks: inputs.nonArchivedTasks,
             on: referenceDate,
             calendar: calendar
-        )
-        let bestWeekdaySummary = Self.doneAnalyticsBestWeekdaySummary(
-            from: completedDates,
-            calendar: calendar
-        )
-        let bestHourSummary = Self.doneAnalyticsBestHourSummary(
-            from: completedDates,
-            calendar: calendar
-        )
-        let streakDays = Self.doneStreakDays(
-            from: completedDayStarts,
-            on: referenceDate,
-            calendar: calendar
-        )
-        let recentTasks = historyTasks
-            .sorted { lhs, rhs in
-                switch (completedDate(for: lhs), completedDate(for: rhs)) {
-                case let (lhsDate?, rhsDate?):
-                    if lhsDate == rhsDate {
-                        return lhs.id > rhs.id
-                    }
-                    return lhsDate > rhsDate
-                case (_?, nil):
-                    return true
-                case (nil, _?):
-                    return false
-                case (nil, nil):
-                    return lhs.id > rhs.id
-                }
-            }
-
-        let onTimeRate = Self.doneOnTimeRate(tasks: historyTasks, calendar: calendar)
-        let weeklyTrendBuckets = Self.doneWeeklyTrendBuckets(
-            from: completedCountsByDayStart,
-            on: referenceDate,
-            calendar: calendar
-        )
-
-        return DoneAnalyticsSummary(
-            completedTaskCount: historyTasks.count,
-            completedProjectCount: completedProjects.count,
-            completedTodayCount: completedTodayCount,
-            completedThisWeekCount: completedThisWeekCount,
-            streakDays: streakDays,
-            onTimeRate: onTimeRate,
-            weeklyTrendBuckets: weeklyTrendBuckets,
-            completionHeatmapBuckets: completionHeatmapBuckets,
-            bestWeekdaySummary: bestWeekdaySummary,
-            bestHourSummary: bestHourSummary,
-            recentTasks: Array(recentTasks.prefix(12)),
-            localRuleInsight: "Done analytics uses local completed_at history; reopened tasks remain visible in completion history."
         )
     }
 
@@ -9652,302 +9569,6 @@ public final class ProjectBoardViewModel: ObservableObject {
         return 4
     }
 
-    private func completedDate(for task: ProjectBoardTask) -> Date? {
-        guard let rawCompletedAt = task.completedAt else {
-            return nil
-        }
-
-        if let date = ISO8601DateFormatter().date(from: rawCompletedAt) {
-            return date
-        }
-
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        if let date = formatter.date(from: rawCompletedAt) {
-            return date
-        }
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.date(from: rawCompletedAt)
-    }
-
-    private static func doneAnalyticsHeatmapBuckets(
-        from completedCountsByDayStart: [Date: Int],
-        on referenceDate: Date,
-        calendar: Calendar
-    ) -> [DoneAnalyticsDayBucket] {
-        guard let referenceDayStart = calendar.dateInterval(of: .day, for: referenceDate)?.start,
-              let firstDay = calendar.date(byAdding: .day, value: -(doneAnalyticsHeatmapWindowDays - 1), to: referenceDayStart) else {
-            return []
-        }
-
-        return (0..<doneAnalyticsHeatmapWindowDays).compactMap { offset in
-            guard let day = calendar.date(byAdding: .day, value: offset, to: firstDay) else {
-                return nil
-            }
-            return DoneAnalyticsDayBucket(
-                dayKey: doneAnalyticsDayKey(for: day, calendar: calendar),
-                completedCount: completedCountsByDayStart[day, default: 0]
-            )
-        }
-    }
-
-    private static func doneAnalyticsBestWeekdaySummary(
-        from completedDates: [Date],
-        calendar: Calendar
-    ) -> DoneAnalyticsBestWeekdaySummary {
-        let counts = completedDates.reduce(into: [Int: Int]()) { partialResult, date in
-            partialResult[calendar.component(.weekday, from: date), default: 0] += 1
-        }
-        guard let bestWeekday = counts.max(by: { lhs, rhs in
-            if lhs.value == rhs.value {
-                return lhs.key > rhs.key
-            }
-            return lhs.value < rhs.value
-        }) else {
-            return .empty
-        }
-
-        return DoneAnalyticsBestWeekdaySummary(weekday: bestWeekday.key, completedCount: bestWeekday.value)
-    }
-
-    private static func doneAnalyticsBestHourSummary(
-        from completedDates: [Date],
-        calendar: Calendar
-    ) -> DoneAnalyticsBestHourSummary {
-        let counts = completedDates.reduce(into: [Int: Int]()) { partialResult, date in
-            partialResult[calendar.component(.hour, from: date), default: 0] += 1
-        }
-        guard let bestHour = counts.max(by: { lhs, rhs in
-            if lhs.value == rhs.value {
-                return lhs.key > rhs.key
-            }
-            return lhs.value < rhs.value
-        }) else {
-            return .empty
-        }
-
-        return DoneAnalyticsBestHourSummary(
-            hour: bestHour.key,
-            timeOfDay: doneAnalyticsTimeOfDay(for: bestHour.key),
-            completedCount: bestHour.value
-        )
-    }
-
-    private static func doneAnalyticsDayKey(for date: Date, calendar: Calendar) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = calendar.timeZone
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
-    }
-
-    private static func doneAnalyticsTimeOfDay(for hour: Int) -> DoneAnalyticsTimeOfDay {
-        switch hour {
-        case 5..<12:
-            return .morning
-        case 12..<17:
-            return .afternoon
-        case 17..<21:
-            return .evening
-        default:
-            return .night
-        }
-    }
-
-    private static func doneOnTimeRate(tasks: [ProjectBoardTask], calendar: Calendar) -> Double? {
-        let tasksWithDue = tasks.filter { $0.dueAt != nil && $0.completedAt != nil }
-        guard !tasksWithDue.isEmpty else { return nil }
-        let onTime = tasksWithDue.filter { task in
-            guard let dueAt = task.dueAt,
-                  let dueParsed = SuisuiTimestampDisplay.parse(dueAt),
-                  let completedAt = task.completedAt,
-                  let completedDate = SuisuiTimestampDisplay.parse(completedAt)?.date else {
-                return false
-            }
-            let dueDeadline: Date
-            if dueParsed.includesTime {
-                dueDeadline = dueParsed.date
-            } else {
-                dueDeadline = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: dueParsed.date)) ?? dueParsed.date
-            }
-            return completedDate < dueDeadline
-        }
-        return Double(onTime.count) / Double(tasksWithDue.count)
-    }
-
-    private static func doneWeeklyTrendBuckets(
-        from completedCountsByDayStart: [Date: Int],
-        on referenceDate: Date,
-        calendar: Calendar
-    ) -> [DoneAnalyticsWeekBucket] {
-        guard let referenceDayStart = calendar.dateInterval(of: .day, for: referenceDate)?.start else {
-            return []
-        }
-        return (0..<4).reversed().compactMap { weekOffset -> DoneAnalyticsWeekBucket? in
-            guard let weekEnd = calendar.date(byAdding: .day, value: -(weekOffset * 7), to: referenceDayStart),
-                  let weekStart = calendar.date(byAdding: .day, value: -6, to: weekEnd) else {
-                return nil
-            }
-            let count = (0..<7).reduce(0) { total, dayOffset in
-                guard let day = calendar.date(byAdding: .day, value: dayOffset, to: weekStart) else {
-                    return total
-                }
-                return total + completedCountsByDayStart[day, default: 0]
-            }
-            let weekNumber = 4 - weekOffset
-            return DoneAnalyticsWeekBucket(
-                weekLabel: "\(weekNumber)\(String(localized: "week suffix"))",
-                completedCount: count
-            )
-        }
-    }
-
-    private static func doneStreakDays(
-        from completedDayStarts: Set<Date>,
-        on referenceDate: Date,
-        calendar: Calendar
-    ) -> Int {
-        guard let referenceDayStart = calendar.dateInterval(of: .day, for: referenceDate)?.start else {
-            return 0
-        }
-
-        var streak = 0
-        var cursor = referenceDayStart
-        while completedDayStarts.contains(cursor) {
-            streak += 1
-            guard let previousDay = calendar.date(byAdding: .day, value: -1, to: cursor) else {
-                break
-            }
-            cursor = previousDay
-        }
-        return streak
-    }
-
-    private func projectPortfolioSummary(
-        for project: ProjectBoardProject,
-        on referenceDate: Date,
-        calendar: Calendar
-    ) -> ProjectPortfolioSummary {
-        let tasks = project.tasks
-        let openTasks = tasks.filter { $0.status != .done }
-        let doneTaskCount = tasks.count - openTasks.count
-        let blockedTaskCount = openTasks.filter { $0.status == .blocked }.count
-        let dayStart = calendar.dateInterval(of: .day, for: referenceDate)?.start ?? referenceDate
-        let overdueTasks = openTasks.filter { task in
-            dueDate(for: task.dueAt).map { $0 < dayStart } == true
-        }
-        let nextDueTask = openTasks
-            .filter { dueDate(for: $0.dueAt) != nil }
-            .sorted { lhs, rhs in
-                let lhsDate = dueDate(for: lhs.dueAt) ?? .distantFuture
-                let rhsDate = dueDate(for: rhs.dueAt) ?? .distantFuture
-                if lhsDate == rhsDate {
-                    return lhs.id > rhs.id
-                }
-                return lhsDate < rhsDate
-            }
-            .first
-        let nextActionTask = openTasks
-            .sorted { lhs, rhs in
-                if lhs.status == .blocked && rhs.status != .blocked {
-                    return true
-                }
-                if lhs.status != .blocked && rhs.status == .blocked {
-                    return false
-                }
-                let lhsDate = dueDate(for: lhs.dueAt) ?? .distantFuture
-                let rhsDate = dueDate(for: rhs.dueAt) ?? .distantFuture
-                if lhsDate == rhsDate {
-                    return lhs.id > rhs.id
-                }
-                return lhsDate < rhsDate
-            }
-            .first
-        let progress = tasks.isEmpty ? 0 : Double(doneTaskCount) / Double(tasks.count)
-        let health = projectPortfolioHealth(
-            project: project,
-            openTaskCount: openTasks.count,
-            blockedTaskCount: blockedTaskCount,
-            overdueTaskCount: overdueTasks.count,
-            progress: progress
-        )
-
-        return ProjectPortfolioSummary(
-            projectID: project.id,
-            title: project.title,
-            status: project.status,
-            progress: progress,
-            openTaskCount: openTasks.count,
-            doneTaskCount: doneTaskCount,
-            blockedTaskCount: blockedTaskCount,
-            overdueTaskCount: overdueTasks.count,
-            nextDueAt: nextDueTask?.dueAt,
-            recentTaskID: tasks.map(\.id).max(),
-            nextActionTitle: nextActionTask?.title ?? "No open tasks",
-            health: health,
-            riskReason: projectPortfolioRiskReason(
-                health: health,
-                blockedTaskCount: blockedTaskCount,
-                overdueTaskCount: overdueTasks.count,
-                progress: progress
-            ),
-            // The portfolio view must be explainable and work offline; keep this
-            // deterministic instead of routing health through an LLM.
-            localHealthRuleDescription: "Local Health prioritizes blocked tasks, then overdue work, then open task progress."
-        )
-    }
-
-    private func projectPortfolioHealth(
-        project: ProjectBoardProject,
-        openTaskCount: Int,
-        blockedTaskCount: Int,
-        overdueTaskCount: Int,
-        progress: Double
-    ) -> ProjectPortfolioHealth {
-        if project.isCompleted || (openTaskCount == 0 && progress > 0) {
-            return .completed
-        }
-        if blockedTaskCount > 0 || overdueTaskCount > 0 {
-            return .atRisk
-        }
-        if progress < 0.25 && openTaskCount > 0 {
-            return .attention
-        }
-        return .onTrack
-    }
-
-    private func projectPortfolioRiskReason(
-        health: ProjectPortfolioHealth,
-        blockedTaskCount: Int,
-        overdueTaskCount: Int,
-        progress: Double
-    ) -> String {
-        var reasons: [String] = []
-        if blockedTaskCount > 0 {
-            reasons.append("\(blockedTaskCount) blocked")
-        }
-        if overdueTaskCount > 0 {
-            reasons.append("\(overdueTaskCount) overdue")
-        }
-        if !reasons.isEmpty {
-            return reasons.joined(separator: ", ")
-        }
-        switch health {
-        case .completed:
-            return "All tracked tasks are done."
-        case .attention:
-            return "Progress is below 25% with open work."
-        case .onTrack:
-            return "No blocked or overdue open tasks."
-        case .atRisk:
-            return "Local risk rule detected schedule pressure."
-        }
-    }
-
     private func isInboxProject(_ project: ProjectBoardProject) -> Bool {
         project.title.caseInsensitiveCompare("Inbox") == .orderedSame
     }
@@ -10063,7 +9684,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 guard task.status == .done else {
                     return false
                 }
-                guard let completedDate = completedDate(for: task) else {
+                guard let completedDate = WorkManagementAnalyticsBuilder.completedDate(for: task) else {
                     return false
                 }
                 return completedDate >= dayInterval.start && completedDate < dayInterval.end
@@ -10218,21 +9839,6 @@ private enum InboxClassificationUndo {
     case restoreMutation(mutation: InboxTriageMutation, regenerated: ProjectBoardTask?)
     case restoreTask(originalTask: ProjectBoardTask)
     case restoreTaskAndDeleteProject(originalTask: ProjectBoardTask, createdProjectID: Int64)
-}
-
-private extension ProjectPortfolioHealth {
-    var sortRank: Int {
-        switch self {
-        case .atRisk:
-            0
-        case .attention:
-            1
-        case .onTrack:
-            2
-        case .completed:
-            3
-        }
-    }
 }
 
 private extension ProjectTaskPriority {
