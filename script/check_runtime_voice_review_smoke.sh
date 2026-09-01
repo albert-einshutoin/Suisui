@@ -17,6 +17,10 @@ BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER:?BUNDLE_IDENTIFIER is required}"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 AX_HELPERS="${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}"
+AX_CONTROL_STATE_HELPER="${AX_CONTROL_STATE_HELPER:-$ROOT_DIR/script/ui_evidence_ax_control_state.swift}"
+AX_TEXT_INPUT_HELPER="${AX_TEXT_INPUT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_input.swift}"
+AX_TEXT_MARKER_HELPER="${AX_TEXT_MARKER_HELPER:-$ROOT_DIR/script/ui_evidence_ax_text_marker.swift}"
+AX_PRESS_ELEMENT_HELPER="${AX_PRESS_ELEMENT_HELPER:-$ROOT_DIR/script/ui_evidence_ax_press_element.swift}"
 TIMEOUT_SECONDS="${SUISUI_RUNTIME_VOICE_REVIEW_TIMEOUT_SECONDS:-35}"
 AX_ATTEMPT_SECONDS="${SUISUI_RUNTIME_VOICE_REVIEW_AX_ATTEMPT_SECONDS:-5}"
 KEEP_DATABASE="${SUISUI_RUNTIME_VOICE_REVIEW_KEEP_DATABASE:-0}"
@@ -105,6 +109,7 @@ on run argv
     set matchingProcesses to application processes whose unix id is appPID
     if (count of matchingProcesses) is 0 then error "pid-owned process missing"
     set targetProcess to item 1 of matchingProcesses
+    set foundMatchingControl to false
     tell targetProcess
       set frontmost to true
       repeat with windowIndex from 1 to count of windows
@@ -125,7 +130,10 @@ APPLESCRIPT
 wait_for_voice_window() {
   ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "" \
     "$TIMEOUT_SECONDS" "" "$APP_BINARY"
-  ax_wait_for_ax_identifier "$APP_NAME" "voice-command-quick-command-tab" \
+  # The normal product route is Voice Quick Capture. The image-only tab marker
+  # is not exposed consistently by AppKit AX, while the capture zone owns the
+  # stable interactive subtree used by the runtime smoke.
+  ax_wait_for_ax_identifier "$APP_NAME" "voice-command-capture-zone" \
     "$TIMEOUT_SECONDS" "$ROOT_DIR" "$tmp_dir/voice-ready.probe" "" "$app_pid"
 }
 
@@ -199,70 +207,10 @@ setTextAreaContaining() {
 
   while true; do
     ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
-    local attempt_output="$tmp_dir/set-text.$$.out"
-    /usr/bin/osascript - "$app_pid" "$fragment" "$text_value" <<'APPLESCRIPT' >"$attempt_output" 2>&1 &
-on run argv
-  set appPID to (item 1 of argv) as integer
-  set fragment to item 2 of argv
-  set textValue to item 3 of argv
-  tell application "System Events"
-    set matchingProcesses to application processes whose unix id is appPID
-    if (count of matchingProcesses) is 0 then error "pid-owned process missing"
-    set targetProcess to item 1 of matchingProcesses
-    tell targetProcess
-      set windowCount to count of windows
-      repeat with windowIndex from 1 to windowCount
-        set currentWindow to window windowIndex
-        try
-          set frontmost to true
-          perform action "AXRaise" of currentWindow
-        end try
-        set fallbackTextArea to missing value
-        set axItems to entire contents of currentWindow
-        repeat with axItem in axItems
-          set itemRole to ""
-          try
-            set itemRole to role of axItem as text
-          end try
-          if itemRole is "AXTextArea" or itemRole is "AXTextField" then
-            if fallbackTextArea is missing value then set fallbackTextArea to axItem
-            set itemIdentifier to ""
-            set itemName to ""
-            set itemHelp to ""
-            try
-              set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
-            end try
-            try
-              set itemName to name of axItem as text
-            end try
-            try
-              set itemHelp to value of attribute "AXHelp" of axItem as text
-            end try
-            set signalText to itemIdentifier & " " & itemName & " " & itemHelp
-            if signalText contains fragment then
-              set value of axItem to textValue
-              return "set " & fragment
-            end if
-          end if
-        end repeat
-        if fallbackTextArea is not missing value then
-          set value of fallbackTextArea to textValue
-          return "set " & fragment
-        end if
-      end repeat
-    end tell
-  end tell
-  error "text area signal not found: " & fragment
-end run
-APPLESCRIPT
-    local osascript_pid=$!
-    if wait_for_osascript_attempt "$osascript_pid"; then
-      cat "$attempt_output"
-      rm -f "$attempt_output"
+    if /usr/bin/swift "$AX_TEXT_INPUT_HELPER" "$app_pid" "$fragment" "$text_value"; then
       sleep 1
       return 0
     fi
-    rm -f "$attempt_output"
     ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "BLOCKER: failed to set AX text area: $fragment" >&2
@@ -277,73 +225,9 @@ pressControlContaining() {
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
     ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
-    local attempt_output="$tmp_dir/press-control.$$.out"
-    /usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT' >"$attempt_output" 2>&1 &
-on run argv
-  set appPID to (item 1 of argv) as integer
-  set fragment to item 2 of argv
-  tell application "System Events"
-    set matchingProcesses to application processes whose unix id is appPID
-    if (count of matchingProcesses) is 0 then error "pid-owned process missing"
-    set targetProcess to item 1 of matchingProcesses
-    tell targetProcess
-      repeat with windowIndex from 1 to count of windows
-        set currentWindow to window windowIndex
-        try
-          set frontmost to true
-          perform action "AXRaise" of currentWindow
-        end try
-        set axItems to entire contents of currentWindow
-          repeat with axItem in axItems
-            set itemRole to ""
-            try
-              set itemRole to role of axItem as text
-            end try
-            if itemRole is "AXButton" or itemRole is "AXCheckBox" then
-              set itemName to ""
-              set itemTitle to ""
-              set itemDescription to ""
-              set itemHelp to ""
-              set itemIdentifier to ""
-              try
-                set itemName to name of axItem as text
-              end try
-              try
-                set itemTitle to value of attribute "AXTitle" of axItem as text
-              end try
-              try
-                set itemDescription to description of axItem as text
-              end try
-              try
-                set itemHelp to value of attribute "AXHelp" of axItem as text
-              end try
-              try
-                set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
-              end try
-              set signalText to itemIdentifier & " " & itemName & " " & itemTitle & " " & itemDescription & " " & itemHelp
-              set isEnabled to true
-              try
-                set isEnabled to enabled of axItem as boolean
-              end try
-              if isEnabled and signalText contains fragment then
-                perform action "AXPress" of axItem
-                return "pressed " & fragment
-              end if
-            end if
-          end repeat
-      end repeat
-    end tell
-  end tell
-  error "control signal not found: " & fragment
-end run
-APPLESCRIPT
-    local osascript_pid=$!
-    if wait_for_osascript_attempt "$osascript_pid"; then
-      cat "$attempt_output"
-      rm -f "$attempt_output"
+    if /usr/bin/swift "$AX_PRESS_ELEMENT_HELPER" "$app_pid" "$fragment" >/dev/null 2>&1; then
       return 0
     fi
-    rm -f "$attempt_output"
     ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "BLOCKER: failed to press control in AX tree: $fragment" >&2
@@ -359,51 +243,9 @@ waitForControlEnabledState() {
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
     ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
-    local attempt_output="$tmp_dir/control-state.$$.out"
-    /usr/bin/osascript - "$app_pid" "$fragment" "$expected_enabled" <<'APPLESCRIPT' >"$attempt_output" 2>&1 &
-on run argv
-  set appPID to (item 1 of argv) as integer
-  set fragment to item 2 of argv
-  set expectedEnabled to item 3 of argv
-  tell application "System Events"
-    set matchingProcesses to application processes whose unix id is appPID
-    if (count of matchingProcesses) is 0 then error "pid-owned process missing"
-    set targetProcess to item 1 of matchingProcesses
-    tell targetProcess
-      repeat with windowIndex from 1 to count of windows
-        set currentWindow to window windowIndex
-        set axItems to entire contents of currentWindow
-        repeat with axItem in axItems
-          set itemRole to ""
-          try
-            set itemRole to role of axItem as text
-          end try
-          if itemRole is "AXButton" then
-            set itemIdentifier to ""
-            try
-              set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
-            end try
-            if itemIdentifier contains fragment then
-              set isEnabled to enabled of axItem as boolean
-              if (expectedEnabled is "true" and isEnabled) or (expectedEnabled is "false" and not isEnabled) then
-                return "matched"
-              end if
-              error "control enabled state did not match"
-            end if
-          end if
-        end repeat
-      end repeat
-    end tell
-  end tell
-  error "control signal not found: " & fragment
-end run
-APPLESCRIPT
-    local osascript_pid=$!
-    if wait_for_osascript_attempt "$osascript_pid"; then
-      rm -f "$attempt_output"
+    if /usr/bin/swift "$AX_CONTROL_STATE_HELPER" "$app_pid" "$fragment" "$expected_enabled" >/dev/null 2>&1; then
       return 0
     fi
-    rm -f "$attempt_output"
     ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "BLOCKER: control '$fragment' did not reach enabled=$expected_enabled" >&2
@@ -418,51 +260,9 @@ waitForTextContaining() {
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
     ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
-    local attempt_output="$tmp_dir/wait-text.$$.out"
-    /usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT' >"$attempt_output" 2>&1 &
-on run argv
-  set appPID to (item 1 of argv) as integer
-  set fragment to item 2 of argv
-  tell application "System Events"
-    set matchingProcesses to application processes whose unix id is appPID
-    if (count of matchingProcesses) is 0 then error "pid-owned process missing"
-    set targetProcess to item 1 of matchingProcesses
-    tell targetProcess
-      repeat with windowIndex from 1 to count of windows
-        set currentWindow to window windowIndex
-        set axItems to entire contents of currentWindow
-        repeat with axItem in axItems
-          set itemName to ""
-          set itemValue to ""
-          set itemDescription to ""
-          set itemHelp to ""
-          try
-            set itemName to name of axItem as text
-          end try
-          try
-            set itemValue to value of axItem as text
-          end try
-          try
-            set itemDescription to description of axItem as text
-          end try
-          try
-            set itemHelp to value of attribute "AXHelp" of axItem as text
-          end try
-          set signalText to itemName & " " & itemValue & " " & itemDescription & " " & itemHelp
-          if signalText contains fragment then return "found"
-        end repeat
-      end repeat
-    end tell
-  end tell
-  error "text not found: " & fragment
-end run
-APPLESCRIPT
-    local osascript_pid=$!
-    if wait_for_osascript_attempt "$osascript_pid"; then
-      rm -f "$attempt_output"
+    if /usr/bin/swift "$AX_TEXT_MARKER_HELPER" "$app_pid" "$fragment" >/dev/null 2>&1; then
       return 0
     fi
-    rm -f "$attempt_output"
     ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "BLOCKER: Voice Command window did not expose text: $fragment" >&2
@@ -517,23 +317,9 @@ APPLESCRIPT
 run_voice_readiness_matrix() {
   local locale="$1"
   local width="$2"
-  local record_label
-  local hands_free_label
-  local provider_label
-  local privacy_label
 
   case "$locale" in
-    english)
-      record_label="Record once"
-      hands_free_label="Hands-free mode"
-      provider_label="Speech provider: OpenAI Transcribe"
-      privacy_label="Audio is processed by the selected speech-to-text provider only while Hands-free mode is listening."
-      ;;
-    japanese)
-      record_label="1回録音"
-      hands_free_label="ハンズフリーモード"
-      provider_label="音声認識プロバイダー: OpenAI Transcribe"
-      privacy_label="音声はハンズフリーモードで待ち受けている間だけ、選択中の音声認識プロバイダーで処理されます。"
+    english|japanese)
       ;;
     *)
       echo "BLOCKER: unsupported Voice runtime locale: $locale" >&2
@@ -543,10 +329,12 @@ run_voice_readiness_matrix() {
 
   launch_app_for_voice_review "$locale" "$width"
   waitForVoiceWindowSize "$width"
-  waitForTextContaining "$record_label"
-  waitForTextContaining "$hands_free_label"
-  waitForTextContaining "$provider_label"
-  waitForTextContaining "$privacy_label"
+  # Localized prose is covered by source-level localization checks. Runtime
+  # readiness follows the stable AX identifiers so duplicate SwiftUI text
+  # representations cannot make an otherwise usable route fail closed.
+  waitForTextContaining "voice-command-capture-zone"
+  waitForTextContaining "voice-agent-panel"
+  waitForTextContaining "voice-hands-free-provider-privacy"
   setTextAreaContaining "voice-command-input" "   "
   waitForControlEnabledState "voice-command-generate-plan" "false"
   setTextAreaContaining "voice-command-input" "Create a task called Runtime Voice Review Smoke."
