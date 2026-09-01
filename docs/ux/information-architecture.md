@@ -206,6 +206,116 @@ notification taps share the daily digest branch and therefore open Today.
 **Future marker:** there is no weekly-review window or destination; the
 notification is currently the entire feature.
 
+## MVP0 surface inventory
+
+The target is 17 product groups, not 17 windows. A group may be a nested
+workflow or a settings tab. Recovery-only views, the app shell, and Web Surface
+definitions are implementation surfaces and are not counted as product screens.
+The action column is the decision for the current MVP0 consolidation:
+`reuse` keeps the owner and route, `move` puts an existing capability under a
+canonical group, `change` keeps the capability but changes its contract, `add`
+is a missing capability, and `remove` deletes a duplicate route after its
+replacement is reachable.
+
+| Product group | MVP0 functions | Current route / owner | Domain authority | Action |
+| --- | --- | --- | --- | --- |
+| Project Board common | Search, task add, Voice Capture entry, Inspector, Undo, Review notification (6) | `ProjectBoardView.swift`, `ProjectBoardSidebarView.swift`, `CommandPaletteView.swift` | `ProjectBoard` / Work Management stores | change |
+| Today | Today/overdue, Current Focus, Next Tasks, scheduled tasks, Needs Attention, quick add, Catch Up (7) | `ProjectWorkflowTodayView.swift`, `TodayDashboardView.swift`, `TodayFeatureViewModel.swift` | Today snapshots + Work Management | change |
+| Inbox | Capture list, quick add, select/note, project assignment, Today, Schedule, Later, delete, Undo, continuous triage (10) | `ProjectWorkflowInboxView.swift`, `InboxTriage.swift` | Work Management / Inbox triage | change |
+| Projects Portfolio | Active projects, progress, due date, next action, archived projects, project creation (6) | `ProjectBoardProjectsHubView.swift` | Project store | reuse |
+| Project Detail | Board/List, task CRUD/move, project edit, project summary, task Inspector, related material (6) | `ProjectBoardDetailViews.swift`, `ProjectBoardInspectors.swift` | Project/Task stores + evidence references | reuse |
+| Smart List | Presets: Blocked, Unscheduled, No Project, Someday; custom lists Advanced (4) | `ProjectBoardSmartListViews.swift`, `BoardRoute.smartList` | Smart List definitions + Task store | move |
+| Schedule | Week view, external Calendar events, task time blocks, unscheduled tasks, AI placement proposal, Calendar apply (6) | `ProjectWorkflowScheduleView.swift`, `ScheduleTimelineGeometry.swift` | Schedule cockpit + Calendar adapter | change |
+| Completed | Completion history, reopen task, follow-up creation, simple recap (4) | `ProjectWorkflowDoneView.swift` | Work Management / completion history | change |
+| Review / Pending Actions | External-write/high-risk diff, edit, Approve & Run, Reject, failure recovery (5) | `ProjectBoardReviewHubView.swift`, `ActionReviewPanel.swift`, `ProjectWorkflowAssistantQueueView.swift` | Assistant Queue execution coordinator + receipts | change |
+| Voice Quick Capture | Record, transcription, correction, intent confirmation, one clarification, Inbox/Task save (6) | `VoiceCaptureView.swift`, `VoiceCaptureViewModel.swift`, `VoiceCommandRouter.swift` | Speech providers + Inbox/Assistant Queue | change |
+| Settings: Overview | AI/Calendar/Voice/Notification readiness, Advanced toggle (5) | `SettingsView.swift`, `SettingsStatusOverviewView.swift` | `AppSettingsModel` / readiness presentation | change |
+| Settings: Appearance | Theme, language (2) | `SettingsAppearanceSection.swift` | `AppSettingsModel` | reuse |
+| Settings: AI & Voice | Provider/auth, STT/TTS, basic model, shortcut (5) | `SettingsAIFeatureView.swift`, `VoiceModelManagement.swift` | Keychain-backed settings + speech providers | change |
+| Settings: Calendar | Apple Calendar auth/disconnect, calendar selection, sync setting (3) | `SettingsView.swift`, `GoogleCalendarAppRuntime.swift` | Calendar adapter; Google live sync remains Post-MVP | change |
+| Settings: Privacy | Audio retention, retention policy, quiet hours, backup, data location (5) | `SettingsPrivacyFeatureView.swift`, `SettingsFeatureViews.swift` | Privacy/settings stores | change |
+| Menu Bar | Overdue summary, Inbox quick add, Today open, Voice Capture entry (4) | `MenuBarPanel.swift`, `MenuBarSummary.swift`, `MenuBarQuickCaptureController.swift` | Work Management read model + route coordinator | move |
+| Onboarding | First capture, first triage, optional AI, optional Calendar, completion (5) | `OnboardingWelcomeView.swift`, `FirstRunOnboarding.swift`, `OnboardingExperience.swift` | Onboarding gate + Work Management | change |
+
+The inventory deliberately keeps existing stores, coordinators, and platform
+adapters. It does not create a second Task/Review/Calendar authority. The
+resulting ownership graph is:
+
+```mermaid
+flowchart LR
+  subgraph UI["17 product groups"]
+    Board["Project Board common"]
+    Today[Today]
+    Inbox[Inbox]
+    Projects["Projects Portfolio"]
+    Detail["Project Detail"]
+    Smart["Smart List"]
+    Schedule[Schedule]
+    Done[Completed]
+    Review["Review / Pending Actions"]
+    Voice["Voice Quick Capture"]
+    Settings["Settings groups"]
+    Menu["Menu Bar"]
+    Onboarding[Onboarding]
+  end
+
+  subgraph Feature["Feature / use case owners"]
+    WorkF["Work Management / ProjectBoard"]
+    TodayF[TodayFeature]
+    InboxF[InboxTriage]
+    ReviewF["Assistant Queue / Review"]
+    VoiceF[VoiceCapture]
+    ScheduleF[ScheduleCockpit]
+    SettingsF[SettingsReadiness]
+    RouteF["Route / Scene Coordinator"]
+  end
+
+  subgraph Domain["Domain / authority"]
+    Work["Task + Project stores"]
+    Planning[Planning]
+    Speech["STT / TTS"]
+    Execution["Canonical reviewed-action executor"]
+    Calendar["Apple Calendar adapter"]
+    Receipt["Receipt / recoverable failure"]
+    Preferences["App settings + Keychain"]
+  end
+
+  Board --> WorkF
+  Today --> TodayF
+  Inbox --> InboxF
+  Projects --> WorkF
+  Detail --> WorkF
+  Smart --> WorkF
+  Schedule --> ScheduleF
+  Done --> WorkF
+  Review --> ReviewF
+  Voice --> VoiceF
+  Settings --> SettingsF
+  Menu --> RouteF
+  Onboarding --> RouteF
+
+  WorkF --> Work
+  TodayF --> Work
+  TodayF --> Planning
+  InboxF --> Work
+  ReviewF --> Execution
+  VoiceF --> Speech
+  VoiceF --> ReviewF
+  ScheduleF --> Planning
+  ScheduleF --> ReviewF
+  Execution --> Calendar
+  Execution --> Receipt
+  SettingsF --> Preferences
+  RouteF --> WorkF
+  RouteF --> VoiceF
+```
+
+The normal product path is therefore `Capture -> Interpret -> Review -> Move
+-> Evidence`: Inbox/Menu Bar/Voice capture owns intake, Review owns approval,
+the canonical executor owns external writes, and receipts remain visible in
+Review or Completed. No direct-write edge exists from Capture, Today, Schedule,
+or Voice.
+
 ## Gaps and tensions
 
 - **Knowledge frames have no viewing surface.** The command palette finds
