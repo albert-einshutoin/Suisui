@@ -237,6 +237,20 @@ replacement is reachable.
 | Menu Bar | Overdue summary, Inbox quick add, Today open, Voice Capture entry (4) | `MenuBarPanel.swift`, `MenuBarSummary.swift`, `MenuBarQuickCaptureController.swift` | Work Management read model + route coordinator | move |
 | Onboarding | First capture, first triage, optional AI, optional Calendar, completion (5) | `OnboardingWelcomeView.swift`, `FirstRunOnboarding.swift`, `OnboardingExperience.swift` | Onboarding gate + Work Management | change |
 
+### Removal and containment decisions
+
+These are the current candidates for reducing visible product surface. A
+`remove` decision applies to a duplicate entry point, not to the underlying
+data or recovery mechanism.
+
+| Current candidate | Decision | Replacement / reason |
+| --- | --- | --- |
+| `review:automation` as a primary destination and `ProjectWorkflowAutomationActivityView.swift` as a separate product area | remove from primary navigation | Review / Pending Actions keeps the queue, receipt history, and failure recovery; the compatibility route may remain internal until persisted links migrate. |
+| Voice Conversation workspace as a second capture product screen | move to recovery/evidence only | `VoiceCaptureView.swift` owns Quick Capture; `VoiceTaskConversationWorkspaceView.swift` remains reachable only when a conversation must be recovered or inspected. |
+| Launch-recovery views and recovery sheets | contain, do not count | `ProjectBoardLaunchRecoveryViews.swift` is a shell/recovery implementation surface, not a product group. |
+| MCP and Sync as always-visible Settings areas | move under Advanced | Keep the existing tabs for supported builds, but hide them behind the Advanced toggle and do not advertise unsupported readiness. |
+| Web Surface definitions and visual-fixture routes | contain, do not count | They provide evidence or integration surfaces; they are not user-facing product screens. |
+
 The inventory deliberately keeps existing stores, coordinators, and platform
 adapters. It does not create a second Task/Review/Calendar authority. The
 resulting ownership graph is:
