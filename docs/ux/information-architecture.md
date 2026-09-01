@@ -254,7 +254,11 @@ flowchart LR
     Done[Completed]
     Review["Review / Pending Actions"]
     Voice["Voice Quick Capture"]
-    Settings["Settings groups"]
+    SettingsOverview["Settings: Overview"]
+    SettingsAppearance["Settings: Appearance"]
+    SettingsAI["Settings: AI & Voice"]
+    SettingsCalendar["Settings: Calendar"]
+    SettingsPrivacy["Settings: Privacy"]
     Menu["Menu Bar"]
     Onboarding[Onboarding]
   end
@@ -290,7 +294,11 @@ flowchart LR
   Done --> WorkF
   Review --> ReviewF
   Voice --> VoiceF
-  Settings --> SettingsF
+  SettingsOverview --> SettingsF
+  SettingsAppearance --> SettingsF
+  SettingsAI --> SettingsF
+  SettingsCalendar --> SettingsF
+  SettingsPrivacy --> SettingsF
   Menu --> RouteF
   Onboarding --> RouteF
 
