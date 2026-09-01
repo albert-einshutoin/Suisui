@@ -319,7 +319,7 @@ struct ProjectBoardSidebarView: View {
         case .addTask:
             "Opens the inline composer for a new local task."
         case .addByVoice:
-            "Opens Voice Command."
+            "Opens Voice Quick Capture."
         case .blockTime:
             "Creates a local schedule draft without writing Calendar."
         case .importTasks:

@@ -728,12 +728,12 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
                 isShowingEmbeddedSettings = false
                 isShowingEmbeddedVoice.toggle()
             } label: {
-                Label("Voice Command", systemImage: "mic")
+                Label("Voice Quick Capture", systemImage: "mic")
             }
             .buttonStyle(.bordered)
-            .help("Open Voice Command")
+            .help("Open Voice Quick Capture")
             .accessibilityIdentifier("project-board-voice-command")
-            .accessibilityHint("Opens Voice Command.")
+            .accessibilityHint("Opens Voice Quick Capture.")
 
             ForEach(viewModel.snapshot.projects) { project in
                 Button {
