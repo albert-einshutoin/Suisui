@@ -3,6 +3,40 @@ import SuisuiCore
 import XCTest
 
 final class AppExperienceSourceTests: XCTestCase {
+    func testMVP0CoreSurfacesExposeOneCanonicalEntryForRemainingWorkflows() throws {
+        let sidebarSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift")
+        let sidebarPresentation = try readPackageFile("Sources/SuisuiCore/App/ProjectBoardSidebarPresentation.swift")
+        let menuBarSource = try readPackageFile("Sources/SuisuiApp/Views/MenuBarPanel.swift")
+        let onboardingSource = try readPackageFile("Sources/SuisuiApp/Views/OnboardingWelcomeView.swift")
+        let appSource = try readAppShellSource()
+        let reviewHubSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift")
+
+        XCTAssertTrue(sidebarPresentation.contains("title: \"Voice Quick Capture\""))
+        XCTAssertTrue(sidebarSource.contains("sidebar-destination-inbox"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-destination-today"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-destination-projects"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-destination-schedule"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-destination-completed"))
+        XCTAssertTrue(sidebarSource.contains("Opens Voice Quick Capture."))
+
+        XCTAssertTrue(menuBarSource.contains("menu-bar-quick-capture-title"))
+        XCTAssertTrue(menuBarSource.contains("menu-bar-open-today"))
+        XCTAssertTrue(menuBarSource.contains("Voice Quick Capture"))
+
+        XCTAssertTrue(onboardingSource.contains("onboarding-first-capture"))
+        XCTAssertTrue(onboardingSource.contains("onboarding-first-capture-save"))
+        XCTAssertTrue(onboardingSource.contains("guard onCaptureToInbox(title) else"))
+        XCTAssertTrue(onboardingSource.contains("onboarding-open-calendar-settings"))
+        XCTAssertTrue(appSource.contains("onCaptureToInbox: { title in"))
+        XCTAssertTrue(appSource.contains("viewModel.createInboxTask(title: title)"))
+        XCTAssertTrue(appSource.contains("route: .primary(.inbox)"))
+        XCTAssertTrue(appSource.contains("onOpenCalendarSettings: {"))
+        XCTAssertTrue(appSource.contains("route: .settings"))
+
+        XCTAssertTrue(reviewHubSource.contains("title: \"Pending Actions\""))
+        XCTAssertFalse(reviewHubSource.contains("Automation Activity"))
+    }
+
     func testOnboardingLessonCatalogUsesJapaneseSourceKeys() throws {
         let english = try readPackageFile("Sources/SuisuiApp/Resources/en.lproj/Localizable.strings")
         let japanese = try readPackageFile("Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings")

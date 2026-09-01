@@ -22,11 +22,13 @@
 | 画面 | 入口 | 現状 |
 | --- | --- | --- |
 | Project Board | 起動時のメインwindow、menu barの `Project Board` | SidebarにInbox、Today、Projectsが固定表示され、Project overview/board/list、task composer、inspectorを扱う主要画面。 |
-| Voice Quick Capture | board toolbarの `Voice Command`、menu barの `Voice Command` | 録音/文字起こし/編集からInbox保存またはReview提案へ進む単一Capture導線。Conversationは証跡用ルートに限定する。 |
+| Voice Quick Capture | board toolbarの `Voice Quick Capture`、menu barの `Voice Quick Capture` | 録音/文字起こし/編集からInbox保存またはReview提案へ進む単一Capture導線。Conversationは証跡用ルートに限定する。 |
 | Settings | macOS app menuの `Settings...`、`Command+,`、macOS Settings scene | 先頭のStatus OverviewでAI Provider、MCP、Sync、Privacyを確認でき、続くSettings Overview Pro Value rowでSync/MCPの有料価値とFree/local-only/fail-closed境界が分かる。ThemeはSettings内のAppearance tabに集約する。 |
 | Inbox | sidebarの `Inbox` | 未処理taskを実データから表示し、Task化、Project化、今日へ予定、後で確認を選択中itemへ1クリックで適用できる。 |
 | Today | sidebarの `Today` | due/overdueの未完了taskを実データから表示し、overdue/today件数、local focus suggestion、30分単位のtime block、task inspectorへつながる。 |
 | Project Detail | sidebarの個別project row | 1Projectの実行管理としてOverview / Board / List、Task、Artifact、Timeline、Milestone、Local Suggestionsを扱う。 |
+| Menu Bar | macOS menu bar icon | 期限超過Summary、Inbox Quick Add、Today遷移、Voice Quick Capture遷移だけを提供する。設定とProject Boardはshell入口として扱う。 |
+| Onboarding | fresh launchのfirst-run sheet | 最初のCaptureを保存してInboxのTriageへ進むか、サンプルProjectをTodayで試せる。AIとCalendarは任意設定で、Skipも可能。 |
 
 ## Phase 14 access-flow map (2026-07-03)
 
@@ -41,6 +43,7 @@ Phase 14 product review maps each major user goal as `app launch -> entry point 
 | Done recovery/follow-up | app launch -> sidebar `Done` -> completed task row -> `Follow Up` / `Reopen` | Reachable but row/action relationship was weak on wide windows. | #210 / PR #215 |
 | Settings Google Calendar destination | app launch -> `Settings...` / `Command+,` -> `Sync` -> Google Calendar save flow -> `Save Calendar` -> `Check Readiness` | Source identifiers existed, but runtime AX proof was unstable until the save-flow group and settings smoke were hardened. | #208 / PR #218 |
 | Voice Quick Capture planning or capture | app launch -> Voice Quick Capture -> record or type -> `Save to Inbox` / `Generate Plan` -> Inbox or Pending Actions review | Reachable. The single surface explains record/type -> Inbox or reviewable proposal; Conversation is not a second product tab. | #614 / PR #621 |
+| Onboarding first capture/triage | first-run sheet -> `Save to Inbox` -> Inbox selected item -> Project / Today / Schedule / Later | Reachable. The first capture now closes onboarding and hands the saved local task to the existing Inbox triage surface. | #616 / PR #623 |
 | Launch readiness proof | developer/release -> `./script/build_and_run.sh --verify` -> Project Board visible-window proof | Required for release evidence, but default timeout could false-block cold SwiftUI launch. | #212 / PR #214 |
 
 ## Phase 14 hard-to-access or unproven paths

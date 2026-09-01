@@ -283,6 +283,30 @@ private struct ProjectBoardWindowRootView: View {
                 permissionSnapshot: .empty,
                 permissionSnapshotProvider: AppRuntimeFactory.makeIntegrationPermissionSnapshotSendable,
                 requestCurrentLocationAuthorization: AppRuntimeFactory.requestTodayWeatherLocationAuthorization,
+                onCaptureToInbox: { title in
+                    guard let viewModel,
+                          let task = viewModel.createInboxTask(title: title) else {
+                        return false
+                    }
+                    hasDismissedOnboarding = true
+                    isOnboardingPresented = false
+                    _ = sceneCoordinator.requestOpen(
+                        targetSceneID: sceneID,
+                        route: .primary(.inbox)
+                    )
+                    // Inbox owns triage, while the selected task keeps the
+                    // freshly captured item ready for the first disposition.
+                    viewModel.selectedTaskID = task.id
+                    return true
+                },
+                onOpenCalendarSettings: {
+                    hasDismissedOnboarding = true
+                    isOnboardingPresented = false
+                    _ = sceneCoordinator.requestOpen(
+                        targetSceneID: sceneID,
+                        route: .settings
+                    )
+                },
                 onTrySuisui: { outcome in
                     hasDismissedOnboarding = true
                     isOnboardingPresented = false

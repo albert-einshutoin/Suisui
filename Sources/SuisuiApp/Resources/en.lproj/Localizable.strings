@@ -52,6 +52,7 @@
 "External Task Tools" = "External Task Tools";
 "Export Tasks" = "Export Tasks";
 "Finishes setup and opens the Voice Command window." = "Finishes setup and opens the Voice Command window.";
+"Finishes setup and opens Voice Quick Capture." = "Finishes setup and opens Voice Quick Capture.";
 "Generate Plan" = "Generate Plan";
 "Hands-free mode" = "Hands-free mode";
 "Record once" = "Record once";
@@ -79,6 +80,13 @@
 "Daily Planning" = "Daily Planning";
 "Review actions" = "Review actions";
 "Save to Inbox" = "Save to Inbox";
+"Start with one capture" = "Start with one capture";
+"Capture a task, then triage it in Inbox." = "Capture a task, then triage it in Inbox.";
+"What should Suisui remember?" = "What should Suisui remember?";
+"Saves this local capture and opens Inbox for triage." = "Saves this local capture and opens Inbox for triage.";
+"Could not save this capture to Inbox." = "Could not save this capture to Inbox.";
+"Review Calendar (Optional)" = "Review Calendar (Optional)";
+"Opens Settings to review optional Calendar access." = "Opens Settings to review optional Calendar access.";
 "Saved to Inbox" = "Saved to Inbox";
 "Open Inbox" = "Open Inbox";
 "GitHub Issues" = "GitHub Issues";
@@ -1689,8 +1697,10 @@
 "Opens task details in the inspector." = "Opens task details in the inspector.";
 "Project title" = "Project title";
 "Open Voice Command" = "Open Voice Command";
+"Open Voice Quick Capture" = "Open Voice Quick Capture";
 "Opens Settings." = "Opens Settings.";
 "Opens Voice Command." = "Opens Voice Command.";
+"Opens Voice Quick Capture." = "Opens Voice Quick Capture.";
 "Opens the Inbox workflow entry for accessibility verification" = "Opens the Inbox workflow entry for accessibility verification";
 "Opens the Inbox workflow entry for accessibility verification." = "Opens the Inbox workflow entry for accessibility verification.";
 "Opens the Today workflow entry for accessibility verification" = "Opens the Today workflow entry for accessibility verification";
@@ -1961,6 +1971,7 @@
 "Register Global Shortcut" = "Register Global Shortcut";
 "Disable Global Shortcut" = "Disable Global Shortcut";
 "Opens Voice Command from this menu. Global Option + Space status is shown in Settings." = "Opens Voice Command from this menu. Global Option + Space status is shown in Settings.";
+"Opens Voice Quick Capture from this menu. Global Option + Space status is shown in Settings." = "Opens Voice Quick Capture from this menu. Global Option + Space status is shown in Settings.";
 "Global Shortcut" = "Global Shortcut";
 "Registered" = "Registered";
 "Not registered" = "Not registered";

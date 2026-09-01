@@ -16,7 +16,7 @@ final class ProjectBoardSidebarPresentationTests: XCTestCase {
                 .init(id: .projects, title: "Projects", systemImage: "folder", behavior: .route(.primary(.projects))),
                 .init(id: .schedule, title: "Schedule", systemImage: "calendar", behavior: .route(.review(.schedule))),
                 .init(id: .completed, title: "Completed", systemImage: "checkmark.circle", behavior: .route(.review(.completed))),
-                .init(id: .voiceCommand, title: "Voice Command", systemImage: "mic", behavior: .route(.voiceCommand)),
+                .init(id: .voiceCommand, title: "Voice Quick Capture", systemImage: "mic", behavior: .route(.voiceCommand)),
                 .init(id: .settings, title: "Settings", systemImage: "gearshape", behavior: .route(.settings)),
             ]
         )

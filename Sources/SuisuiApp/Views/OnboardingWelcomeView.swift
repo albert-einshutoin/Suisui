@@ -6,6 +6,8 @@ struct OnboardingWelcomeView: View {
     private let permissionSnapshotProvider: @Sendable () -> PermissionSnapshot
     private let sampleProjectAction: OnboardingSampleProjectAction?
     private let requestCurrentLocationAuthorization: @MainActor () -> Void
+    let onCaptureToInbox: (String) -> Bool
+    let onOpenCalendarSettings: () -> Void
     let onTrySuisui: (OnboardingSampleProjectEnsureResult) -> Void
     let onFinish: () -> Void
 
@@ -15,6 +17,8 @@ struct OnboardingWelcomeView: View {
     @State private var isCreatingSampleProject = false
     @State private var sampleProjectErrorMessage: String?
     @State private var todayPreferences: OnboardingTodayPreferences
+    @State private var firstCaptureTitle = ""
+    @State private var firstCaptureErrorMessage: String?
     @State private var todayPreferencesSaveError: String?
     @State private var manualLatitudeText: String
     @State private var manualLongitudeText: String
@@ -26,6 +30,8 @@ struct OnboardingWelcomeView: View {
         permissionSnapshotProvider: @escaping @Sendable () -> PermissionSnapshot,
         sampleProjectAction: OnboardingSampleProjectAction? = OnboardingSampleProjectFactory.makeAction(),
         requestCurrentLocationAuthorization: @escaping @MainActor () -> Void = {},
+        onCaptureToInbox: @escaping (String) -> Bool = { _ in false },
+        onOpenCalendarSettings: @escaping () -> Void = {},
         onTrySuisui: @escaping (OnboardingSampleProjectEnsureResult) -> Void,
         onFinish: @escaping () -> Void
     ) {
@@ -33,6 +39,8 @@ struct OnboardingWelcomeView: View {
         self.permissionSnapshotProvider = permissionSnapshotProvider
         self.sampleProjectAction = sampleProjectAction
         self.requestCurrentLocationAuthorization = requestCurrentLocationAuthorization
+        self.onCaptureToInbox = onCaptureToInbox
+        self.onOpenCalendarSettings = onOpenCalendarSettings
         self.onTrySuisui = onTrySuisui
         self.onFinish = onFinish
         _permissionSnapshot = State(initialValue: permissionSnapshot)
@@ -87,6 +95,8 @@ struct OnboardingWelcomeView: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 
+            firstCaptureSection
+
             HStack(spacing: SuisuiSpacing.sm) {
                 onboardingFlowPill(systemImage: "tray.fill", title: "Capture")
                 flowArrow
@@ -109,6 +119,33 @@ struct OnboardingWelcomeView: View {
                 todayPreferencesForm
             }
         }
+    }
+
+    private var firstCaptureSection: some View {
+        VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
+            Text("Start with one capture")
+                .font(.headline)
+            Text("Capture a task, then triage it in Inbox.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            TextField("What should Suisui remember?", text: $firstCaptureTitle)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("onboarding-first-capture-input")
+            Button("Save to Inbox", action: saveFirstCapture)
+                .buttonStyle(.borderedProminent)
+                .disabled(firstCaptureTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("onboarding-first-capture-save")
+                .accessibilityHint("Saves this local capture and opens Inbox for triage.")
+            if let firstCaptureErrorMessage {
+                Text(verbatim: firstCaptureErrorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("onboarding-first-capture-error")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .soloCard()
+        .accessibilityIdentifier("onboarding-first-capture")
     }
 
     private var todayPreferencesForm: some View {
@@ -250,16 +287,21 @@ struct OnboardingWelcomeView: View {
                 }
             } label: {
                 Label(
-                    displayedPlanningState.isReady ? "Open Voice Command" : "Finish Setup Later",
+                    displayedPlanningState.isReady ? "Open Voice Quick Capture" : "Finish Setup Later",
                     systemImage: displayedPlanningState.isReady ? "mic.circle" : "arrow.right.circle"
                 )
             }
             .accessibilityIdentifier("onboarding-open-voice-command")
             .accessibilityHint(
                 displayedPlanningState.isReady
-                    ? "Finishes setup and opens Voice Command."
+                    ? "Finishes setup and opens Voice Quick Capture."
                     : "Closes setup. You can run setup again from Settings."
             )
+
+            Button("Review Calendar (Optional)", action: openCalendarSettings)
+                .buttonStyle(.borderless)
+                .accessibilityIdentifier("onboarding-open-calendar-settings")
+                .accessibilityHint("Opens Settings to review optional Calendar access.")
         }
     }
 
@@ -558,6 +600,26 @@ struct OnboardingWelcomeView: View {
         }
         todayPreferencesSaveError = nil
         action()
+    }
+
+    private func saveFirstCapture() {
+        let title = firstCaptureTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else {
+            return
+        }
+        saveTodayPreferencesThen {
+            guard onCaptureToInbox(title) else {
+                firstCaptureErrorMessage = localizedDisplay("Could not save this capture to Inbox.")
+                return
+            }
+            firstCaptureErrorMessage = nil
+            completeOnboarding()
+        }
+    }
+
+    private func openCalendarSettings() {
+        completeOnboarding()
+        onOpenCalendarSettings()
     }
 
     private func completeOnboarding() {

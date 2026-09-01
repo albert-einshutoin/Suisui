@@ -154,10 +154,10 @@ struct MenuBarPanel: View {
                     openWindow(id: "project-board")
                 }
             } label: {
-                Label("Voice Command", systemImage: "mic")
+                Label("Voice Quick Capture", systemImage: "mic")
                     .frame(maxWidth: .infinity)
             }
-            .help("Opens Voice Command from this menu. Global Option + Space status is shown in Settings.")
+            .help("Opens Voice Quick Capture from this menu. Global Option + Space status is shown in Settings.")
         }
         .controlSize(.large)
     }

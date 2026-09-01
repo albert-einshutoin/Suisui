@@ -52,6 +52,7 @@
 "External Task Tools" = "外部タスクツール";
 "Export Tasks" = "タスクをエクスポート";
 "Finishes setup and opens the Voice Command window." = "セットアップを完了し、音声コマンドウィンドウを開きます。";
+"Finishes setup and opens Voice Quick Capture." = "セットアップを完了し、音声クイックキャプチャを開きます。";
 "Generate Plan" = "計画生成";
 "Hands-free mode" = "ハンズフリーモード";
 "Record once" = "1回録音";
@@ -79,6 +80,13 @@
 "Daily Planning" = "日次計画";
 "Review actions" = "確認アクション";
 "Save to Inbox" = "Inboxに保存";
+"Start with one capture" = "まず1件キャプチャする";
+"Capture a task, then triage it in Inbox." = "タスクをキャプチャし、Inboxで振り分けます。";
+"What should Suisui remember?" = "Suisuiに何を覚えさせますか?";
+"Saves this local capture and opens Inbox for triage." = "このローカルキャプチャを保存し、Inboxで振り分けます。";
+"Could not save this capture to Inbox." = "このキャプチャをInboxに保存できませんでした。";
+"Review Calendar (Optional)" = "カレンダーを確認（任意）";
+"Opens Settings to review optional Calendar access." = "任意のカレンダーアクセスを確認する設定を開きます。";
 "Saved to Inbox" = "Inboxに保存しました";
 "Open Inbox" = "Inboxを開く";
 "GitHub Issues" = "GitHub Issues";
@@ -1678,8 +1686,10 @@
 "Opens task details in the inspector." = "インスペクタでタスク詳細を開きます。";
 "Project title" = "プロジェクトタイトル";
 "Open Voice Command" = "音声コマンドを開く";
+"Open Voice Quick Capture" = "音声クイックキャプチャを開く";
 "Opens Settings." = "設定を開きます。";
 "Opens Voice Command." = "音声コマンドを開きます。";
+"Opens Voice Quick Capture." = "音声クイックキャプチャを開きます。";
 "Opens the Inbox workflow entry for accessibility verification" = "アクセシビリティ検証用にInboxワークフロー入口を開きます";
 "Opens the Inbox workflow entry for accessibility verification." = "アクセシビリティ検証用にInboxワークフロー入口を開きます。";
 "Opens the Today workflow entry for accessibility verification" = "アクセシビリティ検証用にTodayワークフロー入口を開きます";
@@ -1943,6 +1953,7 @@
 "Register Global Shortcut" = "グローバルショートカットを登録";
 "Disable Global Shortcut" = "グローバルショートカットを無効化";
 "Opens Voice Command from this menu. Global Option + Space status is shown in Settings." = "このメニューからVoice Commandを開きます。グローバルなOption + Spaceの状態は設定に表示されます。";
+"Opens Voice Quick Capture from this menu. Global Option + Space status is shown in Settings." = "このメニューから音声クイックキャプチャを開きます。グローバルなOption + Spaceの状態は設定に表示されます。";
 "Global Shortcut" = "グローバルショートカット";
 "Registered" = "登録済み";
 "Not registered" = "未登録";
