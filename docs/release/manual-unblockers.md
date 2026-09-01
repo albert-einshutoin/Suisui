@@ -33,6 +33,17 @@ Goal: replace stale `docs/release/evidence/accessibility-voiceover.md` with a re
 
 Tracking issue: [#244 Release closeout: complete manual VoiceOver evidence](https://github.com/albert-einshutoin/suisui/issues/244)
 
+Prerequisite: run `./script/check_runtime_core_value_loop_smoke.sh` from a clean
+checkout. Confirm `.tmp/suisui-core-value-loop/manifest.json` reports the same
+`sourceCommit` as the generated VoiceOver candidate. This is the automated
+normal-route gate; it does not replace the manual VoiceOver pass below.
+
+For the current product route, start at `Voice Quick Capture` and verify the
+AX-stable capture markers `voice-command-capture-zone`, `voice-command-input`,
+`voice-agent-panel`, `voice-hands-free-provider-privacy`, and the
+`assistant-queue-workflow` handoff. Do not use the recovery-only Conversation
+visual-evidence surface as a substitute for the normal route.
+
 Generated helpers:
 
 - `.tmp/voiceover-review/accessibility-voiceover-pending-<release-candidate-source-commit>.md`
