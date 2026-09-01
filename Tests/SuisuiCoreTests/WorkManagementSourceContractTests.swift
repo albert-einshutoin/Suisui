@@ -36,6 +36,19 @@ final class WorkManagementSourceContractTests: XCTestCase {
         XCTAssertTrue(projectBoard.contains("public final class ProjectBoardViewModel"))
     }
 
+    func testProjectBoardAnalyticsAreExtractedFromMonolith() throws {
+        let projectBoard = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let analytics = try readPackageFile("Sources/SuisuiCore/WorkManagement/WorkManagementAnalytics.swift")
+
+        XCTAssertTrue(analytics.contains("enum WorkManagementAnalyticsBuilder"))
+        XCTAssertTrue(analytics.contains("static func projectPortfolioSummaries("))
+        XCTAssertTrue(analytics.contains("static func doneAnalytics("))
+        XCTAssertFalse(projectBoard.contains("private func projectPortfolioSummary("))
+        XCTAssertFalse(projectBoard.contains("private static func doneAnalyticsHeatmapBuckets("))
+        XCTAssertTrue(projectBoard.contains("WorkManagementAnalyticsBuilder.projectPortfolioSummaries("))
+        XCTAssertTrue(projectBoard.contains("WorkManagementAnalyticsBuilder.doneAnalytics("))
+    }
+
     private let workManagementModelMarkers = [
         "public enum ProjectTaskStatus",
         "public enum ProjectTaskPriority",
