@@ -810,7 +810,6 @@ final class AppExperienceSourceTests: XCTestCase {
         for identifier in [
             "review-hub-compact-destination-schedule",
             "review-hub-compact-destination-completed",
-            "review-hub-compact-destination-automation-activity",
             "review-hub-compact-destination-assistant-queue"
         ] {
             XCTAssertTrue(review.contains(identifier))
@@ -834,8 +833,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(reviewSource.contains("review-hub"))
         XCTAssertTrue(reviewSource.contains("review-destination-schedule"))
         XCTAssertTrue(reviewSource.contains("review-destination-completed"))
-        XCTAssertTrue(reviewSource.contains("review-destination-automation-activity"))
         XCTAssertTrue(reviewSource.contains("review-destination-assistant-queue"))
+        XCTAssertTrue(reviewSource.contains("Pending Actions"))
+        XCTAssertFalse(reviewSource.contains("review-destination-automation-activity"))
         XCTAssertTrue(reviewSource.contains("review-hub-compact-destination-assistant-queue"))
     }
 
@@ -1114,8 +1114,8 @@ final class AppExperienceSourceTests: XCTestCase {
             try bashArrayStringPayloads(in: #"  "route-with-\"escaped-quote\"""#),
             [#"route-with-\"escaped-quote\""#]
         )
-        XCTAssertTrue(script.contains(#"review-automation:en) printf '%s' "Automation Activity""#))
-        XCTAssertTrue(script.contains(#"review-automation:ja) printf '%s' "自動化アクティビティ""#))
+        XCTAssertTrue(script.contains(#"review-assistant-queue:en) printf '%s' "Pending Actions""#))
+        XCTAssertTrue(script.contains(#"review-assistant-queue:ja) printf '%s' "保留中のアクション""#))
         XCTAssertFalse(routeRows.contains { $0.contains("sidebar-destination-review") })
         XCTAssertTrue(script.contains("navigate_to_seed_project()"))
         XCTAssertTrue(script.contains("\"project:$seed_project_id\""))
@@ -1207,7 +1207,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("review-destination-assistant-queue"))
         XCTAssertTrue(boardSource.contains("case .review(.assistantQueue):"))
         XCTAssertTrue(boardSource.contains("AssistantQueueWorkflowView(viewModel: viewModel)"))
+        XCTAssertTrue(boardSource.contains("case .primary(.review):"))
+        XCTAssertTrue(boardSource.contains("Pending Actions"))
+        XCTAssertFalse(boardSource.contains("review-destination-automation-activity"))
         XCTAssertTrue(workflowSource.contains("struct AssistantQueueWorkflowView"))
+        XCTAssertTrue(workflowSource.contains("Approve & Run"))
+        XCTAssertTrue(workflowSource.contains("assistant-queue-approve-and-run-\\(row.id)"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-workflow\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-row-\\(row.id)\")"))
         XCTAssertTrue(workflowSource.contains("viewModel.runAssistantQueueItem(\n                id: row.id,\n                expectedMutationRevision: mutationRevision"))
@@ -1247,6 +1252,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("localizedDisplay(\"Receipt: %@\", localizedDisplay(receipt.statusLabel))"))
         XCTAssertTrue(coreSource.contains("public func runAssistantQueueItem(id: String) -> Bool"))
         XCTAssertTrue(coreSource.contains("public func runAssistantQueueItem(\n        id: String,\n        expectedMutationRevision: String"))
+        XCTAssertTrue(coreSource.contains("public func approveAndRunAssistantQueueItem("))
         XCTAssertTrue(coreSource.contains("public func approveAssistantQueueItem(id: String) -> Bool"))
         XCTAssertTrue(coreSource.contains("public func deferAssistantQueueItem(id: String) -> Bool"))
         XCTAssertTrue(coreSource.contains("public func deferAssistantQueueItem(\n        id: String,\n        expectedMutationRevision: String"))
@@ -1394,6 +1400,7 @@ final class AppExperienceSourceTests: XCTestCase {
         for identifier in [
             "assistant-queue-run-\\(row.id)",
             "assistant-queue-approve-\\(row.id)",
+            "assistant-queue-approve-and-run-\\(row.id)",
             "assistant-queue-defer-\\(row.id)",
             "assistant-queue-edit-\\(row.id)",
             "assistant-queue-retry-\\(row.id)",

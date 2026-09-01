@@ -1724,6 +1724,59 @@ final class AssistantQueueStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelApproveAndRunUsesFreshApprovalRevision() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+        let receiptStore = VolatileExecutionReceiptStore()
+        let waiting = makeItem(
+            id: "queue-visible-approve-and-run",
+            state: .waitingReview,
+            summary: "Create approve and run task"
+        )
+        try assistantQueueStore.save(waiting)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, context in
+                XCTAssertNotNil(context.approvalToken)
+                return ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created approve and run task")
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: assistantQueueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore,
+            runIDProvider: { "run-board-queue-approve-and-run" },
+            now: { Date(timeIntervalSince1970: 505) }
+        )
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: assistantQueueStore,
+            assistantQueueExecutionCoordinator: coordinator,
+            executionReceiptStore: receiptStore
+        )
+
+        viewModel.load()
+
+        let initialRevision = try XCTUnwrap(
+            viewModel.assistantQueueSnapshot.rows.first { $0.id == waiting.id }?.mutationRevision
+        )
+        XCTAssertTrue(viewModel.approveAndRunAssistantQueueItem(
+            id: waiting.id,
+            expectedMutationRevision: initialRevision
+        ))
+        XCTAssertEqual(try assistantQueueStore.get(id: waiting.id).state, .done)
+        XCTAssertEqual(receiptStore.receipts.first?.assistantQueueItemID, waiting.id)
+        XCTAssertEqual(viewModel.integrationStatusMessage, "Executed Assistant Queue item.")
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
     func testProjectBoardViewModelReportsReceiptPersistenceFailureAfterAssistantQueueExecution() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)

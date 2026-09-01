@@ -29,7 +29,7 @@ public struct ProjectBoardCompactNavigationPresentation: Equatable, Sendable {
                 return ProjectBoardCompactNavigationPresentation(label: .localized("Automation Activity"))
             case .assistantQueue:
                 return ProjectBoardCompactNavigationPresentation(
-                    label: .localized("Assistant Queue"),
+                    label: .localized("Pending Actions"),
                     badgeCount: assistantQueueCount > 0 ? assistantQueueCount : nil
                 )
             }

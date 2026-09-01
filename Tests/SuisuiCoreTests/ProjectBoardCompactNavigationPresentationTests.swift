@@ -6,7 +6,7 @@ final class ProjectBoardCompactNavigationPresentationTests: XCTestCase {
         .schedule: "Schedule",
         .completed: "Completed",
         .automationActivity: "Automation Activity",
-        .assistantQueue: "Assistant Queue",
+        .assistantQueue: "Pending Actions",
     ]
 
     func testReviewFixtureCoversEveryDestination() {
@@ -49,7 +49,7 @@ final class ProjectBoardCompactNavigationPresentationTests: XCTestCase {
                 assistantQueueCount: 3
             ),
             ProjectBoardCompactNavigationPresentation(
-                label: .localized("Assistant Queue"),
+                label: .localized("Pending Actions"),
                 badgeCount: 3
             )
         )

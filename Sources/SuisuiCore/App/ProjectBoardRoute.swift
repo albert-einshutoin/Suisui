@@ -19,7 +19,10 @@ public enum BoardPrimaryDestination: String, CaseIterable, Hashable, Sendable {
 public enum ReviewRoute: String, CaseIterable, Hashable, Sendable {
     case schedule
     case completed
+    /// Persisted compatibility route. Product navigation exposes execution
+    /// receipts from Pending Actions instead of a second activity surface.
     case automationActivity
+    /// Canonical Pending Actions surface; raw values retain the queue key.
     case assistantQueue
 }
 

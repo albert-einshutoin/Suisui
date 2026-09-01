@@ -7211,6 +7211,53 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    /// Approves and immediately runs one reviewed item while keeping approval
+    /// and execution as separate durable transitions. The execution revision is
+    /// read back after approval so an edit or concurrent mutation fails closed.
+    @discardableResult
+    public func approveAndRunAssistantQueueItem(
+        id: String,
+        expectedMutationRevision: String
+    ) -> Bool {
+        guard resolvedAssistantQueueExecutionCoordinator != nil else {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = "Assistant Queue execution is unavailable in this build."
+            integrationStatusMessage = nil
+            return false
+        }
+        guard approveAssistantQueueItem(
+            id: id,
+            expectedMutationRevision: expectedMutationRevision
+        ) else {
+            return false
+        }
+        guard let assistantQueueStore else {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = "Assistant Queue is unavailable in this build."
+            integrationStatusMessage = nil
+            return false
+        }
+
+        do {
+            let approvedItem = try assistantQueueStore.get(id: id)
+            guard let approvedRevision = approvedItem.mutationRevision else {
+                _ = refreshAssistantQueueSnapshot()
+                errorMessage = assistantQueueItemUnavailableMessage
+                integrationStatusMessage = nil
+                return false
+            }
+            return runAssistantQueueItem(
+                id: id,
+                expectedMutationRevision: approvedRevision
+            )
+        } catch {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueStoreError.userMessage(for: error)
+            integrationStatusMessage = nil
+            return false
+        }
+    }
+
     /// Missed-task reschedule suggestions still waiting for review in the
     /// currently visible Assistant Queue rows, in display order.
     public var openRescheduleSuggestionIDs: [String] {
