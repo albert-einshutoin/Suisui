@@ -161,7 +161,7 @@ final class QualitySourceContractTests: XCTestCase {
             "Inbox intake",
             "Document draft studio",
             "Secretary queue",
-            "Right assistant rail",
+            "contextual Inspector or Review surface",
             "review-before-execution",
             "VoiceOver task listing",
             "local-first"
@@ -178,9 +178,9 @@ final class QualitySourceContractTests: XCTestCase {
             "AS-003",
             "Secretary queue",
             "AS-004",
-            "Right assistant rail",
+            "Contextual assistant surface",
             "AS-005",
-            "Schedule and reminder draft review",
+            "Schedule and external-write review",
             "AS-006",
             "Done recap and follow-up suggestions",
             "AS-007",
@@ -193,6 +193,57 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(roleDoc.contains("routine work intake"))
         XCTAssertNil(direction.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
         XCTAssertNil(issueSeeds.range(of: #"sk-[A-Za-z0-9_-]{8,}"#, options: .regularExpression))
+    }
+
+    func testMVP0SurfaceInventoryClassifiesFunctionsAndPhaseHandoffs() throws {
+        let inventory = try readPackageFile("docs/ux/information-architecture.md")
+        let tableHeader = "| Product group | Function decisions and exact owners | Domain authority |"
+
+        let tableStart = try XCTUnwrap(inventory.range(of: tableHeader))
+        let tableLines = inventory[tableStart.lowerBound...].split(separator: "\n")
+        let productRows = tableLines.dropFirst(2).prefix { $0.hasPrefix("|") }
+
+        XCTAssertEqual(productRows.count, 17)
+        for row in productRows {
+            let cells = row.split(separator: "|", omittingEmptySubsequences: false)
+            guard cells.indices.contains(2) else {
+                XCTFail("MVP0 inventory row must include a function-decision cell: \(row)")
+                continue
+            }
+            let decisions = cells[2]
+
+            for decision in decisions.split(separator: ";") {
+                XCTAssertNotNil(
+                    decision.range(
+                        of: #"`\[(reuse|move|change|add|remove) → [^]]+\.swift[^]]*\]`"#,
+                        options: .regularExpression
+                    ),
+                    "Every MVP0 function needs an action and exact Swift owner: \(decision)"
+                )
+            }
+        }
+
+        for marker in [
+            "Undo `[reuse → BoardOperationUndo.swift + ProjectBoard.swift]`",
+            "related material `[move → ProjectWorkflowInboxView.swift → ProjectBoardInspectors.swift]`",
+            "Blocked `[add → SmartLists.swift]`",
+            "Week view `[reuse → ProjectWorkflowScheduleView.swift + ScheduleTimelineGeometry.swift]`",
+            "Calendar apply handoff to Review `[move → ProjectWorkflowScheduleView.swift → ProjectWorkflowAssistantQueueView.swift]`",
+            "Apple Calendar readiness detail `[move → SettingsStatusOverviewView.swift → SettingsView.swift]`",
+            "Google Calendar auth/disconnect, calendar selection, and live sync `[reuse → SettingsSyncFeatureView.swift]` under Advanced/Post-MVP #434",
+            "Overdue summary `[reuse → MenuBarSummary.swift + MenuBarPanel.swift]`",
+            "### Phase handoff candidates",
+            "AssistantQueueExecutionTests",
+            "LocalTriageTests",
+            "VoiceCaptureViewModelTests",
+            "ProjectBoardStoreTests",
+            "ProjectBoardPrimaryNavigationTests",
+            "check_security_regressions.sh"
+        ] {
+            XCTAssertTrue(inventory.contains(marker), "MVP0 surface inventory must include \(marker)")
+        }
+
+        XCTAssertFalse(inventory.contains("| Settings: Calendar | Google Calendar auth/disconnect"))
     }
 
     func testProductOutPhasePlanDefinesReleaseLaunchAndLearningGates() throws {
