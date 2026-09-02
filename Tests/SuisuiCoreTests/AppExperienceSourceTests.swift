@@ -1214,6 +1214,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("struct AssistantQueueWorkflowView"))
         XCTAssertTrue(workflowSource.contains("Approve & Run"))
         XCTAssertTrue(workflowSource.contains("assistant-queue-approve-and-run-\\(row.id)"))
+        XCTAssertTrue(workflowSource.contains("row.canApproveAndRun"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-workflow\")"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"assistant-queue-row-\\(row.id)\")"))
         XCTAssertTrue(workflowSource.contains("viewModel.runAssistantQueueItem(\n                id: row.id,\n                expectedMutationRevision: mutationRevision"))

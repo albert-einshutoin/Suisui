@@ -7225,16 +7225,40 @@ public final class ProjectBoardViewModel: ObservableObject {
             integrationStatusMessage = nil
             return false
         }
-        guard approveAssistantQueueItem(
-            id: id,
-            expectedMutationRevision: expectedMutationRevision
-        ) else {
-            return false
-        }
         guard let assistantQueueStore else {
             _ = refreshAssistantQueueSnapshot()
             errorMessage = "Assistant Queue is unavailable in this build."
             integrationStatusMessage = nil
+            return false
+        }
+        do {
+            let currentItem = try assistantQueueStore.get(id: id)
+            guard currentItem.mutationRevision == expectedMutationRevision else {
+                throw AssistantQueueStaleReviewError()
+            }
+            guard AssistantQueueExecutableActionPlanFactory.actionPlan(for: currentItem.payload) != nil else {
+                _ = refreshAssistantQueueSnapshot()
+                errorMessage = Self.assistantQueueExecutionMessage(
+                    for: AssistantQueueExecutionError.unsupportedPayload
+                )
+                integrationStatusMessage = nil
+                return false
+            }
+        } catch is AssistantQueueStaleReviewError {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueMutationFailure.staleUserMessage
+            integrationStatusMessage = nil
+            return false
+        } catch {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueStoreError.userMessage(for: error)
+            integrationStatusMessage = nil
+            return false
+        }
+        guard approveAssistantQueueItem(
+            id: id,
+            expectedMutationRevision: expectedMutationRevision
+        ) else {
             return false
         }
 

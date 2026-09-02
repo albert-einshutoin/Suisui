@@ -216,6 +216,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
     public var blockingReason: String?
     public var latestReceipt: AssistantQueueReceiptSummary?
     public var canApprove: Bool
+    public var canApproveAndRun: Bool
     public var canRun: Bool
     public var canDefer: Bool
     public var canEdit: Bool
@@ -285,7 +286,8 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
         canEdit: Bool,
         canRetry: Bool,
         canReject: Bool,
-        mutationRevision: String?
+        mutationRevision: String?,
+        canApproveAndRun: Bool = false
     ) {
         self.id = id
         self.state = state
@@ -300,6 +302,7 @@ public struct AssistantQueueReadModelRow: Identifiable, Equatable, Sendable {
         self.blockingReason = blockingReason
         self.latestReceipt = latestReceipt
         self.canApprove = canApprove
+        self.canApproveAndRun = canApproveAndRun
         self.canRun = canRun
         self.canDefer = canDefer
         self.canEdit = canEdit
@@ -456,7 +459,8 @@ public enum AssistantQueueReadModel {
             canEdit: canEdit(item),
             canRetry: canRetry(item),
             canReject: canReject(item),
-            mutationRevision: item.mutationRevision
+            mutationRevision: item.mutationRevision,
+            canApproveAndRun: canApproveAndRun(item)
         )
     }
 
@@ -589,6 +593,11 @@ public enum AssistantQueueReadModel {
         case .approved, .running, .blocked, .done, .failed, .rejected:
             return false
         }
+    }
+
+    private static func canApproveAndRun(_ item: AssistantQueueItem) -> Bool {
+        canApprove(item)
+            && AssistantQueueExecutableActionPlanFactory.actionPlan(for: item.payload) != nil
     }
 
     private static func canRun(_ item: AssistantQueueItem) -> Bool {
@@ -956,6 +965,13 @@ public final class SQLiteAssistantQueueStore: AtomicAssistantQueueStore, @unchec
             riskLevel: riskLevel,
             costPreview: costPreview
         )
+        let canApproveAndRun = try canApproveAndRunReadModelRow(
+            state: state,
+            riskLevel: riskLevel,
+            payloadKind: payloadKind,
+            payloadJSON: payloadJSON,
+            costPreview: costPreview
+        )
         let canRun = try canRunReadModelRow(
             state: state,
             payloadKind: payloadKind,
@@ -1008,7 +1024,8 @@ public final class SQLiteAssistantQueueStore: AtomicAssistantQueueStore, @unchec
                     requiresConversationActionLink:
                         requiresConversationActionLink
                 )
-            }
+            },
+            canApproveAndRun: canApproveAndRun
         )
     }
 
@@ -1043,6 +1060,26 @@ public final class SQLiteAssistantQueueStore: AtomicAssistantQueueStore, @unchec
         case .approved, .running, .blocked, .done, .failed, .rejected:
             return false
         }
+    }
+
+    private func canApproveAndRunReadModelRow(
+        state: AssistantQueueState,
+        riskLevel: RiskLevel,
+        payloadKind: String,
+        payloadJSON: String?,
+        costPreview: AssistantQueueCostPreview?
+    ) throws -> Bool {
+        guard canApproveReadModelRow(
+            state: state,
+            riskLevel: riskLevel,
+            costPreview: costPreview
+        ) else {
+            return false
+        }
+        return try payloadCanProduceActionPlan(
+            payloadKind: payloadKind,
+            payloadJSON: payloadJSON
+        )
     }
 
     private func canRunReadModelRow(

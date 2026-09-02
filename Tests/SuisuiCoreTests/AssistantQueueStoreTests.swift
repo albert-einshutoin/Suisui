@@ -163,6 +163,7 @@ final class AssistantQueueStoreTests: XCTestCase {
 
         XCTAssertEqual(row.mutationRevision, item.mutationRevision)
         XCTAssertFalse(row.redactedSummary.contains("sk-review-revision-secret"))
+        XCTAssertTrue(row.canApproveAndRun)
     }
 
     func testSQLiteReadModelSnapshotDoesNotDecodeActionPayloadJSONForListRows() throws {
@@ -389,6 +390,7 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertFalse(waitingRow.redactedSummary.contains("sk-assistantQueueStoreSecret"))
         XCTAssertFalse(waitingRow.sourcePreview?.contains("sk-assistantQueueStoreSecret") ?? true)
         XCTAssertTrue(waitingRow.canApprove)
+        XCTAssertTrue(waitingRow.canApproveAndRun)
         XCTAssertFalse(waitingRow.canRun)
         XCTAssertTrue(waitingRow.canDefer)
         XCTAssertTrue(waitingRow.canEdit)
@@ -399,8 +401,20 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertTrue(approvedRow.canEdit)
         let automationRow = try XCTUnwrap(snapshot.rows.first { $0.id == approvedAutomation.id })
         XCTAssertFalse(automationRow.canRun)
+        XCTAssertFalse(automationRow.canApproveAndRun)
         XCTAssertFalse(automationRow.canRetry)
         XCTAssertTrue(automationRow.canEdit)
+
+        var unsupportedWaitingAutomation = makeAutomationRequestItem(
+            id: "queue-read-model-unsupported-waiting-automation"
+        )
+        unsupportedWaitingAutomation.state = .waitingReview
+        let unsupportedWaitingRow = try XCTUnwrap(
+            AssistantQueueReadModel.snapshot(from: [unsupportedWaitingAutomation])
+                .rows.first
+        )
+        XCTAssertTrue(unsupportedWaitingRow.canApprove)
+        XCTAssertFalse(unsupportedWaitingRow.canApproveAndRun)
         let blockedRow = try XCTUnwrap(snapshot.rows.first { $0.id == blocked.id })
         XCTAssertFalse(blockedRow.canApprove)
         XCTAssertFalse(blockedRow.canRun)
@@ -1774,6 +1788,50 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertEqual(receiptStore.receipts.first?.assistantQueueItemID, waiting.id)
         XCTAssertEqual(viewModel.integrationStatusMessage, "Executed Assistant Queue item.")
         XCTAssertNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testProjectBoardViewModelApproveAndRunLeavesUnsupportedPayloadInReview() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+        let unsupported = makeAutomationRequestItem(
+            id: "queue-unsupported-approve-and-run"
+        )
+        var waitingUnsupported = unsupported
+        waitingUnsupported.state = .waitingReview
+        try assistantQueueStore.save(waitingUnsupported)
+        let receiptStore = VolatileExecutionReceiptStore()
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: assistantQueueStore,
+            executor: ActionExecutor(registry: try ToolRegistry(tools: [])),
+            executionReceiptStore: receiptStore
+        )
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: assistantQueueStore,
+            assistantQueueExecutionCoordinator: coordinator,
+            executionReceiptStore: receiptStore
+        )
+
+        viewModel.load()
+
+        let revision = try XCTUnwrap(
+            viewModel.assistantQueueSnapshot.rows.first { $0.id == waitingUnsupported.id }?.mutationRevision
+        )
+        XCTAssertFalse(viewModel.approveAndRunAssistantQueueItem(
+            id: waitingUnsupported.id,
+            expectedMutationRevision: revision
+        ))
+        let stored = try assistantQueueStore.get(id: waitingUnsupported.id)
+        XCTAssertEqual(stored.state, .waitingReview)
+        XCTAssertNil(stored.approval)
+        XCTAssertTrue(receiptStore.receipts.isEmpty)
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "This Assistant Queue item cannot run from Project Board yet."
+        )
     }
 
     @MainActor
