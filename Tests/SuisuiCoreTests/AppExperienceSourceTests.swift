@@ -1208,6 +1208,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("case .review(.assistantQueue):"))
         XCTAssertTrue(boardSource.contains("AssistantQueueWorkflowView(viewModel: viewModel)"))
         XCTAssertTrue(boardSource.contains("case .primary(.review):"))
+        XCTAssertTrue(boardSource.contains("return .review(.assistantQueue)"))
         XCTAssertTrue(boardSource.contains("Pending Actions"))
         XCTAssertFalse(boardSource.contains("review-destination-automation-activity"))
         XCTAssertTrue(workflowSource.contains("struct AssistantQueueWorkflowView"))
