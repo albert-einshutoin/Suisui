@@ -208,8 +208,10 @@ fn read_voice_style(path: &Path, token_count: usize) -> AppResult<Vec<f32>> {
         .filter(|offset| offset + frame_bytes <= bytes.len())
         .ok_or_else(|| "Kokoro voice file has no style for this token count".to_owned())?;
     let style = bytes[offset..offset + frame_bytes]
-        .chunks_exact(size_of::<f32>())
-        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .as_chunks::<{ size_of::<f32>() }>()
+        .0
+        .iter()
+        .map(|chunk| f32::from_le_bytes(*chunk))
         .collect::<Vec<_>>();
     if style.iter().any(|value| !value.is_finite()) {
         return Err("Kokoro voice style contains a non-finite value".to_owned());
@@ -427,7 +429,10 @@ mod tests {
         fs::write(&model, CONTRACT_MODEL).unwrap();
         let mut voice_bytes = vec![0_u8; STYLE_VALUES * size_of::<f32>() * 3];
         let selected_frame = STYLE_VALUES * size_of::<f32>();
-        for sample in voice_bytes[selected_frame..].chunks_exact_mut(size_of::<f32>()) {
+        for sample in voice_bytes[selected_frame..]
+            .as_chunks_mut::<{ size_of::<f32>() }>()
+            .0
+        {
             sample.copy_from_slice(&0.25_f32.to_le_bytes());
         }
         fs::write(&voice, voice_bytes).unwrap();
