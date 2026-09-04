@@ -1791,6 +1791,84 @@ final class AssistantQueueStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectBoardViewModelApproveAndRunRejectsMutationAfterApproval() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let boardStore = SQLiteProjectBoardStore(connection: connection)
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: connection)
+        let receiptStore = VolatileExecutionReceiptStore()
+        let waiting = makeItem(
+            id: "queue-approve-and-run-concurrent-mutation",
+            state: .waitingReview,
+            summary: "Original reviewed summary"
+        )
+        try assistantQueueStore.save(waiting)
+        let registry = try ToolRegistry(tools: [
+            StaticTool(
+                name: .taskCreate,
+                description: "create task",
+                inputSchema: ToolInputSchema(required: ["title"], properties: ["title": "string"]),
+                permissionLevel: .writeWithApproval
+            ) { _, _ in
+                ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created task")
+            }
+        ])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: assistantQueueStore,
+            executor: ActionExecutor(registry: registry),
+            executionReceiptStore: receiptStore
+        )
+        var shouldMutateAfterApproval = true
+        var concurrentMutationError: Error?
+        let viewModel = ProjectBoardViewModel(
+            store: boardStore,
+            assistantQueueStore: assistantQueueStore,
+            assistantQueueExecutionCoordinator: coordinator,
+            executionReceiptStore: receiptStore,
+            onChange: {
+                guard shouldMutateAfterApproval else {
+                    return
+                }
+                shouldMutateAfterApproval = false
+                do {
+                    _ = try assistantQueueStore.transition(id: waiting.id) { current in
+                        let edited = try AssistantQueueStateMachine.editReviewDetails(
+                            current,
+                            reviewReason: "Concurrent review",
+                            redactedSummary: "Changed reviewed summary"
+                        )
+                        return try AssistantQueueStateMachine.approve(
+                            edited,
+                            reviewerID: "concurrent-reviewer"
+                        )
+                    }
+                } catch {
+                    concurrentMutationError = error
+                }
+            }
+        )
+
+        viewModel.load()
+
+        let initialRevision = try XCTUnwrap(
+            viewModel.assistantQueueSnapshot.rows.first { $0.id == waiting.id }?.mutationRevision
+        )
+        XCTAssertFalse(viewModel.approveAndRunAssistantQueueItem(
+            id: waiting.id,
+            expectedMutationRevision: initialRevision
+        ))
+        XCTAssertNil(concurrentMutationError)
+        let stored = try assistantQueueStore.get(id: waiting.id)
+        XCTAssertEqual(stored.state, .approved)
+        XCTAssertEqual(stored.redactedSummary, "Changed reviewed summary")
+        XCTAssertTrue(receiptStore.receipts.isEmpty)
+        XCTAssertEqual(
+            viewModel.errorMessage,
+            "This Assistant Queue item changed. Review the latest details before running it."
+        )
+    }
+
+    @MainActor
     func testProjectBoardViewModelApproveAndRunLeavesUnsupportedPayloadInReview() throws {
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
