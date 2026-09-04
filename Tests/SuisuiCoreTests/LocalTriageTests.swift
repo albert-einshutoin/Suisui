@@ -55,6 +55,7 @@ final class LocalTriageTests: XCTestCase {
                 ProviderReadinessReference(
                     providerID: ProviderID("cloud.frontier"),
                     isReady: true,
+                    isLocal: false,
                     allowsLocalData: false,
                     requiresNetwork: true,
                     capabilities: [.documentResearch, .documentDraft]
@@ -62,6 +63,7 @@ final class LocalTriageTests: XCTestCase {
                 ProviderReadinessReference(
                     providerID: ProviderID("local.model"),
                     isReady: true,
+                    isLocal: true,
                     allowsLocalData: true,
                     requiresNetwork: false,
                     capabilities: [.documentResearch, .documentDraft]
@@ -89,6 +91,7 @@ final class LocalTriageTests: XCTestCase {
                 ProviderReadinessReference(
                     providerID: ProviderID("cloud.frontier"),
                     isReady: true,
+                    isLocal: false,
                     allowsLocalData: true,
                     requiresNetwork: true,
                     capabilities: [.documentResearch, .documentDraft]
@@ -136,6 +139,7 @@ final class LocalTriageTests: XCTestCase {
                 ProviderReadinessReference(
                     providerID: ProviderID("b"),
                     isReady: true,
+                    isLocal: true,
                     allowsLocalData: true,
                     requiresNetwork: false,
                     capabilities: [.taskRead]
@@ -143,6 +147,7 @@ final class LocalTriageTests: XCTestCase {
                 ProviderReadinessReference(
                     providerID: ProviderID("a"),
                     isReady: true,
+                    isLocal: true,
                     allowsLocalData: true,
                     requiresNetwork: false,
                     capabilities: [.taskRead]
@@ -157,6 +162,7 @@ final class LocalTriageTests: XCTestCase {
                 ProviderReadinessReference(
                     providerID: ProviderID("a"),
                     isReady: true,
+                    isLocal: true,
                     allowsLocalData: true,
                     requiresNetwork: false,
                     capabilities: [.taskRead]
@@ -164,6 +170,7 @@ final class LocalTriageTests: XCTestCase {
                 ProviderReadinessReference(
                     providerID: ProviderID("b"),
                     isReady: true,
+                    isLocal: true,
                     allowsLocalData: true,
                     requiresNetwork: false,
                     capabilities: [.taskRead]
@@ -182,6 +189,7 @@ final class LocalTriageTests: XCTestCase {
                 ProviderReadinessReference(
                     providerID: ProviderID("cloud.frontier"),
                     isReady: true,
+                    isLocal: false,
                     allowsLocalData: true,
                     requiresNetwork: true,
                     capabilities: [.documentResearch]
@@ -205,7 +213,7 @@ final class LocalTriageTests: XCTestCase {
             for: request,
             decision: decision,
             latencyMilliseconds: 12,
-            finalExecutionPath: "review",
+            finalExecutionPath: .review,
             outcomeLink: "receipt:opaque"
         )
 
@@ -216,6 +224,232 @@ final class LocalTriageTests: XCTestCase {
         XCTAssertFalse(event.serializedSummary.contains("secret.txt"))
         XCTAssertFalse(event.serializedSummary.contains("/Users"))
         XCTAssertTrue(event.frontierCallAvoided)
+    }
+
+    func testReadAuthorizationUsesRequestedScopeCapability() {
+        let cases: [(TriageScope, PersonalCapability)] = [
+            (.project, .projectRead),
+            (.schedule, .scheduleRead),
+            (.external, .calendarRead)
+        ]
+
+        for (scope, expectedCapability) in cases {
+            let decision = router.evaluate(request(
+                "show status",
+                scope: scope,
+                capabilities: [expectedCapability]
+            ))
+
+            XCTAssertEqual(decision.route, .deterministic, "scope: \(scope)")
+            XCTAssertEqual(decision.capability, expectedCapability, "scope: \(scope)")
+        }
+
+        let denied = router.evaluate(request(
+            "show project status",
+            scope: .project,
+            capabilities: [.taskRead]
+        ))
+        XCTAssertEqual(denied.route, .clarification)
+        XCTAssertEqual(denied.capability, .projectRead)
+        XCTAssertTrue(denied.reasons.contains(.capabilityUnavailable))
+    }
+
+    func testEligibleFrontierOverrideBecomesSelectedRoute() {
+        let decision = router.evaluate(
+            request(
+                "research competitor strategy",
+                scope: .workspace,
+                capabilities: [.documentResearch],
+                providers: [
+                    ProviderReadinessReference(
+                        providerID: ProviderID("cloud.frontier"),
+                        isReady: true,
+                        isLocal: false,
+                        allowsLocalData: true,
+                        requiresNetwork: true,
+                        capabilities: [.documentResearch]
+                    )
+                ]
+            ),
+            userOverride: .frontierFast
+        )
+
+        XCTAssertEqual(decision.route, .frontierFast)
+        XCTAssertFalse(decision.userOverrideRejected)
+    }
+
+    func testEnglishTaskCreateWithoutTitleRequiresClarification() {
+        for input in ["add task", "create task", "new task", "add a task", "create the task"] {
+            let decision = router.evaluate(request(
+                input,
+                scope: .task,
+                capabilities: [.taskWrite]
+            ))
+
+            XCTAssertEqual(decision.route, .clarification, "input: \(input)")
+            XCTAssertTrue(decision.missingFields.contains(.taskTitle), "input: \(input)")
+        }
+    }
+
+    func testShadowEventUsesFinalExecutionPathForFrontierAvoidance() {
+        let request = request(
+            "show overdue tasks",
+            scope: .task,
+            capabilities: [.taskRead]
+        )
+        let decision = router.evaluate(request)
+        let event = router.shadowEvent(
+            for: request,
+            decision: decision,
+            finalExecutionPath: .frontier
+        )
+
+        XCTAssertFalse(event.frontierCallAvoided)
+    }
+
+    func testProviderIDTextCannotMakeRemoteProviderLocal() {
+        let decision = router.evaluate(request(
+            "research competitor strategy",
+            scope: .workspace,
+            capabilities: [.documentResearch],
+            providers: [
+                ProviderReadinessReference(
+                    providerID: ProviderID("cloud-localization"),
+                    isReady: true,
+                    isLocal: false,
+                    allowsLocalData: true,
+                    requiresNetwork: true,
+                    capabilities: [.documentResearch]
+                )
+            ]
+        ))
+
+        XCTAssertEqual(decision.route, .frontierDeep)
+        XCTAssertFalse(decision.reasons.contains(.localCandidate))
+    }
+
+    func testLocalOnlyPolicyRejectsRemoteProviderThatAcceptsLocalData() {
+        let decision = router.evaluate(request(
+            "research competitor strategy",
+            scope: .workspace,
+            dataZone: .localOnly,
+            capabilities: [.documentResearch],
+            providers: [
+                ProviderReadinessReference(
+                    providerID: ProviderID("cloud.frontier"),
+                    isReady: true,
+                    isLocal: false,
+                    allowsLocalData: true,
+                    requiresNetwork: true,
+                    capabilities: [.documentResearch]
+                )
+            ]
+        ))
+
+        XCTAssertEqual(decision.route, .clarification)
+        XCTAssertTrue(decision.eligibleProviderIDs.isEmpty)
+        XCTAssertTrue(decision.reasons.contains(.dataPolicyConflict))
+    }
+
+    func testProviderWithoutDeclaredCapabilityIsNotEligible() {
+        let decision = router.evaluate(request(
+            "research competitor strategy",
+            scope: .workspace,
+            capabilities: [.documentResearch],
+            providers: [
+                ProviderReadinessReference(
+                    providerID: ProviderID("cloud.frontier"),
+                    isReady: true,
+                    isLocal: false,
+                    allowsLocalData: true,
+                    requiresNetwork: true,
+                    capabilities: []
+                )
+            ]
+        ))
+
+        XCTAssertEqual(decision.route, .clarification)
+        XCTAssertTrue(decision.eligibleProviderIDs.isEmpty)
+        XCTAssertTrue(decision.reasons.contains(.providerUnavailable))
+    }
+
+    func testFrontierRouteRequiresRequestCapability() {
+        let decision = router.evaluate(request(
+            "research competitor strategy",
+            scope: .workspace,
+            capabilities: [],
+            providers: [
+                ProviderReadinessReference(
+                    providerID: ProviderID("cloud.frontier"),
+                    isReady: true,
+                    isLocal: false,
+                    allowsLocalData: true,
+                    requiresNetwork: true,
+                    capabilities: [.documentResearch]
+                )
+            ]
+        ))
+
+        XCTAssertEqual(decision.route, .clarification)
+        XCTAssertEqual(decision.capability, .documentResearch)
+        XCTAssertTrue(decision.eligibleProviderIDs.isEmpty)
+        XCTAssertTrue(decision.reasons.contains(.capabilityUnavailable))
+    }
+
+    func testExternalWriteIntentCannotBeDowngradedToRead() {
+        let decision = router.evaluate(request(
+            "show status and send it",
+            scope: .external,
+            capabilities: [.calendarRead, .notificationWrite]
+        ))
+
+        XCTAssertEqual(decision.route, .deterministic)
+        XCTAssertEqual(decision.capability, .notificationWrite)
+        XCTAssertEqual(decision.requiredApproval, .explicitApproval)
+        XCTAssertTrue(decision.reasons.contains(.externalWriteRequiresApproval))
+    }
+
+    func testDuplicateProviderIDIsRejectedWithoutLocalityMixing() {
+        let providerID = ProviderID("provider")
+        let decision = router.evaluate(request(
+            "research competitor strategy",
+            scope: .workspace,
+            capabilities: [.documentResearch],
+            providers: [
+                ProviderReadinessReference(
+                    providerID: providerID,
+                    isReady: true,
+                    isLocal: false,
+                    allowsLocalData: true,
+                    requiresNetwork: true,
+                    capabilities: [.documentResearch]
+                ),
+                ProviderReadinessReference(
+                    providerID: providerID,
+                    isReady: false,
+                    isLocal: true,
+                    allowsLocalData: true,
+                    requiresNetwork: false,
+                    capabilities: [.documentResearch]
+                )
+            ]
+        ))
+
+        XCTAssertEqual(decision.route, .clarification)
+        XCTAssertTrue(decision.eligibleProviderIDs.isEmpty)
+        XCTAssertEqual(decision.prohibitedProviderIDs, [providerID])
+        XCTAssertTrue(decision.reasons.contains(.providerUnavailable))
+    }
+
+    func testInputLimitUsesBytesBeforeNormalization() {
+        let decision = router.evaluate(request(
+            String(repeating: " ", count: 5_000) + "show status",
+            scope: .task,
+            capabilities: [.taskRead]
+        ))
+
+        XCTAssertEqual(decision.route, .prohibited)
+        XCTAssertTrue(decision.reasons.contains(.inputTooLarge))
     }
 
     private func request(
