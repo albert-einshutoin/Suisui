@@ -2,7 +2,7 @@
 
 Generated with `script/capture_ui_evidence.sh`.
 
-- Generated at: `2026-09-01T07:36:32Z`
+- Generated at: `2026-09-02T17:45:17Z`
 - Source commit: `e90df44f`
 - App bundle: `dist/Suisui.app`
 - Visual baseline manifest: `docs/quality/visual-baseline-manifest.json`
