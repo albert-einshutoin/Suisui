@@ -30,7 +30,7 @@ struct AssistantQueueWorkflowView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 12) {
                 WorkflowHeader(
-                    title: "Assistant Queue",
+                    title: "Pending Actions",
                     subtitle: subtitle,
                     systemImage: "tray.full"
                 )
@@ -38,7 +38,7 @@ struct AssistantQueueWorkflowView: View {
                 AssistantQueueCountStrip(snapshot: snapshot)
             }
 
-            Text("Review AI-generated work before anything runs. Approval records intent; Run uses the existing execution gate and creates a receipt.")
+            Text("Review proposed changes before anything runs. Approval records intent; Run uses the existing execution gate and creates a receipt.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -79,7 +79,7 @@ struct AssistantQueueWorkflowView: View {
                         )
                     } else {
                         ContentUnavailableView(
-                            "Assistant Queue is clear",
+                            "Pending Actions is clear",
                             systemImage: "tray.full",
                             description: Text("Voice plans, automation drafts, and connector writes appear here before execution.")
                         )
@@ -108,9 +108,9 @@ struct AssistantQueueWorkflowView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("assistant-queue-workflow")
-        .accessibilityLabel("Assistant Queue")
+        .accessibilityLabel("Pending Actions")
         .accessibilityValue(subtitle)
-        .accessibilityHint("Reviews AI-generated drafts before execution.")
+        .accessibilityHint("Reviews proposed changes before execution.")
     }
 
     private func focusTriageControls() {
@@ -477,6 +477,10 @@ private struct AssistantQueueRow: View {
                         .accessibilityFocused($accessibilityActionFocus, equals: .primary)
                 }
 
+                if actionPresentation.primaryAction == .approve && row.canApproveAndRun {
+                    approveAndRunButton
+                }
+
                 if !actionPresentation.secondaryActions.isEmpty {
                     Menu {
                         ForEach(actionPresentation.secondaryActions, id: \.self) { action in
@@ -504,7 +508,7 @@ private struct AssistantQueueRow: View {
         .accessibilityIdentifier("assistant-queue-row-\(row.id)")
         .accessibilityLabel(row.title)
         .accessibilityValue(accessibilityValue)
-        .accessibilityHint("Review this Assistant Queue item before execution.")
+        .accessibilityHint("Review this pending action before execution.")
         .onChange(of: row.state) { _, _ in
             markEditConflictIfNeeded()
         }
@@ -516,8 +520,8 @@ private struct AssistantQueueRow: View {
         }
     }
 
-    // A single stage-specific presentation prevents approval and execution
-    // controls from appearing together and reduces accidental queue transitions.
+    // Stage-specific presentation keeps the regular approval/run controls
+    // constrained; the combined action below still uses the same revision gate.
     private var actionPresentation: AssistantQueueRowActionPresentation {
         AssistantQueueRowActionPresentation.make(for: row)
     }
@@ -584,6 +588,24 @@ private struct AssistantQueueRow: View {
         .disabled(row.mutationRevision == nil)
         .accessibilityIdentifier("assistant-queue-approve-\(row.id)")
         .accessibilityHint("Records approval intent. Execution still requires the review gate.")
+    }
+
+    private var approveAndRunButton: some View {
+        Button {
+            guard let mutationRevision = row.mutationRevision else {
+                return
+            }
+            _ = viewModel.approveAndRunAssistantQueueItem(
+                id: row.id,
+                expectedMutationRevision: mutationRevision
+            )
+        } label: {
+            Label("Approve & Run", systemImage: "checkmark.seal.fill")
+        }
+        .help("Approve this pending action and run it through the execution gate")
+        .disabled(row.mutationRevision == nil)
+        .accessibilityIdentifier("assistant-queue-approve-and-run-\(row.id)")
+        .accessibilityHint("Records approval, then runs the reviewed action through the execution gate and records a receipt.")
     }
 
     private var runButton: some View {

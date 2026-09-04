@@ -860,13 +860,13 @@ measure_review_assistant_queue() {
   local start_ms end_ms
   start_ms="$(now_ms)"
   if try_click_destination "review-destination-assistant-queue"; then
-    printf "OK: selected Assistant Queue from wide Review navigation\n"
+    printf "OK: selected Pending Actions from wide Review navigation\n"
   else
     # The default CI window can render Review in compact mode. Open the visible
     # chooser and press its stable menu-item identifier without changing the
     # product's adaptive breakpoint solely for performance evidence.
     click_sidebar_destination "review-hub-compact-navigation" "Review view chooser"
-    click_destination_until_available "review-hub-compact-destination-assistant-queue" "Assistant Queue"
+    click_destination_until_available "review-hub-compact-destination-assistant-queue" "Pending Actions"
   fi
   wait_for_marker "assistant-queue-workflow"
   end_ms="$(now_ms)"

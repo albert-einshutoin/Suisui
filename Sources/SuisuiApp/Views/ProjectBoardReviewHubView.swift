@@ -58,18 +58,11 @@ struct ProjectBoardReviewHubView<Content: View>: View {
                 )
             }
 
-            Section("Automation") {
-                reviewRow(
-                    route: .automationActivity,
-                    title: "Automation Activity",
-                    subtitle: "Inspect AI usage, receipts, and execution history",
-                    systemImage: "bolt.horizontal.circle",
-                    accessibilityIdentifier: "review-destination-automation-activity"
-                )
+            Section("Review") {
                 reviewRow(
                     route: .assistantQueue,
-                    title: "Assistant Queue",
-                    subtitle: "Approve, defer, reject, or run reviewed work",
+                    title: "Pending Actions",
+                    subtitle: "Review proposed changes before execution.",
                     systemImage: "tray.full",
                     count: assistantQueueCount,
                     accessibilityIdentifier: "review-destination-assistant-queue"
@@ -100,13 +93,8 @@ struct ProjectBoardReviewHubView<Content: View>: View {
                     accessibilityIdentifier: "review-hub-compact-destination-completed"
                 )
                 compactDestination(
-                    .automationActivity,
-                    "Automation Activity",
-                    accessibilityIdentifier: "review-hub-compact-destination-automation-activity"
-                )
-                compactDestination(
                     .assistantQueue,
-                    "Assistant Queue",
+                    "Pending Actions",
                     accessibilityIdentifier: "review-hub-compact-destination-assistant-queue"
                 )
             } label: {

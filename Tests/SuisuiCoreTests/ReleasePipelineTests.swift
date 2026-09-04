@@ -8270,7 +8270,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("measure_review_assistant_queue"))
         XCTAssertTrue(script.contains("try_click_destination \"review-destination-assistant-queue\""))
         XCTAssertTrue(script.contains("click_sidebar_destination \"review-hub-compact-navigation\" \"Review view chooser\""))
-        XCTAssertTrue(script.contains("click_destination_until_available \"review-hub-compact-destination-assistant-queue\" \"Assistant Queue\""))
+        XCTAssertTrue(script.contains("click_destination_until_available \"review-hub-compact-destination-assistant-queue\" \"Pending Actions\""))
         XCTAssertTrue(script.contains("wait_for_marker \"assistant-queue-workflow\""))
         XCTAssertFalse(script.contains("sidebar-destination-assistant-queue"))
         XCTAssertTrue(script.contains("measure_destination \"destination-today\" \"$sample_index\" \"sidebar-destination-today\" \"Today\" \"today-workflow\""))

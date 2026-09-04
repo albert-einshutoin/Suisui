@@ -1057,6 +1057,15 @@
 "What scope should Suisui prepare for review?" = "Suisuiがレビュー用に準備する範囲はどこまでですか?";
 "Should Suisui keep this as a reviewed draft?" = "Suisuiはこれを確認済み下書きとして保持しますか?";
 "Assistant Queue" = "アシスタントキュー";
+"Pending Actions" = "保留中のアクション";
+"Approve & Run" = "承認して実行";
+"Pending Actions is clear" = "保留中のアクションはありません";
+"Review proposed changes before anything runs. Approval records intent; Run uses the existing execution gate and creates a receipt." = "実行前に提案された変更を確認します。承認は意図を記録し、実行は既存の実行ゲートを通ってレシートを作成します。";
+"Review proposed changes before execution." = "実行前に提案された変更を確認します。";
+"Reviews proposed changes before execution." = "実行前に提案された変更を確認します。";
+"Review this pending action before execution." = "実行前にこの保留中のアクションを確認します。";
+"Approve this pending action and run it through the execution gate" = "この保留中のアクションを承認して実行ゲートを通します";
+"Records approval, then runs the reviewed action through the execution gate and records a receipt." = "承認を記録した後、確認済みのアクションを実行ゲートで実行し、レシートを記録します。";
 "Open Assistant Queue" = "アシスタントキューを開く";
 "Opens the Assistant Queue without running the item." = "項目を実行せずにアシスタントキューを開きます。";
 "Assistant Queue item is no longer available." = "アシスタントキュー項目はもう利用できません。";

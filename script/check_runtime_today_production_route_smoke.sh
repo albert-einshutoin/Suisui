@@ -503,8 +503,8 @@ route_text_for() {
     review-completed:ja) printf '%s' "完了" ;;
     review-automation:en) printf '%s' "Automation Activity" ;;
     review-automation:ja) printf '%s' "自動化アクティビティ" ;;
-    review-assistant-queue:en) printf '%s' "Assistant Queue" ;;
-    review-assistant-queue:ja) printf '%s' "アシスタントキュー" ;;
+    review-assistant-queue:en) printf '%s' "Pending Actions" ;;
+    review-assistant-queue:ja) printf '%s' "保留中のアクション" ;;
     project:*|inspector:*) printf '%s' "fixture-project-1" ;;
     *) return 1 ;;
   esac
