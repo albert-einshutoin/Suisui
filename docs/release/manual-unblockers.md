@@ -235,12 +235,23 @@ without that evidence. Do not expand either issue to unrelated full features.
 The #624 command below remains a blocked prerequisite until implemented and
 validated; a fixed `passed` value is not observed evidence.
 
-Prerequisite: #617 の通常route証跡と #244 の同一candidate向けVoiceOver
+Operator prerequisite: #617 の通常route証跡と #244 の同一candidate向けVoiceOver
 確認を先に完了する。`./script/check_runtime_core_value_loop_smoke.sh` の
-`.tmp/suisui-core-value-loop/manifest.json` が `status: "passed"` で、ここで
-生成する release evidence の source commit と一致することを確認する。
+`.tmp/suisui-core-value-loop/manifest.json` が観測に基づく `status: "passed"`
+であることを確認し、manifestのcheckout sourceCommitとrelease evidenceの
+source commitをどちらも完全hashへ解決して一致を確認する。VoiceOverの
+product-source commitは上の製品パスによる比較で別途確認する。
 これは署名・公証・Sparkleの手動確認を置き換えず、candidateの取り違えを
-防ぐための入口ゲートである。
+防ぐために作業者が署名コマンドの前に確認する条件である。
+
+This PR documents an operator prerequisite; it does not add an automatically
+fail-closed manifest validator to `prepare_release_machine_evidence.sh`,
+`create_release_evidence.sh`, or `sign_app.sh`. Those commands currently do not
+enforce the #617 manifest condition. Their successful execution is not proof
+that this prerequisite passed. Do not start the signing sequence below until
+the observed manifest and candidate checks above are recorded. Automatic
+helper enforcement remains unimplemented and must not be claimed as delivered
+by this preparation PR or as #246 completion.
 
 Generated helpers:
 
