@@ -226,6 +226,33 @@ Goal: produce a signed, notarized, stapled release artifact with production Spar
 
 Tracking issue: [#246 Release closeout: configure signed notarized Sparkle release machine evidence](https://github.com/albert-einshutoin/suisui/issues/246)
 
+Preparation only: this runbook update does not complete #246 or authorize a
+release. #611 must be complete, including #630's observed local measurements
+and #617's final-candidate evidence. Before fixing that candidate, evaluate the
+release-blocking remainder of #351 (dependency/input provenance) and #353
+(existing backup/restore gaps); do not claim reproducibility or recoverability
+without that evidence. Do not expand either issue to unrelated full features.
+The #624 command below remains a blocked prerequisite until implemented and
+validated; a fixed `passed` value is not observed evidence.
+
+Operator prerequisite: #617 の通常route証跡と #244 の同一candidate向けVoiceOver
+確認を先に完了する。`./script/check_runtime_core_value_loop_smoke.sh` の
+`.tmp/suisui-core-value-loop/manifest.json` が観測に基づく `status: "passed"`
+であることを確認し、manifestのcheckout sourceCommitとrelease evidenceの
+source commitをどちらも完全hashへ解決して一致を確認する。VoiceOverの
+product-source commitは上の製品パスによる比較で別途確認する。
+これは署名・公証・Sparkleの手動確認を置き換えず、candidateの取り違えを
+防ぐために作業者が署名コマンドの前に確認する条件である。
+
+This PR documents an operator prerequisite; it does not add an automatically
+fail-closed manifest validator to `prepare_release_machine_evidence.sh`,
+`create_release_evidence.sh`, or `sign_app.sh`. Those commands currently do not
+enforce the #617 manifest condition. Their successful execution is not proof
+that this prerequisite passed. Do not start the signing sequence below until
+the observed manifest and candidate checks above are recorded. Automatic
+helper enforcement remains unimplemented and must not be claimed as delivered
+by this preparation PR or as #246 completion.
+
 Generated helpers:
 
 - `.tmp/release-machine/release-machine-worksheet.md`
