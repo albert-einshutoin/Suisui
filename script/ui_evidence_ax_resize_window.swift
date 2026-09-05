@@ -123,7 +123,8 @@ let sizeStatus = AXUIElementSetAttributeValue(
     sizeValue
 )
 
-guard positionStatus == .success, sizeStatus == .success else {
+let sizeRequestWasRejected = sizeStatus == .cannotComplete
+guard positionStatus == .success, sizeStatus == .success || sizeRequestWasRejected else {
     fputs("AX resize failed (position=\(positionStatus.rawValue), size=\(sizeStatus.rawValue)).\n", stderr)
     exit(1)
 }
@@ -142,3 +143,11 @@ print(
         finalSize.height
     )
 )
+
+// A negative minimum-size probe can expect AppKit to reject its request.
+// Keep that outcome non-successful for ordinary capture callers, and expose it
+// only after the same owned AX window still responds with its actual frame.
+if sizeRequestWasRejected {
+    fputs("AX size request was rejected; the owned window frame remains readable.\n", stderr)
+    exit(3)
+}
