@@ -5215,7 +5215,8 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(boardSource.contains("review-destination-schedule"))
         XCTAssertTrue(boardSource.contains("case .review(.schedule):"))
-        XCTAssertTrue(boardSource.contains("ScheduleWorkflowView(viewModel: viewModel)"))
+        XCTAssertTrue(boardSource.contains("ScheduleWorkflowView("))
+        XCTAssertTrue(boardSource.contains("onOpenPendingActions:"))
         XCTAssertTrue(persistenceSource.contains("case schedule"))
         XCTAssertTrue(workflowSource.contains("ScheduleWorkflowView"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-workflow\")"))
@@ -5223,6 +5224,10 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-apply-calendar\")"))
         XCTAssertTrue(workflowSource.contains("ScheduleDraftApprovalControls("))
         XCTAssertTrue(workflowSource.contains("viewModel.enqueueScheduleDraftCalendarApply(on: workloadReferenceDate)"))
+        XCTAssertTrue(workflowSource.contains("onOpenPendingActions()"))
+        XCTAssertTrue(workflowSource.contains("Task { @MainActor in"))
+        XCTAssertTrue(workflowSource.contains("await Task.yield()"))
+        XCTAssertTrue(workflowSource.contains("guard viewModel.enqueueScheduleDraftCalendarApply"))
         XCTAssertTrue(workflowSource.contains("viewModel.addUnscheduledTaskToScheduleDraft("))
         XCTAssertTrue(workflowSource.contains("scheduleReadModel.unscheduledTasks"))
         XCTAssertTrue(workflowSource.contains("viewModel.enqueueScheduleReminderDraft("))
@@ -5235,6 +5240,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("Queue reminder draft for %@"))
         XCTAssertTrue(workflowSource.contains(".accessibilityLabel(String(format: String(localized: \"Add %@ to Draft\"), task.title))"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"schedule-queue-approval-note\")"))
+        XCTAssertTrue(workflowSource.contains("Pending Actions before any external Calendar write."))
         let scheduleWorkflowStart = try XCTUnwrap(workflowSource.range(of: "struct ScheduleWorkflowView"))
         let scheduleWorkflowEnd = try XCTUnwrap(workflowSource.range(of: "struct DoneWorkflowView"))
         let scheduleWorkflowSource = String(workflowSource[scheduleWorkflowStart.lowerBound..<scheduleWorkflowEnd.lowerBound])
@@ -8179,10 +8185,10 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(clickPath.contains("## Phase 14 access-flow map (2026-07-03)"))
         XCTAssertTrue(clickPath.contains("| User goal | Access flow | Current reachability | Follow-up / PR |"))
-        XCTAssertTrue(clickPath.contains("app launch -> sidebar `Schedule` -> `Generate Draft` -> `Queue Calendar Apply` -> Assistant Queue approval"))
+        XCTAssertTrue(clickPath.contains("app launch -> sidebar `Schedule` -> `Generate Draft` -> `Queue Calendar Apply` -> Pending Actions approval"))
         XCTAssertTrue(clickPath.contains("app launch -> sidebar `Done` -> completed task row -> `Follow Up` / `Reopen`"))
         XCTAssertTrue(clickPath.contains("app launch -> `Settings...` / `Command+,` -> `Sync` -> Google Calendar save flow -> `Save Calendar` -> `Check Readiness`"))
-        XCTAssertTrue(clickPath.contains("app launch -> Voice Command -> record or type -> `Save to Inbox` / `Generate Plan` -> Inbox or Assistant Queue review"))
+        XCTAssertTrue(clickPath.contains("app launch -> Voice Quick Capture -> record or type -> `Save to Inbox` / `Generate Plan` -> Inbox or Pending Actions review"))
         XCTAssertTrue(clickPath.contains("developer/release -> `./script/build_and_run.sh --verify` -> Project Board visible-window proof"))
 
         for token in ["#208 / PR #218", "#209 / PR #217", "#210 / PR #215", "#211 / PR #216", "#212 / PR #214"] {
@@ -8193,7 +8199,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(clickPath.contains("| Settings Google Calendar save/readiness |"))
         XCTAssertTrue(clickPath.contains("| Schedule apply after draft generation |"))
         XCTAssertTrue(clickPath.contains("| Done row recovery actions |"))
-        XCTAssertTrue(clickPath.contains("| Voice Command first-run path |"))
+        XCTAssertTrue(clickPath.contains("| Voice Quick Capture first-run path |"))
         XCTAssertTrue(clickPath.contains("| Launch visible-window verifier |"))
     }
 

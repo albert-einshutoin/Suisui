@@ -922,7 +922,9 @@
 "Apply to Calendar" = "Apply to Calendar";
 "Queue Calendar Apply" = "Queue Calendar Apply";
 "External Calendar writes run from Assistant Queue after approval." = "External Calendar writes run from Assistant Queue after approval.";
+"External Calendar writes run from Pending Actions after approval." = "External Calendar writes run from Pending Actions after approval.";
 "Adds reviewed schedule blocks to Assistant Queue before any external Calendar write." = "Adds reviewed schedule blocks to Assistant Queue before any external Calendar write.";
+"Adds reviewed schedule blocks to Pending Actions before any external Calendar write." = "Adds reviewed schedule blocks to Pending Actions before any external Calendar write.";
 "Approve Google Calendar Sync" = "Approve Google Calendar Sync";
 "Schedule block %@" = "Schedule block %@";
 "Generate a draft from Today time blocks." = "Generate a draft from Today time blocks.";
@@ -2297,6 +2299,7 @@
 "Create an active task before placing work on the calendar." = "Create an active task before placing work on the calendar.";
 "Remove" = "Remove";
 "Calendar is updated only after review in Assistant Queue." = "Calendar is updated only after review in Assistant Queue.";
+"Calendar is updated only after review in Pending Actions." = "Calendar is updated only after review in Pending Actions.";
 "End time must be later than start time." = "End time must be later than start time.";
 "Select an active task before placing it on the schedule." = "Select an active task before placing it on the schedule.";
 "Placed \"%@\" in the local schedule draft." = "Placed \"%@\" in the local schedule draft.";
