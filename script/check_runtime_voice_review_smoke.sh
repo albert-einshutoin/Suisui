@@ -163,6 +163,12 @@ APPLESCRIPT
 launch_app_for_voice_review() {
   local locale="$1"
   local width="$2"
+  local apple_languages apple_locale
+  case "$locale" in
+    english) apple_languages='(en)'; apple_locale=en_US ;;
+    japanese) apple_languages='(ja)'; apple_locale=ja_JP ;;
+    *) echo "BLOCKER: unsupported Voice runtime locale: $locale" >&2; return 2 ;;
+  esac
   terminate_app
   database_path="$tmp_dir/Suisui-runtime-voice-review-$locale.sqlite"
   settings_suite_name="$BUNDLE_IDENTIFIER.runtime-voice-review.$locale.$(/usr/bin/uuidgen | tr '[:upper:]' '[:lower:]')"
@@ -172,7 +178,8 @@ launch_app_for_voice_review() {
     SUISUI_APP_SETTINGS_SUITE_NAME="$settings_suite_name" \
     SUISUI_OPEN_VOICE_COMMAND_ON_LAUNCH=1 \
     SUISUI_LANGUAGE_PREFERENCE="$locale" \
-    "$APP_BINARY" -ApplePersistenceIgnoreState YES &
+    "$APP_BINARY" -ApplePersistenceIgnoreState YES \
+      -AppleLanguages "$apple_languages" -AppleLocale "$apple_locale" &
   app_launch_pid=$!
   app_launch_identity="$(ax_wait_for_owned_process_identity "$app_launch_pid" "$APP_BINARY" 3)" || {
     echo "BLOCKER: Voice launch identity could not be established" >&2
