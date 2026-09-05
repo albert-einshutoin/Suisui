@@ -1648,8 +1648,8 @@ assert_action_buttons_are_trailing "minimum-width"
 capture_window "minimum-width"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
 exercise_sidebar_entrypoints
-exercise_settings_utility
 exercise_toolbar_utilities
+exercise_settings_utility
 
 launch_header_layout_candidate "japanese"
 wait_for_project_detail_visible
@@ -1661,8 +1661,8 @@ assert_action_buttons_are_trailing "minimum-width-japanese"
 capture_window "minimum-width-japanese"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
 exercise_sidebar_entrypoints
-exercise_settings_utility
 exercise_toolbar_utilities
+exercise_settings_utility
 
 exercise_runtime_crud_recovery_entrypoints
 exercise_keyboard_entrypoints
