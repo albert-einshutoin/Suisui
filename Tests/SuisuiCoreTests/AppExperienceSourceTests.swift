@@ -4577,12 +4577,14 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testVoiceDailyPlanningReviewBridgeUsesLocalProjectBoardReview() throws {
         let voiceSource = try readPackageFile("Sources/SuisuiCore/Voice/VoiceCaptureViewModel.swift")
+        let classifierSource = try readPackageFile("Sources/SuisuiCore/Voice/VoiceDailyPlanningActionDraftClassifier.swift")
         let appSource = try readAppShellSource()
         let boardSource = try readProjectBoardSurfaceSources()
 
         XCTAssertTrue(voiceSource.contains("public struct VoiceDailyPlanningReviewRequest"))
         XCTAssertTrue(voiceSource.contains("requestedActionDraftKind: DailyPlanningActionDraftKind?"))
-        XCTAssertTrue(voiceSource.contains("DailyPlanningActionDraftKind.splitRecommendedTask"))
+        XCTAssertTrue(classifierSource.contains("DailyPlanningActionDraftKind.splitRecommendedTask"))
+        XCTAssertTrue(voiceSource.contains("VoiceDailyPlanningActionDraftClassifier.requestedKind"))
         XCTAssertTrue(voiceSource.contains("@Published public private(set) var dailyPlanningReviewRequest"))
         XCTAssertTrue(voiceSource.contains("routedCommand.intent != .dailyPlanningReview"))
         XCTAssertTrue(voiceSource.contains("beginDailyPlanningReviewRequest"))
