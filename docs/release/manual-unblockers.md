@@ -33,6 +33,14 @@ Goal: replace stale `docs/release/evidence/accessibility-voiceover.md` with a re
 
 Tracking issue: [#244 Release closeout: complete manual VoiceOver evidence](https://github.com/albert-einshutoin/suisui/issues/244)
 
+Preparation only: this runbook update does not complete #244. Start the manual
+pass only after #611 is complete and the final candidate includes #630's real
+local measurements and #617's same-work normal-route evidence. Use that same
+candidate for #246. The command below is delivered by PR #624; until that
+implementation and its observed evidence are available, this prerequisite is
+blocked. Independent smoke/unit-test results or fixed manifest values do not
+satisfy #617.
+
 Prerequisite: run `./script/check_runtime_core_value_loop_smoke.sh` from a clean
 checkout. Confirm `.tmp/suisui-core-value-loop/manifest.json` reports the same
 `sourceCommit` as the generated VoiceOver candidate. This is the automated
