@@ -59,6 +59,11 @@ Each implementation issue is delivered by one focused PR. #611 is a tracker and 
 8. **PR 8A — #244 / PR 8B — #246:** update manual VoiceOver evidence and signed/notarized release evidence for the same release candidate. These may proceed in parallel after PR 7.
 9. **Validation — #407:** run the four-week design-partner program. Product changes found during validation return to MVP 0 as separate issues; the final result is recorded in one evidence/ADR PR.
 
+The local closed-schema contract and operator runbook for Validation are kept
+in [`public-alpha-validation.md`](public-alpha-validation.md). Preparing that
+contract is not the same as completing the external four-week program; #407
+stays open until its participant and evidence gates are met.
+
 A PR does not absorb adjacent later work. If a newly discovered gap directly blocks the current issue's acceptance criteria, create one linked blocker and insert it immediately before the dependent PR. Otherwise keep it in Post-MVP.
 
 ## UI Sample Translation

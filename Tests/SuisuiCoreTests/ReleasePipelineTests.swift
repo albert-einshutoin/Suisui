@@ -10454,25 +10454,18 @@ final class ReleasePipelineTests: XCTestCase {
             "Sources", "Package.swift", "script/capture_ui_evidence.sh"
         ])
         XCTAssertEqual(evidenceSourceCommit.exitCode, 0, evidenceSourceCommit.output)
-        let baselineSourceCommit = baselineContext["sourceCommit"] as? String
+        let baselineSourceCommit = try XCTUnwrap(baselineContext["sourceCommit"] as? String)
         let currentEvidenceSourceCommit = evidenceSourceCommit.output
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let todayReceiptData = try Data(
-            contentsOf: packageRoot().appendingPathComponent(
-                "docs/release/evidence/today-sidebar-runtime-ax-receipt.json"
-            )
-        )
-        let todayReceipt = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: todayReceiptData) as? [String: Any]
-        )
-        if todayReceipt["status"] as? String == "blocked" {
-            // The today-sidebar wide-viewport receipt remains a separate unsupported
-            // proof (1448×1086). The 1024 visual baseline set is the live contract and
-            // must stay aligned with the current evidence-source commit.
-            XCTAssertEqual(baselineSourceCommit, currentEvidenceSourceCommit)
-        } else {
-            XCTAssertEqual(baselineSourceCommit, currentEvidenceSourceCommit)
-        }
+        XCTAssertNotNil(baselineSourceCommit.range(of: "^[0-9a-f]{40}$", options: .regularExpression))
+        // Baselines authenticate the approved reference, while the live AX receipt
+        // authenticates current captures. Requiring equality here would force a
+        // baseline replacement for every source change before comparing its pixels.
+        let baselineAncestry = try runTool([
+            "git", "-C", packageRoot().path, "merge-base", "--is-ancestor",
+            baselineSourceCommit, currentEvidenceSourceCommit
+        ])
+        XCTAssertEqual(baselineAncestry.exitCode, 0, baselineAncestry.output)
         XCTAssertEqual(baselineContext["locale"] as? String, "en-US")
         XCTAssertEqual(baselineContext["timeZoneIdentifier"] as? String, "UTC")
         XCTAssertEqual(baselineContext["referenceInstant"] as? String, "2026-07-10T12:00:00Z")
