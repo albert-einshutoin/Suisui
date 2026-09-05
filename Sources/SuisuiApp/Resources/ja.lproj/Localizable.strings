@@ -918,7 +918,9 @@
 "Apply to Calendar" = "カレンダーへ適用";
 "Queue Calendar Apply" = "カレンダー適用をキューへ追加";
 "External Calendar writes run from Assistant Queue after approval." = "外部カレンダーへの書き込みは承認後にAssistant Queueから実行されます。";
+"External Calendar writes run from Pending Actions after approval." = "外部カレンダーへの書き込みは承認後に保留中のアクションから実行されます。";
 "Adds reviewed schedule blocks to Assistant Queue before any external Calendar write." = "外部カレンダーへ書き込む前に、確認済みの予定枠をAssistant Queueへ追加します。";
+"Adds reviewed schedule blocks to Pending Actions before any external Calendar write." = "外部カレンダーへ書き込む前に、確認済みの予定枠を保留中のアクションへ追加します。";
 "Approve Google Calendar Sync" = "Googleカレンダー同期を承認";
 "Schedule block %@" = "予定枠 %@";
 "Generate a draft from Today time blocks." = "Todayの時間枠からドラフトを生成します。";
@@ -2297,6 +2299,7 @@
 "Create an active task before placing work on the calendar." = "カレンダーへ配置する前に、進行中のタスクを作成してください。";
 "Remove" = "削除";
 "Calendar is updated only after review in Assistant Queue." = "Assistant Queueで確認した後にだけカレンダーを更新します。";
+"Calendar is updated only after review in Pending Actions." = "保留中のアクションで確認した後にだけカレンダーを更新します。";
 "End time must be later than start time." = "終了時刻は開始時刻より後に設定してください。";
 "Select an active task before placing it on the schedule." = "予定へ配置する進行中のタスクを選択してください。";
 "Placed \"%@\" in the local schedule draft." = "「%@」をローカルの予定案へ配置しました。";

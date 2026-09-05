@@ -737,7 +737,15 @@ struct ProjectBoardView: View {
             // available only for persisted links and are not product navigation.
             AssistantQueueWorkflowView(viewModel: viewModel)
         case .review(.schedule):
-            ScheduleWorkflowView(viewModel: viewModel)
+            ScheduleWorkflowView(
+                viewModel: viewModel,
+                onOpenPendingActions: {
+                    navigateWithinScene(
+                        to: .review(.assistantQueue),
+                        updateInitialRoute: false
+                    )
+                }
+            )
         case .review(.completed):
             DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())
         case .review(.automationActivity):
