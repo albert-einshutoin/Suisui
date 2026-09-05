@@ -62,7 +62,7 @@ struct ProjectBoardReviewHubView<Content: View>: View {
                 reviewRow(
                     route: .assistantQueue,
                     title: "Pending Actions",
-                    subtitle: "Review proposed changes before they run",
+                    subtitle: "Review proposed changes before execution.",
                     systemImage: "tray.full",
                     count: assistantQueueCount,
                     accessibilityIdentifier: "review-destination-assistant-queue"

@@ -7212,8 +7212,8 @@ public final class ProjectBoardViewModel: ObservableObject {
     }
 
     /// Approves and immediately runs one reviewed item while keeping approval
-    /// and execution as separate durable transitions. The execution revision is
-    /// read back after approval so an edit or concurrent mutation fails closed.
+    /// and execution as separate durable transitions. Execution keeps the exact
+    /// revision returned by approval so a concurrent mutation fails closed.
     @discardableResult
     public func approveAndRunAssistantQueueItem(
         id: String,
@@ -7225,37 +7225,61 @@ public final class ProjectBoardViewModel: ObservableObject {
             integrationStatusMessage = nil
             return false
         }
-        guard approveAssistantQueueItem(
-            id: id,
-            expectedMutationRevision: expectedMutationRevision
-        ) else {
-            return false
-        }
         guard let assistantQueueStore else {
             _ = refreshAssistantQueueSnapshot()
             errorMessage = "Assistant Queue is unavailable in this build."
             integrationStatusMessage = nil
             return false
         }
-
         do {
-            let approvedItem = try assistantQueueStore.get(id: id)
-            guard let approvedRevision = approvedItem.mutationRevision else {
+            let currentItem = try assistantQueueStore.get(id: id)
+            guard currentItem.mutationRevision == expectedMutationRevision else {
+                throw AssistantQueueStaleReviewError()
+            }
+            guard AssistantQueueExecutableActionPlanFactory.actionPlan(for: currentItem.payload) != nil else {
                 _ = refreshAssistantQueueSnapshot()
-                errorMessage = assistantQueueItemUnavailableMessage
+                errorMessage = Self.assistantQueueExecutionMessage(
+                    for: AssistantQueueExecutionError.unsupportedPayload
+                )
                 integrationStatusMessage = nil
                 return false
             }
-            return runAssistantQueueItem(
-                id: id,
-                expectedMutationRevision: approvedRevision
-            )
+        } catch is AssistantQueueStaleReviewError {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = AssistantQueueMutationFailure.staleUserMessage
+            integrationStatusMessage = nil
+            return false
         } catch {
             _ = refreshAssistantQueueSnapshot()
             errorMessage = AssistantQueueStoreError.userMessage(for: error)
             integrationStatusMessage = nil
             return false
         }
+        var approvedRevision: String?
+        let didApprove = transitionAssistantQueueItem(
+            id: id,
+            expectedMutationRevision: expectedMutationRevision
+        ) { item in
+            let approved = try AssistantQueueStateMachine.approve(
+                item,
+                reviewerID: "local-user"
+            )
+            approvedRevision = approved.mutationRevision
+            return approved
+        }
+        guard didApprove else {
+            return false
+        }
+        guard let approvedRevision else {
+            _ = refreshAssistantQueueSnapshot()
+            errorMessage = assistantQueueItemUnavailableMessage
+            integrationStatusMessage = nil
+            return false
+        }
+        return runAssistantQueueItem(
+            id: id,
+            expectedMutationRevision: approvedRevision
+        )
     }
 
     /// Missed-task reschedule suggestions still waiting for review in the

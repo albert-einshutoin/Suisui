@@ -74,6 +74,7 @@ public struct ProviderID: RawRepresentable, Codable, Equatable, Hashable, Compar
 public struct ProviderReadinessReference: Codable, Equatable, Sendable {
     public let providerID: ProviderID
     public let isReady: Bool
+    public let isLocal: Bool
     public let allowsLocalData: Bool
     public let requiresNetwork: Bool
     public let capabilities: Set<PersonalCapability>
@@ -81,12 +82,14 @@ public struct ProviderReadinessReference: Codable, Equatable, Sendable {
     public init(
         providerID: ProviderID,
         isReady: Bool,
+        isLocal: Bool,
         allowsLocalData: Bool,
         requiresNetwork: Bool,
-        capabilities: Set<PersonalCapability> = []
+        capabilities: Set<PersonalCapability>
     ) {
         self.providerID = providerID
         self.isReady = isReady
+        self.isLocal = isLocal
         self.allowsLocalData = allowsLocalData
         self.requiresNetwork = requiresNetwork
         self.capabilities = capabilities
@@ -153,6 +156,8 @@ public enum LocalTriageExecutionPath: String, Codable, CaseIterable, Sendable {
 }
 
 public struct LocalTriageConfiguration: Codable, Equatable, Sendable {
+    static let hardMaximumInputBytes = 4_096
+
     public let version: String
     public let maximumInputBytes: Int
     public let enabled: Bool
@@ -163,7 +168,7 @@ public struct LocalTriageConfiguration: Codable, Equatable, Sendable {
         enabled: Bool = true
     ) {
         self.version = version
-        self.maximumInputBytes = max(1, maximumInputBytes)
+        self.maximumInputBytes = min(max(1, maximumInputBytes), Self.hardMaximumInputBytes)
         self.enabled = enabled
     }
 
@@ -174,6 +179,7 @@ public struct LocalTriageRequest: Codable, Equatable, Sendable {
     public let requestID: UUID
     public let source: RequestSource
     public let normalizedInput: String
+    public let inputByteCount: Int
     public let scope: TriageScope
     public let availableCapabilities: Set<PersonalCapability>
     public let providerReadiness: [ProviderReadinessReference]
@@ -210,7 +216,10 @@ public struct LocalTriageRequest: Codable, Equatable, Sendable {
     ) {
         self.requestID = requestID
         self.source = source
-        self.normalizedInput = Self.normalize(normalizedInput)
+        self.inputByteCount = normalizedInput.utf8.count
+        self.normalizedInput = inputByteCount <= LocalTriageConfiguration.hardMaximumInputBytes
+            ? Self.normalize(normalizedInput)
+            : ""
         self.scope = scope
         self.availableCapabilities = availableCapabilities
         self.providerReadiness = providerReadiness
@@ -312,7 +321,7 @@ public struct LocalTriageShadowEvent: Codable, Equatable, Sendable {
         userOverrideRoute: LocalExecutionRoute? = nil,
         userOverrideRejected: Bool = false,
         clarificationResult: Bool? = nil,
-        finalExecutionPath: String? = nil,
+        finalExecutionPath: LocalTriageExecutionPath? = nil,
         outcomeLink: String? = nil,
         latencyMilliseconds: Int? = nil,
         frontierCallAvoided: Bool
@@ -324,7 +333,7 @@ public struct LocalTriageShadowEvent: Codable, Equatable, Sendable {
         self.userOverrideRoute = userOverrideRoute
         self.userOverrideRejected = userOverrideRejected
         self.clarificationResult = clarificationResult
-        self.finalExecutionPath = finalExecutionPath.flatMap(LocalTriageExecutionPath.init(rawValue:))
+        self.finalExecutionPath = finalExecutionPath
         self.outcomeLinkDigest = outcomeLink.map(LocalTriageDigest.sha256)
         self.latencyMilliseconds = latencyMilliseconds.map { min(max($0, 0), 60_000) }
         self.frontierCallAvoided = frontierCallAvoided
@@ -400,6 +409,32 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
             )
         }
 
+        let inputLimit = min(
+            max(1, configuration.maximumInputBytes),
+            LocalTriageConfiguration.hardMaximumInputBytes
+        )
+        guard request.inputByteCount >= 0,
+              request.inputByteCount <= inputLimit,
+              request.normalizedInput.utf8.count <= inputLimit
+        else {
+            add(.inputTooLarge)
+            route = .prohibited
+            approval = .blocked
+            return makeDecision(
+                request: request,
+                route: route,
+                capability: nil,
+                reasons: reasons,
+                missingFields: missingFields,
+                eligibleProviders: eligibleProviders,
+                prohibitedProviders: prohibitedProviders,
+                estimatedCost: estimatedCost,
+                approval: approval,
+                eligibleRoutes: eligibleRoutes,
+                userOverride: userOverride
+            )
+        }
+
         guard !request.normalizedInput.isEmpty else {
             add(.invalidInput)
             missingFields = [.operation]
@@ -415,25 +450,6 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
                 estimatedCost: estimatedCost,
                 approval: approval,
                 eligibleRoutes: [.clarification],
-                userOverride: userOverride
-            )
-        }
-
-        guard request.normalizedInput.utf8.count <= configuration.maximumInputBytes else {
-            add(.inputTooLarge)
-            route = .prohibited
-            approval = .blocked
-            return makeDecision(
-                request: request,
-                route: route,
-                capability: nil,
-                reasons: reasons,
-                missingFields: missingFields,
-                eligibleProviders: eligibleProviders,
-                prohibitedProviders: prohibitedProviders,
-                estimatedCost: estimatedCost,
-                approval: approval,
-                eligibleRoutes: eligibleRoutes,
                 userOverride: userOverride
             )
         }
@@ -502,9 +518,14 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
         let operation = classify(text)
         switch operation {
         case .read:
-            capability = .taskRead
+            capability = readCapability(for: request.scope)
             estimatedCost = .none
-            guard request.availableCapabilities.contains(.taskRead) else {
+            guard let capability else {
+                add(.scopeConflict)
+                missingFields = [.scope]
+                break
+            }
+            guard request.availableCapabilities.contains(capability) else {
                 add(.capabilityUnavailable)
                 missingFields = [.confirmation]
                 break
@@ -611,16 +632,25 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
             eligibleRoutes = [.deterministic]
 
         case .frontier:
-            capability = containsAny(text, ["document", "brief", "資料", "議事録", "meeting"])
+            let requiredCapability: PersonalCapability = containsAny(
+                text,
+                ["document", "brief", "資料", "議事録", "meeting"]
+            )
                 ? .documentDraft
                 : .documentResearch
+            capability = requiredCapability
             estimatedCost = containsAny(text, ["research", "競合", "strategy", "戦略", "multi-source"])
                 ? .high
                 : .medium
             add(.frontierCandidate)
+            guard request.availableCapabilities.contains(requiredCapability) else {
+                add(.capabilityUnavailable)
+                missingFields = [.confirmation]
+                break
+            }
             let providerResult = providerGate(
                 request: request,
-                capability: capability!
+                capability: requiredCapability
             )
             eligibleProviders = providerResult.eligible
             prohibitedProviders = providerResult.prohibited
@@ -680,10 +710,10 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
         decision: LocalTriageDecision,
         clarificationResult: Bool? = nil,
         latencyMilliseconds: Int? = nil,
-        finalExecutionPath: String? = nil,
+        finalExecutionPath: LocalTriageExecutionPath? = nil,
         outcomeLink: String? = nil
     ) -> LocalTriageShadowEvent {
-        LocalTriageShadowEvent(
+        return LocalTriageShadowEvent(
             requestDigest: decision.decisionDigest,
             ruleIDs: decision.ruleIDs,
             selectedRoute: decision.route,
@@ -694,7 +724,8 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
             finalExecutionPath: finalExecutionPath,
             outcomeLink: outcomeLink,
             latencyMilliseconds: latencyMilliseconds,
-            frontierCallAvoided: decision.route != .frontierFast && decision.route != .frontierDeep
+            frontierCallAvoided: finalExecutionPath.map { $0 != .frontier }
+                ?? (decision.route != .frontierFast && decision.route != .frontierDeep)
         )
     }
 
@@ -710,14 +741,14 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
     }
 
     private func classify(_ text: String) -> Operation {
+        if containsAny(text, ["send now", "post now", "send it", "send to", "今すぐ送信", "送信して", "送って", "投稿して"]) {
+            return .externalWrite
+        }
         if containsAny(text, [
             "list", "show", "count", "status", "overdue", "期限切れ", "表示", "一覧", "何件", "進捗"
         ]) && !containsAny(text, ["add", "create", "move", "done", "完了", "追加", "作成", "移動"])
         {
             return .read
-        }
-        if containsAny(text, ["send now", "post now", "send it", "send to", "今すぐ送信", "送信して", "送って", "投稿して"]) {
-            return .externalWrite
         }
         if containsAny(text, ["add", "create", "new task", "taskを追加", "タスクを追加", "タスクを作成", "追加して", "作成して"]) {
             return .taskCreate
@@ -750,13 +781,27 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
         var eligible: [ProviderID] = []
         var prohibited: [ProviderID] = []
         var reasons: [TriageReason] = []
+        var localEligible = false
         let references = request.providerReadiness.sorted { $0.providerID < $1.providerID }
+        let duplicateProviderIDs = Set(
+            Dictionary(grouping: references, by: \.providerID)
+                .compactMap { $0.value.count > 1 ? $0.key : nil }
+        )
         for reference in references {
-            let policyAllowed = request.dataZone != .localOnly || reference.allowsLocalData
+            if duplicateProviderIDs.contains(reference.providerID) {
+                if !prohibited.contains(reference.providerID) {
+                    prohibited.append(reference.providerID)
+                }
+                if !reasons.contains(.providerUnavailable) { reasons.append(.providerUnavailable) }
+                continue
+            }
+            let policyAllowed = request.dataZone != .localOnly
+                || (reference.isLocal && reference.allowsLocalData)
             let networkAllowed = request.networkAvailable || !reference.requiresNetwork
-            let capabilityAllowed = reference.capabilities.isEmpty || reference.capabilities.contains(capability)
+            let capabilityAllowed = reference.capabilities.contains(capability)
             if reference.isReady && policyAllowed && networkAllowed && capabilityAllowed {
                 eligible.append(reference.providerID)
+                localEligible = localEligible || reference.isLocal
             } else {
                 prohibited.append(reference.providerID)
                 if !policyAllowed {
@@ -767,10 +812,6 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
                     if !reasons.contains(.providerUnavailable) { reasons.append(.providerUnavailable) }
                 }
             }
-        }
-        let localEligible = references.contains {
-            eligible.contains($0.providerID)
-                && (!$0.requiresNetwork || $0.providerID.rawValue.lowercased().contains("local"))
         }
         return (eligible, prohibited, localEligible, reasons)
     }
@@ -799,6 +840,7 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
                 normalizedReasons.append(.userOverrideRejected)
             }
         }
+        let effectiveRoute = rejectedOverride ? route : userOverride ?? route
         let canonicalRules = normalizedReasons.map(\.rawValue).sorted()
         let capabilityList = request.availableCapabilities
             .map(\.rawValue)
@@ -814,6 +856,7 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
             request.source.rawValue,
             request.scope.rawValue,
             request.dataZone.rawValue,
+            String(request.inputByteCount),
             capabilityList,
             providerList,
             String(request.dataPolicyVersion),
@@ -826,7 +869,7 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
             String(request.explicitProjectID ?? -1),
             String(request.networkAvailable),
             String(request.manualOnly),
-            route.rawValue,
+            effectiveRoute.rawValue,
             capability?.rawValue ?? "none",
             normalizedReasons.map(\.rawValue).joined(separator: ","),
             missingFields.map(\.rawValue).joined(separator: ","),
@@ -836,14 +879,14 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
         ]
         let digest = LocalTriageDigest.sha256(digestParts.joined(separator: "\u{1F}"))
         return LocalTriageDecision(
-            route: route,
+            route: effectiveRoute,
             capability: capability,
             reasons: normalizedReasons,
             missingFields: missingFields,
             eligibleProviderIDs: Array(Set(eligibleProviders)).sorted(),
             prohibitedProviderIDs: Array(Set(prohibitedProviders)).sorted(),
             estimatedCostClass: estimatedCost,
-            requiredApproval: route == .prohibited ? .blocked : approval,
+            requiredApproval: effectiveRoute == .prohibited ? .blocked : approval,
             configVersion: configuration.version,
             ruleIDs: canonicalRules,
             eligibleRoutes: Array(Set(eligibleRoutes)).sorted { $0.rawValue < $1.rawValue },
@@ -866,11 +909,21 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
             .map(\.rawValue)
             .sorted()
             .joined(separator: ",")
-        return "\(provider.providerID.rawValue):\(provider.isReady):\(provider.allowsLocalData):\(provider.requiresNetwork):\(capabilityList)"
+        return "\(provider.providerID.rawValue):\(provider.isReady):\(provider.isLocal):\(provider.allowsLocalData):\(provider.requiresNetwork):\(capabilityList)"
     }
 
     private func hasTaskTitle(_ text: String) -> Bool {
         let stripped = text
+            .replacingOccurrences(
+                of: #"^(?:please\s+)?(?:add|create|new)\b[\s:,-]*"#,
+                with: "",
+                options: .regularExpression
+            )
+            .replacingOccurrences(
+                of: #"^(?:(?:a|the)\s+)?(?:task|todo)\b[\s:,-]*"#,
+                with: "",
+                options: .regularExpression
+            )
             .replacingOccurrences(of: "task", with: "")
             .replacingOccurrences(of: "todo", with: "")
             .replacingOccurrences(of: "タスク", with: "")
@@ -880,6 +933,21 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
             .replacingOccurrences(of: "作成して", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return stripped.count >= 2
+    }
+
+    private func readCapability(for scope: TriageScope) -> PersonalCapability? {
+        switch scope {
+        case .project:
+            .projectRead
+        case .schedule:
+            .scheduleRead
+        case .external:
+            .calendarRead
+        case .task, .workspace, .inbox, .today:
+            .taskRead
+        case .unknown:
+            nil
+        }
     }
 
     private func hasDate(_ text: String) -> Bool {

@@ -477,7 +477,7 @@ private struct AssistantQueueRow: View {
                         .accessibilityFocused($accessibilityActionFocus, equals: .primary)
                 }
 
-                if actionPresentation.primaryAction == .approve {
+                if actionPresentation.primaryAction == .approve && row.canApproveAndRun {
                     approveAndRunButton
                 }
 

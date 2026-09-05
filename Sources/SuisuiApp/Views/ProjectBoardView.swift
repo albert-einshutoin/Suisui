@@ -1274,6 +1274,8 @@ struct ProjectBoardView: View {
 
     private func validatedRoute(_ route: BoardRoute) -> BoardRoute {
         switch route {
+        case .primary(.review):
+            return .review(.assistantQueue)
         case .project(let projectID):
             return viewModel.snapshot.projects.contains(where: { $0.id == projectID })
                 ? route
