@@ -42,9 +42,16 @@ blocked. Independent smoke/unit-test results or fixed manifest values do not
 satisfy #617.
 
 Prerequisite: run `./script/check_runtime_core_value_loop_smoke.sh` from a clean
-checkout. Confirm `.tmp/suisui-core-value-loop/manifest.json` reports the same
-`sourceCommit` as the generated VoiceOver candidate. This is the automated
-normal-route gate; it does not replace the manual VoiceOver pass below.
+checkout. In `.tmp/suisui-core-value-loop/manifest.json`, `sourceCommit` is the
+tested checkout revision, not the VoiceOver product-source revision. Resolve
+both identifiers to commits before comparing: run `git rev-parse --verify`
+on the generated VoiceOver candidate's abbreviated source ID, and compare
+that full hash with `git log -1 --format=%H <manifest-sourceCommit> -- Sources/SuisuiApp Sources/SuisuiCore Sources/SuisuiCLI Sources/SuisuiExternalConnectors Package.swift packaging/app_metadata.env`.
+These are the same product paths used by `prepare_voiceover_review_candidate.sh`.
+Missing/unresolvable IDs or a different product-source commit block the manual
+pass; later docs/tests-only commits do not. Require #617's observed passed
+normal-route result separately. This operator prerequisite does not replace
+the manual VoiceOver pass below.
 
 For the current product route, start at `Voice Quick Capture` and verify the
 AX-stable capture markers `voice-command-capture-zone`, `voice-command-input`,
