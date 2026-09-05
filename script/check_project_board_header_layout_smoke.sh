@@ -643,7 +643,7 @@ exercise_sidebar_entrypoints() {
   launch_header_layout_candidate
   wait_for_project_detail_visible
   press_ax_button "sidebar-action-voice-command"
-  wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
+  wait_for_process_ax_identifier "voice-command-root" "present"
   # Voice Command keeps a modal surface above the board toolbar. Relaunch so
   # the following settings and keyboard contracts can reach sidebar-toggle.
   launch_header_layout_candidate
@@ -742,7 +742,7 @@ exercise_keyboard_entrypoints() {
   press_keyboard_shortcut 40 "command"
   wait_for_process_ax_identifier "command-palette-input" "present"
   press_keyboard_shortcut 9 "command-shift"
-  wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
+  wait_for_process_ax_identifier "voice-command-root" "present"
   press_keyboard_shortcut 18 "command" "skip-board-focus"
   wait_for_process_ax_identifier "today-workflow" "present"
   wait_for_process_ax_identifier "projects-portfolio-overview" "absent"
@@ -770,7 +770,7 @@ exercise_runtime_crud_recovery_entrypoints() {
 
   activate_app
   press_ax_button "project-board-voice-command"
-  wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
+  wait_for_process_ax_identifier "voice-command-root" "present"
   printf "OK: runtime CRUD recovery Settings and Voice Command reached their destination surfaces\n"
 }
 

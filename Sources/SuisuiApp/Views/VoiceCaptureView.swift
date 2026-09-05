@@ -273,9 +273,6 @@ struct VoiceCaptureView: View {
                     Label("Voice Quick Capture", systemImage: "mic")
                         .font(.headline)
                         .accessibilityIdentifier("voice-command-root")
-                    Image(systemName: "waveform")
-                        .accessibilityLabel("Voice Quick Capture")
-                        .accessibilityIdentifier("voice-command-quick-command-tab")
                     Spacer()
                     Button {
                         viewModel.clear()

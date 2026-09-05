@@ -10565,7 +10565,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(captureScript.contains("Light/Dark/System visual baseline manifest"))
         XCTAssertTrue(
             captureScript.contains(
-                "prepare_named_evidence_window \"\" \"Voice Command\" \"$VOICE_COMMAND_TARGET_MARKERS\" \"voice-command-quick-command-tab\""
+                "prepare_named_evidence_window \"\" \"Voice Command\" \"$VOICE_COMMAND_TARGET_MARKERS\""
             )
         )
 

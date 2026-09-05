@@ -2803,7 +2803,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("press_ax_button \"sidebar-open-search\""))
         XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"command-palette-input\" \"present\""))
         XCTAssertTrue(script.contains("press_ax_button \"sidebar-action-voice-command\""))
-        XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"voice-command-quick-command-tab\" \"present\""))
+        XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"voice-command-root\" \"present\""))
         XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"settings-status-overview\" \"present\""))
         XCTAssertTrue(script.contains("ensure_sidebar_visible"))
         XCTAssertTrue(script.contains("close_window_containing_identifier"))
@@ -2845,7 +2845,7 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertTrue(
             script.contains(
-                "press_keyboard_shortcut 40 \"command\"\n  wait_for_process_ax_identifier \"command-palette-input\" \"present\"\n  press_keyboard_shortcut 9 \"command-shift\"\n  wait_for_process_ax_identifier \"voice-command-quick-command-tab\" \"present\"\n  press_keyboard_shortcut 18 \"command\" \"skip-board-focus\""
+                "press_keyboard_shortcut 40 \"command\"\n  wait_for_process_ax_identifier \"command-palette-input\" \"present\"\n  press_keyboard_shortcut 9 \"command-shift\"\n  wait_for_process_ax_identifier \"voice-command-root\" \"present\"\n  press_keyboard_shortcut 18 \"command\" \"skip-board-focus\""
             )
         )
         XCTAssertTrue(script.contains("press_keyboard_shortcut 9 \"command-shift\""))
@@ -4755,6 +4755,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains("reminderClient.create"))
     }
 
+    func testQuickCaptureRuntimeNeverInjectsAutomaticApproval() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Composition/VoiceRuntimeFactory.swift")
+        XCTAssertTrue(source.contains("maximumQuickCaptureClarificationTurns: 1"))
+        XCTAssertTrue(source.contains("maximumClarificationTurns: 1"))
+        XCTAssertFalse(source.contains("lowRiskTaskAutoExecutor:"))
+        XCTAssertFalse(source.contains("reviewViewModel.approve()"))
+    }
+
     func testVoiceAssistantQueueApprovalHandoffsExecutionToProjectBoardQueue() throws {
         let voiceSource = try readPackageFile("Sources/SuisuiCore/Voice/VoiceCaptureViewModel.swift")
         let appSource = try readAppShellSource()
@@ -4771,7 +4779,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("userInfo: [SuisuiAssistantQueueBridge.requestUserInfoKey: bridgeRequest]"))
         XCTAssertTrue(appSource.contains("name: .suisuiAssistantQueueRequested"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-assistant-queue-open-board\")"))
-        XCTAssertTrue(appSource.contains(".accessibilityHint(localizedSettingsDisplay(\"Opens the Assistant Queue without running the item.\"))"))
+        XCTAssertTrue(appSource.contains(".accessibilityHint(localizedSettingsDisplay(\"Opens Pending Actions without running the item.\"))"))
         XCTAssertTrue(boardSource.contains(".onReceive(NotificationCenter.default.publisher(for: .suisuiAssistantQueueRequested))"))
         XCTAssertTrue(boardSource.contains("consumePendingAssistantQueueRequestIfNeeded"))
         XCTAssertTrue(boardSource.contains("SuisuiAssistantQueueBridge.consumePendingOpen(id: id)"))
@@ -4779,11 +4787,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("sceneCoordinator.consume(requestID: request.id, for: sceneID)"))
         XCTAssertTrue(boardSource.contains("applyLegacyDestinationWithinScene(.assistantQueue)"))
         XCTAssertTrue(boardSource.contains("viewModel.focusAssistantQueueExecutionHandoff(id: request.itemID)"))
-        XCTAssertTrue(englishStrings.contains("\"Open Assistant Queue\""))
-        XCTAssertTrue(englishStrings.contains("\"Opens the Assistant Queue without running the item.\""))
+        XCTAssertTrue(englishStrings.contains("\"Open Pending Actions\""))
+        XCTAssertTrue(englishStrings.contains("\"Opens Pending Actions without running the item.\""))
         XCTAssertTrue(englishStrings.contains("\"Assistant Queue item is no longer available.\""))
-        XCTAssertTrue(japaneseStrings.contains("\"Open Assistant Queue\""))
-        XCTAssertTrue(japaneseStrings.contains("\"Opens the Assistant Queue without running the item.\""))
+        XCTAssertTrue(japaneseStrings.contains("\"Open Pending Actions\""))
+        XCTAssertTrue(japaneseStrings.contains("\"Opens Pending Actions without running the item.\""))
         XCTAssertTrue(japaneseStrings.contains("\"Assistant Queue item is no longer available.\""))
         XCTAssertFalse(appSource.contains("ActionReviewPanel(viewModel: AppRuntimeFactory.makeReviewSessionViewModel(plan: plan))"))
     }
@@ -6724,7 +6732,7 @@ final class AppExperienceSourceTests: XCTestCase {
             voiceSource.components(separatedBy: ".accessibilityIdentifier(\"voice-command-root\")").count - 1,
             1
         )
-        XCTAssertTrue(
+        XCTAssertFalse(
             voiceSource.contains(
                 ".accessibilityIdentifier(\"voice-command-quick-command-tab\")"
             )

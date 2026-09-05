@@ -179,7 +179,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private var inputLevelMonitorTask: Task<Void, Never>?
     private var activeConversationSourceTurnID: UUID?
     private var clarificationQuestionCount = 0
-    private var conversationCancellationTask: Task<Void, Never>?
+    private var conversationCancellationTask: Task<VoiceTaskConversationOutcome, Never>?
     private var conversationWorkspaceStore: (any VoiceTaskConversationStore)?
     private var conversationWorkspaceTurnCursor:
         VoiceTaskConversationTurnCursor?
@@ -715,17 +715,19 @@ public final class VoiceCaptureViewModel: ObservableObject {
             return
         }
         await waitForPendingConversationCancellation()
+        let sourceTurnID = UUID()
+        activeConversationSourceTurnID = sourceTurnID
         let outcome = await conversationOrchestrator.handle(
             VoiceTaskConversationInput(
                 sessionID: conversationSessionID,
-                sourceTurnID: UUID(),
+                sourceTurnID: sourceTurnID,
                 event: .restore
             )
         )
         if case .canceled = outcome {
             return
         }
-        await applyConversationOutcome(outcome)
+        await applyConversationOutcome(outcome, sourceTurnID: sourceTurnID)
     }
 
     public func updateDraftText(_ text: String) {
@@ -888,7 +890,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
         removeUnsavedTemporaryRecording()
         recordedAudio = nil
         lastTranscribedAudioURL = nil
-        clarificationQuestionCount = 0
+        if clarificationQuestion == nil {
+            clarificationQuestionCount = 0
+        }
         do {
             try await audioRecorder.start(at: date)
             recordingState = audioRecorder.state
@@ -1003,7 +1007,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                             )
                         )
                     )
-                    await applyConversationOutcome(outcome)
+                    await applyConversationOutcome(outcome, sourceTurnID: sourceTurnID)
                     return
                 }
             } catch {
@@ -1050,7 +1054,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                         )
                     )
                 )
-                await applyConversationOutcome(outcome)
+                await applyConversationOutcome(outcome, sourceTurnID: sourceTurnID)
             } else {
                 beginClarification(for: routedCommand)
             }
@@ -1149,6 +1153,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         if let conversationOrchestrator,
            orchestratedClarificationQuestion != nil
         {
+            guard let sourceTurnID = activeConversationSourceTurnID else { return }
             let outcome = await conversationOrchestrator.handle(
                 VoiceTaskConversationInput(
                     sessionID: conversationSessionID,
@@ -1159,7 +1164,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                     availableTools: availableTools
                 )
             )
-            await applyConversationOutcome(outcome)
+            await applyConversationOutcome(outcome, sourceTurnID: sourceTurnID)
             return
         }
         guard var session = clarificationSession else {
@@ -1376,14 +1381,14 @@ public final class VoiceCaptureViewModel: ObservableObject {
     }
 
     private func applyConversationOutcome(
-        _ outcome: VoiceTaskConversationOutcome
+        _ outcome: VoiceTaskConversationOutcome,
+        sourceTurnID: UUID
     ) async {
-        if let reporter = conversationOrchestrator
-            as? any VoiceTaskConversationResolutionReporting,
-           let resolved = await reporter.resolvedReference(
-               sessionID: conversationSessionID
-           )
-        {
+        guard activeConversationSourceTurnID == sourceTurnID else { return }
+        let reporter = conversationOrchestrator as? any VoiceTaskConversationResolutionReporting
+        let resolved = await reporter?.resolvedReference(sessionID: conversationSessionID)
+        guard activeConversationSourceTurnID == sourceTurnID else { return }
+        if let resolved {
             conversationWorkspaceResolvedTarget = .init(
                 title: resolved.candidate.title,
                 reason: resolved.reason
@@ -1396,6 +1401,16 @@ public final class VoiceCaptureViewModel: ObservableObject {
             if let maximum = maximumQuickCaptureClarificationTurns,
                clarificationQuestionCount >= maximum
             {
+                // Cancel the persisted checkpoint before claiming that this capture
+                // has finished; reopening the window must not restore another question.
+                orchestratedClarificationQuestion = question
+                cancelOrchestratedClarificationIfNeeded()
+                let cancellation = await waitForPendingConversationCancellation()
+                guard activeConversationSourceTurnID == sourceTurnID else { return }
+                guard cancellation == .canceled else {
+                    phase = .failed("Voice conversation could not be canceled safely. Please try again.")
+                    return
+                }
                 finishUnresolvedQuickCapture()
                 return
             }
@@ -1435,12 +1450,15 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 let persisted =
                     try await persistConversationQueueItemWithLink(
                     plan: plan,
+                    sourceTurnID: sourceTurnID,
                     queueItem: queueItem,
                     at: Date()
                 )
+                guard activeConversationSourceTurnID == sourceTurnID else { return }
                 assistantQueueItem = persisted
                 phase = .reviewReady
             } catch {
+                guard activeConversationSourceTurnID == sourceTurnID else { return }
                 blockConversationQueueItemAfterLinkFailure()
                 phase = .failed(
                     "Voice review could not be linked to durable execution evidence."
@@ -1475,7 +1493,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     }
 
     private func cancelOrchestratedClarificationIfNeeded() {
-        guard orchestratedClarificationQuestion != nil,
+        guard orchestratedClarificationQuestion != nil || activeConversationSourceTurnID != nil,
               let conversationOrchestrator
         else {
             orchestratedClarificationQuestion = nil
@@ -1485,8 +1503,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         let sessionID = conversationSessionID
         let precedingCancellation = conversationCancellationTask
         conversationCancellationTask = Task {
-            await precedingCancellation?.value
-            _ = await conversationOrchestrator.handle(
+            _ = await precedingCancellation?.value
+            return await conversationOrchestrator.handle(
                 VoiceTaskConversationInput(
                     sessionID: sessionID,
                     sourceTurnID: UUID(),
@@ -1496,11 +1514,12 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
     }
 
-    private func waitForPendingConversationCancellation() async {
+    @discardableResult
+    private func waitForPendingConversationCancellation() async -> VoiceTaskConversationOutcome? {
         // Editing stays synchronous for responsive typing, while a replacement
         // command must wait here so an older unstructured cancel cannot erase
         // the replacement checkpoint after it has been persisted.
-        await conversationCancellationTask?.value
+        return await conversationCancellationTask?.value
     }
 
     private func handleLowLatencyStreamingEvent(
@@ -2137,6 +2156,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         availableTools: [ActionTool],
         knowledgeFrameCandidates: [KnowledgeFrameCandidate]
     ) async {
+        let sourceTurnID = activeConversationSourceTurnID
         let request = PlanningRequest(
             userInput: routedCommand.planningInput,
             currentDate: currentDate,
@@ -2196,6 +2216,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                     let persisted =
                         try await persistConversationQueueItemWithLink(
                         plan: plan,
+                        sourceTurnID: sourceTurnID,
                         queueItem: queueItem,
                         at: currentDate
                     )
@@ -2371,6 +2392,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
     private func persistConversationReviewLink(
         plan: ActionPlan,
+        sourceTurnID: UUID,
         queueItem: AssistantQueueItem,
         at date: Date
     ) async throws {
@@ -2379,7 +2401,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         else {
             return
         }
-        let sourceTurnID = activeConversationSourceTurnID ?? UUID()
+        guard activeConversationSourceTurnID == sourceTurnID else { throw CancellationError() }
         try await persister.persistReviewLink(
             sessionID: conversationSessionID,
             fallbackSourceTurnID: sourceTurnID,
@@ -2388,6 +2410,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             queueItem: queueItem,
             at: date
         )
+        guard activeConversationSourceTurnID == sourceTurnID else { throw CancellationError() }
         if conversationWorkspaceStore != nil {
             do {
                 try reloadConversationWorkspaceTurns()
@@ -2401,6 +2424,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
     private func persistConversationQueueItemWithLink(
         plan: ActionPlan,
+        sourceTurnID: UUID?,
         queueItem: AssistantQueueItem,
         at date: Date
     ) async throws -> AssistantQueueItem {
@@ -2410,6 +2434,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
         guard conversationOrchestrator != nil else {
             return try persistNewAssistantQueueItemIfNeeded(queueItem)
         }
+        guard let sourceTurnID, activeConversationSourceTurnID == sourceTurnID else {
+            throw CancellationError()
+        }
         // Conversation Turns are the retention-controlled source of raw STT.
         // The durable Queue keeps the reviewed semantics but must not become a
         // second, indefinitely retained copy of speech the user never confirmed.
@@ -2418,6 +2445,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         guard let assistantQueueStore else {
             try await persistConversationReviewLink(
                 plan: plan,
+                sourceTurnID: sourceTurnID,
                 queueItem: conversationQueueItem,
                 at: date
             )
@@ -2451,14 +2479,17 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 ) else {
                     throw AssistantQueueStaleReviewError()
                 }
+                guard activeConversationSourceTurnID == sourceTurnID else { throw CancellationError() }
                 try await acknowledgeConversationReviewPublication()
                 return persistedItem
             }
             try await persistConversationReviewLink(
                 plan: plan,
+                sourceTurnID: sourceTurnID,
                 queueItem: persistedItem,
                 at: date
             )
+            guard activeConversationSourceTurnID == sourceTurnID else { throw CancellationError() }
             guard let expectedRevision =
                 persistedItem.mutationRevision
             else {
@@ -2487,7 +2518,27 @@ public final class VoiceCaptureViewModel: ObservableObject {
             try await acknowledgeConversationReviewPublication()
             return published
         } catch {
-            blockConversationQueueItemAfterLinkFailure()
+            if activeConversationSourceTurnID != sourceTurnID {
+                if !persistence.isAlreadyPublished {
+                    // Only this request's still-blocked provisional row can be
+                    // rejected. Never mutate a concurrently approved/replaced row.
+                    _ = try assistantQueueStore.transition(id: persistedItem.id) { current in
+                        guard current.mutationRevision == persistedItem.mutationRevision,
+                              current.state == .blocked,
+                              current.approval == nil,
+                              current.blockingReason == Self.pendingConversationEvidenceBlockingReason,
+                              current.contentFingerprint == persistedItem.contentFingerprint else {
+                            throw AssistantQueueStaleReviewError()
+                        }
+                        var canceled = current
+                        canceled.state = .rejected
+                        canceled.blockingReason = nil
+                        return canceled
+                    }
+                }
+            } else {
+                blockConversationQueueItemAfterLinkFailure()
+            }
             throw error
         }
     }
