@@ -71,8 +71,11 @@ research-dataset consent. Only explicit aggregated-diagnostics opt-in can
 produce a raw-free aggregate report. This is an opt-in diagnostics summary,
 not a claim of anonymity: a device may hold only one participant. No participant
 digest is included in that payload. The local `report().participantCount`
-includes every recorded persona and must not be used as the qualified cohort
-size for the gate. The operator computes gate metrics from qualified,
+includes participants in either stage events or weekly snapshots, including
+early drop-offs and every recorded persona, and must not be used as the qualified cohort
+size for the gate. Record target-excluded participants with `out_of_cohort`;
+exclude that flag (even alongside another persona flag) and unqualified records
+from primary metrics. The operator computes gate metrics from qualified,
 four-week participants only; this pure contract does not infer them from totals.
 
 Weekly timestamps are normalized to the start of the ISO week in UTC. Both

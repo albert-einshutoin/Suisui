@@ -91,6 +91,7 @@ public enum PublicAlphaPersonaFlag: String, Codable, CaseIterable, Hashable, Sen
     case smallWebAppStudio = "small_web_app_studio"
     case multiClientSoloBusiness = "multi_client_solo_business"
     case macPrimary = "mac_primary"
+    case outOfCohort = "out_of_cohort"
 }
 
 public enum PublicAlphaStage: String, Codable, CaseIterable, Hashable, Sendable {
@@ -391,7 +392,7 @@ public struct PublicAlphaValidationLedger: Codable, Equatable, Sendable {
             (category, try totalPublicAlphaCounts(weeklySnapshots.map { $0.proactiveFeedbackCounts[category, default: 0] }))
         })
         return PublicAlphaValidationReport(
-            participantCount: Set(weeklySnapshots.map(\.participantID)).count,
+            participantCount: Set(weeklySnapshots.map(\.participantID)).union(stageEvents.map(\.participantID)).count,
             stageCompletionCounts: stageEvents.filter { $0.mark == .completed }.reduce(into: [PublicAlphaStage: Int]()) { counts, event in
                 counts[event.stage, default: 0] += 1
             },

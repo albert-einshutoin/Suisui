@@ -120,6 +120,33 @@ final class PublicAlphaValidationTests: XCTestCase {
         XCTAssertEqual(try recovered.report().participantCount, 1)
     }
 
+    func testReportCountsEventOnlyParticipantsWithoutDoubleCountingSnapshotOwners() throws {
+        let earlyDropOff = try PublicAlphaParticipantID(seed: "early-drop-off")
+        let active = try PublicAlphaParticipantID(seed: "active")
+        var ledger = PublicAlphaValidationLedger()
+        for participantID in [earlyDropOff, active] {
+            _ = ledger.append(try PublicAlphaStageEvent(
+                participantID: participantID, stage: .firstLaunch,
+                mark: .completed, occurredAt: Date()
+            ))
+        }
+        _ = ledger.append(try makeSnapshot(participantID: active))
+        XCTAssertEqual(try ledger.report().participantCount, 2)
+        ledger.delete(participantID: earlyDropOff)
+        XCTAssertEqual(try ledger.report().participantCount, 1)
+    }
+
+    func testOutOfCohortQualificationSurvivesSnapshotRecovery() throws {
+        let snapshot = try makeSnapshot(
+            participantID: PublicAlphaParticipantID(seed: "outside-target-persona"),
+            personaFlags: [.outOfCohort, .macPrimary]
+        )
+        let recovered = try JSONDecoder().decode(
+            PublicAlphaValidationSnapshot.self, from: JSONEncoder().encode(snapshot)
+        )
+        XCTAssertEqual(recovered.personaFlags, [.outOfCohort, .macPrimary])
+    }
+
     func testWeeklyReplayUsesParticipantAndUTCWeekAcrossAllDecodeEntrypoints() throws {
         let participantID = try PublicAlphaParticipantID(seed: "weekly-replay")
         let first = try makeSnapshot(participantID: participantID)
@@ -254,6 +281,7 @@ final class PublicAlphaValidationTests: XCTestCase {
 
     private func makeSnapshot(
         participantID: PublicAlphaParticipantID,
+        personaFlags: Set<PublicAlphaPersonaFlag> = [.individualContractor, .macPrimary],
         weekStart: Date = Date(timeIntervalSince1970: 0),
         proactiveFeedbackCounts: [PublicAlphaFeedbackCategory: Int] = [.helpfulNow: 1],
         confirmedCommitmentCount: Int = 0,
@@ -262,7 +290,7 @@ final class PublicAlphaValidationTests: XCTestCase {
     ) throws -> PublicAlphaValidationSnapshot {
         try PublicAlphaValidationSnapshot(
             participantID: participantID,
-            personaFlags: [.individualContractor, .macPrimary],
+            personaFlags: personaFlags,
             build: try PublicAlphaBuildIdentity(appVersion: "1.0.0", sourceCommit: "abcdef1234567"),
             weekStart: weekStart,
             weeklyActiveDays: 2,
