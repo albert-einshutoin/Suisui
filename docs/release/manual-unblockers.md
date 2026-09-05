@@ -219,6 +219,15 @@ Goal: produce a signed, notarized, stapled release artifact with production Spar
 
 Tracking issue: [#246 Release closeout: configure signed notarized Sparkle release machine evidence](https://github.com/albert-einshutoin/suisui/issues/246)
 
+Preparation only: this runbook update does not complete #246 or authorize a
+release. #611 must be complete, including #630's observed local measurements
+and #617's final-candidate evidence. Before fixing that candidate, evaluate the
+release-blocking remainder of #351 (dependency/input provenance) and #353
+(existing backup/restore gaps); do not claim reproducibility or recoverability
+without that evidence. Do not expand either issue to unrelated full features.
+The #624 command below remains a blocked prerequisite until implemented and
+validated; a fixed `passed` value is not observed evidence.
+
 Prerequisite: #617 の通常route証跡と #244 の同一candidate向けVoiceOver
 確認を先に完了する。`./script/check_runtime_core_value_loop_smoke.sh` の
 `.tmp/suisui-core-value-loop/manifest.json` が `status: "passed"` で、ここで
