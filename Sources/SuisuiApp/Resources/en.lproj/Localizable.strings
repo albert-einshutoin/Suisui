@@ -1061,6 +1061,15 @@
 "What scope should Suisui prepare for review?" = "What scope should Suisui prepare for review?";
 "Should Suisui keep this as a reviewed draft?" = "Should Suisui keep this as a reviewed draft?";
 "Assistant Queue" = "Assistant Queue";
+"Pending Actions" = "Pending Actions";
+"Approve & Run" = "Approve & Run";
+"Pending Actions is clear" = "Pending Actions is clear";
+"Review proposed changes before anything runs. Approval records intent; Run uses the existing execution gate and creates a receipt." = "Review proposed changes before anything runs. Approval records intent; Run uses the existing execution gate and creates a receipt.";
+"Review proposed changes before execution." = "Review proposed changes before execution.";
+"Reviews proposed changes before execution." = "Reviews proposed changes before execution.";
+"Review this pending action before execution." = "Review this pending action before execution.";
+"Approve this pending action and run it through the execution gate" = "Approve this pending action and run it through the execution gate";
+"Records approval, then runs the reviewed action through the execution gate and records a receipt." = "Records approval, then runs the reviewed action through the execution gate and records a receipt.";
 "Open Assistant Queue" = "Open Assistant Queue";
 "Opens the Assistant Queue without running the item." = "Opens the Assistant Queue without running the item.";
 "Assistant Queue item is no longer available." = "Assistant Queue item is no longer available.";

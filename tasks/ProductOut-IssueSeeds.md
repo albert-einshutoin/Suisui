@@ -12,12 +12,12 @@ Suggested order:
 2. P15-002 Manual VoiceOver task-listing evidence
 3. P15-004 Gemini free-tier live task-list smoke
 4. AS-001 Task and document intake
-5. AS-002 Document draft studio
-6. AS-003 Secretary queue
-7. AS-004 Right assistant rail
-8. AS-005 Schedule and reminder draft review
-9. AS-006 Done recap and follow-up suggestions
-10. AS-007 Settings readiness for secretary work
+5. AS-003 Secretary queue
+6. AS-004 Contextual assistant surface
+7. AS-005 Schedule and external-write review
+8. AS-006 Done recap and follow-up suggestions
+9. AS-007 Settings readiness for secretary work
+10. AS-002 Document draft studio (Post-MVP)
 11. CN-001 Cursor/Notion response battlecard
 12. CN-002 Agent work request handoff packet
 13. CN-003 Remote MCP context pack
@@ -33,17 +33,17 @@ Suggested order:
 
 ## AI Secretary UX Lane
 
-Use these issues to make Suisui an AI secretary for ordinary tasks, documents, and chores before broadening the external-agent story. Keep the first implementation local-first, review-before-execution, and VoiceOver task listing friendly.
+Use these issues to make Suisui an AI secretary for ordinary tasks, documents, and chores before broadening the external-agent story. Keep the first implementation local-first, review-before-execution, and VoiceOver task listing friendly. The MVP0 subset follows `docs/product/ai-secretary-ux-direction.md`; AS-002 document generation, Reminder workflows, MCP, and Google Calendar remain Post-MVP.
 
 | Issue | Implementable feature | Primary files | Tests first | Acceptance |
 | --- | --- | --- | --- | --- |
 | AS-001 | Task and document intake | Inbox capture domain, Today command input, document request model, `docs/product/ai-secretary-ux-direction.md` | Source tests require `Inbox intake`, manual capture, voice capture, document request capture, and no unapproved provider call; unit tests cover conversion to task, document draft request, schedule draft, and follow-up | Users can capture ordinary tasks, chores, and document requests from Inbox or Today without choosing the final destination first. |
-| AS-002 | Document draft studio | Project detail, document deliverable harness, draft artifact domain, `DocumentScopedAutomationTests` | Tests require article outline, memo, release notes, email draft, PR plan, source preview, duplicate output rejection, and draft-only approval gates | Selected project documents can create inspectable draft artifacts without writing files or sending external updates before review. |
+| AS-002 | Document draft studio (Post-MVP) | Project detail, document deliverable harness, draft artifact domain, `DocumentScopedAutomationTests` | Tests require article outline, memo, release notes, email draft, PR plan, source preview, duplicate output rejection, and draft-only approval gates | After the design-partner gate records `Go`, selected project documents can create inspectable draft artifacts without writing files or sending external updates before review. |
 | AS-003 | Secretary queue | Project Board task list, status model, Inbox/Today/Done views, accessibility focus paths | Unit and AX/source tests require captured, drafted, waiting-review, scheduled, and done states with stable ordering and `project-task-list` traversal | The main queue shows secretary work states clearly, including AI-created drafts and follow-ups, from task listing first. |
-| AS-004 | Right assistant rail | ProjectBoardView inspector, Today/Inbox/Project/Schedule/Done assistant summaries, UI screenshots | Source/UI tests require next action, reason, risk, evidence link, approval action, and no secret-like content in the rail | The selected task, project, document draft, schedule proposal, or done recap always shows what the assistant recommends and why. |
-| AS-005 | Schedule and reminder draft review | Schedule draft model, Calendar/Reminder adapters, permission readiness, Keychain/OAuth docs | Unit tests require schedule block proposals, reminder proposals, skip reasons, OAuth/API-key distinction, and approval before external write | Suisui can propose calendar and reminder changes while keeping macOS prompts and external writes explicit. |
+| AS-004 | Contextual assistant surface | ProjectBoardView inspector, Review, Today/Inbox/Project/Schedule/Done assistant summaries, UI screenshots | Source/UI tests require next action, reason, risk, evidence link, approval action, and no secret-like content in Inspector or Review | The selected task, project, schedule proposal, or done recap can show what the assistant recommends and why without requiring a permanent Right rail. |
+| AS-005 | Schedule and external-write review | Schedule draft model, Apple Calendar adapter, permission readiness, Review handoff | Unit tests require schedule block proposals, stale-edit invalidation, permission-denial recovery, and approval before Apple Calendar write | Suisui can propose Apple Calendar changes while keeping macOS prompts and external writes explicit; Reminder and Google Calendar workflows remain Post-MVP. |
 | AS-006 | Done recap and follow-up suggestions | Done analytics, completion history, recap generator, follow-up task proposal domain | Tests require completed-task sources, generated recap, follow-up suggestions, no manual-evidence claims, and no raw provider response persistence | Completed work becomes a reviewable daily or weekly recap with follow-up suggestions tied to source tasks. |
-| AS-007 | Settings readiness for secretary work | Settings Overview/AI/MCP/Sync/Privacy views, provider/STT/TTS/Calendar/Reminder readiness models | Source/UI tests require provider, STT, TTS, Calendar, Reminder, MCP, notifications, privacy, data location, and Keychain prompt explanation | Settings explains which secretary capabilities are ready, blocked, skipped, or need approval without leaking secrets. |
+| AS-007 | Settings readiness for secretary work | Settings Overview/AI & Voice/Calendar/Privacy views, supported provider/STT/TTS/Apple Calendar/Notification readiness models | Source/UI tests require supported provider, STT, TTS, Apple Calendar, notifications, privacy, data location, and Keychain prompt explanation without advertising Post-MVP capabilities as ready | Settings explains which MVP0 secretary capabilities are ready, blocked, skipped, or need approval without leaking secrets. |
 
 ## Cursor/Notion Acceleration Lane
 

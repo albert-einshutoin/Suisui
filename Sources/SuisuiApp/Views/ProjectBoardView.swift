@@ -732,17 +732,17 @@ struct ProjectBoardView: View {
     private var reviewHubContent: some View {
         switch currentBoardRoute {
         case .primary(.review):
-            ContentUnavailableView(
-                "Review",
-                systemImage: "checklist",
-                description: Text("Choose Schedule, Completed, Automation Activity, or Assistant Queue.")
-            )
-            .accessibilityIdentifier("review-hub-overview")
+            // Review opens on the canonical pending-action queue. Schedule and
+            // Completed remain sibling workflows; legacy activity routes stay
+            // available only for persisted links and are not product navigation.
+            AssistantQueueWorkflowView(viewModel: viewModel)
         case .review(.schedule):
             ScheduleWorkflowView(viewModel: viewModel)
         case .review(.completed):
             DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())
         case .review(.automationActivity):
+            // Keep persisted deep links readable without exposing a second
+            // product route in the Review navigation.
             ProjectWorkflowAutomationActivityView(
                 viewModel: viewModel,
                 appSettings: appSettings()
@@ -1274,6 +1274,8 @@ struct ProjectBoardView: View {
 
     private func validatedRoute(_ route: BoardRoute) -> BoardRoute {
         switch route {
+        case .primary(.review):
+            return .review(.assistantQueue)
         case .project(let projectID):
             return viewModel.snapshot.projects.contains(where: { $0.id == projectID })
                 ? route
