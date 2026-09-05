@@ -33,6 +33,32 @@ Goal: replace stale `docs/release/evidence/accessibility-voiceover.md` with a re
 
 Tracking issue: [#244 Release closeout: complete manual VoiceOver evidence](https://github.com/albert-einshutoin/suisui/issues/244)
 
+Preparation only: this runbook update does not complete #244. Start the manual
+pass only after #611 is complete and the final candidate includes #630's real
+local measurements and #617's same-work normal-route evidence. Use that same
+candidate for #246. The command below is delivered by PR #624; until that
+implementation and its observed evidence are available, this prerequisite is
+blocked. Independent smoke/unit-test results or fixed manifest values do not
+satisfy #617.
+
+Prerequisite: run `./script/check_runtime_core_value_loop_smoke.sh` from a clean
+checkout. In `.tmp/suisui-core-value-loop/manifest.json`, `sourceCommit` is the
+tested checkout revision, not the VoiceOver product-source revision. Resolve
+both identifiers to commits before comparing: run `git rev-parse --verify`
+on the generated VoiceOver candidate's abbreviated source ID, and compare
+that full hash with `git log -1 --format=%H <manifest-sourceCommit> -- Sources/SuisuiApp Sources/SuisuiCore Sources/SuisuiCLI Sources/SuisuiExternalConnectors Package.swift packaging/app_metadata.env`.
+These are the same product paths used by `prepare_voiceover_review_candidate.sh`.
+Missing/unresolvable IDs or a different product-source commit block the manual
+pass; later docs/tests-only commits do not. Require #617's observed passed
+normal-route result separately. This operator prerequisite does not replace
+the manual VoiceOver pass below.
+
+For the current product route, start at `Voice Quick Capture` and verify the
+AX-stable capture markers `voice-command-capture-zone`, `voice-command-input`,
+`voice-agent-panel`, `voice-hands-free-provider-privacy`, and the
+`assistant-queue-workflow` handoff. Do not use the recovery-only Conversation
+visual-evidence surface as a substitute for the normal route.
+
 Generated helpers:
 
 - `.tmp/voiceover-review/accessibility-voiceover-pending-<release-candidate-source-commit>.md`

@@ -1171,6 +1171,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(runbook.contains("https://github.com/albert-einshutoin/suisui/issues/244"))
         XCTAssertTrue(runbook.contains("https://github.com/albert-einshutoin/suisui/issues/245"))
         XCTAssertTrue(runbook.contains("https://github.com/albert-einshutoin/suisui/issues/246"))
+        XCTAssertTrue(runbook.contains("./script/check_runtime_core_value_loop_smoke.sh"))
+        XCTAssertTrue(runbook.contains(".tmp/suisui-core-value-loop/manifest.json"))
+        XCTAssertTrue(runbook.contains("voice-command-capture-zone"))
+        XCTAssertTrue(runbook.contains("voice-agent-panel"))
+        XCTAssertTrue(runbook.contains("assistant-queue-workflow"))
+        XCTAssertTrue(runbook.contains("recovery-only Conversation"))
 
         for lane in ["VoiceOver", "Competitor hands-on", "Release machine"] {
             XCTAssertTrue(runbook.contains("## \(lane)"), "Missing lane: \(lane)")
