@@ -125,7 +125,7 @@ APPLESCRIPT
 wait_for_voice_window() {
   ax_wait_for_pid_owned_window "$APP_NAME" "$app_pid" "" \
     "$TIMEOUT_SECONDS" "" "$APP_BINARY"
-  ax_wait_for_ax_identifier "$APP_NAME" "voice-command-quick-command-tab" \
+  ax_wait_for_ax_identifier "$APP_NAME" "voice-command-root" \
     "$TIMEOUT_SECONDS" "$ROOT_DIR" "$tmp_dir/voice-ready.probe" "" "$app_pid"
 }
 
@@ -163,6 +163,12 @@ APPLESCRIPT
 launch_app_for_voice_review() {
   local locale="$1"
   local width="$2"
+  local apple_languages apple_locale
+  case "$locale" in
+    english) apple_languages='(en)'; apple_locale=en_US ;;
+    japanese) apple_languages='(ja)'; apple_locale=ja_JP ;;
+    *) echo "BLOCKER: unsupported Voice runtime locale: $locale" >&2; return 2 ;;
+  esac
   terminate_app
   database_path="$tmp_dir/Suisui-runtime-voice-review-$locale.sqlite"
   settings_suite_name="$BUNDLE_IDENTIFIER.runtime-voice-review.$locale.$(/usr/bin/uuidgen | tr '[:upper:]' '[:lower:]')"
@@ -172,7 +178,8 @@ launch_app_for_voice_review() {
     SUISUI_APP_SETTINGS_SUITE_NAME="$settings_suite_name" \
     SUISUI_OPEN_VOICE_COMMAND_ON_LAUNCH=1 \
     SUISUI_LANGUAGE_PREFERENCE="$locale" \
-    "$APP_BINARY" -ApplePersistenceIgnoreState YES &
+    "$APP_BINARY" -ApplePersistenceIgnoreState YES \
+      -AppleLanguages "$apple_languages" -AppleLocale "$apple_locale" &
   app_launch_pid=$!
   app_launch_identity="$(ax_wait_for_owned_process_identity "$app_launch_pid" "$APP_BINARY" 3)" || {
     echo "BLOCKER: Voice launch identity could not be established" >&2
@@ -200,61 +207,7 @@ setTextAreaContaining() {
   while true; do
     ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
     local attempt_output="$tmp_dir/set-text.$$.out"
-    /usr/bin/osascript - "$app_pid" "$fragment" "$text_value" <<'APPLESCRIPT' >"$attempt_output" 2>&1 &
-on run argv
-  set appPID to (item 1 of argv) as integer
-  set fragment to item 2 of argv
-  set textValue to item 3 of argv
-  tell application "System Events"
-    set matchingProcesses to application processes whose unix id is appPID
-    if (count of matchingProcesses) is 0 then error "pid-owned process missing"
-    set targetProcess to item 1 of matchingProcesses
-    tell targetProcess
-      set windowCount to count of windows
-      repeat with windowIndex from 1 to windowCount
-        set currentWindow to window windowIndex
-        try
-          set frontmost to true
-          perform action "AXRaise" of currentWindow
-        end try
-        set fallbackTextArea to missing value
-        set axItems to entire contents of currentWindow
-        repeat with axItem in axItems
-          set itemRole to ""
-          try
-            set itemRole to role of axItem as text
-          end try
-          if itemRole is "AXTextArea" or itemRole is "AXTextField" then
-            if fallbackTextArea is missing value then set fallbackTextArea to axItem
-            set itemIdentifier to ""
-            set itemName to ""
-            set itemHelp to ""
-            try
-              set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
-            end try
-            try
-              set itemName to name of axItem as text
-            end try
-            try
-              set itemHelp to value of attribute "AXHelp" of axItem as text
-            end try
-            set signalText to itemIdentifier & " " & itemName & " " & itemHelp
-            if signalText contains fragment then
-              set value of axItem to textValue
-              return "set " & fragment
-            end if
-          end if
-        end repeat
-        if fallbackTextArea is not missing value then
-          set value of fallbackTextArea to textValue
-          return "set " & fragment
-        end if
-      end repeat
-    end tell
-  end tell
-  error "text area signal not found: " & fragment
-end run
-APPLESCRIPT
+    "$tmp_dir/ax-text-input" "$app_pid" "$fragment" "$text_value" >"$attempt_output" 2>&1 &
     local osascript_pid=$!
     if wait_for_osascript_attempt "$osascript_pid"; then
       cat "$attempt_output"
@@ -419,52 +372,15 @@ waitForTextContaining() {
   while true; do
     ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
     local attempt_output="$tmp_dir/wait-text.$$.out"
-    /usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT' >"$attempt_output" 2>&1 &
-on run argv
-  set appPID to (item 1 of argv) as integer
-  set fragment to item 2 of argv
-  tell application "System Events"
-    set matchingProcesses to application processes whose unix id is appPID
-    if (count of matchingProcesses) is 0 then error "pid-owned process missing"
-    set targetProcess to item 1 of matchingProcesses
-    tell targetProcess
-      repeat with windowIndex from 1 to count of windows
-        set currentWindow to window windowIndex
-        set axItems to entire contents of currentWindow
-        repeat with axItem in axItems
-          set itemName to ""
-          set itemValue to ""
-          set itemDescription to ""
-          set itemHelp to ""
-          try
-            set itemName to name of axItem as text
-          end try
-          try
-            set itemValue to value of axItem as text
-          end try
-          try
-            set itemDescription to description of axItem as text
-          end try
-          try
-            set itemHelp to value of attribute "AXHelp" of axItem as text
-          end try
-          set signalText to itemName & " " & itemValue & " " & itemDescription & " " & itemHelp
-          if signalText contains fragment then return "found"
-        end repeat
-      end repeat
-    end tell
-  end tell
-  error "text not found: " & fragment
-end run
-APPLESCRIPT
+    "$tmp_dir/ax-marker" "$APP_NAME" "voice-command-root" "$fragment" "$app_pid" >"$attempt_output" 2>&1 &
     local osascript_pid=$!
     if wait_for_osascript_attempt "$osascript_pid"; then
       rm -f "$attempt_output"
       return 0
     fi
-    rm -f "$attempt_output"
     ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
     if [[ "$SECONDS" -ge "$deadline" ]]; then
+      cat "$attempt_output" >&2
       echo "BLOCKER: Voice Command window did not expose text: $fragment" >&2
       return 1
     fi
@@ -617,6 +533,8 @@ SQL
 }
 
 printf "== Runtime voice review smoke ==\n"
+swiftc "$ROOT_DIR/script/ui_evidence_ax_text_input.swift" -o "$tmp_dir/ax-text-input"
+swiftc "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" -o "$tmp_dir/ax-marker"
 ./script/build_and_run.sh --build-only
 
 if [[ ! -d "$APP_BUNDLE" ]]; then

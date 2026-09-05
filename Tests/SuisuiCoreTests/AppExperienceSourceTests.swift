@@ -2803,7 +2803,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("press_ax_button \"sidebar-open-search\""))
         XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"command-palette-input\" \"present\""))
         XCTAssertTrue(script.contains("press_ax_button \"sidebar-action-voice-command\""))
-        XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"voice-command-quick-command-tab\" \"present\""))
+        XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"voice-command-root\" \"present\""))
         XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"settings-status-overview\" \"present\""))
         XCTAssertTrue(script.contains("ensure_sidebar_visible"))
         XCTAssertTrue(script.contains("close_window_containing_identifier"))
@@ -2845,7 +2845,7 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertTrue(
             script.contains(
-                "press_keyboard_shortcut 40 \"command\"\n  wait_for_process_ax_identifier \"command-palette-input\" \"present\"\n  press_keyboard_shortcut 9 \"command-shift\"\n  wait_for_process_ax_identifier \"voice-command-quick-command-tab\" \"present\"\n  press_keyboard_shortcut 18 \"command\" \"skip-board-focus\""
+                "press_keyboard_shortcut 40 \"command\"\n  wait_for_process_ax_identifier \"command-palette-input\" \"present\"\n  press_keyboard_shortcut 9 \"command-shift\"\n  wait_for_process_ax_identifier \"voice-command-root\" \"present\"\n  press_keyboard_shortcut 18 \"command\" \"skip-board-focus\""
             )
         )
         XCTAssertTrue(script.contains("press_keyboard_shortcut 9 \"command-shift\""))
@@ -2859,9 +2859,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("project-board-fallback-loading"))
         XCTAssertTrue(script.contains("index($1, wanted \"-\") == 1"))
         XCTAssertTrue(script.contains("wait_for_ax_identifier_absent \"open-panel\""))
-        XCTAssertTrue(script.contains("script/ui_evidence_ax_resize_window.swift"))
+        XCTAssertTrue(script.contains("for helper in ax_resize_window ax_frame_dump window_content_size"))
         XCTAssertTrue(script.contains("700 500 120 160"))
-        XCTAssertTrue(script.contains("PID-owned Project Board window frame was not stable enough to resize"))
+        XCTAssertTrue(script.contains("supported 960x760 resize did not produce fresh frame/content evidence"))
         XCTAssertTrue(script.contains("restore_project_board_window"))
         XCTAssertTrue(script.contains("every process whose unix id is targetPID"))
         XCTAssertTrue(script.contains("assert_primary_ax_frames_are_nonzero"))
@@ -2877,15 +2877,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("task-card-open-details"))
         XCTAssertTrue(script.contains("resize_window_below_minimum"))
         XCTAssertTrue(script.contains("assert_window_respects_minimum"))
-        XCTAssertTrue(script.contains("window_width < 960 || window_height < 620"))
+        XCTAssertTrue(script.contains("minimum-width window violated the 960x572 content floor"))
         XCTAssertTrue(script.contains("SUISUI_LANGUAGE_PREFERENCE=\"$language\""))
         XCTAssertTrue(script.contains("launch_header_layout_candidate \"japanese\""))
         XCTAssertTrue(script.contains("Review Task Automation"))
         XCTAssertTrue(script.contains("タスク自動化を確認"))
         XCTAssertTrue(script.contains("sidebar-action-settings"))
         XCTAssertTrue(script.contains("capture_window \"sidebar-visible\""))
-        XCTAssertTrue(script.contains("capture_window \"minimum-window\""))
-        XCTAssertTrue(script.contains("capture_window \"minimum-window-japanese\""))
+        XCTAssertTrue(script.contains("capture_window \"minimum-width\""))
+        XCTAssertTrue(script.contains("capture_window \"minimum-width-japanese\""))
         XCTAssertTrue(script.contains("SUISUI_HEADER_LAYOUT_SMOKE_TIMEOUT_SECONDS"))
         XCTAssertTrue(script.contains("script/ui_evidence_window_metadata.swift"))
         XCTAssertTrue(script.contains("BLOCKER: native toolbar controls overlap or clip"))
@@ -4755,6 +4755,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(appSource.contains("reminderClient.create"))
     }
 
+    func testQuickCaptureRuntimeNeverInjectsAutomaticApproval() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Composition/VoiceRuntimeFactory.swift")
+        XCTAssertTrue(source.contains("maximumQuickCaptureClarificationTurns: 1"))
+        XCTAssertTrue(source.contains("maximumClarificationTurns: 1"))
+        XCTAssertFalse(source.contains("lowRiskTaskAutoExecutor:"))
+        XCTAssertFalse(source.contains("reviewViewModel.approve()"))
+    }
+
     func testVoiceAssistantQueueApprovalHandoffsExecutionToProjectBoardQueue() throws {
         let voiceSource = try readPackageFile("Sources/SuisuiCore/Voice/VoiceCaptureViewModel.swift")
         let appSource = try readAppShellSource()
@@ -4771,7 +4779,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("userInfo: [SuisuiAssistantQueueBridge.requestUserInfoKey: bridgeRequest]"))
         XCTAssertTrue(appSource.contains("name: .suisuiAssistantQueueRequested"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"voice-assistant-queue-open-board\")"))
-        XCTAssertTrue(appSource.contains(".accessibilityHint(localizedSettingsDisplay(\"Opens the Assistant Queue without running the item.\"))"))
+        XCTAssertTrue(appSource.contains(".accessibilityHint(localizedSettingsDisplay(\"Opens Pending Actions without running the item.\"))"))
         XCTAssertTrue(boardSource.contains(".onReceive(NotificationCenter.default.publisher(for: .suisuiAssistantQueueRequested))"))
         XCTAssertTrue(boardSource.contains("consumePendingAssistantQueueRequestIfNeeded"))
         XCTAssertTrue(boardSource.contains("SuisuiAssistantQueueBridge.consumePendingOpen(id: id)"))
@@ -4779,11 +4787,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains("sceneCoordinator.consume(requestID: request.id, for: sceneID)"))
         XCTAssertTrue(boardSource.contains("applyLegacyDestinationWithinScene(.assistantQueue)"))
         XCTAssertTrue(boardSource.contains("viewModel.focusAssistantQueueExecutionHandoff(id: request.itemID)"))
-        XCTAssertTrue(englishStrings.contains("\"Open Assistant Queue\""))
-        XCTAssertTrue(englishStrings.contains("\"Opens the Assistant Queue without running the item.\""))
+        XCTAssertTrue(englishStrings.contains("\"Open Pending Actions\""))
+        XCTAssertTrue(englishStrings.contains("\"Opens Pending Actions without running the item.\""))
         XCTAssertTrue(englishStrings.contains("\"Assistant Queue item is no longer available.\""))
-        XCTAssertTrue(japaneseStrings.contains("\"Open Assistant Queue\""))
-        XCTAssertTrue(japaneseStrings.contains("\"Opens the Assistant Queue without running the item.\""))
+        XCTAssertTrue(japaneseStrings.contains("\"Open Pending Actions\""))
+        XCTAssertTrue(japaneseStrings.contains("\"Opens Pending Actions without running the item.\""))
         XCTAssertTrue(japaneseStrings.contains("\"Assistant Queue item is no longer available.\""))
         XCTAssertFalse(appSource.contains("ActionReviewPanel(viewModel: AppRuntimeFactory.makeReviewSessionViewModel(plan: plan))"))
     }
@@ -6717,14 +6725,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceSource.contains(".accessibilityLabel(\"Stop Hands-free mode\")"))
         XCTAssertTrue(
             voiceSource.contains(
-                "Label(\"Voice Command\", systemImage: \"mic\")\n                        .font(.headline)\n                        .accessibilityIdentifier(\"voice-command-root\")"
+                "Label(\"Voice Quick Capture\", systemImage: \"mic\")\n                        .font(.headline)\n                        .accessibilityIdentifier(\"voice-command-root\")"
             )
         )
         XCTAssertEqual(
             voiceSource.components(separatedBy: ".accessibilityIdentifier(\"voice-command-root\")").count - 1,
             1
         )
-        XCTAssertTrue(
+        XCTAssertFalse(
             voiceSource.contains(
                 ".accessibilityIdentifier(\"voice-command-quick-command-tab\")"
             )
@@ -6737,7 +6745,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(voiceSource.contains("voice-command-listening-hero"))
         XCTAssertTrue(voiceSource.contains("voice-command-listening-timer"))
         XCTAssertTrue(voiceSource.contains("case conversation"))
-        XCTAssertTrue(voiceSource.contains("voice-conversation-tab"))
+        XCTAssertFalse(voiceSource.contains("voice-conversation-tab"))
+        XCTAssertFalse(voiceSource.contains("TabView(selection: $selectedVoiceEvidenceTab)"))
+        XCTAssertTrue(voiceSource.contains("Voice Quick"))
+        XCTAssertTrue(voiceSource.contains("Capture desk"))
+        XCTAssertTrue(voiceSource.contains("voice-command-clarification-limit"))
+        XCTAssertTrue(voiceSource.contains("Pending Actions"))
         XCTAssertTrue(voiceSource.contains("voice-command-understood-action-"))
         XCTAssertTrue(voiceSource.contains("Create preparation task"))
         XCTAssertTrue(voiceSource.contains("voice-command-conversation-log"))
@@ -6772,10 +6785,12 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(examplesSource.contains("Task {"))
 
         for localization in [english, japanese] {
+            XCTAssertTrue(localization.contains("\"Voice Quick Capture\" = "))
             XCTAssertTrue(localization.contains("\"Record once\" = "))
             XCTAssertTrue(localization.contains("\"Hands-free mode\" = "))
             XCTAssertTrue(localization.contains("\"Speech provider: %@\" = "))
             XCTAssertTrue(localization.contains("\"Audio is processed by the selected speech-to-text provider only while Hands-free mode is listening.\" = "))
+            XCTAssertTrue(localization.contains("\"One clarification is allowed. Edit the capture or save it to Inbox.\" = "))
         }
 
         XCTAssertTrue(runtimeSmoke.contains("setTextAreaContaining \"voice-command-input\" \"   \""))

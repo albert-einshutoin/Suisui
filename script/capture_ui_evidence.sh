@@ -1862,7 +1862,7 @@ capture_voice_command_appearance() {
   SETTINGS_TAB_OVERRIDE=""
   VOICE_COMMAND_WINDOW_OVERRIDE=1
   VOICE_SURFACE_OVERRIDE=""
-  prepare_named_evidence_window "" "Voice Command" "$VOICE_COMMAND_TARGET_MARKERS" "voice-command-quick-command-tab"
+  prepare_named_evidence_window "" "Voice Command" "$VOICE_COMMAND_TARGET_MARKERS"
 
   capture_visible_window "$appearance Voice Command" "$output_path" "" "voice-command-root"
 }
@@ -1878,7 +1878,7 @@ capture_voice_command_listening_appearance() {
   SETTINGS_TAB_OVERRIDE=""
   VOICE_COMMAND_WINDOW_OVERRIDE=1
   VOICE_SURFACE_OVERRIDE="listening"
-  prepare_named_evidence_window "" "Voice Command" "$VOICE_COMMAND_LISTENING_TARGET_MARKERS" "voice-command-quick-command-tab"
+  prepare_named_evidence_window "" "Voice Command" "$VOICE_COMMAND_LISTENING_TARGET_MARKERS"
 
   capture_visible_window "$appearance Voice Command Listening" "$output_path" "" "voice-command-listening-hero"
 }
@@ -2371,7 +2371,7 @@ case "$EVIDENCE_LOCALE" in
     PROJECTS_ROUTE_LABEL="Projects"
     SCHEDULE_ROUTE_LABEL="Schedule"
     DONE_ROUTE_LABEL="Done"
-    VOICE_COMMAND_LABEL="Voice Command"
+    VOICE_COMMAND_LABEL="Voice Quick Capture"
     VOICE_COMMAND_LISTENING_LABEL="Listening"
     INBOX_CLASSIFICATION_ACTIONS_LABEL="Inbox classification actions"
     INBOX_VOICE_TITLE="Create tomorrow's presentation materials"
@@ -2382,7 +2382,7 @@ case "$EVIDENCE_LOCALE" in
     PROJECTS_ROUTE_LABEL="プロジェクト"
     SCHEDULE_ROUTE_LABEL="予定"
     DONE_ROUTE_LABEL="完了"
-    VOICE_COMMAND_LABEL="音声コマンド"
+    VOICE_COMMAND_LABEL="音声クイックキャプチャ"
     VOICE_COMMAND_LISTENING_LABEL="聞き取り中"
     INBOX_CLASSIFICATION_ACTIONS_LABEL="インボックス分類操作"
     INBOX_VOICE_TITLE="明日のプレゼン資料を作成する"

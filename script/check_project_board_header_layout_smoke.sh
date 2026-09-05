@@ -45,22 +45,41 @@ header_layout_project_task_id=""
 header_layout_alternate_project_id=""
 header_layout_alternate_task_id=""
 app_pid=""
+app_identity=""
+CONTENT_SIZE_FILE="$OUTPUT_DIR/window-content-size.tsv"
+source "$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh"
 
 terminate_app() {
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-  if [[ -n "${app_pid:-}" ]]; then
-    wait "$app_pid" >/dev/null 2>&1 || true
-    app_pid=""
+  local owned_pid="$app_pid" owned_identity="$app_identity"
+  app_pid=""
+  app_identity=""
+  if [[ -n "$owned_pid" && -n "$owned_identity" ]]; then
+    ax_terminate_owned_process "$owned_pid" "$APP_BINARY" "$owned_identity"
   fi
 }
 
+assert_owned_cleanup_contract() (
+  local waited=0 identity
+  wait() { waited=1; }
+  ax_terminate_owned_process() { [[ "$1" == 42 && "$2" == "$APP_BINARY" && "$3" == owned ]]; }
+  for identity in '' owned; do
+    app_pid=42
+    app_identity="$identity"
+    terminate_app
+    if [[ -n "$app_pid" || -n "$app_identity" || "$waited" != 0 ]]; then
+      echo "BLOCKER: cleanup retained identity or waited without ownership" >&2
+      return 1
+    fi
+  done
+)
+
 activate_app() {
-  /usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' >/dev/null 2>&1 || true
+  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null 2>&1 || true
 on run argv
   set appName to item 1 of argv
   tell application "System Events"
-    if not (exists process appName) then return "missing"
-    tell process appName
+    if not (exists (first process whose unix id is (appName as integer))) then return "missing"
+    tell (first process whose unix id is (appName as integer))
       set frontmost to true
       if (count of windows) > 0 then
         try
@@ -74,14 +93,7 @@ APPLESCRIPT
 }
 
 wait_for_app_process() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while ! pgrep -x "$APP_NAME" >/dev/null 2>&1; do
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: $APP_NAME process did not appear within ${TIMEOUT_SECONDS}s" >&2
-      return 1
-    fi
-    sleep 1
-  done
+  ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$TIMEOUT_SECONDS" "$APP_BINARY"
 }
 
 wait_for_visible_windows() {
@@ -91,12 +103,12 @@ wait_for_visible_windows() {
 
   while true; do
     set +e
-    window_count="$(/usr/bin/osascript - "$APP_NAME" <<'APPLESCRIPT' 2>/dev/null
+    window_count="$(/usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' 2>/dev/null
 on run argv
   set appName to item 1 of argv
   tell application "System Events"
-    if not (exists process appName) then return "0"
-    tell process appName
+    if not (exists (first process whose unix id is (appName as integer))) then return "0"
+    tell (first process whose unix id is (appName as integer))
       return (count of windows) as text
     end tell
   end tell
@@ -148,7 +160,7 @@ on run argv
     tell item 1 of matchingProcesses
       set frontmost to true
       repeat with candidateWindow in windows
-        if my containsIdentifier(candidateWindow, "project-board-sidebar-toggle", 0) and my containsIdentifier(candidateWindow, "project-board-detail", 0) then
+        if my containsIdentifier(candidateWindow, "project-board-sidebar-toggle", 0) and my containsIdentifier(candidateWindow, "project-board-integrations-menu", 0) then
           try
             perform action "AXRaise" of candidateWindow
           end try
@@ -177,8 +189,26 @@ APPLESCRIPT
   done
 }
 
+run_bounded_ax_tool() {
+  "$@" &
+  local child=$! deadline=$((SECONDS + TIMEOUT_SECONDS))
+  while kill -0 "$child" >/dev/null 2>&1; do
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      kill "$child" >/dev/null 2>&1 || true
+      wait "$child" >/dev/null 2>&1 || true
+      echo "BLOCKER: owned AX helper timed out" >&2
+      return 124
+    fi
+    sleep 0.1
+  done
+  wait "$child"
+}
+
 prepare_header_layout_candidate() {
   ./script/build_and_run.sh --build-only
+  for helper in ax_resize_window ax_frame_dump window_content_size; do
+    /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_${helper}.swift" -o "$OUTPUT_DIR/$helper"
+  done
   # This smoke owns its isolated database. Reusing an interrupted zero-byte
   # fixture makes a shared seeder wait for migrations that can never be
   # observed, so initialize and seed the narrow toolbar fixture directly.
@@ -189,6 +219,7 @@ prepare_header_layout_candidate() {
     SUISUI_DATABASE_PATH="$HEADER_LAYOUT_DATABASE_PATH" \
     "$APP_BINARY" &
   app_pid=$!
+  app_identity="$(ax_wait_for_owned_process_identity "$app_pid" "$APP_BINARY" 3)"
   wait_for_app_process
 
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
@@ -306,14 +337,17 @@ SQL
 launch_header_layout_candidate() {
   local language="${1:-english}"
   terminate_app
+  rm -f "$CONTENT_SIZE_FILE"
   SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
     SUISUI_APP_SETTINGS_SUITE_NAME="$SETTINGS_SUITE" \
     SUISUI_LANGUAGE_PREFERENCE="$language" \
     SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1 \
+    SUISUI_LAYOUT_STABILITY_WINDOW_CONTENT_SIZE_PATH="$CONTENT_SIZE_FILE" \
     SUISUI_DATABASE_PATH="$HEADER_LAYOUT_DATABASE_PATH" \
     SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="project:$header_layout_project_id" \
     "$APP_BINARY" &
   app_pid=$!
+  app_identity="$(ax_wait_for_owned_process_identity "$app_pid" "$APP_BINARY" 3)"
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -326,10 +360,12 @@ launch_runtime_crud_recovery_candidate() {
     SUISUI_LAUNCH_RECOVERY_MODE=1 \
     SUISUI_RUNTIME_CRUD_RECOVERY_MODE=1 \
     SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1 \
+    SUISUI_LAYOUT_STABILITY_WINDOW_CONTENT_SIZE_PATH="$CONTENT_SIZE_FILE" \
     SUISUI_DATABASE_PATH="$HEADER_LAYOUT_DATABASE_PATH" \
     SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="project:$header_layout_project_id" \
     "$APP_BINARY" &
   app_pid=$!
+  app_identity="$(ax_wait_for_owned_process_identity "$app_pid" "$APP_BINARY" 3)"
   wait_for_app_process
   activate_app
   wait_for_visible_windows
@@ -381,32 +417,84 @@ APPLESCRIPT
 
 resize_window_below_minimum() {
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
+  local initial_id initial_frame initial_stamp positive_id positive_frame positive_stamp status=0
+  local attempt positive_ready=0
+  # A SwiftUI scene can replace its AX window during hydration. Retry only a
+  # failed window read, at most once, and prove the replacement independently.
+  for attempt in 1 2; do
+    read_window_metadata
+    initial_id="$window_id"
+    initial_frame="$window_width $window_height"
+    initial_stamp="$(stat -f '%i:%m' "$CONTENT_SIZE_FILE")"
+    status=0
+    run_bounded_ax_tool "$OUTPUT_DIR/ax_resize_window" \
+      "$app_pid" "$window_x" "$window_y" "$window_width" "$window_height" \
+      960 760 120 160 || status=$?
+    if [[ "$status" -ne 0 ]]; then
+      if [[ "$status" -ne 1 || "$attempt" -eq 2 ]]; then
+        echo "BLOCKER: supported resize failed with AX helper status $status" >&2
+        return 1
+      fi
+      sleep 0.2
+      continue
+    fi
+    deadline=$((SECONDS + TIMEOUT_SECONDS))
+    while [[ "$SECONDS" -lt "$deadline" ]]; do
+      read_window_metadata
+      [[ "$window_id" == "$initial_id" ]] || break
+      if [[ "$window_width $window_height" == "960 760" ]] &&
+        { [[ "$initial_frame" == "960 760" ]] ||
+          [[ "$(stat -f '%i:%m' "$CONTENT_SIZE_FILE")" != "$initial_stamp" ]]; }; then
+        assert_window_respects_minimum
+        positive_ready=1
+        break 2
+      fi
+      sleep 0.1
+    done
+  done
+  if [[ "$positive_ready" -ne 1 ]]; then
+    echo "BLOCKER: supported 960x760 resize did not produce fresh frame/content evidence" >&2
+    return 1
+  fi
+  positive_id="$window_id"
+  positive_frame="$window_x $window_y $window_width $window_height"
+  positive_stamp="$(stat -f '%i:%m' "$CONTENT_SIZE_FILE")"
+  status=0
+  run_bounded_ax_tool "$OUTPUT_DIR/ax_resize_window" \
+    "$app_pid" "$window_x" "$window_y" "$window_width" "$window_height" \
+    700 500 120 160 || status=$?
+  if [[ "$status" -ne 0 && "$status" -ne 3 ]]; then
+    echo "BLOCKER: negative resize failed with unexpected AX helper status $status" >&2
+    return 1
+  fi
+  deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if read_window_metadata >/dev/null 2>&1 &&
-      /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_resize_window.swift" \
-        "$app_pid" "$window_x" "$window_y" "$window_width" "$window_height" \
-        700 500 120 160 >/dev/null 2>&1; then
+    read_window_metadata
+    if [[ "$window_id" == "$positive_id" ]] &&
+      { [[ "$window_x $window_y $window_width $window_height" == "$positive_frame" ]] ||
+        [[ "$(stat -f '%i:%m' "$CONTENT_SIZE_FILE")" != "$positive_stamp" ]]; }; then
+      assert_window_respects_minimum
+      printf 'OK: below-minimum request outcome=%s; minimum-width content remains valid\n' "$status"
       return 0
     fi
-    # SwiftUI can briefly replace the scene-owned NSWindow while its restored
-    # state hydrates. Match the visible CoreGraphics frame back to the PID-owned
-    # AX window instead of depending on transient hierarchy depth or ordering.
-    activate_app
     if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: PID-owned Project Board window frame was not stable enough to resize within ${TIMEOUT_SECONDS}s" >&2
+      echo "BLOCKER: negative resize did not retain the owned window with fresh content evidence" >&2
       return 1
     fi
-    sleep 0.2
+    sleep 0.1
   done
 }
 
 assert_window_respects_minimum() {
+  local content_width content_height
   wait_for_window_metadata
-  if (( window_width < 960 || window_height < 620 )); then
-    echo "BLOCKER: native toolbar window violated 960x620 minimum: ${window_width}x${window_height}" >&2
+  read -r content_width content_height < <("$OUTPUT_DIR/window_content_size" "$CONTENT_SIZE_FILE")
+  if [[ "$window_width" -ne 960 || "$content_width" -ne 960 || "$content_height" -lt 572 ]]; then
+    echo "BLOCKER: minimum-width window violated the 960x572 content floor: ${content_width}x${content_height}" >&2
     return 1
   fi
-  printf "OK: native toolbar remains usable at minimum window size (%sx%s)\n" "$window_width" "$window_height"
+  printf 'OK: minimum-width toolbar content is %sx%s (outer %sx%s)\n' \
+    "$content_width" "$content_height" "$window_width" "$window_height"
 }
 
 assert_utility_menu_items_reachable() {
@@ -643,7 +731,7 @@ exercise_sidebar_entrypoints() {
   launch_header_layout_candidate
   wait_for_project_detail_visible
   press_ax_button "sidebar-action-voice-command"
-  wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
+  wait_for_process_ax_identifier "voice-command-root" "present"
   # Voice Command keeps a modal surface above the board toolbar. Relaunch so
   # the following settings and keyboard contracts can reach sidebar-toggle.
   launch_header_layout_candidate
@@ -742,7 +830,7 @@ exercise_keyboard_entrypoints() {
   press_keyboard_shortcut 40 "command"
   wait_for_process_ax_identifier "command-palette-input" "present"
   press_keyboard_shortcut 9 "command-shift"
-  wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
+  wait_for_process_ax_identifier "voice-command-root" "present"
   press_keyboard_shortcut 18 "command" "skip-board-focus"
   wait_for_process_ax_identifier "today-workflow" "present"
   wait_for_process_ax_identifier "projects-portfolio-overview" "absent"
@@ -770,7 +858,7 @@ exercise_runtime_crud_recovery_entrypoints() {
 
   activate_app
   press_ax_button "project-board-voice-command"
-  wait_for_process_ax_identifier "voice-command-quick-command-tab" "present"
+  wait_for_process_ax_identifier "voice-command-root" "present"
   printf "OK: runtime CRUD recovery Settings and Voice Command reached their destination surfaces\n"
 }
 
@@ -1043,100 +1131,10 @@ assert_semantic_regions_have_visible_variance() {
 }
 
 toolbar_items() {
-  /usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT'
-on appendIdentifiedElement(outputLines, uiElement, syntheticIdentifier)
-  set identifierValue to syntheticIdentifier
-  tell application "System Events"
-    if identifierValue is equal to "" then
-      try
-        set identifierValue to value of attribute "AXIdentifier" of uiElement
-      end try
-    end if
-    if identifierValue is equal to "" then
-      set titleValue to ""
-      try
-        set titleValue to name of uiElement
-      end try
-      if titleValue is "Utilities" or titleValue is "ユーティリティ" or titleValue is "Integrations" or titleValue is "連携" then
-        set identifierValue to "project-board-integrations-menu"
-      else if titleValue is "Terminal" or titleValue is "ターミナル" then
-        set identifierValue to "project-board-terminal-toggle"
-      end if
-    end if
-    if identifierValue is not equal to "" then
-      set itemPosition to position of uiElement
-      set itemSize to size of uiElement
-      set end of outputLines to identifierValue & tab & (item 1 of itemPosition as text) & tab & (item 2 of itemPosition as text) & tab & (item 1 of itemSize as text) & tab & (item 2 of itemSize as text)
-    end if
-  end tell
-  return outputLines
-end appendIdentifiedElement
-
-on collectIdentifiedElements(outputLines, uiElement)
-  set outputLines to my appendIdentifiedElement(outputLines, uiElement, "")
-  tell application "System Events"
-    try
-      repeat with childElement in UI elements of uiElement
-        set outputLines to my collectIdentifiedElements(outputLines, childElement)
-      end repeat
-    end try
-  end tell
-  return outputLines
-end collectIdentifiedElements
-
-on containsIdentifier(uiElement, targetIdentifier, depth)
-  tell application "System Events"
-    try
-      if value of attribute "AXIdentifier" of uiElement is targetIdentifier then return true
-    end try
-    if depth < 8 then
-      try
-        repeat with childElement in UI elements of uiElement
-          if my containsIdentifier(childElement, targetIdentifier, depth + 1) then return true
-        end repeat
-      end try
-    end if
-  end tell
-  return false
-end containsIdentifier
-
-on run argv
-  set appName to item 1 of argv
-  set targetPID to (item 2 of argv) as integer
-  tell application "System Events"
-    set matchingProcesses to every process whose unix id is targetPID
-    if (count of matchingProcesses) is not 1 then error "owned process missing"
-    tell item 1 of matchingProcesses
-      set outputLines to {}
-      repeat with candidateWindow in windows
-        if my containsIdentifier(candidateWindow, "project-board-detail", 0) then
-          if (exists toolbar 1 of candidateWindow) then
-            repeat with toolbarItem in UI elements of toolbar 1 of candidateWindow
-              set identifierValue to ""
-              try
-                set identifierValue to value of attribute "AXIdentifier" of toolbarItem
-              end try
-              set roleValue to ""
-              try
-                set roleValue to role of toolbarItem
-              end try
-              -- SwiftUI toolbar Menu is exposed as an anonymous AXGroup on macOS.
-              if identifierValue is equal to "" and roleValue is "AXGroup" then
-                set identifierValue to "project-board-integrations-menu"
-              end if
-              set outputLines to my appendIdentifiedElement(outputLines, toolbarItem, identifierValue)
-            end repeat
-          end if
-          set outputLines to my collectIdentifiedElements(outputLines, candidateWindow)
-          exit repeat
-        end if
-      end repeat
-      set AppleScript's text item delimiters to linefeed
-      return outputLines as text
-    end tell
-  end tell
-end run
-APPLESCRIPT
+  ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
+  read_window_metadata || return 1
+  run_bounded_ax_tool "$OUTPUT_DIR/ax_frame_dump" \
+    "$app_pid" "$window_x" "$window_y" "$window_width" "$window_height"
 }
 
 deduplicate_toolbar_items() {
@@ -1173,7 +1171,12 @@ wait_for_toolbar_buttons() {
   button_state_file="$OUTPUT_DIR/toolbar-${label}.tsv"
   while true; do
     if toolbar_items_deduplicated >"$button_state_file" 2>"$OUTPUT_DIR/toolbar-${label}.err"; then
-      if [[ -s "$button_state_file" ]]; then
+      if awk -F $'\t' '
+        $1 == "project-board-sidebar-toggle" { sidebar = 1 }
+        $1 == "project-board-inspector-toggle" { inspector = 1 }
+        $1 == "project-board-integrations-menu" { utilities = 1 }
+        END { exit !(sidebar && inspector && utilities) }
+      ' "$button_state_file"; then
         return 0
       fi
     fi
@@ -1474,7 +1477,7 @@ click_project_display_mode() {
       ;;
   esac
 
-  /usr/bin/osascript - "$APP_NAME" "$target_identifier" "$fallback_identifier" <<'APPLESCRIPT' >/dev/null
+  /usr/bin/osascript - "$app_pid" "$target_identifier" "$fallback_identifier" <<'APPLESCRIPT' >/dev/null
 on clickMatchingDisplayMode(uiElement, targetIdentifier, fallbackIdentifier)
   tell application "System Events"
     set identifierValue to ""
@@ -1510,7 +1513,7 @@ on run argv
   set targetIdentifier to item 2 of argv
   set fallbackIdentifier to item 3 of argv
   tell application "System Events"
-    tell process appName
+    tell (first process whose unix id is (appName as integer))
       set frontmost to true
       if not my clickMatchingDisplayMode(window 1, targetIdentifier, fallbackIdentifier) then
         error "BLOCKER: Project display mode control was not available: " & targetIdentifier
@@ -1575,7 +1578,7 @@ set_toolbar_display_mode() {
       ;;
   esac
 
-  /usr/bin/osascript - "$APP_NAME" "$primary_title" "$localized_title" <<'APPLESCRIPT' >/dev/null
+  /usr/bin/osascript - "$app_pid" "$primary_title" "$localized_title" <<'APPLESCRIPT' >/dev/null
 on pressDisplayModeMenuItem(toolbarElement, primaryTitle, localizedTitle)
   tell application "System Events"
     repeat with attempt from 1 to 20
@@ -1602,7 +1605,7 @@ on run argv
   set primaryTitle to item 2 of argv
   set localizedTitle to item 3 of argv
   tell application "System Events"
-    tell process appName
+    tell (first process whose unix id is (appName as integer))
       set frontmost to true
       tell toolbar 1 of window 1
         perform action "AXShowMenu"
@@ -1618,6 +1621,7 @@ APPLESCRIPT
 
 trap terminate_app EXIT
 
+assert_owned_cleanup_contract
 prepare_header_layout_candidate
 assert_scaled_region_component_contract
 seed_header_layout_selection_project
@@ -1640,12 +1644,12 @@ assert_action_buttons_are_trailing "sidebar-visible"
 resize_window_below_minimum
 wait_for_visible_windows
 assert_window_respects_minimum
-assert_action_buttons_are_trailing "minimum-window"
-capture_window "minimum-window"
+assert_action_buttons_are_trailing "minimum-width"
+capture_window "minimum-width"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
 exercise_sidebar_entrypoints
-exercise_settings_utility
 exercise_toolbar_utilities
+exercise_settings_utility
 
 launch_header_layout_candidate "japanese"
 wait_for_project_detail_visible
@@ -1653,12 +1657,12 @@ assert_single_native_toolbar
 resize_window_below_minimum
 wait_for_visible_windows
 assert_window_respects_minimum
-assert_action_buttons_are_trailing "minimum-window-japanese"
-capture_window "minimum-window-japanese"
+assert_action_buttons_are_trailing "minimum-width-japanese"
+capture_window "minimum-width-japanese"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
 exercise_sidebar_entrypoints
-exercise_settings_utility
 exercise_toolbar_utilities
+exercise_settings_utility
 
 exercise_runtime_crud_recovery_entrypoints
 exercise_keyboard_entrypoints

@@ -142,22 +142,9 @@ struct VoiceCaptureView: View {
     @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
     @StateObject private var viewModel: VoiceCaptureViewModel
     @State private var clarificationAnswer = ""
-    @State private var selectedVoiceEvidenceTab: VoiceEvidenceTab
-
-    private enum VoiceEvidenceTab: Hashable {
-        case conversation
-        case quickCommand
-    }
 
     init(viewModel: VoiceCaptureViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
-        // Resolve before first layout so Conversation evidence does not wait
-        // on onAppear while AX markers look for the still-unmounted tab.
-        _selectedVoiceEvidenceTab = State(
-            initialValue: VoiceVisualEvidenceSurface.resolved() == .conversation
-                ? .conversation
-                : .quickCommand
-        )
     }
 
     private var presentsListeningEvidenceDesk: Bool {
@@ -220,8 +207,8 @@ struct VoiceCaptureView: View {
     var body: some View {
         Group {
             if VoiceVisualEvidenceSurface.resolved() == .conversation {
-                // Evidence captures the Conversation desk alone so TabView does
-                // not leave the workspace unmounted for AX markers.
+                // Evidence captures the Conversation desk alone so the
+                // non-product evidence route remains deterministic for AX.
                 VoiceTaskConversationWorkspaceView(
                     viewModel: viewModel,
                     onOpenAssistantQueue: {
@@ -234,36 +221,11 @@ struct VoiceCaptureView: View {
                     onArchiveSession: viewModel.archiveConversationWorkspace
                 )
             } else {
-                TabView(selection: $selectedVoiceEvidenceTab) {
-                    VoiceTaskConversationWorkspaceView(
-                        viewModel: viewModel,
-                        onOpenAssistantQueue: {
-                            postAssistantQueueOpenRequest(
-                                itemID: viewModel.assistantQueueItem?.id
-                            )
-                        },
-                        onPauseSession: viewModel.pauseConversationWorkspace,
-                        onResumeSession: viewModel.resumeConversationWorkspace,
-                        onArchiveSession: viewModel.archiveConversationWorkspace
-                    )
-                    .tabItem {
-                        Label("Conversation", systemImage: "text.bubble")
-                    }
-                    .tag(VoiceEvidenceTab.conversation)
-                    .accessibilityIdentifier("voice-conversation-tab")
-
-                    quickCommandWorkspace
-                        .tabItem {
-                            Label("Quick Command", systemImage: "waveform")
-                                .accessibilityIdentifier("voice-command-quick-command-tab")
-                        }
-                        .tag(VoiceEvidenceTab.quickCommand)
-                }
-            }
-        }
-        .onAppear {
-            if VoiceVisualEvidenceSurface.resolved() == .conversation {
-                selectedVoiceEvidenceTab = .conversation
+                // Conversation remains available only for the explicit visual
+                // evidence route. The normal product surface is one Voice Quick
+                // Capture desk, so users do not have to choose between two
+                // overlapping capture implementations.
+                quickCommandWorkspace
             }
         }
         .task {
@@ -308,7 +270,7 @@ struct VoiceCaptureView: View {
                     // Structural identifiers stay on leaf headings. SwiftUI
                     // propagates container identifiers into descendants, which
                     // would hide action and mode-control identifiers from AX.
-                    Label("Voice Command", systemImage: "mic")
+                    Label("Voice Quick Capture", systemImage: "mic")
                         .font(.headline)
                         .accessibilityIdentifier("voice-command-root")
                     Spacer()
@@ -1436,11 +1398,10 @@ private struct VoiceCommandInputPrompt: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            // "Assistant Queue" is not a place the user can find: the sidebar
+            // "Pending Actions" is the place the user can find: the sidebar
             // has Today / Inbox / Projects / Review, and the queue lives two
-            // levels inside Review. Name the destination they can actually
-            // click, and keep the queue name attached to it.
-            Text("Inbox captures stay local. Plans wait in Review › Assistant Queue before execution.")
+            // levels inside Review. Name the canonical destination directly.
+            Text("Inbox captures stay local. Plans wait in Review › Pending Actions before execution.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1649,14 +1610,14 @@ private struct AssistantQueuePanel: View {
         VStack(alignment: .leading, spacing: 8) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) {
-                    Label(localizedSettingsDisplay("Assistant Queue"), systemImage: "tray.full")
+                    Label(localizedSettingsDisplay("Pending Actions"), systemImage: "tray.full")
                         .font(.subheadline)
                     queueStateLabel
                     Spacer(minLength: 8)
                     riskLabel
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Label(localizedSettingsDisplay("Assistant Queue"), systemImage: "tray.full")
+                    Label(localizedSettingsDisplay("Pending Actions"), systemImage: "tray.full")
                         .font(.subheadline)
                     HStack(spacing: 8) {
                         queueStateLabel
@@ -1728,11 +1689,11 @@ private struct AssistantQueuePanel: View {
                 Button {
                     onOpenQueue()
                 } label: {
-                    Label(localizedSettingsDisplay("Open Assistant Queue"), systemImage: "arrow.forward.circle")
+                    Label(localizedSettingsDisplay("Open Pending Actions"), systemImage: "arrow.forward.circle")
                 }
                 .buttonStyle(.borderedProminent)
                 .accessibilityIdentifier("voice-assistant-queue-open-board")
-                .accessibilityHint(localizedSettingsDisplay("Opens the Assistant Queue without running the item."))
+                .accessibilityHint(localizedSettingsDisplay("Opens Pending Actions without running the item."))
             }
         }
         .soloAssistantSignal()
@@ -1857,6 +1818,12 @@ private struct ClarificationPanel: View {
             Text(localizedSettingsDisplay(question.prompt))
                 .font(.body)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Text(localizedSettingsDisplay("One clarification is allowed. Edit the capture or save it to Inbox."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("voice-command-clarification-limit")
 
             if !turns.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
@@ -2165,7 +2132,7 @@ struct VoiceCaptureWorkspaceHost: View {
             if let viewModel {
                 VoiceCaptureView(viewModel: viewModel)
             } else {
-                ProgressView("Opening Voice Command")
+                ProgressView("Opening Voice Quick Capture")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityIdentifier("voice-capture-loading")
             }

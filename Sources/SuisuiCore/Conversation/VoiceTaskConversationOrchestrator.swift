@@ -272,10 +272,12 @@ public actor VoiceTaskConversationOrchestrator:
     private let contextAssembler: any VoiceTaskContextAssembling
     private let provider: (any LLMProvider)?
     private let validator: ActionPlanValidator
+    private let maximumClarificationTurns: Int?
     private let conversationStore:
         (any VoiceTaskConversationStore & ConversationActionLinkStore)?
     private let taskSnapshotFingerprintProvider:
         @Sendable (Int64) throws -> String?
+    private var activeInputIDs: [UUID: UUID] = [:]
     private var pendingReviewSourceTurnIDs: [UUID: UUID] = [:]
     private var pendingReviewClarificationTurns:
         [UUID: [ClarificationTurn]] = [:]
@@ -285,13 +287,15 @@ public actor VoiceTaskConversationOrchestrator:
         referenceResolver: any VoiceTaskReferenceResolving = VoiceTaskReferenceResolver(),
         contextAssembler: any VoiceTaskContextAssembling = VoiceTaskContextAssembler(),
         provider: (any LLMProvider)? = nil,
-        validator: ActionPlanValidator = ActionPlanValidator()
+        validator: ActionPlanValidator = ActionPlanValidator(),
+        maximumClarificationTurns: Int? = nil
     ) {
         self.stateStore = stateStore
         self.referenceResolver = referenceResolver
         self.contextAssembler = contextAssembler
         self.provider = provider
         self.validator = validator
+        self.maximumClarificationTurns = maximumClarificationTurns.map { max(1, $0) }
         conversationStore = nil
         taskSnapshotFingerprintProvider = { _ in nil }
     }
@@ -307,19 +311,28 @@ public actor VoiceTaskConversationOrchestrator:
         contextAssembler: any VoiceTaskContextAssembling =
             VoiceTaskContextAssembler(),
         provider: (any LLMProvider)? = nil,
-        validator: ActionPlanValidator = ActionPlanValidator()
+        validator: ActionPlanValidator = ActionPlanValidator(),
+        maximumClarificationTurns: Int? = nil
     ) {
         self.stateStore = stateStore
         self.referenceResolver = referenceResolver
         self.contextAssembler = contextAssembler
         self.provider = provider
         self.validator = validator
+        self.maximumClarificationTurns = maximumClarificationTurns.map { max(1, $0) }
         self.conversationStore = conversationStore
         self.taskSnapshotFingerprintProvider =
             taskSnapshotFingerprintProvider
     }
 
     public func handle(_ input: VoiceTaskConversationInput) async -> VoiceTaskConversationOutcome {
+        // Cancellation and replacement invalidate provider work before it can
+        // commit a checkpoint, even if the provider ignores task cancellation.
+        if case .cancel = input.event {
+            activeInputIDs.removeValue(forKey: input.sessionID)
+        } else {
+            activeInputIDs[input.sessionID] = input.sourceTurnID
+        }
         switch input.event {
         case .restore:
             do {
@@ -338,6 +351,13 @@ public actor VoiceTaskConversationOrchestrator:
                             clarificationTurns(in: state)
                     )
                     return outcome
+                }
+                // A crash can occur after the next question is checkpointed but
+                // before the UI cancels it. The durable answer trail owns this limit.
+                if let maximumClarificationTurns,
+                   clarificationTurns(in: state).count >= maximumClarificationTurns {
+                    try stateStore.remove(sessionID: input.sessionID)
+                    return .canceled
                 }
                 if state.referenceCandidates != nil {
                     return .clarification(
@@ -490,6 +510,7 @@ public actor VoiceTaskConversationOrchestrator:
                     outcome,
                     state: state,
                     sessionID: input.sessionID,
+                    inputID: input.sourceTurnID,
                     clarificationTurns: []
                 )
             }
@@ -512,6 +533,7 @@ public actor VoiceTaskConversationOrchestrator:
                 outcome,
                 state: state,
                 sessionID: input.sessionID,
+                inputID: input.sourceTurnID,
                 clarificationTurns: []
             )
         }
@@ -719,6 +741,7 @@ public actor VoiceTaskConversationOrchestrator:
                     outcome,
                     state: state,
                     sessionID: input.sessionID,
+                    inputID: input.sourceTurnID,
                     clarificationTurns: result.turns
                 )
             }
@@ -730,6 +753,7 @@ public actor VoiceTaskConversationOrchestrator:
                 outcome,
                 state: state,
                 sessionID: input.sessionID,
+                inputID: input.sourceTurnID,
                 clarificationTurns: result.turns
             )
         }
@@ -776,6 +800,7 @@ public actor VoiceTaskConversationOrchestrator:
                 outcome,
                 state: pendingState,
                 sessionID: input.sessionID,
+                inputID: input.sourceTurnID,
                 clarificationTurns:
                     pendingState.referenceClarificationTurns
             )
@@ -856,8 +881,10 @@ public actor VoiceTaskConversationOrchestrator:
         _ outcome: VoiceTaskConversationOutcome,
         state: VoiceTaskConversationOrchestrationState,
         sessionID: UUID,
+        inputID: UUID,
         clarificationTurns: [ClarificationTurn]
     ) -> VoiceTaskConversationOutcome {
+        guard activeInputIDs[sessionID] == inputID else { return .canceled }
         guard case .review(let plan) = outcome else {
             do {
                 // Terminal non-review outcomes must not retain the raw route in

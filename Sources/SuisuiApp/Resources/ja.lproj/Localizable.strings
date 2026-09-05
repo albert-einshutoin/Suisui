@@ -294,6 +294,7 @@
 "Update voice model catalog" = "音声モデルカタログを更新";
 "Voice" = "音声";
 "Voice Command" = "音声コマンド";
+"Voice Quick Capture" = "音声クイックキャプチャ";
 "Voice Capture" = "音声キャプチャ";
 "Try one of these commands" = "次のコマンドを試す";
 "Type a command, or tap the microphone above to dictate one." = "コマンドを入力するか、上のマイクをタップして音声で入力してください。";
@@ -304,10 +305,12 @@
 "Plan tomorrow: review release risks" = "明日の計画: リリースリスクを確認";
 "Inbox captures stay local. Plans wait in Assistant Queue before execution." = "Inboxキャプチャはローカルに保存されます。プランは実行前にAssistant Queueで待機します。";
 "Inbox captures stay local. Plans wait in Review › Assistant Queue before execution." = "Inboxキャプチャはローカルに保存されます。プランは実行前に「レビュー › アシスタントキュー」で待機します。";
+"Inbox captures stay local. Plans wait in Review › Pending Actions before execution." = "Inboxキャプチャはローカルに保存されます。プランは実行前に「レビュー › 保留中のアクション」で待機します。";
 "Stop recording to transcribe before Inbox capture or planning." = "Inboxキャプチャまたは計画の前に、録音を停止して文字起こししてください。";
 "Transcription is running; Save to Inbox unlocks after the recording is transcribed." = "文字起こし中です。録音の文字起こし後にInbox保存が有効になります。";
 "Plan generation is running; review appears below before execution." = "プラン生成中です。実行前のレビューが下に表示されます。";
 "Answer the clarification question before saving or generating a plan." = "保存またはプラン生成の前に、確認質問へ回答してください。";
+"One clarification is allowed. Edit the capture or save it to Inbox." = "確認は1回までです。キャプチャを編集するか、Inboxへ保存してください。";
 "Resolve the current voice warning before saving or generating a plan." = "保存またはプラン生成の前に、現在の音声警告を解消してください。";
 "Type a command or task…" = "コマンドまたはタスクを入力…";
 "Type a command to generate a plan, or record audio to save a transcript to Inbox." = "プランを生成するにはコマンドを入力し、文字起こしをInboxへ保存するには音声を録音してください。";
@@ -1067,7 +1070,9 @@
 "Approve this pending action and run it through the execution gate" = "この保留中のアクションを承認して実行ゲートを通します";
 "Records approval, then runs the reviewed action through the execution gate and records a receipt." = "承認を記録した後、確認済みのアクションを実行ゲートで実行し、レシートを記録します。";
 "Open Assistant Queue" = "アシスタントキューを開く";
+"Open Pending Actions" = "保留中のアクションを開く";
 "Opens the Assistant Queue without running the item." = "項目を実行せずにアシスタントキューを開きます。";
+"Opens Pending Actions without running the item." = "項目を実行せずに保留中のアクションを開きます。";
 "Assistant Queue item is no longer available." = "アシスタントキュー項目はもう利用できません。";
 "Assistant Queue counts" = "アシスタントキュー件数";
 "Assistant Queue is clear" = "アシスタントキューは空です";

@@ -765,7 +765,6 @@ struct ProjectBoardView: View {
 
     private var embeddedVoiceWorkspace: some View {
         VoiceCaptureWorkspaceHost()
-            .accessibilityIdentifier("board-voice-workspace")
     }
 
     private func openVoiceCommandFromBoardContext() {

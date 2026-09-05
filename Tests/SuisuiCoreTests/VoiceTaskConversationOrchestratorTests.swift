@@ -66,7 +66,7 @@ final class VoiceTaskConversationOrchestratorTests: XCTestCase {
         )
 
         let restored = await VoiceTaskConversationOrchestrator(
-            stateStore: store
+            stateStore: store, maximumClarificationTurns: 1
         ).handle(
             VoiceTaskConversationInput(
                 sessionID: initial.sessionID,

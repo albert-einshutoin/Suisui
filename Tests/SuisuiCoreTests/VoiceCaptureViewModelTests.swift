@@ -1107,6 +1107,279 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         }
     }
 
+    func testQuickCaptureStopsAfterOneClarificationWithoutCallingProvider() async {
+        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: provider,
+            maximumQuickCaptureClarificationTurns: 1
+        )
+
+        viewModel.updateDraftText("いい感じにして")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .taskTitle)
+
+        await viewModel.submitClarificationAnswer("リリースメモを書く")
+
+        XCTAssertNil(viewModel.clarificationQuestion)
+        XCTAssertEqual(viewModel.phase, .idle)
+        XCTAssertEqual(provider.requests.count, 0)
+        XCTAssertTrue(viewModel.auditErrorMessage?.contains("One clarification") == true)
+    }
+
+    func testQuickCaptureLimitClearsPersistedClarificationForTypedAndVoiceAnswers() async throws {
+        for inputMode in [ClarificationInputMode.typed, .voice] {
+            let connection = try SQLiteConnection(path: ":memory:")
+            try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+            let sessionID = UUID()
+            try SQLiteVoiceTaskConversationStore(connection: connection).createSession(
+                VoiceTaskConversationSession(id: sessionID, title: "Capture", entryPoint: .voiceCommand)
+            )
+            let stateStore = SQLiteVoiceTaskConversationOrchestrationStateStore(connection: connection)
+            let orchestrator = VoiceTaskConversationOrchestrator(stateStore: stateStore)
+            let viewModel = VoiceCaptureViewModel(
+                audioRecorder: FakeAudioRecorder(),
+                sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "リリースメモを書く")),
+                llmProvider: FakeLLMProvider(response: PlanningResponse(
+                    providerID: "unused", rawContent: "", actionPlan: nil,
+                    validationResult: ActionPlanValidationResult(issues: [])
+                )),
+                conversationOrchestrator: orchestrator,
+                conversationSessionID: sessionID,
+                maximumQuickCaptureClarificationTurns: 1
+            )
+            viewModel.updateDraftText("これ明日やって")
+            await viewModel.generatePlan()
+            XCTAssertEqual(viewModel.clarificationQuestion?.slot, .taskTitle)
+            XCTAssertNotNil(try stateStore.load(sessionID: sessionID))
+
+            if inputMode == .voice {
+                await viewModel.startRecording()
+                await viewModel.stopRecording(outputURL: URL(filePath: "/tmp/suisui-capped-clarification.m4a"))
+            } else {
+                await viewModel.submitClarificationAnswer("リリースメモを書く")
+            }
+
+            XCTAssertNil(viewModel.clarificationQuestion, "The cap must survive a recorded answer.")
+            XCTAssertNil(try stateStore.load(sessionID: sessionID), "Capped clarification must not restore later.")
+            let reopened = await VoiceTaskConversationOrchestrator(
+                stateStore: SQLiteVoiceTaskConversationOrchestrationStateStore(connection: connection)
+            ).handle(VoiceTaskConversationInput(sessionID: sessionID, sourceTurnID: UUID(), event: .restore))
+            XCTAssertEqual(reopened, .canceled)
+        }
+    }
+
+    func testQuickCaptureInitialBeginIsCanceledWhenInputChangesBeforeFirstQuestion() async {
+        let gate = VoicePlanningGate()
+        let orchestrator = RecordingVoiceConversationOrchestrator(
+            outcomes: [.clarification(ClarificationQuestion(slot: .taskTitle, prompt: "Task?")), .canceled],
+            beginGate: gate
+        )
+        let sessionID = UUID()
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(), sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(providerID: "unused", rawContent: "", actionPlan: nil, validationResult: ActionPlanValidationResult(issues: []))),
+            conversationOrchestrator: orchestrator, conversationSessionID: sessionID,
+            maximumQuickCaptureClarificationTurns: 1
+        )
+        viewModel.updateDraftText("これ明日やって")
+        let generation = Task { await viewModel.generatePlan() }
+        await gate.waitUntilRequestReceived()
+        viewModel.updateDraftText("新しい入力")
+        await gate.release()
+        await generation.value
+        await viewModel.restoreConversationIfNeeded()
+        let events = await orchestrator.recordedEvents
+        XCTAssertTrue(events.contains(.cancel(sessionID: sessionID)))
+        XCTAssertNil(viewModel.clarificationQuestion)
+    }
+
+    func testCanceledProviderCannotCommitOverAReplacementConversationCheckpoint() async throws {
+        for replacesCheckpoint in [false, true] {
+            let connection = try SQLiteConnection(path: ":memory:")
+            try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+            let sessionID = UUID()
+            try SQLiteVoiceTaskConversationStore(connection: connection).createSession(VoiceTaskConversationSession(id: sessionID, title: "Capture", entryPoint: .voiceCommand))
+            let store = SQLiteVoiceTaskConversationOrchestrationStateStore(connection: connection)
+            let gate = VoicePlanningGate()
+            let plan = ActionPlan(id: "old-plan", userInput: "old", summary: "Old", actions: [PlanAction(id: "a", tool: .taskCreate)], riskLevel: .write, requiresApproval: true)
+            let provider = DelayedRecordingVoiceLLMProvider(gate: gate, response: PlanningResponse(providerID: "fake", rawContent: "", actionPlan: plan, validationResult: ActionPlanValidationResult(issues: [])))
+            let orchestrator = VoiceTaskConversationOrchestrator(stateStore: store, provider: provider)
+            let input = VoiceTaskConversationInput(sessionID: sessionID, sourceTurnID: UUID(), event: .begin(
+                route: VoiceCommandRoutingResult(originalTranscript: "old", normalizedTranscript: "old", intent: .taskCreate, interpretationSummary: "Old", confidence: 1, decision: .reviewOnly),
+                requiredSlots: [], intents: [], referenceRequest: nil, localAnswerItems: []))
+            let oldRequest = Task { await orchestrator.handle(input) }
+            await gate.waitUntilRequestReceived()
+            _ = await orchestrator.handle(VoiceTaskConversationInput(sessionID: sessionID, sourceTurnID: UUID(), event: .cancel))
+            let replacementID = UUID()
+            if replacesCheckpoint {
+                _ = await orchestrator.handle(VoiceTaskConversationInput(sessionID: sessionID, sourceTurnID: replacementID, event: .begin(
+                    route: VoiceCommandRouter().route(transcript: "新しい入力"), requiredSlots: [.taskTitle], intents: [], referenceRequest: nil, localAnswerItems: [])))
+            }
+            await gate.release()
+            let staleOutcome = await oldRequest.value
+            XCTAssertEqual(staleOutcome, .canceled)
+            XCTAssertEqual(try store.load(sessionID: sessionID)?.originalSourceTurnID, replacesCheckpoint ? replacementID : nil)
+        }
+    }
+
+    func testQuickCaptureCannotPublishProvisionalReviewAfterInputReplacement() async throws {
+        let gate = VoicePlanningGate()
+        let plan = ActionPlan(id: "old-plan", userInput: "old", summary: "Old task", actions: [PlanAction(id: "a", tool: .taskCreate)], riskLevel: .write, requiresApproval: true)
+        let orchestrator = RecordingReviewPersistingConversationOrchestrator(outcomes: [.review(plan), .canceled], persistenceGate: gate)
+        let queueStore = RecordingAssistantQueueStore()
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(), sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(providerID: "unused", rawContent: "", actionPlan: nil, validationResult: ActionPlanValidationResult(issues: []))),
+            assistantQueueStore: queueStore, conversationOrchestrator: orchestrator, conversationSessionID: UUID(),
+            maximumQuickCaptureClarificationTurns: 1
+        )
+        viewModel.updateDraftText("これ明日やって")
+        let generation = Task { await viewModel.generatePlan() }
+        await gate.waitUntilRequestReceived()
+        let provisional = try XCTUnwrap(queueStore.savedItems.first)
+        XCTAssertEqual(provisional.state, .blocked)
+        viewModel.updateDraftText("新しい入力")
+        await gate.release()
+        await generation.value
+        XCTAssertEqual(try queueStore.get(id: provisional.id).state, .rejected)
+        XCTAssertNil(viewModel.assistantQueueItem)
+    }
+
+    func testQuickCaptureIgnoresOldAnswerAndResolutionAfterDraftReplacement() async {
+        let question = ClarificationQuestion(slot: .project, prompt: "Project?")
+        let plan = ActionPlan(id: "old-plan", userInput: "old", summary: "Old task", actions: [PlanAction(id: "a", tool: .taskCreate)], riskLevel: .write, requiresApproval: true)
+        for outcome in [VoiceTaskConversationOutcome.clarification(question), .review(plan)] {
+            for waitsDuringResolution in [false, true] {
+                let gate = VoicePlanningGate()
+                let orchestrator = SuspendingAnswerVoiceConversationOrchestrator(
+                    gate: gate, outcome: outcome, waitsDuringResolution: waitsDuringResolution
+                )
+                let viewModel = VoiceCaptureViewModel(
+                    audioRecorder: FakeAudioRecorder(),
+                    sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+                    llmProvider: FakeLLMProvider(response: PlanningResponse(providerID: "unused", rawContent: "", actionPlan: nil, validationResult: ActionPlanValidationResult(issues: []))),
+                    conversationOrchestrator: orchestrator,
+                    conversationSessionID: UUID(),
+                    maximumQuickCaptureClarificationTurns: 1
+                )
+                viewModel.updateDraftText("これ明日やって")
+                await viewModel.generatePlan()
+                let answerTask = Task { await viewModel.submitClarificationAnswer("リリースメモを書く") }
+                await gate.waitUntilRequestReceived()
+                viewModel.updateDraftText("別の仕事を整理する")
+                await gate.release()
+                await answerTask.value
+                XCTAssertEqual(viewModel.draft.text, "別の仕事を整理する")
+                XCTAssertNil(viewModel.clarificationQuestion)
+                XCTAssertNil(viewModel.planningResponse)
+                XCTAssertNil(viewModel.assistantQueueItem)
+                XCTAssertEqual(viewModel.phase, .idle)
+            }
+        }
+    }
+
+    func testQuickCaptureRestoreDoesNotShowAnAlreadyAnsweredSecondQuestion() async throws {
+        for removalFails in [false, true] {
+            let connection = try SQLiteConnection(path: ":memory:")
+            try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+            let sessionID = UUID()
+            try SQLiteVoiceTaskConversationStore(connection: connection).createSession(
+                VoiceTaskConversationSession(id: sessionID, title: "Interrupted capture", entryPoint: .voiceCommand)
+            )
+            let store = SQLiteVoiceTaskConversationOrchestrationStateStore(connection: connection)
+            let oldProcess = VoiceTaskConversationOrchestrator(stateStore: store)
+            _ = await oldProcess.handle(VoiceTaskConversationInput(
+                sessionID: sessionID, sourceTurnID: UUID(),
+                event: .begin(route: VoiceCommandRouter().route(transcript: "これ明日やって"), requiredSlots: [.taskTitle, .project], intents: [], referenceRequest: nil, localAnswerItems: [])
+            ))
+            let firstQuestion = await VoiceTaskConversationOrchestrator(stateStore: store, maximumClarificationTurns: 1)
+                .handle(VoiceTaskConversationInput(sessionID: sessionID, sourceTurnID: UUID(), event: .restore))
+            guard case .clarification = firstQuestion else { return XCTFail("The unanswered first question must restore.") }
+            _ = await oldProcess.handle(VoiceTaskConversationInput(sessionID: sessionID, sourceTurnID: UUID(), event: .clarificationAnswer("リリースメモを書く")))
+            XCTAssertEqual(try store.load(sessionID: sessionID)?.clarification.turns.count, 1)
+            let viewModel = VoiceCaptureViewModel(
+                audioRecorder: FakeAudioRecorder(),
+                sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+                llmProvider: FakeLLMProvider(response: PlanningResponse(providerID: "unused", rawContent: "", actionPlan: nil, validationResult: ActionPlanValidationResult(issues: []))),
+                conversationOrchestrator: VoiceTaskConversationOrchestrator(stateStore: store, maximumClarificationTurns: 1),
+                conversationSessionID: sessionID,
+                maximumQuickCaptureClarificationTurns: 1
+            )
+            if removalFails {
+                try connection.execute("""
+                    CREATE TRIGGER deny_cancel BEFORE DELETE ON voice_task_conversation_orchestration_states
+                    BEGIN SELECT RAISE(ABORT, 'test cancellation failure'); END;
+                    """)
+            }
+            await viewModel.restoreConversationIfNeeded()
+            XCTAssertNil(viewModel.clarificationQuestion)
+            if removalFails {
+                guard case .failed = viewModel.phase else { return XCTFail("A failed restore cancellation must stay blocked.") }
+                XCTAssertNotNil(try store.load(sessionID: sessionID))
+            } else {
+                XCTAssertNil(try store.load(sessionID: sessionID))
+            }
+        }
+    }
+
+
+    func testQuickCaptureCancellationDoesNotFinishAReplacementDraft() async {
+        let orchestrator = SuspendingCancelVoiceConversationOrchestrator()
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "unused", rawContent: "", actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            )),
+            conversationOrchestrator: orchestrator,
+            conversationSessionID: UUID(),
+            maximumQuickCaptureClarificationTurns: 1
+        )
+        viewModel.updateDraftText("これ明日やって")
+        await viewModel.generatePlan()
+        let answerTask = Task { await viewModel.submitClarificationAnswer("リリースメモを書く") }
+        await orchestrator.waitUntilCancelStarts()
+        viewModel.updateDraftText("別の仕事を整理する")
+        await orchestrator.resumeCancel()
+        await answerTask.value
+        XCTAssertEqual(viewModel.draft.text, "別の仕事を整理する")
+        XCTAssertNil(viewModel.auditErrorMessage)
+        XCTAssertNil(viewModel.inboxCaptureResult)
+    }
+
+    func testQuickCaptureCancellationFailureDoesNotReportCaptureCompleted() async {
+        let question = ClarificationQuestion(slot: .taskTitle, prompt: "Task?")
+        let orchestrator = RecordingVoiceConversationOrchestrator(outcomes: [
+            .clarification(question), .clarification(question), .blocked(.persistenceUnavailable)
+        ])
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "unused", rawContent: "", actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            )),
+            conversationOrchestrator: orchestrator,
+            conversationSessionID: UUID(),
+            maximumQuickCaptureClarificationTurns: 1
+        )
+        viewModel.updateDraftText("これ明日やって")
+        await viewModel.generatePlan()
+        await viewModel.submitClarificationAnswer("リリースメモを書く")
+        guard case .failed = viewModel.phase else {
+            return XCTFail("A failed checkpoint cancellation must not report success.")
+        }
+        XCTAssertNil(viewModel.inboxCaptureResult)
+    }
+
     func testUnsafeExternalSendCommandCreatesBlockedGateWithoutProviderCall() async throws {
         let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
             providerID: "fake",
@@ -4149,10 +4422,12 @@ private actor RecordingVoiceConversationOrchestrator:
         case cancel(sessionID: UUID)
     }
 
+    private let beginGate: VoicePlanningGate?
     private var outcomes: [VoiceTaskConversationOutcome]
     private(set) var recordedEvents: [RecordedEvent] = []
 
-    init(outcomes: [VoiceTaskConversationOutcome]) {
+    init(outcomes: [VoiceTaskConversationOutcome], beginGate: VoicePlanningGate? = nil) {
+        self.beginGate = beginGate
         self.outcomes = outcomes
     }
 
@@ -4174,7 +4449,51 @@ private actor RecordingVoiceConversationOrchestrator:
         guard !outcomes.isEmpty else {
             return .blocked(.missingClarificationState)
         }
-        return outcomes.removeFirst()
+        let outcome = outcomes.removeFirst()
+        if case .begin = input.event, let beginGate {
+            await beginGate.markRequestReceived()
+            await beginGate.waitForRelease()
+        }
+        return outcome
+    }
+}
+
+private actor SuspendingAnswerVoiceConversationOrchestrator:
+    VoiceTaskConversationOrchestrating, VoiceTaskConversationResolutionReporting
+{
+    let gate: VoicePlanningGate
+    let outcome: VoiceTaskConversationOutcome
+    let waitsDuringResolution: Bool
+    var answered = false
+
+    init(gate: VoicePlanningGate, outcome: VoiceTaskConversationOutcome, waitsDuringResolution: Bool) {
+        self.gate = gate
+        self.outcome = outcome
+        self.waitsDuringResolution = waitsDuringResolution
+    }
+
+    func handle(_ input: VoiceTaskConversationInput) async -> VoiceTaskConversationOutcome {
+        switch input.event {
+        case .begin:
+            return .clarification(ClarificationQuestion(slot: .taskTitle, prompt: "Task?"))
+        case .clarificationAnswer:
+            answered = true
+            if !waitsDuringResolution {
+                await gate.markRequestReceived()
+                await gate.waitForRelease()
+            }
+            return outcome
+        case .restore, .cancel:
+            return .canceled
+        }
+    }
+
+    func resolvedReference(sessionID: UUID) async -> VoiceTaskConversationResolvedReference? {
+        if answered && waitsDuringResolution {
+            await gate.markRequestReceived()
+            await gate.waitForRelease()
+        }
+        return nil
     }
 }
 
@@ -4209,7 +4528,9 @@ private actor SuspendingCancelVoiceConversationOrchestrator:
             }
             activeCheckpointTranscript = nil
             return .canceled
-        case .restore, .clarificationAnswer:
+        case .clarificationAnswer:
+            return .clarification(ClarificationQuestion(slot: .project, prompt: "Project?"))
+        case .restore:
             return .blocked(.missingClarificationState)
         }
     }
@@ -4271,6 +4592,7 @@ private actor RecordingReviewPersistingConversationOrchestrator:
         let queueItem: AssistantQueueItem
     }
 
+    private let persistenceGate: VoicePlanningGate?
     private var outcomes: [VoiceTaskConversationOutcome]
     private(set) var persistedReviews: [PersistedReview] = []
     private var failedAcknowledgements: Int
@@ -4278,8 +4600,10 @@ private actor RecordingReviewPersistingConversationOrchestrator:
 
     init(
         outcomes: [VoiceTaskConversationOutcome],
-        failedAcknowledgements: Int = 0
+        failedAcknowledgements: Int = 0,
+        persistenceGate: VoicePlanningGate? = nil
     ) {
+        self.persistenceGate = persistenceGate
         self.outcomes = outcomes
         self.failedAcknowledgements = failedAcknowledgements
     }
@@ -4300,7 +4624,11 @@ private actor RecordingReviewPersistingConversationOrchestrator:
         plan: ActionPlan,
         queueItem: AssistantQueueItem,
         at _: Date
-    ) throws {
+    ) async throws {
+        if let persistenceGate {
+            await persistenceGate.markRequestReceived()
+            await persistenceGate.waitForRelease()
+        }
         persistedReviews.append(
             PersistedReview(
                 sessionID: sessionID,

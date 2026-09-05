@@ -21,7 +21,6 @@ extension AppRuntimeFactory {
         var inboxCaptureService: InboxVoiceCaptureService?
         var developmentProjectProvider: () -> ProjectRecord? = { nil }
         var workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])?
-        var taskDeleter: (@Sendable (Int64) throws -> Void)?
         var runtimeValidationMessage: String?
         var initialFailureMessage: String?
         do {
@@ -55,7 +54,8 @@ extension AppRuntimeFactory {
                         try taskStore.get(id: taskID)
                     )
                 },
-                provider: llmProvider
+                provider: llmProvider,
+                maximumClarificationTurns: 1
             )
             let projectBoardStore = SQLiteProjectBoardStore(connection: connection)
             let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)
@@ -81,11 +81,6 @@ extension AppRuntimeFactory {
             )
             workspaceContextRetriever = { question in
                 try questionRetriever.retrieve(question: question)
-            }
-            let undoTaskStore = SQLiteTaskStore(connection: connection)
-            taskDeleter = { taskID in
-                _ = try undoTaskStore.delete(id: taskID)
-                NotificationCenter.default.post(name: .suisuiProjectBoardDidChange, object: nil)
             }
             runtimeValidationMessage = nil
             initialFailureMessage = settingsResult.errorMessage
@@ -114,11 +109,7 @@ extension AppRuntimeFactory {
             workspaceAnswerReadout: { answer in
                 speakWorkspaceAnswer(answer)
             },
-            taskAutomationSettingsProvider: { loadRuntimeSettings().settings.taskAutoExecution },
-            lowRiskTaskAutoExecutor: { plan in
-                try await executeLowRiskAutoCreation(plan: plan)
-            },
-            taskDeleter: taskDeleter
+            maximumQuickCaptureClarificationTurns: 1
         )
         if let conversationStore {
             viewModel.configureConversationWorkspace(
@@ -156,45 +147,6 @@ extension AppRuntimeFactory {
             forKey: "suisui.voiceConversationSessionID"
         )
         return id
-    }
-
-    /// Runs an opt-in auto-create plan through the exact ReviewSession pipeline
-    /// used by manual review (`makeReviewSessionViewModel`): the same
-    /// ActionExecutor, tool registry, audit logging, and execution receipts.
-    /// The only difference is that the approval token is granted
-    /// programmatically because the low-risk auto-create policy already gated
-    /// the plan to a single validated `task.create` action.
-    @MainActor
-    private static func executeLowRiskAutoCreation(plan: ActionPlan) throws -> LowRiskAutoCreationOutcome {
-        let reviewViewModel = makeReviewSessionViewModel(plan: plan)
-        if reviewViewModel.session.canApprove {
-            try reviewViewModel.approve()
-        }
-        try reviewViewModel.execute()
-        let session = reviewViewModel.session
-        guard session.executionStatus == .completed else {
-            throw LowRiskAutoCreationError.executionFailed(
-                reviewViewModel.errorMessage ?? "Low-risk task auto-creation did not complete."
-            )
-        }
-
-        let executedItem = session.enabledItems.first
-        var taskID: Int64?
-        if case .number(let value)? = executedItem?.result?.output["taskId"] {
-            taskID = Int64(value)
-        }
-        let taskTitle: String
-        if case .string(let title)? = executedItem?.editedAction.arguments["title"] {
-            taskTitle = title
-        } else {
-            taskTitle = plan.summary
-        }
-        NotificationCenter.default.post(name: .suisuiProjectBoardDidChange, object: nil)
-        return LowRiskAutoCreationOutcome(
-            taskID: taskID,
-            taskTitle: taskTitle,
-            summaryMessage: executedItem?.result?.summary ?? "Task created"
-        )
     }
 
     /// Speaks a workspace answer with the same local TTS preview machinery as

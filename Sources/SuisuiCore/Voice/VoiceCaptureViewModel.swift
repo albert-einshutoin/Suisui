@@ -153,6 +153,10 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private let managedCostRateCardProvider: @Sendable (PlanningResponse) -> AssistantQueueCostRateCard?
     private let workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])?
     private let workspaceAnswerReadout: (@Sendable (String) -> Void)?
+    /// Quick Capture can opt into a bounded clarification loop. nil keeps
+    /// the legacy Conversation workspace contract, which may ask more than
+    /// one scoped question.
+    private let maximumQuickCaptureClarificationTurns: Int?
     private let taskAutomationSettingsProvider: (@Sendable () -> TaskAutoExecutionSettings)?
     private let lowRiskTaskAutoExecutor: (@Sendable (ActionPlan) async throws -> LowRiskAutoCreationOutcome)?
     private let taskDeleter: (@Sendable (Int64) throws -> Void)?
@@ -174,7 +178,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private var microphoneSilenceDetector: MicrophoneSilenceDetector
     private var inputLevelMonitorTask: Task<Void, Never>?
     private var activeConversationSourceTurnID: UUID?
-    private var conversationCancellationTask: Task<Void, Never>?
+    private var clarificationQuestionCount = 0
+    private var conversationCancellationTask: Task<VoiceTaskConversationOutcome, Never>?
     private var conversationWorkspaceStore: (any VoiceTaskConversationStore)?
     private var conversationWorkspaceTurnCursor:
         VoiceTaskConversationTurnCursor?
@@ -208,6 +213,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         managedCostRateCardProvider: @escaping @Sendable (PlanningResponse) -> AssistantQueueCostRateCard? = { _ in nil },
         workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])? = nil,
         workspaceAnswerReadout: (@Sendable (String) -> Void)? = nil,
+        maximumQuickCaptureClarificationTurns: Int? = nil,
         taskAutomationSettingsProvider: (@Sendable () -> TaskAutoExecutionSettings)? = nil,
         lowRiskTaskAutoExecutor: (@Sendable (ActionPlan) async throws -> LowRiskAutoCreationOutcome)? = nil,
         taskDeleter: (@Sendable (Int64) throws -> Void)? = nil,
@@ -242,6 +248,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.managedCostRateCardProvider = managedCostRateCardProvider
         self.workspaceContextRetriever = workspaceContextRetriever
         self.workspaceAnswerReadout = workspaceAnswerReadout
+        self.maximumQuickCaptureClarificationTurns = maximumQuickCaptureClarificationTurns.map { max(1, $0) }
         self.taskAutomationSettingsProvider = taskAutomationSettingsProvider
         self.lowRiskTaskAutoExecutor = lowRiskTaskAutoExecutor
         self.taskDeleter = taskDeleter
@@ -267,6 +274,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.savedInboxSourceAudioURL = nil
         self.lowLatencyStreamID = UUID()
         self.activeConversationSourceTurnID = nil
+        self.clarificationQuestionCount = 0
         self.conversationCancellationTask = nil
     }
 
@@ -287,6 +295,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         managedCostRateCardProvider: @escaping @Sendable (PlanningResponse) -> AssistantQueueCostRateCard? = { _ in nil },
         workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])? = nil,
         workspaceAnswerReadout: (@Sendable (String) -> Void)? = nil,
+        maximumQuickCaptureClarificationTurns: Int? = nil,
         taskAutomationSettingsProvider: (@Sendable () -> TaskAutoExecutionSettings)? = nil,
         lowRiskTaskAutoExecutor: (@Sendable (ActionPlan) async throws -> LowRiskAutoCreationOutcome)? = nil,
         taskDeleter: (@Sendable (Int64) throws -> Void)? = nil,
@@ -319,6 +328,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             managedCostRateCardProvider: managedCostRateCardProvider,
             workspaceContextRetriever: workspaceContextRetriever,
             workspaceAnswerReadout: workspaceAnswerReadout,
+            maximumQuickCaptureClarificationTurns: maximumQuickCaptureClarificationTurns,
             taskAutomationSettingsProvider: taskAutomationSettingsProvider,
             lowRiskTaskAutoExecutor: lowRiskTaskAutoExecutor,
             taskDeleter: taskDeleter,
@@ -705,17 +715,19 @@ public final class VoiceCaptureViewModel: ObservableObject {
             return
         }
         await waitForPendingConversationCancellation()
+        let sourceTurnID = UUID()
+        activeConversationSourceTurnID = sourceTurnID
         let outcome = await conversationOrchestrator.handle(
             VoiceTaskConversationInput(
                 sessionID: conversationSessionID,
-                sourceTurnID: UUID(),
+                sourceTurnID: sourceTurnID,
                 event: .restore
             )
         )
         if case .canceled = outcome {
             return
         }
-        await applyConversationOutcome(outcome)
+        await applyConversationOutcome(outcome, sourceTurnID: sourceTurnID)
     }
 
     public func updateDraftText(_ text: String) {
@@ -730,6 +742,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         clarificationSession = nil
         cancelOrchestratedClarificationIfNeeded()
         activeConversationSourceTurnID = nil
+        clarificationQuestionCount = 0
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
@@ -760,6 +773,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         clarificationSession = nil
         cancelOrchestratedClarificationIfNeeded()
         activeConversationSourceTurnID = nil
+        clarificationQuestionCount = 0
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
@@ -876,6 +890,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
         removeUnsavedTemporaryRecording()
         recordedAudio = nil
         lastTranscribedAudioURL = nil
+        if clarificationQuestion == nil {
+            clarificationQuestionCount = 0
+        }
         do {
             try await audioRecorder.start(at: date)
             recordingState = audioRecorder.state
@@ -902,6 +919,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             draft = TranscriptDraft(text: transcript.text)
             planningResponse = nil
             clarificationSession = nil
+            clarificationQuestionCount = 0
             assistantQueueItem = nil
             dailyPlanningReviewRequest = nil
             inboxTriageRequest = nil
@@ -989,7 +1007,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                             )
                         )
                     )
-                    await applyConversationOutcome(outcome)
+                    await applyConversationOutcome(outcome, sourceTurnID: sourceTurnID)
                     return
                 }
             } catch {
@@ -1036,7 +1054,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                         )
                     )
                 )
-                await applyConversationOutcome(outcome)
+                await applyConversationOutcome(outcome, sourceTurnID: sourceTurnID)
             } else {
                 beginClarification(for: routedCommand)
             }
@@ -1135,6 +1153,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         if let conversationOrchestrator,
            orchestratedClarificationQuestion != nil
         {
+            guard let sourceTurnID = activeConversationSourceTurnID else { return }
             let outcome = await conversationOrchestrator.handle(
                 VoiceTaskConversationInput(
                     sessionID: conversationSessionID,
@@ -1145,7 +1164,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                     availableTools: availableTools
                 )
             )
-            await applyConversationOutcome(outcome)
+            await applyConversationOutcome(outcome, sourceTurnID: sourceTurnID)
             return
         }
         guard var session = clarificationSession else {
@@ -1155,6 +1174,14 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
         switch session.answer(answer, inputMode: inputMode) {
         case .needsClarification:
+            let acceptedTurnCount = session.turns.count
+            if let maximum = maximumQuickCaptureClarificationTurns,
+               acceptedTurnCount >= maximum
+            {
+                clarificationSession = session
+                finishUnresolvedQuickCapture()
+                return
+            }
             clarificationSession = session
             phase = .needsClarification(session.currentQuestion?.prompt ?? "Voice command needs clarification.")
         case .resolved:
@@ -1268,6 +1295,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
     public func cancelClarification() {
         clarificationSession = nil
+        clarificationQuestionCount = 0
         cancelOrchestratedClarificationIfNeeded()
         if case .needsClarification = phase {
             phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
@@ -1327,18 +1355,40 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private func beginClarification(for route: VoiceCommandRoutingResult) {
         let session = ClarificationSession(route: route)
         clarificationSession = session
+        clarificationQuestionCount = 1
         phase = .needsClarification(session.currentQuestion?.prompt ?? route.clarificationReason ?? "Voice command needs clarification.")
     }
 
+    private func finishUnresolvedQuickCapture() {
+        clarificationSession = nil
+        orchestratedClarificationQuestion = nil
+        activeConversationSourceTurnID = nil
+        planningResponse = nil
+        assistantQueueItem = nil
+        dailyPlanningReviewRequest = nil
+        inboxTriageRequest = nil
+        developmentPullRequestAutomationRequest = nil
+        if canSaveDraftToInbox {
+            saveDraftToInbox()
+            if inboxCaptureResult != nil {
+                phase = .reviewReady
+                auditErrorMessage = "Clarification limit reached; the capture was saved to Inbox for later triage."
+                return
+            }
+        }
+        phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
+        auditErrorMessage = "One clarification is allowed. Edit the capture or save it to Inbox."
+    }
+
     private func applyConversationOutcome(
-        _ outcome: VoiceTaskConversationOutcome
+        _ outcome: VoiceTaskConversationOutcome,
+        sourceTurnID: UUID
     ) async {
-        if let reporter = conversationOrchestrator
-            as? any VoiceTaskConversationResolutionReporting,
-           let resolved = await reporter.resolvedReference(
-               sessionID: conversationSessionID
-           )
-        {
+        guard activeConversationSourceTurnID == sourceTurnID else { return }
+        let reporter = conversationOrchestrator as? any VoiceTaskConversationResolutionReporting
+        let resolved = await reporter?.resolvedReference(sessionID: conversationSessionID)
+        guard activeConversationSourceTurnID == sourceTurnID else { return }
+        if let resolved {
             conversationWorkspaceResolvedTarget = .init(
                 title: resolved.candidate.title,
                 reason: resolved.reason
@@ -1348,11 +1398,29 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
         switch outcome {
         case .clarification(let question):
+            if let maximum = maximumQuickCaptureClarificationTurns,
+               clarificationQuestionCount >= maximum
+            {
+                // Cancel the persisted checkpoint before claiming that this capture
+                // has finished; reopening the window must not restore another question.
+                orchestratedClarificationQuestion = question
+                cancelOrchestratedClarificationIfNeeded()
+                let cancellation = await waitForPendingConversationCancellation()
+                guard activeConversationSourceTurnID == sourceTurnID else { return }
+                guard cancellation == .canceled else {
+                    phase = .failed("Voice conversation could not be canceled safely. Please try again.")
+                    return
+                }
+                finishUnresolvedQuickCapture()
+                return
+            }
             conversationWorkspaceLocalAnswerItems = []
             clarificationSession = nil
             orchestratedClarificationQuestion = question
+            clarificationQuestionCount += 1
             phase = .needsClarification(question.prompt)
         case .review(let plan):
+            clarificationQuestionCount = 0
             conversationWorkspaceLocalAnswerItems = []
             orchestratedClarificationQuestion = nil
             let validation = ActionPlanValidator().validate(plan)
@@ -1382,12 +1450,15 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 let persisted =
                     try await persistConversationQueueItemWithLink(
                     plan: plan,
+                    sourceTurnID: sourceTurnID,
                     queueItem: queueItem,
                     at: Date()
                 )
+                guard activeConversationSourceTurnID == sourceTurnID else { return }
                 assistantQueueItem = persisted
                 phase = .reviewReady
             } catch {
+                guard activeConversationSourceTurnID == sourceTurnID else { return }
                 blockConversationQueueItemAfterLinkFailure()
                 phase = .failed(
                     "Voice review could not be linked to durable execution evidence."
@@ -1422,7 +1493,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     }
 
     private func cancelOrchestratedClarificationIfNeeded() {
-        guard orchestratedClarificationQuestion != nil,
+        guard orchestratedClarificationQuestion != nil || activeConversationSourceTurnID != nil,
               let conversationOrchestrator
         else {
             orchestratedClarificationQuestion = nil
@@ -1432,8 +1503,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         let sessionID = conversationSessionID
         let precedingCancellation = conversationCancellationTask
         conversationCancellationTask = Task {
-            await precedingCancellation?.value
-            _ = await conversationOrchestrator.handle(
+            _ = await precedingCancellation?.value
+            return await conversationOrchestrator.handle(
                 VoiceTaskConversationInput(
                     sessionID: sessionID,
                     sourceTurnID: UUID(),
@@ -1443,11 +1514,12 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
     }
 
-    private func waitForPendingConversationCancellation() async {
+    @discardableResult
+    private func waitForPendingConversationCancellation() async -> VoiceTaskConversationOutcome? {
         // Editing stays synchronous for responsive typing, while a replacement
         // command must wait here so an older unstructured cancel cannot erase
         // the replacement checkpoint after it has been persisted.
-        await conversationCancellationTask?.value
+        return await conversationCancellationTask?.value
     }
 
     private func handleLowLatencyStreamingEvent(
@@ -2084,6 +2156,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         availableTools: [ActionTool],
         knowledgeFrameCandidates: [KnowledgeFrameCandidate]
     ) async {
+        let sourceTurnID = activeConversationSourceTurnID
         let request = PlanningRequest(
             userInput: routedCommand.planningInput,
             currentDate: currentDate,
@@ -2143,6 +2216,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                     let persisted =
                         try await persistConversationQueueItemWithLink(
                         plan: plan,
+                        sourceTurnID: sourceTurnID,
                         queueItem: queueItem,
                         at: currentDate
                     )
@@ -2318,6 +2392,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
     private func persistConversationReviewLink(
         plan: ActionPlan,
+        sourceTurnID: UUID,
         queueItem: AssistantQueueItem,
         at date: Date
     ) async throws {
@@ -2326,7 +2401,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         else {
             return
         }
-        let sourceTurnID = activeConversationSourceTurnID ?? UUID()
+        guard activeConversationSourceTurnID == sourceTurnID else { throw CancellationError() }
         try await persister.persistReviewLink(
             sessionID: conversationSessionID,
             fallbackSourceTurnID: sourceTurnID,
@@ -2335,6 +2410,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             queueItem: queueItem,
             at: date
         )
+        guard activeConversationSourceTurnID == sourceTurnID else { throw CancellationError() }
         if conversationWorkspaceStore != nil {
             do {
                 try reloadConversationWorkspaceTurns()
@@ -2348,6 +2424,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
     private func persistConversationQueueItemWithLink(
         plan: ActionPlan,
+        sourceTurnID: UUID?,
         queueItem: AssistantQueueItem,
         at date: Date
     ) async throws -> AssistantQueueItem {
@@ -2357,6 +2434,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
         guard conversationOrchestrator != nil else {
             return try persistNewAssistantQueueItemIfNeeded(queueItem)
         }
+        guard let sourceTurnID, activeConversationSourceTurnID == sourceTurnID else {
+            throw CancellationError()
+        }
         // Conversation Turns are the retention-controlled source of raw STT.
         // The durable Queue keeps the reviewed semantics but must not become a
         // second, indefinitely retained copy of speech the user never confirmed.
@@ -2365,6 +2445,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         guard let assistantQueueStore else {
             try await persistConversationReviewLink(
                 plan: plan,
+                sourceTurnID: sourceTurnID,
                 queueItem: conversationQueueItem,
                 at: date
             )
@@ -2398,14 +2479,17 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 ) else {
                     throw AssistantQueueStaleReviewError()
                 }
+                guard activeConversationSourceTurnID == sourceTurnID else { throw CancellationError() }
                 try await acknowledgeConversationReviewPublication()
                 return persistedItem
             }
             try await persistConversationReviewLink(
                 plan: plan,
+                sourceTurnID: sourceTurnID,
                 queueItem: persistedItem,
                 at: date
             )
+            guard activeConversationSourceTurnID == sourceTurnID else { throw CancellationError() }
             guard let expectedRevision =
                 persistedItem.mutationRevision
             else {
@@ -2434,7 +2518,27 @@ public final class VoiceCaptureViewModel: ObservableObject {
             try await acknowledgeConversationReviewPublication()
             return published
         } catch {
-            blockConversationQueueItemAfterLinkFailure()
+            if activeConversationSourceTurnID != sourceTurnID {
+                if !persistence.isAlreadyPublished {
+                    // Only this request's still-blocked provisional row can be
+                    // rejected. Never mutate a concurrently approved/replaced row.
+                    _ = try assistantQueueStore.transition(id: persistedItem.id) { current in
+                        guard current.mutationRevision == persistedItem.mutationRevision,
+                              current.state == .blocked,
+                              current.approval == nil,
+                              current.blockingReason == Self.pendingConversationEvidenceBlockingReason,
+                              current.contentFingerprint == persistedItem.contentFingerprint else {
+                            throw AssistantQueueStaleReviewError()
+                        }
+                        var canceled = current
+                        canceled.state = .rejected
+                        canceled.blockingReason = nil
+                        return canceled
+                    }
+                }
+            } else {
+                blockConversationQueueItemAfterLinkFailure()
+            }
             throw error
         }
     }
