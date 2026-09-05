@@ -123,15 +123,43 @@ let sizeStatus = AXUIElementSetAttributeValue(
     sizeValue
 )
 
-let sizeRequestWasRejected = sizeStatus == .cannotComplete
-guard positionStatus == .success, sizeStatus == .success || sizeRequestWasRejected else {
+let sizeRequestCompletionUnconfirmed = sizeStatus == .cannotComplete
+guard positionStatus == .success, sizeStatus == .success || sizeRequestCompletionUnconfirmed else {
     fputs("AX resize failed (position=\(positionStatus.rawValue), size=\(sizeStatus.rawValue)).\n", stderr)
     exit(1)
 }
 
-guard let finalPosition = point(from: copyAttribute(targetWindow, kAXPositionAttribute as CFString)),
-      let finalSize = size(from: copyAttribute(targetWindow, kAXSizeAttribute as CFString)) else {
-    fputs("Could not read the resized AX window frame.\n", stderr)
+// AppKit can remain busy while applying its minimum-size constraint. Retry only
+// messaging failures on the original window; invalid references stay failures.
+let readDeadline = ProcessInfo.processInfo.systemUptime + 5
+var finalPosition: CGPoint?
+var finalSize: CGSize?
+repeat {
+    AXUIElementSetMessagingTimeout(targetWindow, 0.25)
+    var positionValue: CFTypeRef?
+    var sizeValue: CFTypeRef?
+    let positionRead = AXUIElementCopyAttributeValue(targetWindow, kAXPositionAttribute as CFString, &positionValue)
+    let sizeRead = AXUIElementCopyAttributeValue(targetWindow, kAXSizeAttribute as CFString, &sizeValue)
+    guard [positionRead, sizeRead].allSatisfy({ $0 == .success || $0 == .cannotComplete }) else {
+        fputs("Could not read the resized AX window frame (position=\(positionRead.rawValue), size=\(sizeRead.rawValue)).\n", stderr)
+        exit(1)
+    }
+    let position = point(from: positionValue)
+    let dimensions = size(from: sizeValue)
+    guard (positionRead != .success || position != nil),
+          (sizeRead != .success || dimensions != nil) else {
+        fputs("Resized AX window frame has invalid value types.\n", stderr)
+        exit(1)
+    }
+    if positionRead == .success && sizeRead == .success {
+        finalPosition = position
+        finalSize = dimensions
+        break
+    }
+    Thread.sleep(forTimeInterval: 0.05)
+} while ProcessInfo.processInfo.systemUptime < readDeadline
+guard let finalPosition, let finalSize else {
+    fputs("Could not read the resized AX window frame within 5 seconds.\n", stderr)
     exit(1)
 }
 print(
@@ -144,10 +172,11 @@ print(
     )
 )
 
-// A negative minimum-size probe can expect AppKit to reject its request.
-// Keep that outcome non-successful for ordinary capture callers, and expose it
-// only after the same owned AX window still responds with its actual frame.
-if sizeRequestWasRejected {
-    fputs("AX size request was rejected; the owned window frame remains readable.\n", stderr)
+// A reply can time out after AppKit applies the size. The same target's
+// observed requested size proves completion; minimum-size clamping does not.
+let requestedSizeObserved = abs(finalSize.width - targetWidth) <= tolerance
+    && abs(finalSize.height - targetHeight) <= tolerance
+if sizeRequestCompletionUnconfirmed && !requestedSizeObserved {
+    fputs("AX size request completion is unconfirmed; the owned window frame remains readable.\n", stderr)
     exit(3)
 }
