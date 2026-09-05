@@ -160,7 +160,7 @@ on run argv
     tell item 1 of matchingProcesses
       set frontmost to true
       repeat with candidateWindow in windows
-        if my containsIdentifier(candidateWindow, "project-board-sidebar-toggle", 0) and my containsIdentifier(candidateWindow, "project-board-detail", 0) then
+        if my containsIdentifier(candidateWindow, "project-board-sidebar-toggle", 0) and my containsIdentifier(candidateWindow, "project-board-integrations-menu", 0) then
           try
             perform action "AXRaise" of candidateWindow
           end try
