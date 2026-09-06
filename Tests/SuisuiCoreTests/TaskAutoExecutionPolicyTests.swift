@@ -538,19 +538,14 @@ final class TaskAutoExecutionPolicyTests: XCTestCase {
 
         let request = try TaskAutoExecutionPlanningRequestBuilder().makePlanningRequest(
             decision: decision,
-            settings: .init(
-                isEnabled: true,
-                mode: .reviewOnly,
-                cadence: .daily,
-                maxTasksPerRun: 4,
-                dailyLLMCallLimit: 6,
-                lookaheadHours: 72,
-                urgentReviewCooldownMinutes: 30
-            ),
+            settings: JSONDecoder().decode(TaskAutoExecutionSettings.self, from: Data(#"{"isEnabled":true,"mode":"autoCreateLowRisk","cadence":"daily","maxTasksPerRun":4,"dailyLLMCallLimit":6,"lookaheadHours":72,"urgentReviewCooldownMinutes":30}"#.utf8)),
             referenceDate: referenceDate,
             timeZoneIdentifier: "UTC"
         )
 
+        XCTAssertTrue(request.userInput.contains("Automation mode: reviewOnly"))
+        XCTAssertTrue(request.userInput.contains(#""mode" : "reviewOnly""#))
+        XCTAssertFalse(request.userInput.contains("autoCreateLowRisk"))
         XCTAssertTrue(request.userInput.contains("cadence: daily"))
         XCTAssertTrue(request.userInput.contains("maxTasksPerRun: 4"))
         XCTAssertTrue(request.userInput.contains("dailyLLMCallLimit: 6"))

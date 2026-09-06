@@ -2,14 +2,19 @@ import Foundation
 
 public enum TaskAutoExecutionMode: String, Codable, CaseIterable, Equatable, Sendable {
     case reviewOnly
-    case autoCreateLowRisk
 
-    public var label: String {
-        switch self {
-        case .reviewOnly:
-            "Review before execution"
-        case .autoCreateLowRisk:
-            "Auto-create low-risk tasks"
+    public var label: String { "Review before execution" }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+        switch value {
+        case "reviewOnly", "autoCreateLowRisk":
+            // Accept the retired persisted value only at the decode boundary;
+            // runtime settings and subsequent saves have one approval mode.
+            self = .reviewOnly
+        default:
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unknown task automation mode.")
         }
     }
 }

@@ -4,10 +4,10 @@ import XCTest
 final class LowRiskAutoCreationTests: XCTestCase {
     // MARK: - Settings round trip
 
-    func testTaskAutoExecutionSettingsRoundTripWithAutoCreateMode() throws {
+    func testRetiredAutoCreateSettingsDecodeAndSaveAsReviewOnly() throws {
         let settings = TaskAutoExecutionSettings(
             isEnabled: true,
-            mode: .autoCreateLowRisk,
+            mode: .reviewOnly,
             cadence: .daily,
             maxTasksPerRun: 4,
             dailyLLMCallLimit: 8,
@@ -16,10 +16,15 @@ final class LowRiskAutoCreationTests: XCTestCase {
         )
 
         let data = try JSONEncoder().encode(settings)
-        let decoded = try JSONDecoder().decode(TaskAutoExecutionSettings.self, from: data)
+        let legacyJSON = try XCTUnwrap(String(data: data, encoding: .utf8))
+            .replacingOccurrences(of: "reviewOnly", with: "autoCreateLowRisk")
+        let decoded = try JSONDecoder().decode(TaskAutoExecutionSettings.self, from: Data(legacyJSON.utf8))
 
         XCTAssertEqual(decoded, settings)
-        XCTAssertEqual(decoded.mode, .autoCreateLowRisk)
+        XCTAssertEqual(decoded.mode, .reviewOnly)
+        let saved = try XCTUnwrap(String(data: JSONEncoder().encode(decoded), encoding: .utf8))
+        XCTAssertFalse(saved.contains("autoCreateLowRisk"))
+        XCTAssertTrue(saved.contains("reviewOnly"))
     }
 
     func testLegacyReviewOnlySettingsStillDecode() throws {
@@ -32,10 +37,13 @@ final class LowRiskAutoCreationTests: XCTestCase {
         XCTAssertEqual(decoded.urgentReviewCooldownMinutes, 60)
     }
 
+    func testUnknownModeStillFailsDecoding() {
+        XCTAssertThrowsError(try JSONDecoder().decode(TaskAutoExecutionMode.self, from: Data(#""unknownMode""#.utf8)))
+    }
+
     func testModeLabels() {
         XCTAssertEqual(TaskAutoExecutionMode.reviewOnly.label, "Review before execution")
-        XCTAssertEqual(TaskAutoExecutionMode.autoCreateLowRisk.label, "Auto-create low-risk tasks")
-        XCTAssertEqual(TaskAutoExecutionMode.allCases, [.reviewOnly, .autoCreateLowRisk])
+        XCTAssertEqual(TaskAutoExecutionMode.allCases, [.reviewOnly])
     }
 
 }
