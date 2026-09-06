@@ -236,11 +236,11 @@ public struct ReviewSession: Equatable, Sendable {
     }
 
     public var canApprove: Bool {
-        approvalState == .pending
+        approvalState == .pending && !requiresReconciliation
     }
 
     public var canExecute: Bool {
-        guard !enabledItems.isEmpty else {
+        guard !requiresReconciliation, !enabledItems.isEmpty else {
             return false
         }
 
@@ -275,6 +275,7 @@ public struct ReviewSession: Equatable, Sendable {
     }
 
     public mutating func setActionEnabled(id: String, _ isEnabled: Bool) {
+        guard !requiresReconciliation else { return }
         guard let index = items.firstIndex(where: { $0.id == id }) else {
             return
         }
@@ -284,6 +285,7 @@ public struct ReviewSession: Equatable, Sendable {
     }
 
     public mutating func editActionArguments(id: String, arguments: [String: JSONValue]) {
+        guard !requiresReconciliation else { return }
         guard let index = items.firstIndex(where: { $0.id == id }) else {
             return
         }
@@ -297,6 +299,7 @@ public struct ReviewSession: Equatable, Sendable {
     }
 
     public mutating func updateStringArgument(id: String, key: String, value: String) {
+        guard !requiresReconciliation else { return }
         guard let index = items.firstIndex(where: { $0.id == id }) else {
             return
         }
@@ -310,6 +313,7 @@ public struct ReviewSession: Equatable, Sendable {
     }
 
     public mutating func resetAction(id: String) {
+        guard !requiresReconciliation else { return }
         guard let index = items.firstIndex(where: { $0.id == id }) else {
             return
         }
@@ -328,6 +332,9 @@ public struct ReviewSession: Equatable, Sendable {
         validity: TimeInterval = 300,
         nonce: UUID = UUID()
     ) throws -> ApprovedExecution {
+        guard !requiresReconciliation else {
+            throw ReviewSessionError.approvalBlocked("Execution outcome is unknown. Reconcile it before retrying.")
+        }
         switch approvalState {
         case .pending:
             guard validity > 0 else {

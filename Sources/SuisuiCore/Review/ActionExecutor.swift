@@ -258,6 +258,9 @@ public struct ActionExecutor: Sendable {
     }
 
     private func preflight(_ session: ReviewSession, now: Date) throws -> ApprovedExecution? {
+        guard !session.requiresReconciliation else {
+            throw ActionExecutorError.approvalBlocked("Execution outcome is unknown. Reconcile it before retrying.")
+        }
         guard !session.enabledItems.isEmpty else {
             throw ActionExecutorError.noEnabledActions
         }

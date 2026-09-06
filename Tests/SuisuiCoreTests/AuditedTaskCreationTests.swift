@@ -2,6 +2,38 @@ import XCTest
 @testable import SuisuiCore
 
 final class AuditedTaskCreationTests: XCTestCase {
+    func testSharedSessionPreservesUnknownAcrossEditingAndReapproval() throws {
+        let connection = try connection()
+        try connection.execute("""
+            CREATE TRIGGER fail_creation_result BEFORE UPDATE ON external_side_effect_journal
+            WHEN NEW.state = 'succeeded'
+            BEGIN SELECT RAISE(ABORT, 'fixture'); END;
+            """)
+        let executor = try executor(connection)
+        var session = try executor.execute(approvedSession())
+        try connection.execute("DROP TRIGGER fail_creation_result;")
+        session.requestFreshApproval()
+        let original = session
+        session.updateStringArgument(id: "create", key: "title", value: "private fixture text ")
+        XCTAssertEqual(session, original)
+        session.editActionArguments(id: "create", arguments: ["title": .string("changed")])
+        XCTAssertEqual(session, original)
+        session.resetAction(id: "create")
+        XCTAssertEqual(session, original)
+        session.setActionEnabled(id: "create", false)
+        XCTAssertEqual(session, original)
+        XCTAssertFalse(session.canApprove)
+        XCTAssertFalse(session.canExecute)
+        XCTAssertThrowsError(try session.approve())
+        XCTAssertThrowsError(try executor.execute(session)) { error in
+            guard case ActionExecutorError.approvalBlocked = error else {
+                return XCTFail("Expected reconciliation rejection, got \(error)")
+            }
+        }
+        XCTAssertTrue(session.requiresReconciliation)
+        XCTAssertEqual(try SQLiteTaskStore(connection: connection).listAll().count, 1)
+    }
+
     @MainActor
     func testReviewUnknownCannotBeReapprovedOrClearedByEditing() throws {
         let connection = try connection()
@@ -103,6 +135,10 @@ final class AuditedTaskCreationTests: XCTestCase {
             _ = try journal.recoverStartedAsUnknown(at: Date())
             XCTAssertEqual(try journal.records(executionID: executionID).first?.state, .unknown)
             session.requestFreshApproval()
+            XCTAssertThrowsError(try session.approve())
+            XCTAssertThrowsError(try executor(reopened).execute(session))
+            // Reconstructed sessions must still be stopped by durable journal evidence.
+            session = ReviewSession(id: session.id, plan: session.originalPlan)
             try session.approve()
             let retried = try executor(reopened).execute(session)
             XCTAssertEqual(retried.items.first?.result?.output["journalState"], .string("unknown"))

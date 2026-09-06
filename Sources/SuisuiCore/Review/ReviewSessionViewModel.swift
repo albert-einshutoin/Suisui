@@ -46,11 +46,11 @@ public final class ReviewSessionViewModel: ObservableObject {
     }
 
     public var canApprove: Bool {
-        session.canApprove && !isExecuting && session.executionStatus != .canceled && !session.requiresReconciliation
+        session.canApprove && !isExecuting && session.executionStatus != .canceled
     }
 
     public var canExecute: Bool {
-        session.canExecute && validationIssuesByActionID.isEmpty && !isExecuting && session.executionStatus != .canceled && !session.requiresReconciliation
+        session.canExecute && validationIssuesByActionID.isEmpty && !isExecuting && session.executionStatus != .canceled
     }
 
     public func validationIssues(for actionID: String) -> [ToolInputValidationIssue] {
