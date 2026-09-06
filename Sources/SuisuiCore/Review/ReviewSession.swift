@@ -217,6 +217,13 @@ public struct ReviewSession: Equatable, Sendable {
         items.filter(\.isEnabled)
     }
 
+    public var requiresReconciliation: Bool {
+        items.contains { item in
+            guard case .string(let state)? = item.result?.output["journalState"] else { return false }
+            return ["prepared", "started", "unknown"].contains(state)
+        }
+    }
+
     public var requiresApproval: Bool {
         items.contains { $0.isEnabled && $0.editedAction.riskLevel >= .write }
     }

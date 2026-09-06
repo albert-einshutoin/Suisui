@@ -744,7 +744,7 @@ public final class SQLiteProjectStore: @unchecked Sendable {
 }
 
 public final class SQLiteTaskStore: @unchecked Sendable {
-    private let connection: SQLiteConnection
+    let connection: SQLiteConnection
     private let lock = NSLock()
 
     public init(connection: SQLiteConnection) {

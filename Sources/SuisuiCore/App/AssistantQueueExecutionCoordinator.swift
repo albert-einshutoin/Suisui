@@ -239,19 +239,22 @@ public struct AssistantQueueExecutionCoordinator {
             try saveReceiptOrMarkQueueFailed(
                 receipt,
                 itemID: id,
-                executionStatus: failedSession.executionStatus
+                executionStatus: failedSession.executionStatus,
+                requiresReconciliation: failedSession.requiresReconciliation
             )
             try recordManagedUsageLedgerOrMarkQueueFailed(
                 item: running,
                 receipt: receipt,
                 itemID: id,
-                executionStatus: failedSession.executionStatus
+                executionStatus: failedSession.executionStatus,
+                requiresReconciliation: failedSession.requiresReconciliation
             )
             try recordConversationLinkOrMarkQueueFailed(
                 link: conversationLink,
                 receipt: receipt,
                 itemID: id,
-                executionStatus: failedSession.executionStatus
+                executionStatus: failedSession.executionStatus,
+                requiresReconciliation: failedSession.requiresReconciliation
             )
             _ = try queueStore.transition(id: id) { item in
                 try AssistantQueueStateMachine.markFailed(
@@ -273,23 +276,26 @@ public struct AssistantQueueExecutionCoordinator {
         try saveReceiptOrMarkQueueFailed(
             receipt,
             itemID: id,
-            executionStatus: executedSession.executionStatus
+            executionStatus: executedSession.executionStatus,
+            requiresReconciliation: executedSession.requiresReconciliation
         )
         try recordManagedUsageLedgerOrMarkQueueFailed(
             item: running,
             receipt: receipt,
             itemID: id,
-            executionStatus: executedSession.executionStatus
+            executionStatus: executedSession.executionStatus,
+            requiresReconciliation: executedSession.requiresReconciliation
         )
         try recordConversationLinkOrMarkQueueFailed(
             link: conversationLink,
             receipt: receipt,
             itemID: id,
-            executionStatus: executedSession.executionStatus
+            executionStatus: executedSession.executionStatus,
+            requiresReconciliation: executedSession.requiresReconciliation
         )
         let finalItem = try markFinalQueueState(
             id: id,
-            status: executedSession.executionStatus
+            session: executedSession
         )
         return AssistantQueueExecutionResult(item: finalItem, session: executedSession, receipt: receipt)
     }
@@ -297,21 +303,21 @@ public struct AssistantQueueExecutionCoordinator {
     private func saveReceiptOrMarkQueueFailed(
         _ receipt: ExecutionReceipt,
         itemID: String,
-        executionStatus: ReviewExecutionStatus
+        executionStatus: ReviewExecutionStatus,
+        requiresReconciliation: Bool
     ) throws {
         do {
             try executionReceiptStore.save(receipt)
         } catch {
-            // A queue item must not stay running after tools have returned. If
-            // the durable receipt cannot be written, fail the item so retry
-            // starts from explicit human review instead of silently losing audit
-            // evidence or marking work done without a receipt.
+            // Missing durable evidence must remain visible. Unknown effects
+            // stay blocked; other failures require explicit review before retry.
             var queueStateMarkedFailed = false
             do {
                 _ = try queueStore.transition(id: itemID) { item in
-                    try AssistantQueueStateMachine.markFailed(
+                    try failedOrBlocked(
                         item,
-                        reason: receiptPersistenceFailureReason(for: executionStatus)
+                        reason: receiptPersistenceFailureReason(for: executionStatus),
+                        requiresReconciliation: requiresReconciliation
                     )
                 }
                 queueStateMarkedFailed = true
@@ -396,7 +402,8 @@ public struct AssistantQueueExecutionCoordinator {
         item: AssistantQueueItem,
         receipt: ExecutionReceipt,
         itemID: String,
-        executionStatus: ReviewExecutionStatus
+        executionStatus: ReviewExecutionStatus,
+        requiresReconciliation: Bool
     ) throws {
         guard let managedAIUsageLedgerStore else {
             return
@@ -410,26 +417,28 @@ public struct AssistantQueueExecutionCoordinator {
             receipt: receipt,
             occurredAt: receipt.finishedAt ?? now()
         ) else {
-            try failQueueForManagedUsageLedgerIssue(itemID: itemID, executionStatus: executionStatus)
+            try failQueueForManagedUsageLedgerIssue(itemID: itemID, executionStatus: executionStatus, requiresReconciliation: requiresReconciliation)
         }
 
         do {
             try managedAIUsageLedgerStore.record(entry)
         } catch {
-            try failQueueForManagedUsageLedgerIssue(itemID: itemID, executionStatus: executionStatus)
+            try failQueueForManagedUsageLedgerIssue(itemID: itemID, executionStatus: executionStatus, requiresReconciliation: requiresReconciliation)
         }
     }
 
     private func failQueueForManagedUsageLedgerIssue(
         itemID: String,
-        executionStatus: ReviewExecutionStatus
+        executionStatus: ReviewExecutionStatus,
+        requiresReconciliation: Bool
     ) throws -> Never {
         var queueStateMarkedFailed = false
         do {
             _ = try queueStore.transition(id: itemID) { item in
-                try AssistantQueueStateMachine.markFailed(
+                try failedOrBlocked(
                     item,
-                    reason: managedUsageLedgerPersistenceFailureReason(for: executionStatus)
+                    reason: managedUsageLedgerPersistenceFailureReason(for: executionStatus),
+                    requiresReconciliation: requiresReconciliation
                 )
             }
             queueStateMarkedFailed = true
@@ -464,9 +473,14 @@ public struct AssistantQueueExecutionCoordinator {
 
     private func markFinalQueueState(
         id: String,
-        status: ReviewExecutionStatus
+        session: ReviewSession
     ) throws -> AssistantQueueItem {
-        switch status {
+        if session.requiresReconciliation {
+            return try queueStore.transition(id: id) { item in
+                try failedOrBlocked(item, reason: "", requiresReconciliation: true)
+            }
+        }
+        switch session.executionStatus {
         case .completed:
             return try queueStore.transition(id: id) { item in
                 try AssistantQueueStateMachine.markDone(item)
@@ -587,7 +601,8 @@ public struct AssistantQueueExecutionCoordinator {
         link: ConversationActionLink?,
         receipt: ExecutionReceipt,
         itemID: String,
-        executionStatus: ReviewExecutionStatus
+        executionStatus: ReviewExecutionStatus,
+        requiresReconciliation: Bool
     ) throws {
         guard let link, let conversationActionLinkStore else {
             return
@@ -603,11 +618,12 @@ public struct AssistantQueueExecutionCoordinator {
             var queueStateMarkedFailed = false
             do {
                 _ = try queueStore.transition(id: itemID) { item in
-                    try AssistantQueueStateMachine.markFailed(
+                    try failedOrBlocked(
                         item,
                         reason: receiptPersistenceFailureReason(
                             for: executionStatus
-                        )
+                        ),
+                        requiresReconciliation: requiresReconciliation
                     )
                 }
                 queueStateMarkedFailed = true
@@ -618,6 +634,22 @@ public struct AssistantQueueExecutionCoordinator {
                 queueStateMarkedFailed: queueStateMarkedFailed
             )
         }
+    }
+
+    private func failedOrBlocked(
+        _ item: AssistantQueueItem,
+        reason: String,
+        requiresReconciliation: Bool
+    ) throws -> AssistantQueueItem {
+        var failed = try AssistantQueueStateMachine.markFailed(item, reason: reason)
+        if requiresReconciliation {
+            // Losing secondary evidence cannot turn an uncertain side effect
+            // into a retryable failure, even when no Receipt could be saved.
+            failed.state = .blocked
+            failed.approval = nil
+            failed.blockingReason = "Execution outcome is unknown. Check existing effects and evidence storage before recovery."
+        }
+        return failed
     }
 
     private func receiptPersistenceFailureReason(for status: ReviewExecutionStatus) -> String {

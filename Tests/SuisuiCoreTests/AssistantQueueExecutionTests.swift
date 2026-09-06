@@ -2,6 +2,106 @@ import XCTest
 @testable import SuisuiCore
 
 final class AssistantQueueExecutionTests: XCTestCase {
+    func testAuditedTaskCreationFinishesQueueAndRetainsDiagnosticInReceipt() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let queue = SQLiteAssistantQueueStore(connection: connection)
+        let tasks = SQLiteTaskStore(connection: connection)
+        let receipts = VolatileExecutionReceiptStore()
+        let approved = try AssistantQueueStateMachine.approve(makeActionPlanItem(), reviewerID: "local-user")
+        try queue.save(approved)
+        let registry = try ToolRegistry(tools: [AuditedTool(
+            base: TaskTool(name: .taskCreate, store: tasks), logger: FailingTaskAuditLogger()
+        )])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queue, executor: ActionExecutor(registry: registry), executionReceiptStore: receipts
+        )
+
+        let result = try executeCurrent(coordinator, id: approved.id, queueStore: queue)
+
+        XCTAssertEqual(result.item.state, .done)
+        XCTAssertEqual(result.receipt.status, .succeeded)
+        XCTAssertEqual(result.receipt.actions.first?.errorSummary, "Action audit log could not be saved.")
+        XCTAssertEqual(result.receipt.actions.first?.externalSideEffectEvidence?.journalState, .succeeded)
+        XCTAssertEqual(try tasks.listAll().count, 1)
+        let row = try XCTUnwrap(AssistantQueueReadModel.snapshot(from: [result.item], receipts: [result.receipt]).rows.first)
+        XCTAssertFalse(row.canRetry)
+        XCTAssertThrowsError(try AssistantQueueStateMachine.reopenFailedForReview(result.item))
+        XCTAssertThrowsError(try executeCurrent(coordinator, id: approved.id, queueStore: queue))
+        XCTAssertEqual(try tasks.listAll().count, 1)
+    }
+
+    func testUnknownTaskCreationBlocksQueueEvenWhenReceiptPersistenceAlsoFails() throws {
+        for failReceipt in [false, true] {
+            let connection = try SQLiteConnection(path: ":memory:")
+            try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+            try connection.execute("""
+                CREATE TRIGGER fail_creation_result BEFORE UPDATE ON external_side_effect_journal
+                WHEN NEW.state = 'succeeded'
+                BEGIN SELECT RAISE(ABORT, 'fixture'); END;
+                """)
+            let queue = SQLiteAssistantQueueStore(connection: connection)
+            let tasks = SQLiteTaskStore(connection: connection)
+            let approved = try AssistantQueueStateMachine.approve(makeActionPlanItem(), reviewerID: "local-user")
+            try queue.save(approved)
+            let registry = try ToolRegistry(tools: [TaskTool(name: .taskCreate, store: tasks)])
+            let receipts: any ExecutionReceiptStore = failReceipt
+                ? FailingExecutionReceiptStore() : VolatileExecutionReceiptStore()
+            let coordinator = AssistantQueueExecutionCoordinator(
+                queueStore: queue, executor: ActionExecutor(registry: registry), executionReceiptStore: receipts
+            )
+            if failReceipt {
+                XCTAssertThrowsError(try executeCurrent(coordinator, id: approved.id, queueStore: queue)) { error in
+                    XCTAssertEqual(error as? AssistantQueueExecutionError, .receiptPersistenceFailed(queueStateMarkedFailed: true))
+                }
+            } else {
+                let result = try executeCurrent(coordinator, id: approved.id, queueStore: queue)
+                XCTAssertEqual(result.receipt.actions.first?.externalSideEffectEvidence?.journalState, .unknown)
+            }
+            let item = try queue.get(id: approved.id)
+            XCTAssertEqual(item.state, .blocked)
+            XCTAssertNil(item.approval)
+            XCTAssertTrue(item.blockingReason?.contains("unknown") == true)
+            XCTAssertFalse(try XCTUnwrap(AssistantQueueReadModel.snapshot(from: [item]).rows.first).canRetry)
+            XCTAssertThrowsError(try AssistantQueueStateMachine.reopenFailedForReview(item))
+            XCTAssertEqual(try tasks.listAll().count, 1)
+        }
+    }
+
+    func testTaskReceiptFailureRetryAfterDatabaseReopenReusesCreatedTask() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let path = directory.appendingPathComponent("queue.sqlite").path
+        let approved = try AssistantQueueStateMachine.approve(makeActionPlanItem(), reviewerID: "local-user")
+        do {
+            let connection = try SQLiteConnection(path: path)
+            try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+            let queue = SQLiteAssistantQueueStore(connection: connection)
+            try queue.save(approved)
+            let registry = try ToolRegistry(tools: [TaskTool(name: .taskCreate, store: SQLiteTaskStore(connection: connection))])
+            let coordinator = AssistantQueueExecutionCoordinator(
+                queueStore: queue, executor: ActionExecutor(registry: registry),
+                executionReceiptStore: FailingExecutionReceiptStore()
+            )
+            XCTAssertThrowsError(try executeCurrent(coordinator, id: approved.id, queueStore: queue))
+            XCTAssertEqual(try SQLiteTaskStore(connection: connection).listAll().count, 1)
+        }
+        let connection = try SQLiteConnection(path: path)
+        let queue = SQLiteAssistantQueueStore(connection: connection)
+        _ = try queue.transition(id: approved.id, AssistantQueueStateMachine.reopenFailedForReview)
+        _ = try queue.transition(id: approved.id) { try AssistantQueueStateMachine.approve($0, reviewerID: "local-user") }
+        let registry = try ToolRegistry(tools: [TaskTool(name: .taskCreate, store: SQLiteTaskStore(connection: connection))])
+        let coordinator = AssistantQueueExecutionCoordinator(
+            queueStore: queue, executor: ActionExecutor(registry: registry),
+            executionReceiptStore: VolatileExecutionReceiptStore()
+        )
+        let result = try executeCurrent(coordinator, id: approved.id, queueStore: queue)
+        XCTAssertEqual(result.item.state, .done)
+        XCTAssertEqual(result.session.items.first?.result?.output["taskId"], .number(1))
+        XCTAssertEqual(try SQLiteTaskStore(connection: connection).listAll().count, 1)
+    }
+
     func testLegacyUnversionedCoordinatorExecuteFailsClosedBeforeSideEffects() throws {
         let queueStore = try makeQueueStore()
         let receiptStore = VolatileExecutionReceiptStore()
