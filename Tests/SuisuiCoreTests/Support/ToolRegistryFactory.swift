@@ -7,7 +7,7 @@ enum ToolRegistryTestFactory {
         auditLogger: (any AuditLogger)? = nil
     ) throws -> ToolRegistry {
         let connection = try SQLiteConnection(path: ":memory:")
-        try migrate(connection: connection, migrations: CoreMigrations.phase2)
+        try migrate(connection: connection, migrations: CoreMigrations.current)
 
         return try ToolRegistry.phase2MVP(
             projectStore: SQLiteProjectStore(connection: connection),

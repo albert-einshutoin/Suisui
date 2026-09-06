@@ -30,19 +30,26 @@ public struct AuditedTool: Tool {
             )
         )
 
+        var result: ToolResult
         do {
-            let result = try base.execute(arguments: arguments, context: context)
-            var eventMetadata = metadata(arguments: arguments, context: context)
-            eventMetadata["result"] = result.status.rawValue
-            eventMetadata["summary"] = redacted(result.summary)
-            try logger.record(AuditEvent(category: "tool", action: name.rawValue, status: .succeeded, metadata: eventMetadata))
-            return result
+            result = try base.execute(arguments: arguments, context: context)
         } catch {
             var eventMetadata = metadata(arguments: arguments, context: context)
             eventMetadata["error"] = redacted(String(describing: error))
-            try logger.record(AuditEvent(category: "tool", action: name.rawValue, status: .failed, metadata: eventMetadata))
+            // Preserve reconciliation evidence even when failure auditing is unavailable.
+            try? logger.record(AuditEvent(category: "tool", action: name.rawValue, status: .failed, metadata: eventMetadata))
             throw error
         }
+        var eventMetadata = metadata(arguments: arguments, context: context)
+        eventMetadata["result"] = result.status.rawValue
+        eventMetadata["summary"] = redacted(result.summary)
+        do {
+            try logger.record(AuditEvent(category: "tool", action: name.rawValue, status: .succeeded, metadata: eventMetadata))
+        } catch {
+            // The tool already returned its outcome; audit failure cannot undo it.
+            result.auditErrorMessage = "Action audit log could not be saved."
+        }
+        return result
     }
 
     private func metadata(arguments: [String: JSONValue], context: ToolExecutionContext) -> [String: String] {

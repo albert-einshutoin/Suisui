@@ -58,18 +58,21 @@ public final class ReviewSessionViewModel: ObservableObject {
     }
 
     public func setActionEnabled(actionID: String, isEnabled: Bool) {
+        guard !session.requiresReconciliation else { return }
         session.setActionEnabled(id: actionID, isEnabled)
         refreshValidationIssues()
         recordAudit(action: isEnabled ? "action.enable" : "action.disable", status: .succeeded, actionID: actionID)
     }
 
     public func updateStringArgument(actionID: String, key: String, value: String) {
+        guard !session.requiresReconciliation else { return }
         session.updateStringArgument(id: actionID, key: key, value: value)
         refreshValidationIssues()
         recordAudit(action: "action.edit", status: .succeeded, actionID: actionID)
     }
 
     public func resetAction(actionID: String) {
+        guard !session.requiresReconciliation else { return }
         session.resetAction(id: actionID)
         refreshValidationIssues()
         recordAudit(action: "action.reset", status: .succeeded, actionID: actionID)

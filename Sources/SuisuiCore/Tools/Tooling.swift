@@ -354,6 +354,7 @@ public enum ToolExecutionStatus: String, Equatable, Sendable {
 }
 
 public struct ToolResult: Equatable, Sendable {
+    public var auditErrorMessage: String? = nil
     public var tool: ActionTool
     public var status: ToolExecutionStatus
     public var summary: String

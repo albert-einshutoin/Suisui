@@ -136,8 +136,7 @@ public struct TaskTool: Tool {
         switch name {
         case .taskCreate:
             let projectID = try args.optionalInt64("projectId")
-            try prepareProjectForTaskMutation(projectID: projectID, status: "open")
-            let record = try store.create(
+            let draft = TaskCreateDraft(
                 title: try args.requiredTrimmedString("title"),
                 projectID: projectID,
                 dueAt: try args.optionalTrimmedString("dueAt"),
@@ -145,14 +144,7 @@ public struct TaskTool: Tool {
                 sourceCommand: try args.optionalTrimmedString("sourceCommand"),
                 detail: try args.optionalTrimmedString("detail")
             )
-            return ToolResult(
-                tool: name,
-                status: .succeeded,
-                summary: "Created task \(record.title)",
-                output: ["taskId": .number(Double(record.id))],
-                rollbackMetadata: ["taskId": .number(Double(record.id))],
-                compensationHint: "Task can be completed or deleted by a future cleanup flow."
-            )
+            return try createTasks([draft], arguments: arguments, context: context)
         case .taskBulkCreate:
             let taskObjects = try args.objectArray("tasks")
             guard !taskObjects.isEmpty else {
@@ -169,10 +161,7 @@ public struct TaskTool: Tool {
                     detail: try taskArgs.optionalTrimmedString("detail")
                 )
             }
-            try drafts.forEach { try rejectArchivedProject(projectID: $0.projectID) }
-            try drafts.forEach { try reopenCompletedProjectIfNeeded(projectID: $0.projectID, status: $0.status) }
-            let created = try store.createMany(drafts).map { JSONValue.number(Double($0.id)) }
-            return ToolResult(tool: name, status: .succeeded, summary: "Created \(created.count) tasks", output: ["taskIds": .array(created)])
+            return try createTasks(drafts, arguments: arguments, context: context)
         case .taskGet:
             let record = try store.get(id: try args.requiredInt64("id"))
             return ToolResult(tool: name, status: .succeeded, summary: record.title, output: record.output)
@@ -327,6 +316,52 @@ public struct TaskTool: Tool {
         default:
             throw ToolExecutionError.executionFailed(name, "Unsupported task tool.")
         }
+    }
+
+    private func createTasks(
+        _ drafts: [TaskCreateDraft],
+        arguments: [String: JSONValue],
+        context: ToolExecutionContext
+    ) throws -> ToolResult {
+        try drafts.forEach { try rejectArchivedProject(projectID: $0.projectID) }
+        let create = {
+            try drafts.forEach { try reopenCompletedProjectIfNeeded(projectID: $0.projectID, status: $0.status) }
+            // createMany owns the all-or-nothing transaction and store lock order.
+            let records = try store.createMany(drafts)
+            if name == .taskCreate {
+                let id = JSONValue.number(Double(records[0].id))
+                return ToolResult(
+                    tool: name, status: .succeeded, summary: "Created task",
+                    output: ["taskId": id], rollbackMetadata: ["taskId": id],
+                    compensationHint: "Task can be completed or deleted by a future cleanup flow."
+                )
+            }
+            return ToolResult(
+                tool: name, status: .succeeded, summary: "Created \(records.count) tasks",
+                output: ["taskIds": .array(records.map { .number(Double($0.id)) })]
+            )
+        }
+#if DEBUG
+        // Direct tool unit tests use the existing debug-only approval bridge.
+        if context.debugApprovalToken != nil, context.idempotencyKey == nil {
+            return try create()
+        }
+#endif
+        // A fresh approval nonce still refers to the same reviewed creation.
+        // Reuse the existing journal so lost audit/receipt writes and restarts
+        // cannot cause another insert. Persist IDs, never Task text, as evidence.
+        return try ExternalSideEffectCoordinator(
+            journal: SQLiteExternalSideEffectJournal(connection: store.connection)
+        ).execute(
+            request: context.externalSideEffectRequest(tool: name, arguments: arguments),
+            at: context.now,
+            performExternalWrite: create,
+            externalResourceID: { result in
+                guard case .number(let id)? = result.output["taskId"] else { return nil }
+                return String(Int64(id))
+            },
+            persistLocalState: { $0 }
+        )
     }
 
     private func prepareProjectForTaskMutation(projectID: Int64?, status: String) throws {

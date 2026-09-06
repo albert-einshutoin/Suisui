@@ -62,18 +62,24 @@ public struct ActionExecutor: Sendable {
         }
 
         do {
-            let executed = try executeClaimed(
+            var executed = try executeClaimed(
                 session,
                 approval: approval,
                 now: now,
                 taskSnapshotFingerprints: taskSnapshotFingerprints
             )
             if let approval {
-                try replayStore.finish(
-                    nonce: approval.nonce,
-                    state: executed.executionStatus == .completed ? .completed : .failed,
-                    at: now
-                )
+                do {
+                    try replayStore.finish(
+                        nonce: approval.nonce,
+                        state: executed.requiresReconciliation ? .unknown : (executed.executionStatus == .completed ? .completed : .failed),
+                        at: now
+                    )
+                } catch {
+                    // The durable claim still consumes this nonce. Do not discard
+                    // known action outcomes because their final bookkeeping failed.
+                    executed.auditErrorMessage = "Execution state could not be saved. Do not repeat completed actions."
+                }
             }
             return executed
         } catch {
@@ -179,6 +185,9 @@ public struct ActionExecutor: Sendable {
                     )
                 )
                 let actionStatus = Self.actionExecutionStatus(for: result.status)
+                if let diagnostic = result.auditErrorMessage {
+                    working.auditErrorMessage = diagnostic
+                }
                 if result.status == .failed {
                     hasFailure = true
                 }
@@ -186,7 +195,7 @@ public struct ActionExecutor: Sendable {
                     id: item.id,
                     status: actionStatus,
                     result: result,
-                    errorMessage: result.status == .failed ? redacted(result.summary) : nil,
+                    errorMessage: result.status == .failed ? redacted(result.summary) : result.auditErrorMessage,
                     failureRecovery: result.status == .failed ? .retryable : nil
                 )
                 recordToolEventOrMarkAuditFailure(
@@ -249,6 +258,9 @@ public struct ActionExecutor: Sendable {
     }
 
     private func preflight(_ session: ReviewSession, now: Date) throws -> ApprovedExecution? {
+        guard !session.requiresReconciliation else {
+            throw ActionExecutorError.approvalBlocked("Execution outcome is unknown. Reconcile it before retrying.")
+        }
         guard !session.enabledItems.isEmpty else {
             throw ActionExecutorError.noEnabledActions
         }
@@ -627,6 +639,9 @@ public struct ActionExecutor: Sendable {
         case ToolExecutionError.externalSideEffectInProgress(let evidence):
             return "\(evidence.tool.rawValue) is already in progress. Wait for reconciliation before retrying."
         case ToolExecutionError.externalSideEffectRequiresReconciliation(let evidence):
+            if evidence.tool == .taskCreate || evidence.tool == .taskBulkCreate {
+                return "Task creation outcome is unknown. Check existing Tasks and reconcile the execution before retrying."
+            }
             return "\(evidence.tool.rawValue) may already have changed an external resource. Reconcile it before retrying."
         case ToolExecutionError.externalSideEffectBatchFailed(let evidence):
             switch evidence.reason {

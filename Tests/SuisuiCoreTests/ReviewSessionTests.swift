@@ -2,6 +2,37 @@ import XCTest
 @testable import SuisuiCore
 
 final class ReviewSessionTests: XCTestCase {
+    func testTaskCreationAuditFailurePreservesResultAndDoesNotDuplicateOnReapproval() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let tasks = SQLiteTaskStore(connection: connection)
+        let logger = SequencedActionAuditLogger(failOnCall: 2)
+        let registry = try ToolRegistry(tools: [AuditedTool(
+            base: TaskTool(name: .taskCreate, store: tasks), logger: logger
+        )])
+        let executor = ActionExecutor(registry: registry)
+        var session = ReviewSession(plan: .reviewFixture(actions: [
+            PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Private task")])
+        ]))
+        try session.approve()
+
+        var executed = try executor.execute(session)
+
+        XCTAssertEqual(try tasks.listAll().count, 1)
+        XCTAssertEqual(executed.executionStatus, .completed)
+        XCTAssertEqual(executed.items.first?.executionStatus, .succeeded)
+        XCTAssertEqual(executed.items.first?.result?.output["taskId"], .number(1))
+        XCTAssertEqual(executed.auditErrorMessage, "Action audit log could not be saved.")
+
+        executed.requestFreshApproval()
+        try executed.approve()
+        // A healthy logger on the next attempt must not create a second Task.
+        let retryRegistry = try ToolRegistry(tools: [TaskTool(name: .taskCreate, store: tasks)])
+        let retried = try ActionExecutor(registry: retryRegistry).execute(executed)
+        XCTAssertEqual(try tasks.listAll().count, 1)
+        XCTAssertEqual(retried.items.first?.result?.output["taskId"], .number(1))
+    }
+
     func testReviewSessionMakesImplicitProjectDependencyExplicitBeforeApproval() throws {
         let session = ReviewSession(plan: .reviewFixture(actions: [
             PlanAction(id: "project", tool: .projectCreate, arguments: ["title": .string("Alpha")]),
@@ -383,7 +414,7 @@ final class ActionExecutorTests: XCTestCase {
 
     func testExecutorRunsEnabledActionsAndInjectsProjectIDIntoFollowingTasks() throws {
         let connection = try SQLiteConnection(path: ":memory:")
-        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase2)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         let projectStore = SQLiteProjectStore(connection: connection)
         let taskStore = SQLiteTaskStore(connection: connection)
         let registry = try ToolRegistry.phase2Core(
@@ -407,7 +438,7 @@ final class ActionExecutorTests: XCTestCase {
 
     func testExecutorInjectsProjectIDIntoFollowingBulkTasks() throws {
         let connection = try SQLiteConnection(path: ":memory:")
-        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.phase2)
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         let projectStore = SQLiteProjectStore(connection: connection)
         let taskStore = SQLiteTaskStore(connection: connection)
         let registry = try ToolRegistry.phase2Core(
