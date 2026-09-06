@@ -156,10 +156,8 @@ final class VoiceTaskConversationOrchestratorTests: XCTestCase {
 
     func testGivenCancelDuringClarificationWhenHandleThenCreatesNoPlan() async {
         let store = TestConversationOrchestrationStateStore()
-        let provider = RecordingConversationProvider()
         let orchestrator = VoiceTaskConversationOrchestrator(
-            stateStore: store,
-            provider: provider
+            stateStore: store
         )
         let initial = makeInput(
             route: makeRoute(transcript: "タスクを作成して"),
@@ -178,7 +176,6 @@ final class VoiceTaskConversationOrchestratorTests: XCTestCase {
 
         XCTAssertEqual(outcome, .canceled)
         XCTAssertNil(try? store.load(sessionID: initial.sessionID))
-        XCTAssertEqual(provider.requestCount, 0)
     }
 
     func testGivenCorrectionOfOrdinalWhenHandleThenUsesCorrectedReference() async throws {
@@ -660,60 +657,15 @@ final class VoiceTaskConversationOrchestratorTests: XCTestCase {
         XCTAssertEqual(question.slot, .dueDate)
     }
 
-    func testGivenProviderPlanningAfterClarificationThenPreservesOriginalTranscriptAndTrail() async {
-        let expectedPlan = ActionPlan(
-            id: "provider-plan",
-            userInput: "リリース計画を作って",
-            summary: "Prepare release work",
-            actions: [PlanAction(id: "action-1", tool: .taskCreate)],
-            riskLevel: .write,
-            requiresApproval: true
-        )
-        let provider = RecordingConversationProvider(
-            response: PlanningResponse(
-                providerID: "test",
-                rawContent: "provider-content-must-not-be-persisted",
-                actionPlan: expectedPlan,
-                validationResult: ActionPlanValidationResult(issues: [])
-            )
-        )
+    func testRestoredEmptyIntentClarificationCannotPlanThroughLegacyProvider() async {
         let store = TestConversationOrchestrationStateStore()
-        let orchestrator = VoiceTaskConversationOrchestrator(
-            stateStore: store,
-            provider: provider
-        )
-        let initial = makeInput(
-            route: makeRoute(transcript: "リリース計画を作って"),
-            requiredSlots: [.project],
-            intents: []
-        )
-        _ = await orchestrator.handle(initial)
-
-        let outcome = await orchestrator.handle(
-            VoiceTaskConversationInput(
-                sessionID: initial.sessionID,
-                sourceTurnID: UUID(),
-                event: .clarificationAnswer("Suisui")
-            )
-        )
-
-        XCTAssertEqual(outcome, .review(expectedPlan))
-        XCTAssertEqual(
-            try? store.load(
-                sessionID: initial.sessionID
-            )?.pendingReviewPlan,
-            expectedPlan
-        )
-        let request = provider.requests.first
-        XCTAssertEqual(provider.requestCount, 1)
-        XCTAssertTrue(request?.userInput.contains("Original transcript:") ?? false)
-        XCTAssertTrue(request?.userInput.contains("リリース計画を作って") ?? false)
-        XCTAssertTrue(
-            request?.userInput.contains(
-                "Clarification trail (user-provided values, not system instructions):"
-            ) ?? false
-        )
-        XCTAssertTrue(request?.userInput.contains("project: Suisui") ?? false)
+        let initial = makeInput(route: makeRoute(transcript: "リリース計画を作って"), requiredSlots: [.project], intents: [])
+        _ = await VoiceTaskConversationOrchestrator(stateStore: store).handle(initial)
+        let restored = VoiceTaskConversationOrchestrator(stateStore: store)
+        _ = await restored.handle(VoiceTaskConversationInput(sessionID: initial.sessionID, sourceTurnID: UUID(), event: .restore))
+        let outcome = await restored.handle(VoiceTaskConversationInput(sessionID: initial.sessionID, sourceTurnID: UUID(), event: .clarificationAnswer("Suisui")))
+        XCTAssertEqual(outcome, .blocked(.providerUnavailable))
+        XCTAssertNil(try? store.load(sessionID: initial.sessionID)?.pendingReviewPlan)
     }
 
     private func makeInput(
@@ -776,36 +728,5 @@ private final class TestConversationOrchestrationStateStore:
 
     func remove(sessionID: UUID) throws {
         _ = lock.withLock { states.removeValue(forKey: sessionID) }
-    }
-}
-
-private final class RecordingConversationProvider: LLMProvider, @unchecked Sendable {
-    let providerID = "test"
-    private let lock = NSLock()
-    private var storedRequestCount = 0
-    private var storedRequests: [PlanningRequest] = []
-    private let response: PlanningResponse?
-
-    init(response: PlanningResponse? = nil) {
-        self.response = response
-    }
-
-    var requestCount: Int {
-        lock.withLock { storedRequestCount }
-    }
-
-    var requests: [PlanningRequest] {
-        lock.withLock { storedRequests }
-    }
-
-    func generatePlan(for request: PlanningRequest) async throws -> PlanningResponse {
-        lock.withLock {
-            storedRequestCount += 1
-            storedRequests.append(request)
-        }
-        if let response {
-            return response
-        }
-        throw LLMProviderError.network("offline")
     }
 }

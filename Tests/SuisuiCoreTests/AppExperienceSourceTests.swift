@@ -4586,7 +4586,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(classifierSource.contains("DailyPlanningActionDraftKind.splitRecommendedTask"))
         XCTAssertTrue(voiceSource.contains("VoiceDailyPlanningActionDraftClassifier.requestedKind"))
         XCTAssertTrue(voiceSource.contains("@Published public private(set) var dailyPlanningReviewRequest"))
-        XCTAssertTrue(voiceSource.contains("routedCommand.intent != .dailyPlanningReview"))
+        XCTAssertTrue(voiceSource.contains("routedCommand.intent == .dailyPlanningReview"))
         XCTAssertTrue(voiceSource.contains("beginDailyPlanningReviewRequest"))
         XCTAssertTrue(appSource.contains("viewModel.dailyPlanningReviewRequest"))
         XCTAssertTrue(appSource.contains("Queue a move-to-today draft for approval"))
@@ -4757,7 +4757,6 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testQuickCaptureRuntimeNeverInjectsAutomaticApproval() throws {
         let source = try readPackageFile("Sources/SuisuiApp/Composition/VoiceRuntimeFactory.swift")
-        XCTAssertTrue(source.contains("maximumQuickCaptureClarificationTurns: 1"))
         XCTAssertTrue(source.contains("maximumClarificationTurns: 1"))
         XCTAssertFalse(source.contains("lowRiskTaskAutoExecutor:"))
         XCTAssertFalse(source.contains("reviewViewModel.approve()"))

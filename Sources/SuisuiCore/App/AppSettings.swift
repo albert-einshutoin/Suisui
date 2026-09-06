@@ -1665,11 +1665,6 @@ public final class AppSettingsViewModel: ObservableObject {
         clearMessages()
     }
 
-    public func setTaskAutoExecutionMode(_ mode: TaskAutoExecutionMode) {
-        settings.taskAutoExecution.mode = mode
-        clearMessages()
-    }
-
     public func setTaskAutoExecutionCadence(_ cadence: TaskAutoExecutionCadence) {
         settings.taskAutoExecution.cadence = cadence
         clearMessages()

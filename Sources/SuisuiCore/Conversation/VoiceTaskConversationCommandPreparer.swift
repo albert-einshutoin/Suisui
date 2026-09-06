@@ -5,23 +5,53 @@ public struct VoiceTaskConversationPreparedBegin: Sendable {
     public let intents: [ConversationTaskIntent]
     public let referenceRequest: VoiceTaskReferenceRequest?
     public let localAnswerItems: [VoiceTaskConversationAnswerItem]
+    let listTurn: VoiceTaskConversationTurn?
+    let listReferences: [ConversationReference]
 
     public init(
         requiredSlots: [ClarificationSlot] = [],
         intents: [ConversationTaskIntent],
         referenceRequest: VoiceTaskReferenceRequest? = nil,
-        localAnswerItems: [VoiceTaskConversationAnswerItem] = []
+        localAnswerItems: [VoiceTaskConversationAnswerItem] = [],
+        listTurn: VoiceTaskConversationTurn? = nil,
+        listReferences: [ConversationReference] = []
     ) {
         self.requiredSlots = requiredSlots
         self.intents = intents
         self.referenceRequest = referenceRequest
         self.localAnswerItems = localAnswerItems
+        self.listTurn = listTurn
+        self.listReferences = listReferences
+    }
+
+    static func taskCreation(
+        transcript: String, triage: LocalTriageDecision, selectedProjectID: Int64?
+    ) -> Self? {
+        guard triage.operation == .taskCreate,
+              triage.route == .deterministic || triage.route == .clarification,
+              !triage.reasons.contains(.capabilityUnavailable),
+              !triage.reasons.contains(.manualOnly)
+        else { return nil }
+        guard let title = LocalTriageRouter.taskCreationTitle(in: transcript) else { return nil }
+        var arguments: [String: JSONValue] = [:]
+        if !title.isEmpty { arguments["title"] = .string(title) }
+        if let selectedProjectID { arguments["projectId"] = .number(Double(selectedProjectID)) }
+        return VoiceTaskConversationPreparedBegin(
+            requiredSlots: title.isEmpty ? [.taskTitle] : [],
+            intents: [ConversationTaskIntent(
+                utterance: transcript, operation: .create, tool: .taskCreate,
+                arguments: arguments, summary: "Create task"
+            )]
+        )
     }
 }
 
 public protocol VoiceTaskConversationCommandPreparing: Sendable {
+    func publish(_ prepared: VoiceTaskConversationPreparedBegin) throws
     func prepare(
         transcript: String,
+        triage: LocalTriageDecision,
+        explicitTaskID: Int64?,
         sessionID: UUID,
         sourceTurnID: UUID,
         selectedProjectID: Int64?,
@@ -30,8 +60,8 @@ public protocol VoiceTaskConversationCommandPreparing: Sendable {
     ) throws -> VoiceTaskConversationPreparedBegin?
 }
 
-/// Builds only deterministic Task operations. Unrecognized language returns
-/// `nil` so the existing provider planner remains the explicit fallback.
+/// Converts an authorized local decision into existing conversation intents.
+/// Unrecognized arguments remain unresolved; they never select a provider.
 public final class SQLiteVoiceTaskConversationCommandPreparer:
     VoiceTaskConversationCommandPreparing,
     @unchecked Sendable
@@ -52,6 +82,8 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
 
     public func prepare(
         transcript: String,
+        triage: LocalTriageDecision,
+        explicitTaskID: Int64?,
         sessionID: UUID,
         sourceTurnID: UUID,
         selectedProjectID: Int64?,
@@ -64,17 +96,46 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
                 locale: Locale(identifier: "en_US_POSIX")
             )
             .lowercased()
-        let visibleProjectIDs = Set(
-            try projectStore.list().map(\.id)
-        )
-        let tasks = try taskStore.listAll()
-            .filter { task in
-                task.status != "completed"
-                    && task.projectID.map(visibleProjectIDs.contains) ?? true
-                    && selectedProjectID.map { task.projectID == $0 } ?? true
+        guard triage.route == .deterministic || triage.route == .clarification,
+              !triage.reasons.contains(.capabilityUnavailable),
+              !triage.reasons.contains(.manualOnly)
+        else { return nil }
+
+        guard triage.operation == .read || triage.operation == .taskDueDate else { return nil }
+        if triage.operation == .read && !Self.isTaskListRequest(normalized) { return nil }
+        let references = triage.operation == .taskDueDate
+            ? try conversationStore.listReferences(sessionID: sessionID, limit: 500) : []
+        let latestSourceTurnID = references.first?.sourceTurnID
+        let latestReferences = references.filter { $0.sourceTurnID == latestSourceTurnID }
+        let tasks: [TaskRecord]
+        if triage.operation == .read {
+            tasks = try (selectedProjectID.map {
+                try taskStore.listForProjectBoard(projectIDs: [$0], includeDanglingReferences: false)
+                    .filter { $0.projectID == selectedProjectID }
+            } ?? taskStore.listAll()).filter { $0.status != "completed" }.sorted { $0.id < $1.id }
+        } else if let taskID = explicitTaskID ?? selectedTaskID {
+            tasks = [try taskStore.get(id: taskID)]
+        } else if latestReferences.isEmpty {
+            tasks = []
+        } else {
+            let referencedTasks: [TaskRecord] = try latestReferences.compactMap {
+                guard case .task(let id) = $0.target else { return nil }
+                return try taskStore.get(id: id)
             }
-            .sorted { $0.id < $1.id }
-        let candidates = tasks.map {
+            // Compare only the projects represented by the prior list. Unrelated
+            // projects must not participate in ordinal resolution.
+            tasks = try taskStore.listForProjectBoard(
+                projectIDs: Set(referencedTasks.compactMap(\.projectID)),
+                includeDanglingReferences: false
+            ).filter { $0.status != "completed" && (selectedProjectID == nil || $0.projectID == selectedProjectID) }.sorted { $0.id < $1.id }
+        }
+        let visibleProjectIDs = Set(try Set(tasks.compactMap(\.projectID)).filter {
+            try projectStore.get(id: $0).status != "archived"
+        })
+        let visibleTasks = tasks.filter {
+            $0.status != "completed" && ($0.projectID.map(visibleProjectIDs.contains) ?? true)
+        }
+        let candidates = visibleTasks.map {
             ConversationReferenceCandidate(
                 target: .task(id: $0.id, projectID: $0.projectID),
                 title: $0.title,
@@ -82,12 +143,12 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
             )
         }
 
-        if isTaskListRequest(normalized) {
-            try persistListReferenceSet(
+        if Self.isTaskListRequest(normalized) {
+            let (turn, references) = try makeListReferenceSet(
                 transcript: transcript,
                 sessionID: sessionID,
                 sourceTurnID: sourceTurnID,
-                tasks: tasks,
+                tasks: visibleTasks,
                 candidates: candidates,
                 at: date
             )
@@ -103,37 +164,31 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
                         summary: "List current tasks"
                     )
                 ],
-                localAnswerItems: tasks.map {
+                localAnswerItems: visibleTasks.map {
                     VoiceTaskConversationAnswerItem(
                         id: "task:\($0.id)",
                         label: $0.title
                     )
-                }
+                },
+                listTurn: turn,
+                listReferences: references
             )
         }
 
-        guard let priority = requestedPriority(in: normalized),
-              requestsDueDateChange(normalized),
-              refersToTask(normalized)
+        guard let priority = Self.requestedPriority(in: normalized),
+              Self.requestsDueDateChange(normalized),
+              Self.refersToTask(normalized)
         else {
             return nil
         }
 
-        let references = try conversationStore.listReferences(
-            sessionID: sessionID,
-            limit: 500
-        )
-        let latestSourceTurnID = references.first?.sourceTurnID
-        let latestReferences = references.filter {
-            $0.sourceTurnID == latestSourceTurnID
-        }
-        let fingerprint = latestReferences.first?.orderingFingerprint
-        let ordinal = requestedOrdinal(in: normalized)
+        let fingerprint = (explicitTaskID != nil || selectedTaskID != nil) ? nil : latestReferences.first?.orderingFingerprint
+        let ordinal = Self.requestedOrdinal(in: normalized)
         let ordinalReference = ordinal.flatMap { requested in
             latestReferences.first { $0.ordinal == requested }
         }
         let selectedTask = selectedTaskID.flatMap { id in
-            tasks.first(where: { $0.id == id }).map {
+            visibleTasks.first(where: { $0.id == id }).map {
                 ConversationResolvedTarget.task(
                     id: $0.id,
                     projectID: $0.projectID
@@ -163,6 +218,9 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
             referenceRequest: VoiceTaskReferenceRequest(
                 sessionID: sessionID,
                 utterance: transcript,
+                explicitTarget: explicitTaskID.flatMap { id in
+                    visibleTasks.first(where: { $0.id == id }).map { .task(id: $0.id, projectID: $0.projectID) }
+                },
                 selectedTask: selectedTask,
                 selectedProject: selectedProject,
                 ordinalReference: ordinalReference,
@@ -172,24 +230,14 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
         )
     }
 
-    private func persistListReferenceSet(
+    private func makeListReferenceSet(
         transcript: String,
         sessionID: UUID,
         sourceTurnID: UUID,
         tasks: [TaskRecord],
         candidates: [ConversationReferenceCandidate],
         at date: Date
-    ) throws {
-        if try conversationStore.loadSession(id: sessionID) == nil {
-            try conversationStore.createSession(
-                VoiceTaskConversationSession(
-                    id: sessionID,
-                    title: "Voice task conversation",
-                    entryPoint: .voiceCommand,
-                    createdAt: date
-                )
-            )
-        }
+    ) throws -> (VoiceTaskConversationTurn, [ConversationReference]) {
         let turn = try VoiceTaskConversationTurn(
             id: sourceTurnID,
             sessionID: sessionID,
@@ -215,13 +263,29 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
                     createdAt: date
                 )
         }
-        try conversationStore.saveTurnAndReferences(
-            turn: turn,
-            references: references
-        )
+        return (turn, references)
     }
 
-    private func isTaskListRequest(_ text: String) -> Bool {
+    public func publish(_ prepared: VoiceTaskConversationPreparedBegin) throws {
+        guard let turn = prepared.listTurn else { return }
+        if try conversationStore.loadSession(id: turn.sessionID) == nil {
+            try conversationStore.createSession(VoiceTaskConversationSession(
+                id: turn.sessionID, title: "Voice task conversation", entryPoint: .voiceCommand, createdAt: turn.createdAt
+            ))
+        }
+        try conversationStore.saveTurnAndReferences(turn: turn, references: prepared.listReferences)
+    }
+
+    static func supportedOperations(for text: String) -> Set<LocalTriageOperation> {
+        var operations: Set<LocalTriageOperation> = [.taskCreate, .frontier, .externalWrite]
+        if isTaskListRequest(text) { operations.insert(.read) }
+        if requestedPriority(in: text) != nil && requestsDueDateChange(text) && refersToTask(text) {
+            operations.insert(.taskDueDate)
+        }
+        return operations
+    }
+
+    private static func isTaskListRequest(_ text: String) -> Bool {
         text.contains("task list")
             || text.contains("list tasks")
             || text.contains("show tasks")
@@ -230,22 +294,23 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
             || text.contains("タスクを見せ")
     }
 
-    private func requestsDueDateChange(_ text: String) -> Bool {
+    private static func requestsDueDateChange(_ text: String) -> Bool {
         text.contains("due")
             || text.contains("deadline")
             || text.contains("期限")
             || text.contains("締切")
     }
 
-    private func refersToTask(_ text: String) -> Bool {
-        text.contains("task")
+    private static func refersToTask(_ text: String) -> Bool {
+        LocalTriageRouter.explicitTaskID(in: text) != nil
+            || text.contains("task")
             || text.contains("タスク")
             || text.contains("それ")
             || text.contains("that")
             || requestedOrdinal(in: text) != nil
     }
 
-    private func requestedPriority(in text: String) -> String? {
+    private static func requestedPriority(in text: String) -> String? {
         if text.contains("high priority")
             || text.contains("priority high")
             || text.contains("優先度を高")
@@ -270,7 +335,7 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
         return nil
     }
 
-    private func requestedOrdinal(in text: String) -> Int? {
+    private static func requestedOrdinal(in text: String) -> Int? {
         let tokens: [(String, Int)] = [
             ("first", 0), ("1st", 0), ("一つ目", 0), ("1つ目", 0),
             ("second", 1), ("2nd", 1), ("二つ目", 1), ("2つ目", 1),

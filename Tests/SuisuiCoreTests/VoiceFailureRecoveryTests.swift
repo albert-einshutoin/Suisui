@@ -9,7 +9,7 @@ final class VoiceFailureRecoveryTests: XCTestCase {
     func testAuthenticationFailureOffersOpenSettingsRecovery() async {
         let viewModel = makeViewModel(provider: ThrowingVoiceLLMProvider(error: .authenticationFailed))
 
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         guard case .failed = viewModel.phase else {
@@ -23,7 +23,7 @@ final class VoiceFailureRecoveryTests: XCTestCase {
             provider: ThrowingVoiceLLMProvider(error: .executionNotApproved("Approve local execution in Settings."))
         )
 
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         XCTAssertEqual(viewModel.failureRecovery, .openSettings)
@@ -33,7 +33,7 @@ final class VoiceFailureRecoveryTests: XCTestCase {
         for error in [LLMProviderError.network("offline"), .rateLimited] {
             let viewModel = makeViewModel(provider: ThrowingVoiceLLMProvider(error: error))
 
-            viewModel.updateDraftText("Create a task")
+            viewModel.updateDraftText("Draft release brief")
             await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
             guard case .failed = viewModel.phase else {
@@ -46,7 +46,7 @@ final class VoiceFailureRecoveryTests: XCTestCase {
     func testInvalidResponseFailureHasNoRecoveryAffordance() async {
         let viewModel = makeViewModel(provider: ThrowingVoiceLLMProvider(error: .invalidResponse("bad JSON")))
 
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         guard case .failed = viewModel.phase else {
@@ -58,7 +58,7 @@ final class VoiceFailureRecoveryTests: XCTestCase {
     func testEditingDraftClearsFailureRecovery() async {
         let viewModel = makeViewModel(provider: ThrowingVoiceLLMProvider(error: .authenticationFailed))
 
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
         XCTAssertEqual(viewModel.failureRecovery, .openSettings)
 
@@ -70,7 +70,7 @@ final class VoiceFailureRecoveryTests: XCTestCase {
     func testClearResetsFailureRecovery() async {
         let viewModel = makeViewModel(provider: ThrowingVoiceLLMProvider(error: .network("offline")))
 
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
         XCTAssertEqual(viewModel.failureRecovery, .retryPlanGeneration)
 
@@ -86,7 +86,7 @@ final class VoiceFailureRecoveryTests: XCTestCase {
         )
         let viewModel = makeViewModel(provider: provider)
 
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
         XCTAssertEqual(viewModel.failureRecovery, .retryPlanGeneration)
 
@@ -102,7 +102,14 @@ final class VoiceFailureRecoveryTests: XCTestCase {
         VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
-            llmProvider: provider
+            llmProvider: provider,
+            planningReadinessProvider: {
+                ProviderReadinessReference(
+                    providerID: ProviderID(provider.providerID), isReady: true,
+                    isLocal: false, allowsLocalData: false, requiresNetwork: true,
+                    capabilities: [.documentDraft, .documentResearch]
+                )
+            }
         )
     }
 
@@ -112,7 +119,7 @@ final class VoiceFailureRecoveryTests: XCTestCase {
             rawContent: "{}",
             actionPlan: ActionPlan(
                 id: "plan-retry-1",
-                userInput: "Create a task",
+                userInput: "Draft release brief",
                 summary: "Create task",
                 actions: [PlanAction(id: "action-1", tool: .taskCreate)],
                 riskLevel: .write,

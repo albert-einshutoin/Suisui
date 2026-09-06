@@ -525,10 +525,17 @@ final class ReviewSessionViewModelTests: XCTestCase {
                 rawContent: "{}",
                 actionPlan: plan,
                 validationResult: ActionPlanValidationResult(issues: [])
-            ))
+            )),
+            planningReadinessProvider: {
+                ProviderReadinessReference(
+                    providerID: ProviderID("fake"), isReady: true,
+                    isLocal: false, allowsLocalData: false, requiresNetwork: true,
+                    capabilities: [.documentDraft, .documentResearch]
+                )
+            }
         )
 
-        voiceViewModel.updateDraftText("Create a task for QZT article publish checklist")
+        voiceViewModel.updateDraftText("Draft a QZT article brief")
         await voiceViewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         let generatedPlan = try XCTUnwrap(voiceViewModel.planningResponse?.actionPlan)

@@ -7817,7 +7817,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(setTextFieldSource.contains("kill \"$osascript_pid\""))
     }
 
-    func testRuntimeVoiceReviewSmokeScriptFailsClosedWithoutAPIKeyAndPersistsPlanningAudit() throws {
+    func testRuntimeVoiceReviewSmokeScriptConnectsLocalTriageWithoutProviderOrUnapprovedWrites() throws {
         let script = try readPackageFile("script/check_runtime_voice_review_smoke.sh")
 
         XCTAssertTrue(script.contains("AX_HELPERS=\"${AX_HELPERS:-$ROOT_DIR/script/ui_accessibility_smoke_helpers.sh}\""))
@@ -7844,13 +7844,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("/usr/bin/defaults delete \"$suite\""))
         XCTAssertTrue(script.contains("setTextAreaContaining \"voice-command-input\""))
         XCTAssertTrue(script.contains("pressControlContaining \"voice-command-generate-plan\""))
-        XCTAssertTrue(script.contains("The AI provider rejected the configured API key."))
-        XCTAssertTrue(script.contains("category='planning' AND action='generate_plan' AND status='started'"))
-        XCTAssertTrue(script.contains("category='planning' AND action='generate_plan' AND status='failed'"))
-        XCTAssertTrue(script.contains("category='planning' AND action='generate_plan' AND status='succeeded'"))
+        XCTAssertTrue(script.contains("local triage proposal awaiting Review"))
+        XCTAssertTrue(script.contains("frontier calls for deterministic input"))
+        XCTAssertTrue(script.contains("task writes after Reject"))
         XCTAssertTrue(script.contains("SELECT count(*) FROM tasks;"))
         XCTAssertTrue(script.contains("planning_initial_project_count=\"$(sqlite_scalar \"SELECT count(*) FROM projects;\")\""))
-        XCTAssertTrue(script.contains("project count unchanged after rejected planning"))
+        XCTAssertTrue(script.contains("project count unchanged before approval"))
         XCTAssertTrue(script.contains("seed_daily_planning_task"))
         XCTAssertTrue(script.contains("daily_planning_seed_task_id"))
         XCTAssertTrue(script.contains("Open Today Review and start the recommended task"))
@@ -7894,7 +7893,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("planning audit did not start again for move-to-today local Daily Planning handoff"))
         XCTAssertTrue(script.contains("planning audit did not start again for defer local Daily Planning handoff"))
         XCTAssertTrue(script.contains("planning audit did not start again for split local Daily Planning handoff"))
-        XCTAssertTrue(script.contains("OK: runtime voice review smoke verified fail-closed planning audit and no pre-approval writes"))
+        XCTAssertTrue(script.contains("OK: runtime voice review smoke verified Local Triage to Review and no pre-approval writes"))
         XCTAssertTrue(script.contains("OK: runtime voice review smoke verified local Daily Planning queue handoffs"))
         XCTAssertFalse(script.contains(":memory:"))
         XCTAssertFalse(script.contains("not implemented yet"))

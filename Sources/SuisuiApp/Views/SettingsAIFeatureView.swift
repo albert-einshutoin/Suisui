@@ -86,25 +86,9 @@ struct SettingsAIFeatureView: View {
 
                 taskAutomationSaveButton
 
-                Picker(
-                    "Automation mode",
-                    selection: Binding(
-                        get: { settingsViewModel.settings.taskAutoExecution.mode },
-                        set: { settingsViewModel.setTaskAutoExecutionMode($0) }
-                    )
-                ) {
-                    ForEach(TaskAutoExecutionMode.allCases, id: \.self) { mode in
-                        Text(mode.label)
-                            .tag(mode)
-                    }
-                }
-                .accessibilityIdentifier("settings-task-auto-execution-mode")
-                .accessibilityHint("Auto-create runs a plan automatically only when it is a single low-risk task; everything else still requires review.")
-
-                Text("Auto-create runs a plan automatically only when it is a single low-risk task; everything else still requires review.")
+                Text("Review before execution")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("settings-task-auto-execution-mode-caption")
 
                 Picker(
                     "Frequency",

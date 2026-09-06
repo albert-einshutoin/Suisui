@@ -54,7 +54,6 @@ extension AppRuntimeFactory {
                         try taskStore.get(id: taskID)
                     )
                 },
-                provider: llmProvider,
                 maximumClarificationTurns: 1
             )
             let projectBoardStore = SQLiteProjectBoardStore(connection: connection)
@@ -95,6 +94,28 @@ extension AppRuntimeFactory {
             audioRecorder: audioRecorder,
             sttProvider: sttProvider,
             llmProvider: llmProvider,
+            planningReadinessProvider: {
+                let latest = loadRuntimeSettings()
+                let selected = settingsResult.settings.normalizedForRuntime.aiProvider
+                guard latest.errorMessage == nil,
+                      latest.settings.normalizedForRuntime.aiProvider == selected,
+                      !(llmProvider is UnavailableLLMProvider),
+                      LLMProviderCatalog.entry(forRuntimeProviderID: llmProvider.providerID)?.id == selected else { return nil }
+                let readiness = makeAppSettingsViewModel(refreshProviderSecretStatusesOnInit: false)
+                await readiness.refreshProviderReadiness()
+                let refreshed = loadRuntimeSettings()
+                guard refreshed.errorMessage == nil,
+                      refreshed.settings.normalizedForRuntime.aiProvider == selected,
+                      readiness.settings.aiProvider == selected,
+                      readiness.providerReadinessRow(for: selected).readiness.isReady else { return nil }
+                let isLocal = selected == .ollamaCompatible
+                return ProviderReadinessReference(
+                    providerID: ProviderID(llmProvider.providerID),
+                    isReady: true,
+                    isLocal: isLocal, allowsLocalData: isLocal, requiresNetwork: !isLocal,
+                    capabilities: [.documentDraft, .documentResearch]
+                )
+            },
             auditRecorder: auditLogger.map { PlanningAuditRecorder(logger: $0) },
             runtimeValidationMessage: runtimeValidationMessage,
             assistantQueueStore: assistantQueueStore,
@@ -108,8 +129,7 @@ extension AppRuntimeFactory {
             workspaceContextRetriever: workspaceContextRetriever,
             workspaceAnswerReadout: { answer in
                 speakWorkspaceAnswer(answer)
-            },
-            maximumQuickCaptureClarificationTurns: 1
+            }
         )
         if let conversationStore {
             viewModel.configureConversationWorkspace(

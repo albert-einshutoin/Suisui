@@ -3,6 +3,243 @@ import XCTest
 
 @MainActor
 final class VoiceCaptureViewModelTests: XCTestCase {
+    func testExplicitIDGrammarReachesReviewWithoutPriorList() async throws {
+        for prefix in ["#", "task # ", "タスク #", "ｔａｓｋ ＃"] {
+            let (viewModel, tasks, provider) = try makeLocalTriageViewModel()
+            let task = try tasks.create(title: "Update target", projectID: nil)
+            let input = "\(prefix)\(task.id) due 2031-03-08 priority high"
+            viewModel.updateDraftText(input)
+            await viewModel.generatePlan()
+            XCTAssertEqual(viewModel.localTriageRequest?.explicitTaskID, task.id, input)
+            XCTAssertEqual(viewModel.localTriageDecision?.route, .deterministic, input)
+            let plan = try XCTUnwrap(viewModel.planningResponse?.actionPlan)
+            XCTAssertEqual(plan.actions.first?.arguments["id"], .number(Double(task.id)))
+            XCTAssertTrue(provider.requests.isEmpty)
+            XCTAssertNil(try tasks.get(id: task.id).dueAt)
+        }
+    }
+
+    func testUnsupportedAdapterOperationsAreClassifiedBeforePlanning() async throws {
+        let (viewModel, tasks, provider) = try makeLocalTriageViewModel()
+        for input in ["Complete task #22", "Move task #22 into project", "Count tasks", "Update task #22 due tomorrow"] {
+            viewModel.updateDraftText(input)
+            await viewModel.generatePlan()
+            XCTAssertEqual(viewModel.localTriageDecision?.operation, .unsupported, input)
+            XCTAssertNil(viewModel.planningResponse)
+            XCTAssertNotNil(viewModel.auditErrorMessage)
+        }
+        XCTAssertTrue(provider.requests.isEmpty)
+        XCTAssertTrue(try tasks.listAll().isEmpty)
+    }
+
+    func testReplacedListCannotPublishReferences() async throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteVoiceTaskConversationStore(connection: connection)
+        let tasks = SQLiteTaskStore(connection: connection)
+        _ = try tasks.create(title: "Unpublished task", projectID: nil)
+        let sessionID = UUID()
+        try store.createSession(VoiceTaskConversationSession(id: sessionID, title: "Capture", entryPoint: .voiceCommand))
+        let gate = VoicePlanningGate()
+        let orchestrator = RecordingVoiceConversationOrchestrator(
+            outcomes: [.answer(VoiceTaskConversationAnswer(text: "Tasks", source: .localDeterministic)), .canceled], beginGate: gate)
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(), sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(providerID: "unused", rawContent: "", actionPlan: nil, validationResult: ActionPlanValidationResult(issues: []))),
+            conversationOrchestrator: orchestrator,
+            conversationCommandPreparer: SQLiteVoiceTaskConversationCommandPreparer(taskStore: tasks, projectStore: SQLiteProjectStore(connection: connection), conversationStore: store),
+            conversationSessionID: sessionID)
+        viewModel.updateDraftText("List tasks")
+        let generation = Task { await viewModel.generatePlan() }
+        await gate.waitUntilRequestReceived()
+        viewModel.updateDraftText("Replacement")
+        await gate.release()
+        await generation.value
+        XCTAssertTrue(try store.listReferences(sessionID: sessionID, limit: 10).isEmpty)
+        XCTAssertTrue(try store.listTurns(sessionID: sessionID, before: nil, limit: 10).isEmpty)
+    }
+
+    func testLocalTriageNormalTextAndVoiceCreateReviewWithoutProviderOrTaskWrite() async throws {
+        for usesVoice in [false, true] {
+            let connection = try SQLiteConnection(path: ":memory:")
+            try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+            let queue = SQLiteAssistantQueueStore(connection: connection)
+            let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
+                providerID: "must-not-run", rawContent: "", actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            ))
+            let store = SQLiteVoiceTaskConversationStore(connection: connection)
+            let tasks = SQLiteTaskStore(connection: connection)
+            let orchestrator = VoiceTaskConversationOrchestrator(
+                stateStore: SQLiteVoiceTaskConversationOrchestrationStateStore(connection: connection),
+                conversationStore: store,
+                taskSnapshotFingerprintProvider: { ConversationTaskSnapshotFingerprint.make(try tasks.get(id: $0)) },
+                maximumClarificationTurns: 1
+            )
+            let input = "Create task: Prepare launch notes"
+            let viewModel = VoiceCaptureViewModel(
+                audioRecorder: FakeAudioRecorder(),
+                sttProvider: FakeSTTProvider(transcript: STTTranscript(text: input)),
+                llmProvider: provider, assistantQueueStore: queue,
+                conversationOrchestrator: orchestrator,
+                conversationCommandPreparer: SQLiteVoiceTaskConversationCommandPreparer(
+                    taskStore: tasks, projectStore: SQLiteProjectStore(connection: connection), conversationStore: store
+                ),
+                conversationSessionID: UUID()
+            )
+            if usesVoice {
+                await viewModel.startRecording()
+                await viewModel.stopRecording(outputURL: FileManager.default.temporaryDirectory.appendingPathComponent("triage-\(UUID().uuidString).m4a"))
+            } else {
+                viewModel.updateDraftText(input)
+            }
+            await viewModel.generatePlan()
+            XCTAssertTrue(provider.requests.isEmpty)
+            XCTAssertEqual(viewModel.planningResponse?.providerID, "local-triage-v0")
+            let plan = try XCTUnwrap(viewModel.planningResponse?.actionPlan)
+            XCTAssertEqual(plan.userInput, input)
+            XCTAssertEqual(plan.actions.first?.arguments["title"], .string("Prepare launch notes"))
+            XCTAssertTrue(plan.requiresApproval)
+            XCTAssertEqual(viewModel.localTriageRequest?.source, usesVoice ? .voice : .text)
+            XCTAssertEqual(viewModel.localTriageRequest?.normalizedInput, "create task: prepare launch notes")
+            XCTAssertEqual(viewModel.assistantQueueItem?.requiresConversationActionLink, true)
+            var review = ReviewSession(plan: plan)
+            review.updateStringArgument(id: plan.actions[0].id, key: "title", value: "Edited launch notes")
+            XCTAssertEqual(review.items[0].editedAction.arguments["title"], .string("Edited launch notes"))
+            XCTAssertEqual(viewModel.assistantQueueItem?.state, .waitingReview)
+            XCTAssertTrue(try SQLiteTaskStore(connection: connection).listAll().isEmpty)
+            viewModel.rejectAssistantQueueItem()
+            XCTAssertEqual(viewModel.assistantQueueItem?.state, .rejected)
+            XCTAssertTrue(try SQLiteTaskStore(connection: connection).listAll().isEmpty)
+        }
+    }
+
+    func testLocalTriageClarifiesOnceAndAcceptsAnotherRequestInSameSession() async throws {
+        let (viewModel, tasks, provider) = try makeLocalTriageViewModel()
+        viewModel.updateDraftText("Create task:")
+        await viewModel.generatePlan()
+        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .taskTitle)
+        await viewModel.submitClarificationAnswer("Write release notes")
+        XCTAssertNil(viewModel.clarificationQuestion)
+        XCTAssertEqual(viewModel.planningResponse?.actionPlan?.actions.first?.arguments["title"], .string("Write release notes"))
+        XCTAssertTrue(try tasks.listAll().isEmpty)
+        viewModel.rejectAssistantQueueItem()
+
+        viewModel.updateDraftText("Create task:")
+        viewModel.clear()
+        viewModel.updateDraftText("Create task:")
+        await viewModel.generatePlan()
+        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .taskTitle)
+        await viewModel.submitClarificationAnswer("")
+        XCTAssertNil(viewModel.clarificationQuestion)
+        XCTAssertNil(viewModel.planningResponse)
+        XCTAssertNil(viewModel.inboxCaptureResult)
+        XCTAssertTrue(provider.requests.isEmpty)
+        XCTAssertTrue(try tasks.listAll().isEmpty)
+    }
+
+    func testLocalTriageUnknownAndCancelNeverReusePriorProposal() async throws {
+        let (viewModel, tasks, provider) = try makeLocalTriageViewModel()
+        viewModel.updateDraftText("Create task:")
+        await viewModel.generatePlan()
+        viewModel.cancelClarification()
+        viewModel.updateDraftText("Unrecognized request")
+        await viewModel.generatePlan()
+        XCTAssertEqual(viewModel.localTriageDecision?.operation, .unsupported)
+        XCTAssertNil(viewModel.clarificationQuestion)
+        XCTAssertNil(viewModel.planningResponse)
+        XCTAssertNotNil(viewModel.auditErrorMessage)
+        XCTAssertTrue(provider.requests.isEmpty)
+        XCTAssertTrue(try tasks.listAll().isEmpty)
+    }
+
+    func testLocalTriageFrontierReadinessAndDurableReviewPreserveUsage() async throws {
+        let plan = ActionPlan(
+            id: "frontier-proposal", userInput: "Draft release brief", summary: "Draft follow-up",
+            actions: [PlanAction(id: "task", tool: .taskCreate, arguments: ["title": .string("Review draft")])],
+            riskLevel: .write, requiresApproval: true
+        )
+        let response = PlanningResponse(
+            providerID: "openai.chat_completions", rawContent: "", actionPlan: plan,
+            validationResult: ActionPlanValidator().validate(plan),
+            model: ExecutionReceiptModel(provider: "openai.chat_completions", name: "test-model"),
+            usage: ExecutionReceiptUsage(inputTokens: 90, outputTokens: 12, isEstimated: false)
+        )
+        for isReady in [false, true] {
+            let (viewModel, tasks, provider) = try makeLocalTriageViewModel(response: response, providerReady: isReady)
+            viewModel.updateDraftText("Draft release brief")
+            await viewModel.generatePlan()
+            XCTAssertEqual(provider.requests.count, isReady ? 1 : 0)
+            if isReady {
+                let item = try XCTUnwrap(viewModel.assistantQueueItem)
+                XCTAssertEqual(item.state, .waitingReview, "\(String(describing: item.blockingReason)) / \(viewModel.phase) / \(String(describing: viewModel.auditErrorMessage))")
+                XCTAssertTrue(item.requiresConversationActionLink)
+                XCTAssertEqual(item.costPreview?.executionReceiptUsage.inputTokens, 90)
+                XCTAssertEqual(item.costPreview?.billingMode, .userProviderBilled)
+                viewModel.rejectAssistantQueueItem()
+                XCTAssertEqual(viewModel.assistantQueueItem?.state, .rejected)
+            } else {
+                XCTAssertNil(viewModel.planningResponse)
+                XCTAssertNotNil(viewModel.auditErrorMessage)
+            }
+            XCTAssertTrue(try tasks.listAll().isEmpty)
+        }
+    }
+
+    func testLocalTriageJapaneseTaskAndUnavailableCapability() async throws {
+        let (viewModel, tasks, provider) = try makeLocalTriageViewModel()
+        viewModel.updateDraftText("タスクを追加: 書類を確認する")
+        await viewModel.generatePlan(availableTools: [])
+        XCTAssertNil(viewModel.planningResponse)
+        XCTAssertTrue(viewModel.localTriageDecision?.reasons.contains(.capabilityUnavailable) == true)
+        await viewModel.generatePlan()
+        XCTAssertEqual(viewModel.planningResponse?.actionPlan?.actions.first?.arguments["title"], .string("書類を確認する"))
+        XCTAssertTrue(provider.requests.isEmpty)
+        XCTAssertTrue(try tasks.listAll().isEmpty)
+    }
+
+    private static func readyPlanningProvider(_ id: String) -> ProviderReadinessReference {
+        ProviderReadinessReference(
+            providerID: ProviderID(id), isReady: true, isLocal: false,
+            allowsLocalData: false, requiresNetwork: true,
+            capabilities: [.documentDraft, .documentResearch]
+        )
+    }
+
+    private func makeLocalTriageViewModel(
+        sttProvider: any SpeechToTextProvider = FakeSTTProvider(transcript: STTTranscript(text: "")),
+        response: PlanningResponse? = nil,
+        providerReady: Bool = false
+    ) throws -> (VoiceCaptureViewModel, SQLiteTaskStore, RecordingVoiceLLMProvider) {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let tasks = SQLiteTaskStore(connection: connection)
+        let store = SQLiteVoiceTaskConversationStore(connection: connection)
+        let provider = RecordingVoiceLLMProvider(response: response ?? PlanningResponse(
+            providerID: "must-not-run", rawContent: "", actionPlan: nil,
+            validationResult: ActionPlanValidationResult(issues: [])
+        ))
+        let orchestrator = VoiceTaskConversationOrchestrator(
+            stateStore: SQLiteVoiceTaskConversationOrchestrationStateStore(connection: connection),
+            conversationStore: store,
+            taskSnapshotFingerprintProvider: { ConversationTaskSnapshotFingerprint.make(try tasks.get(id: $0)) },
+            maximumClarificationTurns: 1
+        )
+        return (VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: sttProvider,
+            llmProvider: provider,
+            planningReadinessProvider: { providerReady ? Self.readyPlanningProvider(provider.providerID) : nil },
+            assistantQueueStore: SQLiteAssistantQueueStore(connection: connection),
+            conversationOrchestrator: orchestrator,
+            conversationCommandPreparer: SQLiteVoiceTaskConversationCommandPreparer(
+                taskStore: tasks, projectStore: SQLiteProjectStore(connection: connection), conversationStore: store
+            ),
+            conversationSessionID: UUID(),
+            appSettingsProvider: { Self.lowLatencyLocalVoiceAgentSettings() }
+        ), tasks, provider)
+    }
+
     func testConversationWorkspaceCreatesScopedSessionAndPersistsLifecycle()
         throws
     {
@@ -205,9 +442,10 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
-            llmProvider: provider
+            llmProvider: provider,
+            planningReadinessProvider: { Self.readyPlanningProvider(provider.providerID) }
         )
-        viewModel.updateDraftText("明日のタスクを追加")
+        viewModel.updateDraftText("Draft release brief")
 
         approval.value = nil
         await viewModel.generatePlan()
@@ -303,18 +541,19 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
             llmProvider: FakeLLMProvider(response: response),
+            planningReadinessProvider: { Self.readyPlanningProvider("fake") },
             auditRecorder: PlanningAuditRecorder(logger: logger),
             assistantQueueStore: store
         )
 
-        viewModel.updateDraftText(" Create a task ")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         XCTAssertEqual(viewModel.phase, .reviewReady)
         XCTAssertEqual(viewModel.planningResponse?.actionPlan?.id, "plan-1")
         let expectedCapabilities: [AssistantQueueRequiredCapability] = [.tool(.taskCreate), .providerExecutionApproval]
         XCTAssertEqual(viewModel.assistantQueueItem?.state, .waitingReview)
-        XCTAssertEqual(viewModel.assistantQueueItem?.sourceTranscript, "Create a task")
+        XCTAssertEqual(viewModel.assistantQueueItem?.sourceTranscript, "Draft release brief")
         XCTAssertEqual(viewModel.assistantQueueItem?.redactedSummary, "Create task")
         XCTAssertEqual(viewModel.assistantQueueItem?.requiredCapabilities, expectedCapabilities)
         XCTAssertEqual(store.savedItems.map(\.state), [.waitingReview])
@@ -327,7 +566,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             rawContent: "{}",
             actionPlan: ActionPlan(
                 id: "plan-default-tools",
-                userInput: "Create a task",
+                userInput: "Draft release brief",
                 summary: "Create task",
                 actions: [PlanAction(id: "action-1", tool: .taskCreate)],
                 riskLevel: .write,
@@ -339,10 +578,11 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
-            llmProvider: provider
+            llmProvider: provider,
+            planningReadinessProvider: { Self.readyPlanningProvider(provider.providerID) }
         )
 
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         XCTAssertEqual(provider.requests.first?.availableTools, ActionTool.defaultPlanningTools)
@@ -352,7 +592,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertFalse(provider.requests.first?.availableTools.contains(.developmentRepositoryUpdateFile) ?? true)
     }
 
-    func testGeneratePlanUsesDeveloperPlanningToolsForDevelopmentPRIntent() async {
+    func testUnsupportedDevelopmentRequestDoesNotFallBackToProvider() async {
         let response = PlanningResponse(
             providerID: "recording",
             rawContent: "{}",
@@ -383,12 +623,10 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         viewModel.updateDraftText("このプロジェクトでブランチを作ってPRレビューとマージまで進めて")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
-        XCTAssertEqual(viewModel.phase, .reviewReady)
-        XCTAssertEqual(provider.requests.first?.availableTools, ActionTool.developerModePlanningTools)
-        XCTAssertEqual(viewModel.assistantQueueItem?.requiredCapabilities, [
-            .tool(.developmentPreparePullRequestWorkflow),
-            .providerExecutionApproval
-        ])
+        XCTAssertEqual(viewModel.phase, .idle)
+        XCTAssertTrue(provider.requests.isEmpty)
+        XCTAssertNil(viewModel.assistantQueueItem)
+        XCTAssertNotNil(viewModel.auditErrorMessage)
     }
 
     func testNotificationDraftCommandCreatesMailDraftQueueItemWithoutProviderCall() async throws {
@@ -748,7 +986,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             rawContent: "{}",
             actionPlan: ActionPlan(
                 id: "plan-persisted",
-                userInput: "Create a persisted task",
+                userInput: "Draft release brief",
                 summary: "Create persisted task",
                 actions: [PlanAction(id: "action-1", tool: .taskCreate)],
                 riskLevel: .write,
@@ -760,10 +998,11 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
             llmProvider: FakeLLMProvider(response: response),
+            planningReadinessProvider: { Self.readyPlanningProvider("fake") },
             assistantQueueStore: store
         )
 
-        viewModel.updateDraftText("Create a persisted task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         XCTAssertEqual(viewModel.phase, .reviewReady)
@@ -784,7 +1023,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             rawContent: "{}",
             actionPlan: ActionPlan(
                 id: "plan-measured-usage",
-                userInput: "Create a measured task",
+                userInput: "Draft release brief",
                 summary: "Create measured task",
                 actions: [PlanAction(id: "action-1", tool: .taskCreate)],
                 riskLevel: .write,
@@ -797,10 +1036,11 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
-            llmProvider: FakeLLMProvider(response: response)
+            llmProvider: FakeLLMProvider(response: response),
+            planningReadinessProvider: { Self.readyPlanningProvider("fake") }
         )
 
-        viewModel.updateDraftText("Create a measured task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         let preview = viewModel.assistantQueueItem?.costPreview
@@ -818,7 +1058,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             rawContent: "{}",
             actionPlan: ActionPlan(
                 id: "plan-codex-subscription",
-                userInput: "Create a task",
+                userInput: "Draft release brief",
                 summary: "Create task",
                 actions: [PlanAction(id: "action-1", tool: .taskCreate)],
                 riskLevel: .write,
@@ -830,10 +1070,11 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
-            llmProvider: FakeLLMProvider(response: response)
+            llmProvider: FakeLLMProvider(response: response),
+            planningReadinessProvider: { Self.readyPlanningProvider("fake") }
         )
 
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         let preview = viewModel.assistantQueueItem?.costPreview
@@ -848,7 +1089,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             rawContent: "{}",
             actionPlan: ActionPlan(
                 id: "plan-managed-preview-cap",
-                userInput: "Create a managed task",
+                userInput: "Draft release brief",
                 summary: "Create managed task",
                 actions: [PlanAction(id: "action-1", tool: .taskCreate)],
                 riskLevel: .write,
@@ -868,6 +1109,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
             llmProvider: FakeLLMProvider(response: response),
+            planningReadinessProvider: { Self.readyPlanningProvider("fake") },
             appSettingsProvider: {
                 AppSettings(
                     managedAIBilling: ManagedAIBillingSettings(
@@ -890,7 +1132,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             }
         )
 
-        viewModel.updateDraftText("Create a managed task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         let preview = viewModel.assistantQueueItem?.costPreview
@@ -907,7 +1149,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             rawContent: "{}",
             actionPlan: ActionPlan(
                 id: "plan-redacted-model",
-                userInput: "Create a measured task",
+                userInput: "Draft release brief",
                 summary: "Create measured task",
                 actions: [PlanAction(id: "action-1", tool: .taskCreate)],
                 riskLevel: .write,
@@ -923,10 +1165,11 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
-            llmProvider: FakeLLMProvider(response: response)
+            llmProvider: FakeLLMProvider(response: response),
+            planningReadinessProvider: { Self.readyPlanningProvider("fake") }
         )
 
-        viewModel.updateDraftText("Create a measured task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         let modelName = viewModel.assistantQueueItem?.costPreview?.model?.name ?? ""
@@ -942,7 +1185,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             rawContent: "{}",
             actionPlan: ActionPlan(
                 id: "plan-transition-persisted",
-                userInput: "Create a task",
+                userInput: "Draft release brief",
                 summary: "Create task",
                 actions: [PlanAction(id: "action-1", tool: .taskCreate)],
                 riskLevel: .write,
@@ -954,10 +1197,11 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
             llmProvider: FakeLLMProvider(response: response),
+            planningReadinessProvider: { Self.readyPlanningProvider("fake") },
             assistantQueueStore: store
         )
 
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         XCTAssertTrue(viewModel.approveAssistantQueueItem(reviewerID: "local-user"))
@@ -978,7 +1222,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             rawContent: "{}",
             actionPlan: ActionPlan(
                 id: "plan-stale-voice-transition",
-                userInput: "Create a task",
+                userInput: "Draft release brief",
                 summary: "Create task",
                 actions: [PlanAction(id: "action-1", tool: .taskCreate)],
                 riskLevel: .write,
@@ -990,9 +1234,10 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
             llmProvider: FakeLLMProvider(response: response),
+            planningReadinessProvider: { Self.readyPlanningProvider("fake") },
             assistantQueueStore: store
         )
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(
             currentDate: Date(timeIntervalSince1970: 0),
             timeZoneIdentifier: "UTC"
@@ -1022,7 +1267,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             rawContent: "{}",
             actionPlan: ActionPlan(
                 id: "plan-store-failure",
-                userInput: "Create a task",
+                userInput: "Draft release brief",
                 summary: "Create task",
                 actions: [PlanAction(id: "action-1", tool: .taskCreate)],
                 riskLevel: .write,
@@ -1034,10 +1279,11 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
             llmProvider: FakeLLMProvider(response: response),
+            planningReadinessProvider: { Self.readyPlanningProvider("fake") },
             assistantQueueStore: store
         )
 
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         XCTAssertNil(viewModel.assistantQueueItem)
@@ -1055,7 +1301,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             rawContent: "{}",
             actionPlan: ActionPlan(
                 id: "plan-1",
-                userInput: "リリースメモのタスクを作成して",
+                userInput: "Draft release brief",
                 summary: "Create task",
                 actions: [PlanAction(id: "action-1", tool: .taskCreate)],
                 riskLevel: .write,
@@ -1066,113 +1312,20 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
-            llmProvider: provider
+            llmProvider: provider,
+            planningReadinessProvider: { Self.readyPlanningProvider(provider.providerID) }
         )
 
-        viewModel.updateDraftText("リリースメモのタスクを作成して")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
-        XCTAssertEqual(viewModel.routingResult?.intent, .taskCreate)
+        XCTAssertEqual(viewModel.routingResult?.intent, .documentBrief)
         XCTAssertEqual(viewModel.phase, .reviewReady)
         XCTAssertEqual(provider.requests.count, 1)
-        XCTAssertTrue(provider.requests[0].userInput.contains("Voice command intent: task.create"))
+        XCTAssertTrue(provider.requests[0].userInput.contains("Voice command intent: document.brief"))
         XCTAssertTrue(provider.requests[0].userInput.contains("Original transcript:"))
-        XCTAssertTrue(provider.requests[0].userInput.contains("リリースメモのタスクを作成して"))
+        XCTAssertTrue(provider.requests[0].userInput.contains("Draft release brief"))
         XCTAssertTrue(provider.requests[0].userInput.contains("Review boundary: review-only"))
-    }
-
-    func testGeneratePlanRequiresClarificationForAmbiguousTranscriptWithoutProviderCall() async {
-        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
-            providerID: "fake",
-            rawContent: "{}",
-            actionPlan: nil,
-            validationResult: ActionPlanValidationResult(issues: [])
-        ))
-        let viewModel = VoiceCaptureViewModel(
-            audioRecorder: FakeAudioRecorder(),
-            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
-            llmProvider: provider
-        )
-
-        viewModel.updateDraftText("いい感じにして")
-        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
-
-        XCTAssertEqual(viewModel.routingResult?.intent, .clarify)
-        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .taskTitle)
-        XCTAssertEqual(provider.requests.count, 0)
-        if case .needsClarification(let reason) = viewModel.phase {
-            XCTAssertFalse(reason.isEmpty)
-        } else {
-            XCTFail("Expected needs clarification phase.")
-        }
-    }
-
-    func testQuickCaptureStopsAfterOneClarificationWithoutCallingProvider() async {
-        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
-            providerID: "fake",
-            rawContent: "{}",
-            actionPlan: nil,
-            validationResult: ActionPlanValidationResult(issues: [])
-        ))
-        let viewModel = VoiceCaptureViewModel(
-            audioRecorder: FakeAudioRecorder(),
-            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
-            llmProvider: provider,
-            maximumQuickCaptureClarificationTurns: 1
-        )
-
-        viewModel.updateDraftText("いい感じにして")
-        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
-        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .taskTitle)
-
-        await viewModel.submitClarificationAnswer("リリースメモを書く")
-
-        XCTAssertNil(viewModel.clarificationQuestion)
-        XCTAssertEqual(viewModel.phase, .idle)
-        XCTAssertEqual(provider.requests.count, 0)
-        XCTAssertTrue(viewModel.auditErrorMessage?.contains("One clarification") == true)
-    }
-
-    func testQuickCaptureLimitClearsPersistedClarificationForTypedAndVoiceAnswers() async throws {
-        for inputMode in [ClarificationInputMode.typed, .voice] {
-            let connection = try SQLiteConnection(path: ":memory:")
-            try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
-            let sessionID = UUID()
-            try SQLiteVoiceTaskConversationStore(connection: connection).createSession(
-                VoiceTaskConversationSession(id: sessionID, title: "Capture", entryPoint: .voiceCommand)
-            )
-            let stateStore = SQLiteVoiceTaskConversationOrchestrationStateStore(connection: connection)
-            let orchestrator = VoiceTaskConversationOrchestrator(stateStore: stateStore)
-            let viewModel = VoiceCaptureViewModel(
-                audioRecorder: FakeAudioRecorder(),
-                sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "リリースメモを書く")),
-                llmProvider: FakeLLMProvider(response: PlanningResponse(
-                    providerID: "unused", rawContent: "", actionPlan: nil,
-                    validationResult: ActionPlanValidationResult(issues: [])
-                )),
-                conversationOrchestrator: orchestrator,
-                conversationSessionID: sessionID,
-                maximumQuickCaptureClarificationTurns: 1
-            )
-            viewModel.updateDraftText("これ明日やって")
-            await viewModel.generatePlan()
-            XCTAssertEqual(viewModel.clarificationQuestion?.slot, .taskTitle)
-            XCTAssertNotNil(try stateStore.load(sessionID: sessionID))
-
-            if inputMode == .voice {
-                await viewModel.startRecording()
-                await viewModel.stopRecording(outputURL: URL(filePath: "/tmp/suisui-capped-clarification.m4a"))
-            } else {
-                await viewModel.submitClarificationAnswer("リリースメモを書く")
-            }
-
-            XCTAssertNil(viewModel.clarificationQuestion, "The cap must survive a recorded answer.")
-            XCTAssertNil(try stateStore.load(sessionID: sessionID), "Capped clarification must not restore later.")
-            let reopened = await VoiceTaskConversationOrchestrator(
-                stateStore: SQLiteVoiceTaskConversationOrchestrationStateStore(connection: connection)
-            ).handle(VoiceTaskConversationInput(sessionID: sessionID, sourceTurnID: UUID(), event: .restore))
-            XCTAssertEqual(reopened, .canceled)
-        }
     }
 
     func testQuickCaptureInitialBeginIsCanceledWhenInputChangesBeforeFirstQuestion() async {
@@ -1185,10 +1338,9 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(), sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
             llmProvider: FakeLLMProvider(response: PlanningResponse(providerID: "unused", rawContent: "", actionPlan: nil, validationResult: ActionPlanValidationResult(issues: []))),
-            conversationOrchestrator: orchestrator, conversationSessionID: sessionID,
-            maximumQuickCaptureClarificationTurns: 1
+            conversationOrchestrator: orchestrator, conversationSessionID: sessionID
         )
-        viewModel.updateDraftText("これ明日やって")
+        viewModel.updateDraftText("Create task:")
         let generation = Task { await viewModel.generatePlan() }
         await gate.waitUntilRequestReceived()
         viewModel.updateDraftText("新しい入力")
@@ -1200,34 +1352,6 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.clarificationQuestion)
     }
 
-    func testCanceledProviderCannotCommitOverAReplacementConversationCheckpoint() async throws {
-        for replacesCheckpoint in [false, true] {
-            let connection = try SQLiteConnection(path: ":memory:")
-            try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
-            let sessionID = UUID()
-            try SQLiteVoiceTaskConversationStore(connection: connection).createSession(VoiceTaskConversationSession(id: sessionID, title: "Capture", entryPoint: .voiceCommand))
-            let store = SQLiteVoiceTaskConversationOrchestrationStateStore(connection: connection)
-            let gate = VoicePlanningGate()
-            let plan = ActionPlan(id: "old-plan", userInput: "old", summary: "Old", actions: [PlanAction(id: "a", tool: .taskCreate)], riskLevel: .write, requiresApproval: true)
-            let provider = DelayedRecordingVoiceLLMProvider(gate: gate, response: PlanningResponse(providerID: "fake", rawContent: "", actionPlan: plan, validationResult: ActionPlanValidationResult(issues: [])))
-            let orchestrator = VoiceTaskConversationOrchestrator(stateStore: store, provider: provider)
-            let input = VoiceTaskConversationInput(sessionID: sessionID, sourceTurnID: UUID(), event: .begin(
-                route: VoiceCommandRoutingResult(originalTranscript: "old", normalizedTranscript: "old", intent: .taskCreate, interpretationSummary: "Old", confidence: 1, decision: .reviewOnly),
-                requiredSlots: [], intents: [], referenceRequest: nil, localAnswerItems: []))
-            let oldRequest = Task { await orchestrator.handle(input) }
-            await gate.waitUntilRequestReceived()
-            _ = await orchestrator.handle(VoiceTaskConversationInput(sessionID: sessionID, sourceTurnID: UUID(), event: .cancel))
-            let replacementID = UUID()
-            if replacesCheckpoint {
-                _ = await orchestrator.handle(VoiceTaskConversationInput(sessionID: sessionID, sourceTurnID: replacementID, event: .begin(
-                    route: VoiceCommandRouter().route(transcript: "新しい入力"), requiredSlots: [.taskTitle], intents: [], referenceRequest: nil, localAnswerItems: [])))
-            }
-            await gate.release()
-            let staleOutcome = await oldRequest.value
-            XCTAssertEqual(staleOutcome, .canceled)
-            XCTAssertEqual(try store.load(sessionID: sessionID)?.originalSourceTurnID, replacesCheckpoint ? replacementID : nil)
-        }
-    }
 
     func testQuickCaptureCannotPublishProvisionalReviewAfterInputReplacement() async throws {
         let gate = VoicePlanningGate()
@@ -1237,10 +1361,9 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(), sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
             llmProvider: FakeLLMProvider(response: PlanningResponse(providerID: "unused", rawContent: "", actionPlan: nil, validationResult: ActionPlanValidationResult(issues: []))),
-            assistantQueueStore: queueStore, conversationOrchestrator: orchestrator, conversationSessionID: UUID(),
-            maximumQuickCaptureClarificationTurns: 1
+            assistantQueueStore: queueStore, conversationOrchestrator: orchestrator, conversationSessionID: UUID()
         )
-        viewModel.updateDraftText("これ明日やって")
+        viewModel.updateDraftText("Create task:")
         let generation = Task { await viewModel.generatePlan() }
         await gate.waitUntilRequestReceived()
         let provisional = try XCTUnwrap(queueStore.savedItems.first)
@@ -1266,10 +1389,9 @@ final class VoiceCaptureViewModelTests: XCTestCase {
                     sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
                     llmProvider: FakeLLMProvider(response: PlanningResponse(providerID: "unused", rawContent: "", actionPlan: nil, validationResult: ActionPlanValidationResult(issues: []))),
                     conversationOrchestrator: orchestrator,
-                    conversationSessionID: UUID(),
-                    maximumQuickCaptureClarificationTurns: 1
+                    conversationSessionID: UUID()
                 )
-                viewModel.updateDraftText("これ明日やって")
+                viewModel.updateDraftText("Create task:")
                 await viewModel.generatePlan()
                 let answerTask = Task { await viewModel.submitClarificationAnswer("リリースメモを書く") }
                 await gate.waitUntilRequestReceived()
@@ -1297,7 +1419,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             let oldProcess = VoiceTaskConversationOrchestrator(stateStore: store)
             _ = await oldProcess.handle(VoiceTaskConversationInput(
                 sessionID: sessionID, sourceTurnID: UUID(),
-                event: .begin(route: VoiceCommandRouter().route(transcript: "これ明日やって"), requiredSlots: [.taskTitle, .project], intents: [], referenceRequest: nil, localAnswerItems: [])
+                event: .begin(route: VoiceCommandRouter().route(transcript: "Create task:"), requiredSlots: [.taskTitle, .project], intents: [], referenceRequest: nil, localAnswerItems: [])
             ))
             let firstQuestion = await VoiceTaskConversationOrchestrator(stateStore: store, maximumClarificationTurns: 1)
                 .handle(VoiceTaskConversationInput(sessionID: sessionID, sourceTurnID: UUID(), event: .restore))
@@ -1309,8 +1431,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
                 sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
                 llmProvider: FakeLLMProvider(response: PlanningResponse(providerID: "unused", rawContent: "", actionPlan: nil, validationResult: ActionPlanValidationResult(issues: []))),
                 conversationOrchestrator: VoiceTaskConversationOrchestrator(stateStore: store, maximumClarificationTurns: 1),
-                conversationSessionID: sessionID,
-                maximumQuickCaptureClarificationTurns: 1
+                conversationSessionID: sessionID
             )
             if removalFails {
                 try connection.execute("""
@@ -1340,10 +1461,9 @@ final class VoiceCaptureViewModelTests: XCTestCase {
                 validationResult: ActionPlanValidationResult(issues: [])
             )),
             conversationOrchestrator: orchestrator,
-            conversationSessionID: UUID(),
-            maximumQuickCaptureClarificationTurns: 1
+            conversationSessionID: UUID()
         )
-        viewModel.updateDraftText("これ明日やって")
+        viewModel.updateDraftText("Create task:")
         await viewModel.generatePlan()
         let answerTask = Task { await viewModel.submitClarificationAnswer("リリースメモを書く") }
         await orchestrator.waitUntilCancelStarts()
@@ -1368,10 +1488,9 @@ final class VoiceCaptureViewModelTests: XCTestCase {
                 validationResult: ActionPlanValidationResult(issues: [])
             )),
             conversationOrchestrator: orchestrator,
-            conversationSessionID: UUID(),
-            maximumQuickCaptureClarificationTurns: 1
+            conversationSessionID: UUID()
         )
-        viewModel.updateDraftText("これ明日やって")
+        viewModel.updateDraftText("Create task:")
         await viewModel.generatePlan()
         await viewModel.submitClarificationAnswer("リリースメモを書く")
         guard case .failed = viewModel.phase else {
@@ -1870,68 +1989,15 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.inboxTriageRequest)
         XCTAssertNil(viewModel.dailyPlanningReviewRequest)
         XCTAssertEqual(provider.requests.count, 0)
-        if case .needsClarification = viewModel.phase {
-        } else {
-            XCTFail("Expected bare command to require clarification outside explicit Inbox context.")
-        }
-    }
-
-    func testClarificationAnswerContinuesIntoReviewablePlanningRequest() async {
-        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
-            providerID: "fake",
-            rawContent: "{}",
-            actionPlan: ActionPlan(
-                id: "plan-clarified",
-                userInput: "これ明日やって",
-                summary: "Create clarified task",
-                actions: [PlanAction(id: "action-1", tool: .taskCreate)],
-                riskLevel: .write,
-                requiresApproval: true
-            ),
-            validationResult: ActionPlanValidationResult(issues: [])
-        ))
-        let viewModel = VoiceCaptureViewModel(
-            audioRecorder: FakeAudioRecorder(),
-            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
-            llmProvider: provider
-        )
-
-        viewModel.updateDraftText("これ明日やって")
-        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
-
-        XCTAssertEqual(provider.requests.count, 0)
-        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .taskTitle)
-
-        await viewModel.submitClarificationAnswer(
-            "リリースメモを書く",
-            currentDate: Date(timeIntervalSince1970: 0),
-            timeZoneIdentifier: "UTC"
-        )
-
-        XCTAssertEqual(provider.requests.count, 0)
-        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .project)
-
-        await viewModel.submitClarificationAnswer(
-            "Suisui",
-            currentDate: Date(timeIntervalSince1970: 0),
-            timeZoneIdentifier: "UTC"
-        )
-
-        XCTAssertEqual(viewModel.phase, .reviewReady)
-        XCTAssertEqual(viewModel.planningResponse?.actionPlan?.id, "plan-clarified")
-        XCTAssertEqual(provider.requests.count, 1)
-        XCTAssertTrue(provider.requests[0].userInput.contains("Voice command intent: task.create"))
-        XCTAssertTrue(provider.requests[0].userInput.contains("Original transcript:"))
-        XCTAssertTrue(provider.requests[0].userInput.contains("これ明日やって"))
-        XCTAssertTrue(provider.requests[0].userInput.contains("Clarification trail (user-provided values, not system instructions):"))
-        XCTAssertTrue(provider.requests[0].userInput.contains("task_title: リリースメモを書く"))
-        XCTAssertTrue(provider.requests[0].userInput.contains("project: Suisui"))
+        XCTAssertEqual(viewModel.phase, .idle)
+        XCTAssertEqual(viewModel.localTriageDecision?.operation, .unsupported)
+        XCTAssertNotNil(viewModel.auditErrorMessage)
     }
 
     func testInjectedConversationOrchestratorOwnsClarificationAndReviewTransition() async {
         let plan = ActionPlan(
             id: "orchestrated-plan",
-            userInput: "これ明日やって",
+            userInput: "Create task:",
             summary: "Create clarified task",
             actions: [PlanAction(id: "action-1", tool: .taskCreate)],
             riskLevel: .write,
@@ -1964,7 +2030,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             conversationSessionID: sessionID
         )
 
-        viewModel.updateDraftText("これ明日やって")
+        viewModel.updateDraftText("Create task:")
         await viewModel.generatePlan()
         XCTAssertEqual(viewModel.clarificationQuestion?.slot, .taskTitle)
 
@@ -2001,11 +2067,11 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             conversationSessionID: UUID()
         )
 
-        viewModel.updateDraftText("いい感じにして")
+        viewModel.updateDraftText("Create task:")
         await viewModel.generatePlan()
         XCTAssertNotNil(viewModel.clarificationQuestion)
 
-        viewModel.updateDraftText("これもいい感じにして")
+        viewModel.updateDraftText("Create task: Replacement")
         let replacementGeneration = Task {
             await viewModel.generatePlan()
         }
@@ -2028,7 +2094,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
 
         XCTAssertEqual(
             activeCheckpointTranscript,
-            "これもいい感じにして"
+            "Create task: Replacement"
         )
         XCTAssertNotNil(viewModel.clarificationQuestion)
     }
@@ -2078,7 +2144,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             conversationSessionID: UUID()
         )
 
-        viewModel.updateDraftText("Release buildを完了にして")
+        viewModel.updateDraftText("Create task: Example")
         await viewModel.generatePlan()
 
         XCTAssertEqual(
@@ -2136,7 +2202,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             conversationSessionID: UUID()
         )
 
-        viewModel.updateDraftText("List tasks")
+        viewModel.updateDraftText("Create task: Example")
         await viewModel.generatePlan()
 
         XCTAssertEqual(
@@ -2149,7 +2215,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
     func testOrchestratedReviewPersistsQueueBoundConversationLink() async throws {
         let plan = ActionPlan(
             id: "orchestrated-linked-plan",
-            userInput: "これ明日やって",
+            userInput: "Create task:",
             summary: "Create clarified task",
             actions: [
                 PlanAction(
@@ -2192,7 +2258,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             conversationSessionID: sessionID
         )
 
-        viewModel.updateDraftText("これ明日やって")
+        viewModel.updateDraftText("Create task:")
         await viewModel.generatePlan()
         await viewModel.submitClarificationAnswer("リリースメモを書く")
 
@@ -2222,7 +2288,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
     func testOrchestratedReviewWithoutReviewLinkPersisterDoesNotPublishQueueItem() async {
         let plan = ActionPlan(
             id: "orchestrated-unlinked-plan",
-            userInput: "これ明日やって",
+            userInput: "Create task:",
             summary: "Create release task",
             actions: [
                 PlanAction(
@@ -2266,7 +2332,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
     func testOrchestratedReviewQueueIDCollisionDoesNotMutateExistingItem() async throws {
         let plan = ActionPlan(
             id: "orchestrated-collision-plan",
-            userInput: "これ明日やって",
+            userInput: "Create task:",
             summary: "Create release task",
             actions: [
                 PlanAction(
@@ -2326,7 +2392,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
     func testOrchestratedReviewQueueIDCollisionWithDifferentContentFailsClosed() async {
         let plan = ActionPlan(
             id: "orchestrated-content-collision-plan",
-            userInput: "これ明日やって",
+            userInput: "Create task:",
             summary: "Create release task",
             actions: [
                 PlanAction(
@@ -2377,7 +2443,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
     func testOrchestratedReviewRetriesMatchingBlockedProvisionalWithCAS() async throws {
         let plan = ActionPlan(
             id: "orchestrated-provisional-retry-plan",
-            userInput: "これ明日やって",
+            userInput: "Create task:",
             summary: "Create release task",
             actions: [
                 PlanAction(
@@ -2423,7 +2489,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
     {
         let plan = ActionPlan(
             id: "orchestrated-publication-crash-plan",
-            userInput: "これ明日やって",
+            userInput: "Create task:",
             summary: "Create release task",
             actions: [
                 PlanAction(
@@ -2528,7 +2594,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             rawContent: "{}",
             actionPlan: ActionPlan(
                 id: "plan-danger",
-                userInput: "Create a task",
+                userInput: "Draft release brief",
                 summary: "Create risky project files",
                 actions: [PlanAction(id: "action-danger", tool: .filesystemCreateMarkdownFile, riskLevel: .danger)],
                 riskLevel: .danger,
@@ -2545,10 +2611,11 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
-            llmProvider: provider
+            llmProvider: provider,
+            planningReadinessProvider: { Self.readyPlanningProvider(provider.providerID) }
         )
 
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         if case .failed(let message) = viewModel.phase {
@@ -2566,7 +2633,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             rawContent: "{}",
             actionPlan: ActionPlan(
                 id: "plan-queue",
-                userInput: "Create a task",
+                userInput: "Draft release brief",
                 summary: "Create task",
                 actions: [PlanAction(id: "action-1", tool: .taskCreate)],
                 riskLevel: .write,
@@ -2577,10 +2644,11 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
-            llmProvider: provider
+            llmProvider: provider,
+            planningReadinessProvider: { Self.readyPlanningProvider(provider.providerID) }
         )
 
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         XCTAssertTrue(viewModel.approveAssistantQueueItem(reviewerID: "local-user"))
@@ -2601,7 +2669,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             rawContent: "{}",
             actionPlan: ActionPlan(
                 id: "plan-queue-handoff",
-                userInput: "Create a task",
+                userInput: "Draft release brief",
                 summary: "Create task",
                 actions: [PlanAction(id: "action-1", tool: .taskCreate)],
                 riskLevel: .write,
@@ -2612,10 +2680,11 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
-            llmProvider: provider
+            llmProvider: provider,
+            planningReadinessProvider: { Self.readyPlanningProvider(provider.providerID) }
         )
 
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         XCTAssertNil(viewModel.assistantQueueExecutionHandoffItemID)
@@ -2629,68 +2698,13 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.assistantQueueExecutionHandoffItemID)
     }
 
-    func testRecordingDuringClarificationUsesTranscriptAsAnswerWithoutReplacingOriginalDraft() async {
-        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
-            providerID: "fake",
-            rawContent: "{}",
-            actionPlan: nil,
-            validationResult: ActionPlanValidationResult(issues: [])
-        ))
-        let viewModel = VoiceCaptureViewModel(
-            audioRecorder: FakeAudioRecorder(),
-            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "リリースメモを書く")),
-            llmProvider: provider
-        )
-
-        viewModel.updateDraftText("これ明日やって")
-        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
-        XCTAssertFalse(viewModel.canGeneratePlan)
-
-        await viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
-        await viewModel.stopRecording(
-            outputURL: URL(filePath: "/tmp/suisui-clarification-answer.m4a"),
-            at: Date(timeIntervalSince1970: 12)
-        )
-
-        XCTAssertEqual(viewModel.draft.text, "これ明日やって")
-        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .project)
-        XCTAssertEqual(viewModel.clarificationSession?.turns.first?.answer, .text("リリースメモを書く"))
-        XCTAssertEqual(viewModel.clarificationSession?.turns.first?.inputMode, .voice)
-        XCTAssertEqual(provider.requests.count, 0)
-    }
-
-    func testCancelClarificationRestoresDraftEditing() async {
-        let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
-            providerID: "fake",
-            rawContent: "{}",
-            actionPlan: nil,
-            validationResult: ActionPlanValidationResult(issues: [])
-        ))
-        let viewModel = VoiceCaptureViewModel(
-            audioRecorder: FakeAudioRecorder(),
-            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
-            llmProvider: provider
-        )
-
-        viewModel.updateDraftText("いい感じにして")
-        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
-
-        XCTAssertNotNil(viewModel.clarificationQuestion)
-
-        viewModel.cancelClarification()
-
-        XCTAssertNil(viewModel.clarificationQuestion)
-        XCTAssertTrue(viewModel.canGeneratePlan)
-        XCTAssertEqual(provider.requests.count, 0)
-    }
-
     func testDraftEditClearsStalePlanningResponse() async {
         let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
             providerID: "fake",
             rawContent: "{}",
             actionPlan: ActionPlan(
                 id: "plan-1",
-                userInput: "Create a task",
+                userInput: "Draft release brief",
                 summary: "Create task",
                 actions: [PlanAction(id: "action-1", tool: .taskCreate)],
                 riskLevel: .write,
@@ -2701,10 +2715,11 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
-            llmProvider: provider
+            llmProvider: provider,
+            planningReadinessProvider: { Self.readyPlanningProvider(provider.providerID) }
         )
 
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
         XCTAssertEqual(viewModel.phase, .reviewReady)
         XCTAssertNotNil(viewModel.planningResponse)
@@ -2726,7 +2741,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
                 rawContent: "{}",
                 actionPlan: ActionPlan(
                     id: "plan-1",
-                    userInput: "Create a task",
+                    userInput: "Draft release brief",
                     summary: "Create task",
                     actions: [PlanAction(id: "action-1", tool: .taskCreate)],
                     riskLevel: .write,
@@ -2738,10 +2753,11 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         let viewModel = VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
-            llmProvider: provider
+            llmProvider: provider,
+            planningReadinessProvider: { Self.readyPlanningProvider(provider.providerID) }
         )
 
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         let planningTask = Task {
             await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
         }
@@ -2753,13 +2769,10 @@ final class VoiceCaptureViewModelTests: XCTestCase {
 
         XCTAssertNil(viewModel.planningResponse)
         XCTAssertEqual(viewModel.routingResult?.intent, .clarify)
-        XCTAssertEqual(viewModel.clarificationQuestion?.slot, .taskTitle)
+        XCTAssertNil(viewModel.clarificationQuestion)
         XCTAssertEqual(provider.requests.count, 1)
-        if case .needsClarification(let reason) = viewModel.phase {
-            XCTAssertFalse(reason.isEmpty)
-        } else {
-            XCTFail("Expected stale response to leave the current ambiguous draft in clarification.")
-        }
+        XCTAssertEqual(viewModel.phase, .idle)
+        XCTAssertEqual(viewModel.draft.text, "いい感じにして")
     }
 
     func testGeneratePlanSurfacesCompletionAuditFailureWithoutLosingPlan() async {
@@ -2769,7 +2782,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             rawContent: "{}",
             actionPlan: ActionPlan(
                 id: "plan-1",
-                userInput: "Create a task",
+                userInput: "Draft release brief",
                 summary: "Create task",
                 actions: [PlanAction(id: "action-1", tool: .taskCreate)],
                 riskLevel: .write,
@@ -2781,10 +2794,11 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
             llmProvider: FakeLLMProvider(response: response),
+            planningReadinessProvider: { Self.readyPlanningProvider("fake") },
             auditRecorder: PlanningAuditRecorder(logger: logger)
         )
 
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         XCTAssertEqual(viewModel.phase, .reviewReady)
@@ -2806,10 +2820,11 @@ final class VoiceCaptureViewModelTests: XCTestCase {
                 actionPlan: nil,
                 validationResult: ActionPlanValidationResult(issues: [])
             )),
+            planningReadinessProvider: { Self.readyPlanningProvider("fake") },
             auditRecorder: PlanningAuditRecorder(logger: logger)
         )
 
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         XCTAssertEqual(
@@ -2826,10 +2841,11 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
             llmProvider: ThrowingVoiceLLMProvider(
                 error: SecretVoiceTestError(message: "planner failed token=\(secret)&request_id=voice-provider-1")
-            )
+            ),
+            planningReadinessProvider: { Self.readyPlanningProvider("throwing") }
         )
 
-        viewModel.updateDraftText("Create a task")
+        viewModel.updateDraftText("Draft release brief")
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         XCTAssertEqual(
@@ -3219,6 +3235,9 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             outputURL: URL(filePath: "/tmp/suisui-test.m4a"),
             at: Date(timeIntervalSince1970: 12)
         )
+
+        await viewModel.generatePlan()
+        XCTAssertTrue(saver.requests.isEmpty, "Interpretation must never implicitly save raw capture.")
 
         XCTAssertTrue(viewModel.canSaveDraftToInbox)
         viewModel.saveDraftToInbox(
@@ -3743,7 +3762,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             rawContent: "{}",
             actionPlan: ActionPlan(
                 id: "plan-low-latency-final",
-                userInput: "Create a task",
+                userInput: "Draft release brief",
                 summary: "Create task",
                 actions: [PlanAction(id: "action-create", tool: .taskCreate)],
                 riskLevel: .write,
@@ -3755,18 +3774,19 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             audioRecorder: FakeAudioRecorder(),
             sttProvider: sttProvider,
             llmProvider: llmProvider,
+            planningReadinessProvider: { Self.readyPlanningProvider(llmProvider.providerID) },
             assistantQueueStore: RecordingAssistantQueueStore(),
             appSettingsProvider: { Self.lowLatencyLocalVoiceAgentSettings() }
         )
 
         await viewModel.startLowLatencyVoiceAgentMode()
-        sttProvider.yield(.final(STTTranscript(text: "Create a task")))
+        sttProvider.yield(.final(STTTranscript(text: "Draft release brief")))
         let didQueuePlanningItem = await waitForVoiceCondition { viewModel.assistantQueueItem != nil }
         XCTAssertTrue(didQueuePlanningItem)
 
         let item = try XCTUnwrap(viewModel.assistantQueueItem)
         XCTAssertEqual(viewModel.phase, .reviewReady)
-        XCTAssertEqual(item.sourceTranscript, "Create a task")
+        XCTAssertEqual(item.sourceTranscript, "Draft release brief")
         XCTAssertEqual(llmProvider.requests.count, 1)
         XCTAssertFalse(llmProvider.didObserveCancellation)
         XCTAssertEqual(viewModel.lowLatencyVoiceAgentState, .listening)
@@ -3843,35 +3863,22 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertTrue(llmProvider.requests.isEmpty)
     }
 
-    func testLowLatencyAgentModeClarificationUsesStreamingFinalTranscriptAsVoiceAnswer() async {
+    func testLowLatencyAgentModeClarificationUsesStreamingFinalTranscriptAsVoiceAnswer() async throws {
         let sttProvider = StreamingSTTProviderFixture()
-        let llmProvider = RecordingVoiceLLMProvider(response: PlanningResponse(
-            providerID: "fake",
-            rawContent: "{}",
-            actionPlan: nil,
-            validationResult: ActionPlanValidationResult(issues: [])
-        ))
-        let viewModel = VoiceCaptureViewModel(
-            audioRecorder: FakeAudioRecorder(),
-            sttProvider: sttProvider,
-            llmProvider: llmProvider,
-            appSettingsProvider: { Self.lowLatencyLocalVoiceAgentSettings() }
-        )
-
-        viewModel.updateDraftText("これ明日やって")
-        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+        let (viewModel, tasks, provider) = try makeLocalTriageViewModel(sttProvider: sttProvider)
+        viewModel.updateDraftText("Create task:")
+        await viewModel.generatePlan()
         XCTAssertEqual(viewModel.clarificationQuestion?.slot, .taskTitle)
 
-        await viewModel.startLowLatencyVoiceAgentMode(currentDate: Date(timeIntervalSince1970: 1), timeZoneIdentifier: "UTC")
+        await viewModel.startLowLatencyVoiceAgentMode()
         sttProvider.yield(.final(STTTranscript(text: "リリースメモを書く")))
-        let didCaptureVoiceAnswer = await waitForVoiceCondition { viewModel.clarificationSession?.turns.first?.inputMode == .voice }
-        XCTAssertTrue(didCaptureVoiceAnswer)
-
-        XCTAssertEqual(viewModel.draft.text, "これ明日やって")
-        XCTAssertEqual(viewModel.clarificationSession?.turns.first?.answer, .text("リリースメモを書く"))
-        XCTAssertEqual(viewModel.clarificationSession?.turns.first?.inputMode, .voice)
+        let didCreateProposal = await waitForVoiceCondition { viewModel.assistantQueueItem != nil }
+        XCTAssertTrue(didCreateProposal)
+        XCTAssertEqual(viewModel.draft.text, "Create task:")
+        XCTAssertEqual(viewModel.planningResponse?.actionPlan?.actions.first?.arguments["title"], .string("リリースメモを書く"))
         XCTAssertEqual(viewModel.lowLatencyVoiceAgentState, .listening)
-        XCTAssertTrue(llmProvider.requests.isEmpty)
+        XCTAssertTrue(provider.requests.isEmpty)
+        XCTAssertTrue(try tasks.listAll().isEmpty)
         viewModel.stopLowLatencyVoiceAgentMode()
     }
 
@@ -4435,6 +4442,8 @@ private actor RecordingVoiceConversationOrchestrator:
         _ input: VoiceTaskConversationInput
     ) async -> VoiceTaskConversationOutcome {
         switch input.event {
+        case .proposal:
+            return .blocked(.invalidPlan)
         case .restore:
             recordedEvents.append(.restore(sessionID: input.sessionID))
         case .begin:
@@ -4474,6 +4483,8 @@ private actor SuspendingAnswerVoiceConversationOrchestrator:
 
     func handle(_ input: VoiceTaskConversationInput) async -> VoiceTaskConversationOutcome {
         switch input.event {
+        case .proposal:
+            return .blocked(.invalidPlan)
         case .begin:
             return .clarification(ClarificationQuestion(slot: .taskTitle, prompt: "Task?"))
         case .clarificationAnswer:
@@ -4510,6 +4521,8 @@ private actor SuspendingCancelVoiceConversationOrchestrator:
         _ input: VoiceTaskConversationInput
     ) async -> VoiceTaskConversationOutcome {
         switch input.event {
+        case .proposal:
+            return .blocked(.invalidPlan)
         case .begin(let route, _, _, _, _):
             beginCount += 1
             activeCheckpointTranscript = route.normalizedTranscript

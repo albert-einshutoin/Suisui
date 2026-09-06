@@ -781,31 +781,11 @@ struct VoiceCaptureView: View {
                 )
             }
 
-            if let autoCreatedTask = viewModel.autoCreatedTask {
-                VStack(alignment: .leading, spacing: SuisuiSpacing.xs) {
-                    Label("Task created", systemImage: "checkmark.circle")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Text(verbatim: autoCreatedTask.title)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Button {
-                        viewModel.undoAutoCreatedTask()
-                    } label: {
-                        Label("Undo", systemImage: "arrow.uturn.backward")
-                    }
-                    .accessibilityIdentifier("voice-auto-created-undo")
-                    .accessibilityHint("Deletes the automatically created task.")
-                }
-                .soloCard()
-                .accessibilityIdentifier("voice-auto-created-banner")
-            }
-
             if let response = viewModel.planningResponse {
                 ActionPlanPreview(response: response)
                     .soloCard()
             }
         }
-        .accessibilityIdentifier("voice-command-review-zone")
     }
 
     private func recordingOutputURL() -> URL {
@@ -1627,6 +1607,7 @@ private struct AssistantQueuePanel: View {
             }
 
             Text(localizedSettingsDisplay(item.redactedSummary))
+                .accessibilityIdentifier("voice-assistant-queue-panel")
                 .font(.body)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -1697,7 +1678,6 @@ private struct AssistantQueuePanel: View {
             }
         }
         .soloAssistantSignal()
-        .accessibilityIdentifier("voice-assistant-queue-panel")
     }
 
     private var queueStateLabel: some View {
