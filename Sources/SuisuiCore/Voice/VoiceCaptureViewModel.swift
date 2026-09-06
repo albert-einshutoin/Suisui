@@ -112,7 +112,6 @@ public final class VoiceCaptureViewModel: ObservableObject {
     /// re-renders per sample; see `MicrophoneInputLevelMeter`.
     public let inputLevelMeter = MicrophoneInputLevelMeter()
     @Published public private(set) var workspaceAnswer: WorkspaceAnswerState = .idle
-    @Published public private(set) var autoCreatedTask: AutoCreatedTaskRecord?
     /// Non-nil only while `phase` is `.failed` from plan generation and the
     /// typed error has a known next step (Open Settings / Try Again).
     @Published public private(set) var failureRecovery: VoiceCaptureFailureRecovery?
@@ -156,10 +155,6 @@ public final class VoiceCaptureViewModel: ObservableObject {
     /// Quick Capture can opt into a bounded clarification loop. nil keeps
     /// the legacy Conversation workspace contract, which may ask more than
     /// one scoped question.
-    private let maximumQuickCaptureClarificationTurns: Int?
-    private let taskAutomationSettingsProvider: (@Sendable () -> TaskAutoExecutionSettings)?
-    private let lowRiskTaskAutoExecutor: (@Sendable (ActionPlan) async throws -> LowRiskAutoCreationOutcome)?
-    private let taskDeleter: (@Sendable (Int64) throws -> Void)?
     private let lowLatencySegmentDuration: TimeInterval
     private let lowLatencySegmentOutputURLProvider: @Sendable () -> URL
     private var temporaryRecordingRemover: @Sendable (URL) throws -> Void = {
@@ -198,6 +193,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         audioRecorder: any AudioRecorder,
         sttProvider: any SpeechToTextProvider,
         llmProvider: any LLMProvider,
+        planningReadinessProvider: @escaping @MainActor () async -> ProviderReadinessReference? = { nil },
         auditRecorder: PlanningAuditRecorder? = nil,
         runtimeValidationMessage: String? = nil,
         assistantQueueStore: (any AssistantQueueStore)? = nil,
@@ -213,10 +209,6 @@ public final class VoiceCaptureViewModel: ObservableObject {
         managedCostRateCardProvider: @escaping @Sendable (PlanningResponse) -> AssistantQueueCostRateCard? = { _ in nil },
         workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])? = nil,
         workspaceAnswerReadout: (@Sendable (String) -> Void)? = nil,
-        maximumQuickCaptureClarificationTurns: Int? = nil,
-        taskAutomationSettingsProvider: (@Sendable () -> TaskAutoExecutionSettings)? = nil,
-        lowRiskTaskAutoExecutor: (@Sendable (ActionPlan) async throws -> LowRiskAutoCreationOutcome)? = nil,
-        taskDeleter: (@Sendable (Int64) throws -> Void)? = nil,
         microphoneSilenceDetector: MicrophoneSilenceDetector = MicrophoneSilenceDetector(),
         lowLatencySegmentDuration: TimeInterval = 1.2,
         lowLatencySegmentOutputURLProvider: @escaping @Sendable () -> URL = {
@@ -234,6 +226,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.audioRecorder = audioRecorder
         self.sttProvider = sttProvider
         self.llmProvider = llmProvider
+        self.planningReadinessProvider = planningReadinessProvider
         self.auditRecorder = auditRecorder
         self.runtimeValidationMessage = runtimeValidationMessage
         self.assistantQueueStore = assistantQueueStore
@@ -248,10 +241,6 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.managedCostRateCardProvider = managedCostRateCardProvider
         self.workspaceContextRetriever = workspaceContextRetriever
         self.workspaceAnswerReadout = workspaceAnswerReadout
-        self.maximumQuickCaptureClarificationTurns = maximumQuickCaptureClarificationTurns.map { max(1, $0) }
-        self.taskAutomationSettingsProvider = taskAutomationSettingsProvider
-        self.lowRiskTaskAutoExecutor = lowRiskTaskAutoExecutor
-        self.taskDeleter = taskDeleter
         self.microphoneSilenceDetector = microphoneSilenceDetector
         self.lowLatencySegmentDuration = lowLatencySegmentDuration
         self.lowLatencySegmentOutputURLProvider = lowLatencySegmentOutputURLProvider
@@ -284,6 +273,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         audioRecorder: any AudioRecorder,
         sttProvider: any SpeechToTextProvider,
         llmProvider: any LLMProvider,
+        planningReadinessProvider: @escaping @MainActor () async -> ProviderReadinessReference? = { nil },
         auditRecorder: PlanningAuditRecorder? = nil,
         runtimeValidationMessage: String? = nil,
         assistantQueueStore: (any AssistantQueueStore)? = nil,
@@ -295,10 +285,6 @@ public final class VoiceCaptureViewModel: ObservableObject {
         managedCostRateCardProvider: @escaping @Sendable (PlanningResponse) -> AssistantQueueCostRateCard? = { _ in nil },
         workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])? = nil,
         workspaceAnswerReadout: (@Sendable (String) -> Void)? = nil,
-        maximumQuickCaptureClarificationTurns: Int? = nil,
-        taskAutomationSettingsProvider: (@Sendable () -> TaskAutoExecutionSettings)? = nil,
-        lowRiskTaskAutoExecutor: (@Sendable (ActionPlan) async throws -> LowRiskAutoCreationOutcome)? = nil,
-        taskDeleter: (@Sendable (Int64) throws -> Void)? = nil,
         microphoneSilenceDetector: MicrophoneSilenceDetector = MicrophoneSilenceDetector(),
         lowLatencySegmentDuration: TimeInterval = 1.2,
         lowLatencySegmentOutputURLProvider: @escaping @Sendable () -> URL = {
@@ -314,6 +300,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             audioRecorder: audioRecorder,
             sttProvider: sttProvider,
             llmProvider: llmProvider,
+            planningReadinessProvider: planningReadinessProvider,
             auditRecorder: auditRecorder,
             runtimeValidationMessage: runtimeValidationMessage,
             assistantQueueStore: assistantQueueStore,
@@ -328,10 +315,6 @@ public final class VoiceCaptureViewModel: ObservableObject {
             managedCostRateCardProvider: managedCostRateCardProvider,
             workspaceContextRetriever: workspaceContextRetriever,
             workspaceAnswerReadout: workspaceAnswerReadout,
-            maximumQuickCaptureClarificationTurns: maximumQuickCaptureClarificationTurns,
-            taskAutomationSettingsProvider: taskAutomationSettingsProvider,
-            lowRiskTaskAutoExecutor: lowRiskTaskAutoExecutor,
-            taskDeleter: taskDeleter,
             microphoneSilenceDetector: microphoneSilenceDetector,
             lowLatencySegmentDuration: lowLatencySegmentDuration,
             lowLatencySegmentOutputURLProvider: lowLatencySegmentOutputURLProvider
@@ -734,6 +717,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
         guard draft.text != text else {
             return
         }
+        localTriageRequest = nil
+        localTriageDecision = nil
+        draftSource = .text
         draft.text = text
         conversationWorkspaceLocalAnswerItems = []
         conversationWorkspaceResolvedTarget = nil
@@ -748,7 +734,6 @@ public final class VoiceCaptureViewModel: ObservableObject {
         inboxTriageRequest = nil
         inboxCaptureResult = nil
         developmentPullRequestAutomationRequest = nil
-        autoCreatedTask = nil
         failureRecovery = nil
         refreshRoutingResult()
         if shouldResetPhaseAfterDraftChange, runtimeValidationMessage == nil {
@@ -762,6 +747,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
         retryPendingTemporaryRecordingDeletions()
         removeUnsavedTemporaryRecording()
         audioRecorder.reset()
+        localTriageRequest = nil
+        localTriageDecision = nil
+        draftSource = .text
         draft = TranscriptDraft()
         conversationWorkspaceLocalAnswerItems = []
         conversationWorkspaceResolvedTarget = nil
@@ -781,7 +769,6 @@ public final class VoiceCaptureViewModel: ObservableObject {
         lastTranscribedAudioURL = nil
         savedInboxSourceAudioURL = nil
         developmentPullRequestAutomationRequest = nil
-        autoCreatedTask = nil
         failureRecovery = nil
         workspaceAnswer = .idle
         recordingState = audioRecorder.state
@@ -916,6 +903,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 await submitClarificationAnswer(transcript.text, inputMode: .voice)
                 return
             }
+            draftSource = .voice
+            localTriageRequest = nil
+            localTriageDecision = nil
             draft = TranscriptDraft(text: transcript.text)
             planningResponse = nil
             clarificationSession = nil
@@ -938,7 +928,13 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
     }
 
+    private let planningReadinessProvider: @MainActor () async -> ProviderReadinessReference?
+    private var draftSource: RequestSource = .text
+    @Published public private(set) var localTriageRequest: LocalTriageRequest?
+    @Published public private(set) var localTriageDecision: LocalTriageDecision?
+
     public func generatePlan(
+        source: RequestSource? = nil,
         currentDate: Date = Date(),
         timeZoneIdentifier: String = TimeZone.current.identifier,
         availableTools: [ActionTool] = ActionTool.defaultPlanningTools,
@@ -955,27 +951,120 @@ public final class VoiceCaptureViewModel: ObservableObject {
             return
         }
 
-        await waitForPendingConversationCancellation()
-        let routedCommand = commandRouter.route(transcript: draft.normalizedText)
-        let plannedTranscript = routedCommand.normalizedTranscript
-        routingResult = routedCommand
+        workspaceAnswer = .idle
+        let input = draft.normalizedText
+        let requestSource = source ?? draftSource
+        let selectedTaskID = conversationWorkspaceSession?.activeTaskID
+        let selectedProjectID = conversationWorkspaceSession?.activeProjectID
+        if orchestratedClarificationQuestion != nil { cancelOrchestratedClarificationIfNeeded() }
+        clarificationQuestionCount = 0
         let sourceTurnID = UUID()
         activeConversationSourceTurnID = sourceTurnID
+        await waitForPendingConversationCancellation()
+        guard activeConversationSourceTurnID == sourceTurnID, draft.normalizedText == input else { return }
+        var routedCommand = commandRouter.route(transcript: input)
+        routingResult = routedCommand
 
-        if let conversationOrchestrator,
-           let conversationCommandPreparer
-        {
+        let dedicatedIntents: Set<VoiceCommandIntentKind> = [
+            .dailyPlanningReview, .connectorSendGate, .notificationDraft, .developmentPRWorkflow
+        ]
+        if routedCommand.needsClarification,
+           ClarificationSession(route: routedCommand).currentQuestion?.slot == .destination {
+            beginClarification(for: routedCommand)
+            return
+        }
+        if dedicatedIntents.contains(routedCommand.intent), routedCommand.needsClarification {
+            beginClarification(for: routedCommand)
+            return
+        }
+        if let command = inboxTriageCommandParser.parseVoiceCommand(input) {
+            beginInboxTriageRequest(
+                command: command,
+                routedIntent: makeInboxTriageRoute(for: command, fallbackRoute: routedCommand),
+                requestedAt: currentDate
+            )
+            return
+        }
+        if routedCommand.intent == .dailyPlanningReview {
+            beginDailyPlanningReviewRequest(for: routedCommand, requestedAt: currentDate)
+            return
+        }
+        if beginConnectorSendGateQueueItemIfNeeded(for: routedCommand)
+            || beginNotificationDraftQueueItemIfNeeded(for: routedCommand)
+            || beginDevelopmentPullRequestAutomationRequestIfPossible(for: routedCommand) { return }
+
+        var capabilities: Set<PersonalCapability> = [.documentDraft, .documentResearch]
+        if availableTools.contains(.taskList) { capabilities.insert(.taskRead) }
+        if availableTools.contains(.taskCreate) || availableTools.contains(.taskUpdate) || availableTools.contains(.taskComplete) {
+            capabilities.insert(.taskWrite)
+        }
+        let explicitTaskID = LocalTriageRouter.explicitTaskID(in: LocalTriageRequest.normalize(input))
+        func makeRequest(readiness: [ProviderReadinessReference]) -> LocalTriageRequest {
+            LocalTriageRequest(
+                requestID: sourceTurnID, source: requestSource, normalizedInput: input, scope: .task,
+                availableCapabilities: capabilities,
+                supportedOperations: SQLiteVoiceTaskConversationCommandPreparer.supportedOperations(for: LocalTriageRequest.normalize(input)),
+                providerReadiness: readiness, dataPolicyVersion: 1,
+                frozenAt: currentDate, timeZoneID: timeZoneIdentifier,
+                selectedTaskID: selectedTaskID,
+                selectedProjectID: selectedProjectID, explicitTaskID: explicitTaskID
+            )
+        }
+        var request = makeRequest(readiness: [])
+        var decision = LocalTriageRouter().evaluate(request)
+        if decision.operation == .frontier {
+            let readiness = await planningReadinessProvider()
+            guard activeConversationSourceTurnID == sourceTurnID, draft.normalizedText == input else { return }
+            request = makeRequest(readiness: readiness.map { [$0] } ?? [])
+            decision = LocalTriageRouter().evaluate(request)
+        }
+        switch decision.operation {
+        case .taskCreate: routedCommand.intent = .taskCreate
+        case .read: routedCommand.intent = .statusAsk
+        case .taskDueDate, .taskStatus, .projectMove: routedCommand.intent = .taskTriage
+        case .frontier: routedCommand.intent = .documentBrief
+        case .externalWrite, .unsupported: break
+        }
+        routedCommand.decision = decision.route == .clarification ? .clarifyRequired : .reviewOnly
+        routedCommand.matchedSignals = decision.ruleIDs
+        routingResult = routedCommand
+        localTriageRequest = request
+        localTriageDecision = decision
+        if [.frontierFast, .frontierDeep, .localSLM].contains(decision.route),
+           decision.eligibleProviderIDs.contains(ProviderID(llmProvider.providerID)) {
+            await generatePlan(
+                for: routedCommand, plannedTranscript: input,
+                currentDate: currentDate, timeZoneIdentifier: timeZoneIdentifier,
+                availableTools: planningTools(for: routedCommand, requestedAvailableTools: availableTools),
+                knowledgeFrameCandidates: knowledgeFrameCandidates
+            )
+            return
+        }
+        if let conversationOrchestrator {
             do {
-                if let prepared = try conversationCommandPreparer.prepare(
-                    transcript: draft.normalizedText,
-                    sessionID: conversationSessionID,
-                    sourceTurnID: sourceTurnID,
-                    selectedProjectID:
-                        conversationWorkspaceSession?.activeProjectID,
-                    selectedTaskID:
-                        conversationWorkspaceSession?.activeTaskID,
-                    at: currentDate
-                ) {
+                let prepared: VoiceTaskConversationPreparedBegin?
+                if decision.operation == .taskCreate {
+                    prepared = .taskCreation(
+                        transcript: input, triage: decision,
+                        selectedProjectID: selectedProjectID
+                    )
+                } else {
+                    prepared = try conversationCommandPreparer?.prepare(
+                        transcript: input,
+                        triage: decision,
+                        explicitTaskID: request.explicitTaskID,
+                        sessionID: conversationSessionID,
+                        sourceTurnID: sourceTurnID,
+                        selectedProjectID: selectedProjectID,
+                        selectedTaskID: selectedTaskID,
+                        at: currentDate
+                    )
+                }
+                if let prepared {
+                    guard prepared.intents.allSatisfy({ availableTools.contains($0.tool) }) else {
+                        phase = .failed("The requested task operation is unavailable.")
+                        return
+                    }
                     conversationWorkspaceFactCandidates =
                         prepared.referenceRequest?.confirmedFacts.map {
                             VoiceTaskConversationWorkspacePresentation
@@ -1007,7 +1096,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
                             )
                         )
                     )
-                    await applyConversationOutcome(outcome, sourceTurnID: sourceTurnID)
+                    guard activeConversationSourceTurnID == sourceTurnID else { return }
+                    await applyConversationOutcome(outcome, sourceTurnID: sourceTurnID, prepared: prepared)
                     return
                 }
             } catch {
@@ -1019,76 +1109,12 @@ public final class VoiceCaptureViewModel: ObservableObject {
             }
         }
 
-        if let inboxTriageCommand = inboxTriageCommandParser.parseVoiceCommand(draft.normalizedText) {
-            beginInboxTriageRequest(
-                command: inboxTriageCommand,
-                routedIntent: makeInboxTriageRoute(for: inboxTriageCommand, fallbackRoute: routedCommand),
-                requestedAt: currentDate
-            )
-            return
-        }
-
-        guard !routedCommand.needsClarification else {
-            planningResponse = nil
-            assistantQueueItem = nil
-            dailyPlanningReviewRequest = nil
-            inboxTriageRequest = nil
-            developmentPullRequestAutomationRequest = nil
-            if let conversationOrchestrator {
-                let outcome = await conversationOrchestrator.handle(
-                    VoiceTaskConversationInput(
-                        sessionID: conversationSessionID,
-                        sourceTurnID: sourceTurnID,
-                        event: .begin(
-                            route: routedCommand,
-                            requiredSlots: [],
-                            intents: [],
-                            referenceRequest: nil,
-                            localAnswerItems: []
-                        ),
-                        currentDate: currentDate,
-                        timeZoneIdentifier: timeZoneIdentifier,
-                        availableTools: planningTools(
-                            for: routedCommand,
-                            requestedAvailableTools: availableTools
-                        )
-                    )
-                )
-                await applyConversationOutcome(outcome, sourceTurnID: sourceTurnID)
-            } else {
-                beginClarification(for: routedCommand)
-            }
-            return
-        }
-
-        guard routedCommand.intent != .dailyPlanningReview else {
-            beginDailyPlanningReviewRequest(for: routedCommand, requestedAt: currentDate)
-            return
-        }
-
-        if beginConnectorSendGateQueueItemIfNeeded(for: routedCommand) {
-            return
-        }
-
-        if beginNotificationDraftQueueItemIfNeeded(for: routedCommand) {
-            return
-        }
-
-        if beginDevelopmentPullRequestAutomationRequestIfPossible(for: routedCommand) {
-            return
-        }
-
-        await generatePlan(
-            for: routedCommand,
-            plannedTranscript: plannedTranscript,
-            currentDate: currentDate,
-            timeZoneIdentifier: timeZoneIdentifier,
-            availableTools: planningTools(
-                for: routedCommand,
-                requestedAvailableTools: availableTools
-            ),
-            knowledgeFrameCandidates: knowledgeFrameCandidates
-        )
+        planningResponse = nil
+        assistantQueueItem = nil
+        clarificationSession = nil
+        orchestratedClarificationQuestion = nil
+        phase = decision.route == .prohibited ? .failed("This operation is not allowed.") : .idle
+        auditErrorMessage = "This input could not be interpreted locally. Edit the request or explicitly save the recording to Inbox."
     }
 
     public func saveDraftToInbox(
@@ -1175,8 +1201,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         switch session.answer(answer, inputMode: inputMode) {
         case .needsClarification:
             let acceptedTurnCount = session.turns.count
-            if let maximum = maximumQuickCaptureClarificationTurns,
-               acceptedTurnCount >= maximum
+            if acceptedTurnCount >= 1
             {
                 clarificationSession = session
                 finishUnresolvedQuickCapture()
@@ -1212,17 +1237,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             if beginDevelopmentPullRequestAutomationRequestIfPossible(for: result.resolvedRoute) {
                 return
             }
-            await generatePlan(
-                for: result.resolvedRoute,
-                plannedTranscript: result.resolvedRoute.normalizedTranscript,
-                currentDate: currentDate,
-                timeZoneIdentifier: timeZoneIdentifier,
-                availableTools: planningTools(
-                    for: result.resolvedRoute,
-                    requestedAvailableTools: availableTools
-                ),
-                knowledgeFrameCandidates: knowledgeFrameCandidates
-            )
+            finishUnresolvedQuickCapture()
         }
     }
 
@@ -1368,21 +1383,14 @@ public final class VoiceCaptureViewModel: ObservableObject {
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
         developmentPullRequestAutomationRequest = nil
-        if canSaveDraftToInbox {
-            saveDraftToInbox()
-            if inboxCaptureResult != nil {
-                phase = .reviewReady
-                auditErrorMessage = "Clarification limit reached; the capture was saved to Inbox for later triage."
-                return
-            }
-        }
         phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
         auditErrorMessage = "One clarification is allowed. Edit the capture or save it to Inbox."
     }
 
     private func applyConversationOutcome(
         _ outcome: VoiceTaskConversationOutcome,
-        sourceTurnID: UUID
+        sourceTurnID: UUID,
+        prepared: VoiceTaskConversationPreparedBegin? = nil
     ) async {
         guard activeConversationSourceTurnID == sourceTurnID else { return }
         let reporter = conversationOrchestrator as? any VoiceTaskConversationResolutionReporting
@@ -1398,8 +1406,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
         switch outcome {
         case .clarification(let question):
-            if let maximum = maximumQuickCaptureClarificationTurns,
-               clarificationQuestionCount >= maximum
+            if clarificationQuestionCount >= 1
             {
                 // Cancel the persisted checkpoint before claiming that this capture
                 // has finished; reopening the window must not restore another question.
@@ -1425,7 +1432,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             orchestratedClarificationQuestion = nil
             let validation = ActionPlanValidator().validate(plan)
             let response = PlanningResponse(
-                providerID: "voice-conversation-orchestrator",
+                providerID: localTriageDecision?.configVersion ?? "voice-conversation-orchestrator",
                 rawContent: "",
                 actionPlan: plan,
                 validationResult: validation
@@ -1466,6 +1473,13 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 auditErrorMessage = userMessage(for: error)
             }
         case .answer(let answer):
+            do {
+                if let prepared { try conversationCommandPreparer?.publish(prepared) }
+            } catch {
+                phase = .failed("Voice conversation references could not be saved safely.")
+                auditErrorMessage = userMessage(for: error)
+                return
+            }
             orchestratedClarificationQuestion = nil
             conversationWorkspaceLocalAnswerItems =
                 answer.source == .localDeterministic
@@ -1691,7 +1705,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             return
         }
 
-        if clarificationSession != nil {
+        if clarificationQuestion != nil {
             await submitClarificationAnswer(
                 normalized,
                 inputMode: .voice,
@@ -1705,6 +1719,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
         updateDraftText(normalized)
         await generatePlan(
+            source: .voice,
             currentDate: currentDate,
             timeZoneIdentifier: timeZoneIdentifier,
             availableTools: availableTools,
@@ -2138,9 +2153,11 @@ public final class VoiceCaptureViewModel: ObservableObject {
             return try await llmProvider.generatePlan(for: request)
         }
 
+        let sourceTurnID = activeConversationSourceTurnID
         return try await streamingProvider.generatePlanStream(for: request) { [weak self] delta in
             Task { @MainActor [weak self] in
-                guard let self, self.phase == .generatingPlan else {
+                guard let self, self.phase == .generatingPlan,
+                      self.activeConversationSourceTurnID == sourceTurnID else {
                     return
                 }
                 self.planGenerationLiveText += delta
@@ -2167,14 +2184,12 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
         phase = .generatingPlan
         planGenerationLiveText = ""
-        workspaceAnswer = .idle
         auditErrorMessage = nil
         failureRecovery = nil
         assistantQueueItem = nil
         dailyPlanningReviewRequest = nil
         inboxTriageRequest = nil
         developmentPullRequestAutomationRequest = nil
-        autoCreatedTask = nil
 
         do {
             try auditRecorder?.recordStarted(input: request.userInput, providerID: llmProvider.providerID)
@@ -2186,6 +2201,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
         do {
             let response = try await generatePlanResponse(for: request)
+            guard activeConversationSourceTurnID == sourceTurnID else { return }
             guard isCurrentTranscript(plannedTranscript) else {
                 recordPlanningAudit {
                     try auditRecorder?.recordFailed(
@@ -2202,10 +2218,6 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 try auditRecorder?.recordCompleted(response: response)
             }
             phase = response.validationResult.isValid ? .reviewReady : .failed("ActionPlan validation failed.")
-            if phase == .reviewReady,
-               await autoCreateLowRiskTaskIfEligible(from: response) {
-                return
-            }
             do {
                 if let plan = response.actionPlan,
                    let queueItem = makeAssistantQueueItem(
@@ -2213,21 +2225,38 @@ public final class VoiceCaptureViewModel: ObservableObject {
                        routedCommand: routedCommand
                    )
                 {
+                    if let conversationOrchestrator, let sourceTurnID {
+                        let outcome = await conversationOrchestrator.handle(VoiceTaskConversationInput(
+                            sessionID: conversationSessionID, sourceTurnID: sourceTurnID,
+                            event: .proposal(route: routedCommand, plan: plan),
+                            currentDate: currentDate, timeZoneIdentifier: timeZoneIdentifier,
+                            availableTools: availableTools
+                        ))
+                        guard activeConversationSourceTurnID == sourceTurnID else { return }
+                        guard case .review = outcome else {
+                            planningResponse = nil
+                            phase = .failed("The proposal could not be prepared for Review.")
+                            return
+                        }
+                    }
                     let persisted =
                         try await persistConversationQueueItemWithLink(
                         plan: plan,
                         sourceTurnID: sourceTurnID,
                         queueItem: queueItem,
-                        at: currentDate
+                        at: Date()
                     )
+                    guard activeConversationSourceTurnID == sourceTurnID else { return }
                     assistantQueueItem = persisted
                 }
             } catch {
+                guard activeConversationSourceTurnID == sourceTurnID else { return }
                 blockConversationQueueItemAfterLinkFailure()
                 phase = .failed(userMessage(for: error))
                 return
             }
         } catch {
+            guard activeConversationSourceTurnID == sourceTurnID else { return }
             guard isCurrentTranscript(plannedTranscript) else {
                 recordPlanningAudit {
                     try auditRecorder?.recordFailed(
@@ -2261,61 +2290,6 @@ public final class VoiceCaptureViewModel: ObservableObject {
             return .retryPlanGeneration
         case .invalidResponse, .unknown:
             return nil
-        }
-    }
-
-    /// Opt-in auto-creation of a single low-risk task. The plan already passed
-    /// validation and reached `.reviewReady`; when the user selected the
-    /// autoCreateLowRisk automation mode and the plan qualifies, run it through
-    /// the injected review execution pipeline (same executor, audit trail, and
-    /// receipts as a manual approval) and publish an undoable record.
-    private func autoCreateLowRiskTaskIfEligible(from response: PlanningResponse) async -> Bool {
-        guard let taskAutomationSettingsProvider,
-              let lowRiskTaskAutoExecutor,
-              let plan = response.actionPlan else {
-            return false
-        }
-        guard LowRiskAutoCreationPolicy.qualifies(
-            plan: plan,
-            validation: response.validationResult,
-            settings: taskAutomationSettingsProvider()
-        ) else {
-            return false
-        }
-
-        do {
-            let outcome = try await lowRiskTaskAutoExecutor(plan)
-            guard let taskID = outcome.taskID else {
-                return false
-            }
-            autoCreatedTask = AutoCreatedTaskRecord(taskID: taskID, title: outcome.taskTitle)
-            return true
-        } catch {
-            // Auto-create is best effort: the plan itself stays reviewReady with
-            // the manual approval buttons as the fallback, so an execution
-            // failure must never turn a successful plan into a failed phase.
-            autoCreatedTask = nil
-            return false
-        }
-    }
-
-    /// Post-hoc undo for an auto-created task. Deletion failures keep the
-    /// record so the user can retry, and surface through the existing
-    /// audit/error message channel.
-    public func undoAutoCreatedTask() {
-        guard let record = autoCreatedTask else {
-            return
-        }
-        guard let taskDeleter else {
-            auditErrorMessage = "Undo is unavailable because local data stores could not be opened."
-            return
-        }
-        do {
-            try taskDeleter(record.taskID)
-            autoCreatedTask = nil
-            auditErrorMessage = nil
-        } catch {
-            auditErrorMessage = userMessage(for: error)
         }
     }
 
@@ -2701,9 +2675,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
     private var shouldResetPhaseAfterDraftChange: Bool {
         switch phase {
-        case .failed, .needsClarification, .reviewReady:
+        case .failed, .needsClarification, .reviewReady, .generatingPlan:
             return true
-        case .idle, .recording, .transcribing, .generatingPlan:
+        case .idle, .recording, .transcribing:
             return false
         }
     }

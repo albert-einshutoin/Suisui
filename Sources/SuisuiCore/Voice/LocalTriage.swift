@@ -182,6 +182,7 @@ public struct LocalTriageRequest: Codable, Equatable, Sendable {
     public let inputByteCount: Int
     public let scope: TriageScope
     public let availableCapabilities: Set<PersonalCapability>
+    public let supportedOperations: Set<LocalTriageOperation>
     public let providerReadiness: [ProviderReadinessReference]
     public let dataPolicyVersion: Int
     public let operatingPolicyVersion: Int?
@@ -201,6 +202,7 @@ public struct LocalTriageRequest: Codable, Equatable, Sendable {
         normalizedInput: String,
         scope: TriageScope,
         availableCapabilities: Set<PersonalCapability>,
+        supportedOperations: Set<LocalTriageOperation> = Set(LocalTriageOperation.allCases),
         providerReadiness: [ProviderReadinessReference],
         dataPolicyVersion: Int,
         operatingPolicyVersion: Int? = nil,
@@ -222,6 +224,7 @@ public struct LocalTriageRequest: Codable, Equatable, Sendable {
             : ""
         self.scope = scope
         self.availableCapabilities = availableCapabilities
+        self.supportedOperations = supportedOperations
         self.providerReadiness = providerReadiness
         self.dataPolicyVersion = dataPolicyVersion
         self.operatingPolicyVersion = operatingPolicyVersion
@@ -249,8 +252,20 @@ public struct LocalTriageRequest: Codable, Equatable, Sendable {
     }
 }
 
+public enum LocalTriageOperation: String, Codable, CaseIterable, Hashable, Sendable {
+    case read
+    case taskCreate
+    case taskStatus
+    case projectMove
+    case taskDueDate
+    case externalWrite
+    case frontier
+    case unsupported
+}
+
 public struct LocalTriageDecision: Codable, Equatable, Sendable {
     public let route: LocalExecutionRoute
+    public let operation: LocalTriageOperation
     public let capability: PersonalCapability?
     public let reasons: [TriageReason]
     public let missingFields: [ClarificationField]
@@ -267,6 +282,7 @@ public struct LocalTriageDecision: Codable, Equatable, Sendable {
 
     public init(
         route: LocalExecutionRoute,
+        operation: LocalTriageOperation,
         capability: PersonalCapability?,
         reasons: [TriageReason],
         missingFields: [ClarificationField],
@@ -282,6 +298,7 @@ public struct LocalTriageDecision: Codable, Equatable, Sendable {
         userOverrideRejected: Bool = false
     ) {
         self.route = route
+        self.operation = operation
         self.capability = capability
         self.reasons = reasons
         self.missingFields = missingFields
@@ -396,6 +413,7 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
             approval = .blocked
             return makeDecision(
                 request: request,
+                operation: .unsupported,
                 route: route,
                 capability: nil,
                 reasons: reasons,
@@ -422,6 +440,7 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
             approval = .blocked
             return makeDecision(
                 request: request,
+                operation: .unsupported,
                 route: route,
                 capability: nil,
                 reasons: reasons,
@@ -441,6 +460,7 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
             route = .clarification
             return makeDecision(
                 request: request,
+                operation: .unsupported,
                 route: route,
                 capability: nil,
                 reasons: reasons,
@@ -460,6 +480,7 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
             approval = .blocked
             return makeDecision(
                 request: request,
+                operation: .unsupported,
                 route: route,
                 capability: nil,
                 reasons: reasons,
@@ -483,6 +504,7 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
             approval = .blocked
             return makeDecision(
                 request: request,
+                operation: .unsupported,
                 route: route,
                 capability: nil,
                 reasons: reasons,
@@ -502,6 +524,7 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
             route = .clarification
             return makeDecision(
                 request: request,
+                operation: .unsupported,
                 route: route,
                 capability: nil,
                 reasons: reasons,
@@ -515,7 +538,8 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
             )
         }
 
-        let operation = classify(text)
+        let classifiedOperation = classify(text)
+        let operation = request.supportedOperations.contains(classifiedOperation) ? classifiedOperation : .unsupported
         switch operation {
         case .read:
             capability = readCapability(for: request.scope)
@@ -688,6 +712,7 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
 
         return makeDecision(
             request: request,
+            operation: operation,
             route: route,
             capability: capability,
             reasons: reasons,
@@ -729,18 +754,7 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
         )
     }
 
-    private enum Operation {
-        case read
-        case taskCreate
-        case taskStatus
-        case projectMove
-        case taskDueDate
-        case externalWrite
-        case frontier
-        case unsupported
-    }
-
-    private func classify(_ text: String) -> Operation {
+    private func classify(_ text: String) -> LocalTriageOperation {
         if containsAny(text, ["send now", "post now", "send it", "send to", "今すぐ送信", "送信して", "送って", "投稿して"]) {
             return .externalWrite
         }
@@ -750,7 +764,7 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
         {
             return .read
         }
-        if containsAny(text, ["add", "create", "new task", "taskを追加", "タスクを追加", "タスクを作成", "追加して", "作成して"]) {
+        if Self.taskCreationTitle(in: text) != nil {
             return .taskCreate
         }
         if containsAny(text, ["due", "deadline", "期限", "締切"]) {
@@ -818,6 +832,7 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
 
     private func makeDecision(
         request: LocalTriageRequest,
+        operation: LocalTriageOperation,
         route: LocalExecutionRoute,
         capability: PersonalCapability?,
         reasons: [TriageReason],
@@ -858,6 +873,7 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
             request.dataZone.rawValue,
             String(request.inputByteCount),
             capabilityList,
+            request.supportedOperations.map(\.rawValue).sorted().joined(separator: ","),
             providerList,
             String(request.dataPolicyVersion),
             request.operatingPolicyVersion.map(String.init) ?? "none",
@@ -870,6 +886,7 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
             String(request.networkAvailable),
             String(request.manualOnly),
             effectiveRoute.rawValue,
+            operation.rawValue,
             capability?.rawValue ?? "none",
             normalizedReasons.map(\.rawValue).joined(separator: ","),
             missingFields.map(\.rawValue).joined(separator: ","),
@@ -880,6 +897,7 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
         let digest = LocalTriageDigest.sha256(digestParts.joined(separator: "\u{1F}"))
         return LocalTriageDecision(
             route: effectiveRoute,
+            operation: operation,
             capability: capability,
             reasons: normalizedReasons,
             missingFields: missingFields,
@@ -899,7 +917,7 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
     private func hasTaskReference(in request: LocalTriageRequest, text: String) -> Bool {
         request.selectedTaskID != nil
             || request.explicitTaskID != nil
-            || text.range(of: #"(?:task|タスク)?\s*#\d+"#, options: .regularExpression) != nil
+            || Self.explicitTaskID(in: text) != nil
     }
 
     private static func canonicalProviderDescription(
@@ -912,27 +930,30 @@ public struct LocalTriageRouter: LocalTriageRouting, Sendable {
         return "\(provider.providerID.rawValue):\(provider.isReady):\(provider.isLocal):\(provider.allowsLocalData):\(provider.requiresNetwork):\(capabilityList)"
     }
 
-    private func hasTaskTitle(_ text: String) -> Bool {
-        let stripped = text
-            .replacingOccurrences(
-                of: #"^(?:please\s+)?(?:add|create|new)\b[\s:,-]*"#,
-                with: "",
-                options: .regularExpression
-            )
-            .replacingOccurrences(
-                of: #"^(?:(?:a|the)\s+)?(?:task|todo)\b[\s:,-]*"#,
-                with: "",
-                options: .regularExpression
-            )
-            .replacingOccurrences(of: "task", with: "")
-            .replacingOccurrences(of: "todo", with: "")
-            .replacingOccurrences(of: "タスク", with: "")
-            .replacingOccurrences(of: "を追加", with: "")
-            .replacingOccurrences(of: "を作成", with: "")
-            .replacingOccurrences(of: "追加して", with: "")
-            .replacingOccurrences(of: "作成して", with: "")
+    static func taskCreationTitle(in input: String) -> String? {
+        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefixes = [
+            #"(?i)^(?:please\s+)?(?:create|add|new)\s+(?:(?:a|the)\s+)?(?:new\s+)?(?:task|todo)\b\s*(?:(?:called|named)\s+)?[:：]?\s*"#,
+            #"^タスク(?:を)?(?:追加|作成)(?:して)?\s*[:：]?\s*"#
+        ]
+        for pattern in prefixes where text.range(of: pattern, options: .regularExpression) != nil {
+            return text.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let suffix = #"(?:のタスクを|をタスクに)(?:追加|作成)(?:して)?[。！]?\s*$"#
+        guard text.range(of: suffix, options: .regularExpression) != nil else { return nil }
+        return text.replacingOccurrences(of: suffix, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return stripped.count >= 2
+    }
+
+    static func explicitTaskID(in input: String) -> Int64? {
+        guard let range = input.range(of: #"#\s*[1-9][0-9]*(?![0-9A-Za-z])"#, options: .regularExpression),
+              let number = input[range].split(separator: "#").last else { return nil }
+        return Int64(number.trimmingCharacters(in: .whitespaces))
+    }
+
+    private func hasTaskTitle(_ text: String) -> Bool {
+        Self.taskCreationTitle(in: text).map { !$0.isEmpty } ?? false
     }
 
     private func readCapability(for scope: TriageScope) -> PersonalCapability? {

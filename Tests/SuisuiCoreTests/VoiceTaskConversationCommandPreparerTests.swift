@@ -2,6 +2,42 @@ import XCTest
 @testable import SuisuiCore
 
 final class VoiceTaskConversationCommandPreparerTests: XCTestCase {
+    func testCreationGrammarMatchesTriageAndPreservesTitle() throws {
+        for (input, title) in [("new task", ""), ("create the task", ""), ("リリースメモのタスクを作成して", "リリースメモ")] {
+            let prepared = try XCTUnwrap(VoiceTaskConversationPreparedBegin.taskCreation(
+                transcript: input, triage: triage(input), selectedProjectID: nil
+            ))
+            XCTAssertEqual(prepared.requiredSlots, title.isEmpty ? [.taskTitle] : [])
+            XCTAssertEqual(prepared.intents.first?.arguments["title"], title.isEmpty ? nil : .string(title))
+        }
+    }
+
+    func testPreparingListDoesNotPublishReferences() throws {
+        let fixture = try makeFixture()
+        _ = try fixture.preparer.prepare(transcript: "List tasks", triage: triage("List tasks"), explicitTaskID: nil, sessionID: fixture.sessionID,
+            sourceTurnID: UUID(), selectedProjectID: nil, selectedTaskID: nil, at: now)
+        XCTAssertTrue(try fixture.store.listReferences(sessionID: fixture.sessionID, limit: 10).isEmpty)
+        XCTAssertTrue(try fixture.store.listTurns(sessionID: fixture.sessionID, before: nil, limit: 10).isEmpty)
+    }
+
+    func testExplicitTaskIdentifierResolvesWithoutPriorList() throws {
+        let fixture = try makeFixture()
+        let input = "Update task #22 due 2031-03-08 priority high"
+        let prepared = try XCTUnwrap(fixture.preparer.prepare(transcript: input, triage: triage(input), explicitTaskID: LocalTriageRouter.explicitTaskID(in: input), sessionID: fixture.sessionID,
+            sourceTurnID: UUID(), selectedProjectID: nil, selectedTaskID: nil, at: now))
+        let date = now
+        XCTAssertEqual(VoiceTaskReferenceResolver(now: { date }).resolve(try XCTUnwrap(prepared.referenceRequest)),
+            .resolved(.task(id: 22, projectID: 7), reason: .explicitIdentifier))
+    }
+
+    private func triage(_ input: String) -> LocalTriageDecision {
+        LocalTriageRouter().evaluate(LocalTriageRequest(
+            source: .text, normalizedInput: input, scope: .task,
+            availableCapabilities: [.taskRead, .taskWrite], providerReadiness: [],
+            dataPolicyVersion: 1, frozenAt: now, timeZoneID: "UTC"
+        ))
+    }
+
     private let now = Date(timeIntervalSince1970: 1_930_000_000)
 
     func testGivenUnapprovedTaskListSpeechWhenRetentionExpiresThenItsBodyIsScrubbed()
@@ -10,8 +46,10 @@ final class VoiceTaskConversationCommandPreparerTests: XCTestCase {
         let fixture = try makeFixture()
         let sourceTurnID = UUID()
 
-        _ = try fixture.preparer.prepare(
+        _ = try prepareAndPublish(fixture,
             transcript: "List tasks",
+            triage: triage("List tasks"),
+            explicitTaskID: nil,
             sessionID: fixture.sessionID,
             sourceTurnID: sourceTurnID,
             selectedProjectID: nil,
@@ -62,8 +100,10 @@ final class VoiceTaskConversationCommandPreparerTests: XCTestCase {
     {
         let fixture = try makeFixture()
         let listTurnID = UUID()
-        let listed = try fixture.preparer.prepare(
+        let listed = try prepareAndPublish(fixture,
             transcript: "List tasks",
+            triage: triage("List tasks"),
+            explicitTaskID: nil,
             sessionID: fixture.sessionID,
             sourceTurnID: listTurnID,
             selectedProjectID: nil,
@@ -84,9 +124,11 @@ final class VoiceTaskConversationCommandPreparerTests: XCTestCase {
         )
 
         let prepared = try XCTUnwrap(
-            fixture.preparer.prepare(
+            prepareAndPublish(fixture,
                 transcript:
                     "Update the second task due date and priority high",
+                triage: triage("Update the second task due date and priority high"),
+            explicitTaskID: nil,
                 sessionID: fixture.sessionID,
                 sourceTurnID: UUID(),
                 selectedProjectID: nil,
@@ -160,8 +202,10 @@ final class VoiceTaskConversationCommandPreparerTests: XCTestCase {
         async throws
     {
         let fixture = try makeFixture()
-        _ = try fixture.preparer.prepare(
+        _ = try prepareAndPublish(fixture,
             transcript: "List tasks",
+            triage: triage("List tasks"),
+            explicitTaskID: nil,
             sessionID: fixture.sessionID,
             sourceTurnID: UUID(),
             selectedProjectID: nil,
@@ -173,9 +217,11 @@ final class VoiceTaskConversationCommandPreparerTests: XCTestCase {
             projectID: 7
         )
         let prepared = try XCTUnwrap(
-            fixture.preparer.prepare(
+            prepareAndPublish(fixture,
                 transcript:
                     "Update the second task due 2031-03-08 priority high",
+                triage: triage("Update the second task due 2031-03-08 priority high"),
+            explicitTaskID: nil,
                 sessionID: fixture.sessionID,
                 sourceTurnID: UUID(),
                 selectedProjectID: nil,
@@ -216,8 +262,10 @@ final class VoiceTaskConversationCommandPreparerTests: XCTestCase {
         let firstTurnID = UUID(
             uuidString: "ffffffff-ffff-ffff-ffff-ffffffffffff"
         )!
-        _ = try fixture.preparer.prepare(
+        _ = try prepareAndPublish(fixture,
             transcript: "List tasks",
+            triage: triage("List tasks"),
+            explicitTaskID: nil,
             sessionID: fixture.sessionID,
             sourceTurnID: firstTurnID,
             selectedProjectID: nil,
@@ -231,8 +279,10 @@ final class VoiceTaskConversationCommandPreparerTests: XCTestCase {
         let latestTurnID = UUID(
             uuidString: "00000000-0000-0000-0000-000000000001"
         )!
-        _ = try fixture.preparer.prepare(
+        _ = try prepareAndPublish(fixture,
             transcript: "List tasks",
+            triage: triage("List tasks"),
+            explicitTaskID: nil,
             sessionID: fixture.sessionID,
             sourceTurnID: latestTurnID,
             selectedProjectID: nil,
@@ -268,8 +318,10 @@ final class VoiceTaskConversationCommandPreparerTests: XCTestCase {
         )
 
         XCTAssertThrowsError(
-            try fixture.preparer.prepare(
+            try prepareAndPublish(fixture,
                 transcript: "List tasks",
+                triage: triage("List tasks"),
+            explicitTaskID: nil,
                 sessionID: fixture.sessionID,
                 sourceTurnID: UUID(),
                 selectedProjectID: nil,
@@ -289,6 +341,29 @@ final class VoiceTaskConversationCommandPreparerTests: XCTestCase {
             ),
             ["0"]
         )
+    }
+
+    private func prepareAndPublish(
+        _ fixture: Fixture, transcript: String, triage: LocalTriageDecision, explicitTaskID: Int64?,
+        sessionID: UUID, sourceTurnID: UUID, selectedProjectID: Int64?, selectedTaskID: Int64?, at date: Date
+    ) throws -> VoiceTaskConversationPreparedBegin? {
+        let prepared = try fixture.preparer.prepare(transcript: transcript, triage: triage, explicitTaskID: explicitTaskID,
+            sessionID: sessionID, sourceTurnID: sourceTurnID, selectedProjectID: selectedProjectID, selectedTaskID: selectedTaskID, at: date)
+        if let prepared { try fixture.preparer.publish(prepared) }
+        return prepared
+    }
+
+    func testScopedListFollowupExcludesUnprojectedTasks() throws {
+        let fixture = try makeFixture()
+        _ = try SQLiteTaskStore(connection: fixture.connection).create(title: "Unrelated", projectID: nil)
+        _ = try prepareAndPublish(fixture, transcript: "List tasks", triage: triage("List tasks"), explicitTaskID: nil,
+            sessionID: fixture.sessionID, sourceTurnID: UUID(), selectedProjectID: 7, selectedTaskID: nil, at: now)
+        let input = "Update the second task due 2031-03-08 priority high"
+        let prepared = try XCTUnwrap(fixture.preparer.prepare(transcript: input, triage: triage(input), explicitTaskID: nil,
+            sessionID: fixture.sessionID, sourceTurnID: UUID(), selectedProjectID: 7, selectedTaskID: nil, at: now))
+        let date = now
+        XCTAssertEqual(VoiceTaskReferenceResolver(now: { date }).resolve(try XCTUnwrap(prepared.referenceRequest)),
+            .resolved(.task(id: 22, projectID: 7), reason: .stableOrdinal))
     }
 
     private struct Fixture {

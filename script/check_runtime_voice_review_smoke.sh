@@ -231,71 +231,14 @@ pressControlContaining() {
   while true; do
     ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
     local attempt_output="$tmp_dir/press-control.$$.out"
-    /usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT' >"$attempt_output" 2>&1 &
-on run argv
-  set appPID to (item 1 of argv) as integer
-  set fragment to item 2 of argv
-  tell application "System Events"
-    set matchingProcesses to application processes whose unix id is appPID
-    if (count of matchingProcesses) is 0 then error "pid-owned process missing"
-    set targetProcess to item 1 of matchingProcesses
-    tell targetProcess
-      repeat with windowIndex from 1 to count of windows
-        set currentWindow to window windowIndex
-        try
-          set frontmost to true
-          perform action "AXRaise" of currentWindow
-        end try
-        set axItems to entire contents of currentWindow
-          repeat with axItem in axItems
-            set itemRole to ""
-            try
-              set itemRole to role of axItem as text
-            end try
-            if itemRole is "AXButton" or itemRole is "AXCheckBox" then
-              set itemName to ""
-              set itemTitle to ""
-              set itemDescription to ""
-              set itemHelp to ""
-              set itemIdentifier to ""
-              try
-                set itemName to name of axItem as text
-              end try
-              try
-                set itemTitle to value of attribute "AXTitle" of axItem as text
-              end try
-              try
-                set itemDescription to description of axItem as text
-              end try
-              try
-                set itemHelp to value of attribute "AXHelp" of axItem as text
-              end try
-              try
-                set itemIdentifier to value of attribute "AXIdentifier" of axItem as text
-              end try
-              set signalText to itemIdentifier & " " & itemName & " " & itemTitle & " " & itemDescription & " " & itemHelp
-              set isEnabled to true
-              try
-                set isEnabled to enabled of axItem as boolean
-              end try
-              if isEnabled and signalText contains fragment then
-                perform action "AXPress" of axItem
-                return "pressed " & fragment
-              end if
-            end if
-          end repeat
-      end repeat
-    end tell
-  end tell
-  error "control signal not found: " & fragment
-end run
-APPLESCRIPT
+    "$tmp_dir/ax-press-element" "$app_pid" "$fragment" >"$attempt_output" 2>&1 &
     local osascript_pid=$!
     if wait_for_osascript_attempt "$osascript_pid"; then
       cat "$attempt_output"
       rm -f "$attempt_output"
       return 0
     fi
+    cat "$attempt_output" >&2
     rm -f "$attempt_output"
     ax_process_matches_identity "$app_pid" "$APP_BINARY" "$app_identity" || return 1
     if [[ "$SECONDS" -ge "$deadline" ]]; then
@@ -533,6 +476,8 @@ SQL
 }
 
 printf "== Runtime voice review smoke ==\n"
+swiftc "$ROOT_DIR/script/ui_evidence_ax_scroll_to.swift" -o "$tmp_dir/ax-scroll-to"
+swiftc "$ROOT_DIR/script/ui_evidence_ax_press_element.swift" -o "$tmp_dir/ax-press-element"
 swiftc "$ROOT_DIR/script/ui_evidence_ax_text_input.swift" -o "$tmp_dir/ax-text-input"
 swiftc "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" -o "$tmp_dir/ax-marker"
 ./script/build_and_run.sh --build-only
@@ -556,18 +501,20 @@ if [[ -z "$planning_initial_project_count" ]]; then
 fi
 printf "OK: Generate Plan stayed disabled for whitespace and enabled for a valid draft\n"
 pressControlContaining "voice-command-generate-plan"
-waitForTextContaining "The AI provider rejected the configured API key."
-
-wait_for_sql_value "1" "planning audit started" "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan' AND status='started';"
-wait_for_sql_value "1" "planning audit failed" "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan' AND status='failed' AND metadata_json LIKE '%The AI provider rejected the configured API key.%';"
-verify_sql_value "0" "planning audit succeeded" "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan' AND status='succeeded';"
+wait_for_sql_value "1" "local triage proposal awaiting Review" "SELECT count(*) FROM assistant_queue_items WHERE state='waitingReview' AND payload_kind='action_plan' AND approval_json IS NULL;"
+verify_sql_value "0" "frontier calls for deterministic input" "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan';"
 verify_sql_value "0" "task writes before approval" "SELECT count(*) FROM tasks;"
-verify_sql_value "$planning_initial_project_count" "project count unchanged after rejected planning" "SELECT count(*) FROM projects;"
+verify_sql_value "$planning_initial_project_count" "project count unchanged before approval" "SELECT count(*) FROM projects;"
 verify_sql_value "0" "review execution before approval" "SELECT count(*) FROM audit_logs WHERE category='review' OR action LIKE 'execution.%';"
+"$tmp_dir/ax-scroll-to" "$APP_NAME" "voice-assistant-queue-reject" "$app_pid"
+pressControlContaining "voice-assistant-queue-reject"
+wait_for_sql_value "1" "local proposal rejected" "SELECT count(*) FROM assistant_queue_items WHERE state='rejected' AND payload_kind='action_plan';"
+verify_sql_value "0" "task writes after Reject" "SELECT count(*) FROM tasks;"
 
-printf "OK: runtime voice review smoke verified fail-closed planning audit and no pre-approval writes\n"
+printf "OK: runtime voice review smoke verified Local Triage to Review and no pre-approval writes\n"
 
 seed_daily_planning_task
+"$tmp_dir/ax-scroll-to" "$APP_NAME" "voice-command-input" "$app_pid"
 setTextAreaContaining "voice-command-input" "Open Today Review and start the recommended task"
 pressControlContaining "voice-command-generate-plan"
 wait_for_sql_value \
@@ -599,11 +546,11 @@ verify_sql_value \
   "daily planning review execution before approval" \
   "SELECT count(*) FROM audit_logs WHERE category='review' OR action LIKE 'execution.%';"
 verify_sql_value \
-  "1" \
+  "0" \
   "planning audit did not start again for local Daily Planning handoff" \
   "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan' AND status='started';"
 verify_sql_value \
-  "1" \
+  "0" \
   "planning audit failure count unchanged after local Daily Planning handoff" \
   "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan' AND status='failed';"
 verify_sql_value \
@@ -642,7 +589,7 @@ verify_sql_value \
   "move-to-today review execution before approval" \
   "SELECT count(*) FROM audit_logs WHERE category='review' OR action LIKE 'execution.%';"
 verify_sql_value \
-  "1" \
+  "0" \
   "planning audit did not start again for move-to-today local Daily Planning handoff" \
   "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan' AND status='started';"
 
@@ -680,7 +627,7 @@ verify_sql_value \
   "defer review execution before approval" \
   "SELECT count(*) FROM audit_logs WHERE category='review' OR action LIKE 'execution.%';"
 verify_sql_value \
-  "1" \
+  "0" \
   "planning audit did not start again for defer local Daily Planning handoff" \
   "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan' AND status='started';"
 
@@ -719,7 +666,7 @@ verify_sql_value \
   "split review execution before approval" \
   "SELECT count(*) FROM audit_logs WHERE category='review' OR action LIKE 'execution.%';"
 verify_sql_value \
-  "1" \
+  "0" \
   "planning audit did not start again for split local Daily Planning handoff" \
   "SELECT count(*) FROM audit_logs WHERE category='planning' AND action='generate_plan' AND status='started';"
 

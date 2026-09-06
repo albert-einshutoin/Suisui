@@ -620,7 +620,9 @@ final class WorkspaceAnswerTests: XCTestCase {
         await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
 
         XCTAssertEqual(viewModel.workspaceAnswer, .idle)
-        XCTAssertEqual(viewModel.phase, .reviewReady)
+        // Without a local orchestrator this request must not use the old provider fallback.
+        XCTAssertNil(viewModel.planningResponse)
+        XCTAssertEqual(viewModel.phase, .idle)
     }
 
     // MARK: - Fixtures

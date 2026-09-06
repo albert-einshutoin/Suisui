@@ -158,6 +158,7 @@ public enum VoiceTaskConversationEvent: Sendable {
         referenceRequest: VoiceTaskReferenceRequest?,
         localAnswerItems: [VoiceTaskConversationAnswerItem]
     )
+    case proposal(route: VoiceCommandRoutingResult, plan: ActionPlan)
     case clarificationAnswer(String, inputMode: ClarificationInputMode = .typed)
     case cancel
 }
@@ -269,8 +270,6 @@ public actor VoiceTaskConversationOrchestrator:
 {
     private let stateStore: any VoiceTaskConversationOrchestrationStateStore
     private let referenceResolver: any VoiceTaskReferenceResolving
-    private let contextAssembler: any VoiceTaskContextAssembling
-    private let provider: (any LLMProvider)?
     private let validator: ActionPlanValidator
     private let maximumClarificationTurns: Int?
     private let conversationStore:
@@ -285,15 +284,11 @@ public actor VoiceTaskConversationOrchestrator:
     public init(
         stateStore: any VoiceTaskConversationOrchestrationStateStore,
         referenceResolver: any VoiceTaskReferenceResolving = VoiceTaskReferenceResolver(),
-        contextAssembler: any VoiceTaskContextAssembling = VoiceTaskContextAssembler(),
-        provider: (any LLMProvider)? = nil,
         validator: ActionPlanValidator = ActionPlanValidator(),
         maximumClarificationTurns: Int? = nil
     ) {
         self.stateStore = stateStore
         self.referenceResolver = referenceResolver
-        self.contextAssembler = contextAssembler
-        self.provider = provider
         self.validator = validator
         self.maximumClarificationTurns = maximumClarificationTurns.map { max(1, $0) }
         conversationStore = nil
@@ -308,16 +303,11 @@ public actor VoiceTaskConversationOrchestrator:
             @escaping @Sendable (Int64) throws -> String? = { _ in nil },
         referenceResolver: any VoiceTaskReferenceResolving =
             VoiceTaskReferenceResolver(),
-        contextAssembler: any VoiceTaskContextAssembling =
-            VoiceTaskContextAssembler(),
-        provider: (any LLMProvider)? = nil,
         validator: ActionPlanValidator = ActionPlanValidator(),
         maximumClarificationTurns: Int? = nil
     ) {
         self.stateStore = stateStore
         self.referenceResolver = referenceResolver
-        self.contextAssembler = contextAssembler
-        self.provider = provider
         self.validator = validator
         self.maximumClarificationTurns = maximumClarificationTurns.map { max(1, $0) }
         self.conversationStore = conversationStore
@@ -326,14 +316,28 @@ public actor VoiceTaskConversationOrchestrator:
     }
 
     public func handle(_ input: VoiceTaskConversationInput) async -> VoiceTaskConversationOutcome {
-        // Cancellation and replacement invalidate provider work before it can
-        // commit a checkpoint, even if the provider ignores task cancellation.
+        // Cancellation and replacement invalidate pending publication before it
+        // can commit a checkpoint.
         if case .cancel = input.event {
             activeInputIDs.removeValue(forKey: input.sessionID)
         } else {
             activeInputIDs[input.sessionID] = input.sourceTurnID
         }
         switch input.event {
+        case .proposal(let route, let plan):
+            guard validator.validate(plan).isValid,
+                  plan.actions.allSatisfy({ input.availableTools.contains($0.tool) }) else {
+                return .blocked(.invalidPlan)
+            }
+            let state = VoiceTaskConversationOrchestrationState(
+                sessionID: input.sessionID, originalSourceTurnID: input.sourceTurnID,
+                route: route, intents: [],
+                clarification: ClarificationSession(route: route, requiredSlots: [])
+            )
+            return persistPendingReviewOutcome(
+                .review(plan), state: state, sessionID: input.sessionID,
+                inputID: input.sourceTurnID, clarificationTurns: []
+            )
         case .restore:
             do {
                 guard let state = try stateStore.load(
@@ -515,27 +519,7 @@ public actor VoiceTaskConversationOrchestrator:
                 )
             }
 
-            let outcome = await providerOutcome(input: input, route: route)
-            let state = VoiceTaskConversationOrchestrationState(
-                sessionID: input.sessionID,
-                originalSourceTurnID: input.sourceTurnID,
-                route: route,
-                intents: [],
-                clarification: ClarificationSession(
-                    route: route,
-                    requiredSlots: []
-                ),
-                resolvedReferenceCandidate:
-                    resolvedReferenceCandidate,
-                resolvedReferenceReason: resolvedReferenceReason
-            )
-            return persistPendingReviewOutcome(
-                outcome,
-                state: state,
-                sessionID: input.sessionID,
-                inputID: input.sourceTurnID,
-                clarificationTurns: []
-            )
+            return .blocked(.providerUnavailable)
         }
     }
 
@@ -733,17 +717,7 @@ public actor VoiceTaskConversationOrchestrator:
             )
             let outcome: VoiceTaskConversationOutcome
             guard !intents.isEmpty else {
-                outcome = await providerOutcome(
-                    input: input,
-                    route: result.resolvedRoute
-                )
-                return persistPendingReviewOutcome(
-                    outcome,
-                    state: state,
-                    sessionID: input.sessionID,
-                    inputID: input.sourceTurnID,
-                    clarificationTurns: result.turns
-                )
+                return .blocked(.providerUnavailable)
             }
             outcome = reviewOutcome(
                 intents: intents,
@@ -937,57 +911,6 @@ public actor VoiceTaskConversationOrchestrator:
         try stateStore.save(state)
     }
 
-    private func providerOutcome(
-        input: VoiceTaskConversationInput,
-        route: VoiceCommandRoutingResult
-    ) async -> VoiceTaskConversationOutcome {
-        guard let provider else {
-            return .blocked(.providerUnavailable)
-        }
-
-        let providerContext: VoiceTaskProviderContext?
-        if let contextInput = input.contextInput {
-            do {
-                providerContext = try contextAssembler
-                    .assemble(contextInput, budget: input.contextBudget)
-                    .providerContext
-            } catch {
-                return .blocked(.contextUnavailable)
-            }
-        } else {
-            providerContext = nil
-        }
-
-        do {
-            let response = try await provider.generatePlan(
-                for: PlanningRequest(
-                    userInput: route.planningInput,
-                    currentDate: input.currentDate,
-                    timeZoneIdentifier: input.timeZoneIdentifier,
-                    availableTools: input.availableTools,
-                    voiceTaskContext: providerContext
-                )
-            )
-            guard let plan = response.actionPlan,
-                  validator.validate(plan).isValid else {
-                return .blocked(.invalidPlan)
-            }
-            if plan.actions.allSatisfy({ $0.riskLevel == .read }) {
-                return .answer(
-                    VoiceTaskConversationAnswer(
-                        text: plan.summary,
-                        source: .provider
-                    )
-                )
-            }
-            // Provider raw content is intentionally discarded. Only the typed,
-            // validated plan crosses into the approval surface.
-            return .review(plan)
-        } catch {
-            return .blocked(.providerUnavailable)
-        }
-    }
-
     private func reviewOutcome(
         intents: [ConversationTaskIntent],
         originalTranscript: String
@@ -1051,6 +974,8 @@ public actor VoiceTaskConversationOrchestrator:
             for (slot, answer) in clarificationAnswers {
                 let key: String
                 switch slot {
+                case .taskTitle:
+                    key = "title"
                 case .project:
                     key = "project"
                 case .dueDate:
