@@ -528,6 +528,39 @@ final class ExternalSideEffectJournalTests: XCTestCase {
         XCTAssertEqual(try journal.records(executionID: "execution-1").count, 1)
     }
 
+    func testCalendarTargetAndTimezoneChangesUseDistinctExternalSideEffectKeys() throws {
+        let connection = try migratedConnection()
+        let journal = SQLiteExternalSideEffectJournal(connection: connection)
+        let client = InMemoryCalendarClient()
+        let tool = CalendarTool(
+            name: .calendarCreateEvent,
+            client: client,
+            sideEffectJournal: journal
+        )
+        let firstArguments: [String: JSONValue] = [
+            "title": .string("Deep work"),
+            "startAt": .string("2026-06-18T09:00:00Z"),
+            "endAt": .string("2026-06-18T10:00:00Z"),
+            "calendarIdentifier": .string("calendar-one"),
+            "timeZoneIdentifier": .string("UTC")
+        ]
+        var secondArguments = firstArguments
+        secondArguments["calendarIdentifier"] = .string("calendar-two")
+        secondArguments["timeZoneIdentifier"] = .string("Asia/Tokyo")
+        let context = approvedSideEffectContext(idempotencyKey: "calendar-key")
+
+        _ = try tool.execute(arguments: firstArguments, context: context)
+        _ = try tool.execute(arguments: secondArguments, context: context)
+
+        let events = try client.listEvents()
+        XCTAssertEqual(events.count, 2)
+        XCTAssertEqual(events.map(\.draft.calendarIdentifier), ["calendar-one", "calendar-two"])
+        XCTAssertEqual(events.map(\.draft.timeZoneIdentifier), ["UTC", "Asia/Tokyo"])
+        let records = try journal.records(executionID: "execution-1")
+        XCTAssertEqual(records.count, 2)
+        XCTAssertNotEqual(records[0].idempotencyKey, records[1].idempotencyKey)
+    }
+
     func testReminderLocalPersistenceFailureBecomesUnknownAndRelinkDoesNotDuplicate() throws {
         let connection = try migratedConnection()
         let journal = SQLiteExternalSideEffectJournal(connection: connection)

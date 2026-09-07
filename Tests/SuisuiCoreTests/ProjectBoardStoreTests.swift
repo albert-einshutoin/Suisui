@@ -6306,6 +6306,32 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         let approved = try AssistantQueueStateMachine.approve(firstItem, reviewerID: "tester")
         try assistantQueueStore.save(approved)
+        for index in 0..<500 {
+            let fillerPlan = ActionPlan(
+                id: "schedule-invalidation-filler-\(index)",
+                userInput: "Queue filler",
+                summary: "Queue filler",
+                actions: [
+                    PlanAction(
+                        id: "schedule-invalidation-filler-action-\(index)",
+                        tool: .taskCreate,
+                        riskLevel: .write,
+                        requiresUserConfirmation: true
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+            let filler = AssistantQueueAdapter.makeItem(
+                actionPlan: fillerPlan,
+                sourceTranscript: fillerPlan.userInput,
+                interpretationSummary: fillerPlan.summary,
+                reason: "Queue filler"
+            )
+            try assistantQueueStore.save(
+                try AssistantQueueStateMachine.approve(filler, reviewerID: "filler")
+            )
+        }
 
         let movedStart = try isoDate("2026-06-30T11:00:00Z")
         let movedEnd = try isoDate("2026-06-30T11:30:00Z")
@@ -6325,7 +6351,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         )
 
         XCTAssertTrue(viewModel.enqueueScheduleDraftCalendarApply(on: movedStart, calendar: calendar))
-        let proposals = try assistantQueueStore.list(filter: .all(limit: 10)).compactMap { item -> String? in
+        let proposals = try assistantQueueStore.list(filter: .all(limit: Int.max)).compactMap { item -> String? in
             guard case .actionPlan(let plan) = item.payload else { return nil }
             return plan.actions.first?.arguments["proposalID"]?.stringValue
         }

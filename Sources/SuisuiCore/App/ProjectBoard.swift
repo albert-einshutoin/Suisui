@@ -5797,7 +5797,9 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         do {
-            let items = try assistantQueueStore.list(filter: .all(limit: 500))
+            // This safety invalidation must inspect every approved item. A windowed
+            // fetch could leave an older approved Calendar proposal executable.
+            let items = try assistantQueueStore.list(filter: .states([.approved], limit: Int.max))
             for item in items where item.state == .approved {
                 guard case .actionPlan(let plan) = item.payload,
                       plan.actions.contains(where: {

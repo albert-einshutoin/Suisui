@@ -28,7 +28,7 @@ public struct AssistantQueueFilter: Equatable, Sendable {
 
     public init(states: Set<AssistantQueueState>? = nil, limit: Int = 100) {
         self.states = states
-        self.limit = min(max(limit, 1), 500)
+        self.limit = max(limit, 1)
     }
 
     public static func all(limit: Int = 100) -> AssistantQueueFilter {

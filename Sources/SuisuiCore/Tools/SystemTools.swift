@@ -318,13 +318,20 @@ public struct CalendarTool: Tool {
     private func calendarSideEffectArguments(
         _ draft: CalendarEventDraft
     ) -> [String: JSONValue] {
-        return [
+        var arguments: [String: JSONValue] = [
             "title": .string(draft.title),
             "startAt": .string(draft.startAt),
             "endAt": .string(draft.endAt),
             "isAllDay": .bool(draft.isAllDay),
             "notes": draft.notes.map(JSONValue.string) ?? .null
         ]
+        if let calendarIdentifier = draft.calendarIdentifier {
+            arguments["calendarIdentifier"] = .string(calendarIdentifier)
+        }
+        if let timeZoneIdentifier = draft.timeZoneIdentifier {
+            arguments["timeZoneIdentifier"] = .string(timeZoneIdentifier)
+        }
+        return arguments
     }
 
     private func calendarEntityReferences(args: ToolArguments) throws -> (
