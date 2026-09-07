@@ -1861,7 +1861,7 @@ capture_voice_command_appearance() {
   SETTINGS_WINDOW_OVERRIDE=""
   SETTINGS_TAB_OVERRIDE=""
   VOICE_COMMAND_WINDOW_OVERRIDE=1
-  VOICE_SURFACE_OVERRIDE=""
+  VOICE_SURFACE_OVERRIDE="quick"
   prepare_named_evidence_window "" "Voice Command" "$VOICE_COMMAND_TARGET_MARKERS"
 
   capture_visible_window "$appearance Voice Command" "$output_path" "" "voice-command-root"

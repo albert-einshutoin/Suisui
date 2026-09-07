@@ -21,7 +21,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
 
     func testUnsupportedAdapterOperationsAreClassifiedBeforePlanning() async throws {
         let (viewModel, tasks, provider) = try makeLocalTriageViewModel()
-        for input in ["Complete task #22", "Move task #22 into project", "Count tasks", "Update task #22 due tomorrow"] {
+        for input in ["Complete task #22", "Move task #22 into project", "Count tasks"] {
             viewModel.updateDraftText(input)
             await viewModel.generatePlan()
             XCTAssertEqual(viewModel.localTriageDecision?.operation, .unsupported, input)
@@ -136,6 +136,87 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.inboxCaptureResult)
         XCTAssertTrue(provider.requests.isEmpty)
         XCTAssertTrue(try tasks.listAll().isEmpty)
+    }
+
+    func testConversationRuntimeAllowsMultipleClarificationsBeforeAnswer() async {
+        let firstQuestion = ClarificationQuestion(slot: .taskTitle, prompt: "Task title?")
+        let secondQuestion = ClarificationQuestion(slot: .project, prompt: "Which project?")
+        let orchestrator = RecordingVoiceConversationOrchestrator(outcomes: [
+            .clarification(firstQuestion),
+            .clarification(secondQuestion),
+            .answer(VoiceTaskConversationAnswer(
+                text: "The request is ready for review.",
+                source: .localDeterministic
+            ))
+        ])
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "unused", rawContent: "", actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            )),
+            conversationOrchestrator: orchestrator,
+            conversationSessionID: UUID(),
+            maximumClarificationTurns: 4
+        )
+
+        viewModel.updateDraftText("Create task:")
+        await viewModel.generatePlan()
+        XCTAssertEqual(viewModel.clarificationQuestion, firstQuestion)
+
+        await viewModel.submitClarificationAnswer("Write release notes")
+        XCTAssertEqual(viewModel.clarificationQuestion, secondQuestion)
+
+        await viewModel.submitClarificationAnswer("Suisui")
+        XCTAssertNil(viewModel.clarificationQuestion)
+        XCTAssertEqual(
+            viewModel.workspaceAnswer,
+            .answered(text: "The request is ready for review.", contextCount: 0)
+        )
+        XCTAssertNil(viewModel.auditErrorMessage)
+    }
+
+    func testConversationReadoutFailureKeepsTextAndCanBeStopped() async {
+        let answer = VoiceTaskConversationAnswer(
+            text: "The request is ready for review.",
+            source: .localDeterministic
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "unused", rawContent: "", actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            )),
+            conversationOrchestrator: RecordingVoiceConversationOrchestrator(
+                outcomes: [.answer(answer)]
+            ),
+            conversationSessionID: UUID(),
+            conversationReadout: { _ in
+                Task { "No installed voice is available." }
+            },
+            maximumClarificationTurns: 4
+        )
+
+        viewModel.updateDraftText("Create task:")
+        await viewModel.generatePlan()
+        let didReportFailure = await waitForVoiceCondition {
+            viewModel.conversationReadoutError != nil
+        }
+
+        XCTAssertTrue(didReportFailure)
+        XCTAssertFalse(viewModel.isConversationReadoutPlaying)
+        XCTAssertEqual(viewModel.workspaceAnswer, .answered(
+            text: answer.text,
+            contextCount: 0
+        ))
+        viewModel.stopConversationReadout()
+        XCTAssertNil(viewModel.conversationReadoutError)
+        XCTAssertEqual(viewModel.workspaceAnswer, .answered(
+            text: answer.text,
+            contextCount: 0
+        ))
     }
 
     func testLocalTriageUnknownAndCancelNeverReusePriorProposal() async throws {
@@ -2914,6 +2995,100 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.recordedAudio?.duration, 2)
     }
 
+    func testCancelCurrentVoiceInputDiscardsLateTranscription() async {
+        let gate = VoicePlanningGate()
+        let sttProvider = DelayedCancellationAwareVoiceSTTProvider(gate: gate)
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: sttProvider,
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            ))
+        )
+
+        await viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
+        let stopTask = Task { @MainActor in
+            await viewModel.stopRecording(
+                outputURL: URL(filePath: "/tmp/suisui-canceled.m4a"),
+                at: Date(timeIntervalSince1970: 12)
+            )
+        }
+        await gate.waitUntilRequestReceived()
+
+        viewModel.cancelCurrentVoiceInput()
+        await gate.release()
+        await stopTask.value
+
+        XCTAssertTrue(sttProvider.didObserveCancellation)
+        XCTAssertEqual(viewModel.phase, .idle)
+        XCTAssertEqual(viewModel.recordingState, .idle)
+        XCTAssertEqual(viewModel.draft.text, "")
+        XCTAssertNil(viewModel.recordedAudio)
+    }
+
+    func testEditingDraftDuringTranscriptionKeepsNewInput() async {
+        let gate = VoicePlanningGate()
+        let sttProvider = DelayedCancellationAwareVoiceSTTProvider(gate: gate)
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: sttProvider,
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            ))
+        )
+
+        await viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
+        let stopTask = Task { @MainActor in
+            await viewModel.stopRecording(
+                outputURL: URL(filePath: "/tmp/suisui-edited.m4a"),
+                at: Date(timeIntervalSince1970: 12)
+            )
+        }
+        await gate.waitUntilRequestReceived()
+
+        viewModel.updateDraftText("new input")
+        await gate.release()
+        await stopTask.value
+
+        XCTAssertTrue(sttProvider.didObserveCancellation)
+        XCTAssertEqual(viewModel.phase, .idle)
+        XCTAssertEqual(viewModel.draft.text, "new input")
+    }
+
+    func testTypedClarificationAnswerCancelsPendingVoiceAnswer() async throws {
+        let gate = VoicePlanningGate()
+        let sttProvider = DelayedCancellationAwareVoiceSTTProvider(gate: gate)
+        let (viewModel, _, _) = try makeLocalTriageViewModel(
+            sttProvider: sttProvider
+        )
+
+        viewModel.updateDraftText("Create task:")
+        await viewModel.generatePlan()
+        XCTAssertNotNil(viewModel.clarificationQuestion)
+        await viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
+        let stopTask = Task { @MainActor in
+            await viewModel.stopRecording(
+                outputURL: URL(filePath: "/tmp/suisui-typed-clarification.m4a"),
+                at: Date(timeIntervalSince1970: 12)
+            )
+        }
+        await gate.waitUntilRequestReceived()
+
+        await viewModel.submitClarificationAnswer("Write release notes")
+        await gate.release()
+        await stopTask.value
+
+        XCTAssertTrue(sttProvider.didObserveCancellation)
+        XCTAssertNil(viewModel.clarificationQuestion)
+        XCTAssertEqual(viewModel.draft.text, "Create task:")
+    }
+
     func testClearDeletesUnsavedTemporaryVoiceRecording() async throws {
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(
@@ -4168,6 +4343,32 @@ private final class DelayedRecordingVoiceLLMProvider: LLMProvider, @unchecked Se
         await gate.markRequestReceived()
         await gate.waitForRelease()
         return response
+    }
+}
+
+private final class DelayedCancellationAwareVoiceSTTProvider: SpeechToTextProvider, @unchecked Sendable {
+    let id: STTProviderID = .whisperKit
+    let availability = STTProviderAvailability(providerID: .whisperKit, isAvailable: true)
+    private let gate: VoicePlanningGate
+    private let lock = NSLock()
+    private var observedCancellation = false
+
+    init(gate: VoicePlanningGate) {
+        self.gate = gate
+    }
+
+    var didObserveCancellation: Bool {
+        lock.withLock { observedCancellation }
+    }
+
+    func transcribe(_ audio: RecordedAudio) async throws -> STTTranscript {
+        await gate.markRequestReceived()
+        await gate.waitForRelease()
+        lock.withLock {
+            observedCancellation = Task.isCancelled
+        }
+        try Task.checkCancellation()
+        return STTTranscript(text: "stale transcript")
     }
 }
 

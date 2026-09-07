@@ -605,6 +605,9 @@ struct ProjectBoardView: View {
         updateInitialRoute: Bool = true
     ) {
         let route = validatedRoute(route)
+        if route == .voiceCommand {
+            storeVoiceConversationScopeFromBoardContext()
+        }
         if ProjectBoardSelectionPersistence.environmentOverrideRawValue == nil {
             persistRoute(route, updateInitialRoute: updateInitialRoute)
         } else {
@@ -619,6 +622,12 @@ struct ProjectBoardView: View {
             cancelRouteFocus()
         }
         applyRouteToLegacyUI(route)
+        if route == .voiceCommand {
+            NotificationCenter.default.post(
+                name: .suisuiVoiceConversationScopeRequested,
+                object: nil
+            )
+        }
     }
 
     @ViewBuilder
@@ -768,6 +777,10 @@ struct ProjectBoardView: View {
     }
 
     private func openVoiceCommandFromBoardContext() {
+        navigateWithinScene(to: .voiceCommand)
+    }
+
+    private func storeVoiceConversationScopeFromBoardContext() {
         let task = viewModel.selectedTask
         let projectID = task?.projectID ?? viewModel.selectedProject?.id
         let project = viewModel.snapshot.projects.first { $0.id == projectID }
@@ -778,11 +791,6 @@ struct ProjectBoardView: View {
                 taskID: task?.id,
                 taskName: task?.title
             )
-        )
-        navigateWithinScene(to: .voiceCommand)
-        NotificationCenter.default.post(
-            name: .suisuiVoiceConversationScopeRequested,
-            object: nil
         )
     }
 
@@ -1182,6 +1190,17 @@ struct ProjectBoardView: View {
         if SettingsEvidenceLaunch.shouldOpenOnLaunch {
             let route = BoardRoute.settings
             transientBoardRoute = route
+            applyRouteToLegacyUI(route)
+            applySelectedTaskOverrideIfNeeded()
+            return
+        }
+        if ProjectBoardSelectionPersistence.environmentOverrideRawValue != nil,
+           let transientBoardRoute {
+            // Evidence launches may navigate within the same owned process.
+            // Data-change notifications reload the board, but must not reset a
+            // currently visible typed route back to the launch override.
+            let route = validatedRoute(transientBoardRoute)
+            self.transientBoardRoute = route
             applyRouteToLegacyUI(route)
             applySelectedTaskOverrideIfNeeded()
             return

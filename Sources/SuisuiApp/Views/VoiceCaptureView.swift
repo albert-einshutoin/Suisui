@@ -5,6 +5,7 @@ import SwiftUI
 private enum VoiceVisualEvidenceSurface: String {
     case idle
     case listening
+    case quickCapture
     case conversation
 
     /// Evidence launches one Voice desk per isolated process so Listening /
@@ -18,6 +19,8 @@ private enum VoiceVisualEvidenceSurface: String {
         switch environment["SUISUI_VISUAL_EVIDENCE_VOICE_SURFACE"] {
         case "listening":
             return .listening
+        case "quick":
+            return .quickCapture
         case "conversation":
             return .conversation
         default:
@@ -205,10 +208,14 @@ struct VoiceCaptureView: View {
     }
 
     var body: some View {
+        let surface = VoiceVisualEvidenceSurface.resolved()
         Group {
-            if VoiceVisualEvidenceSurface.resolved() == .conversation {
-                // Evidence captures the Conversation desk alone so the
-                // non-product evidence route remains deterministic for AX.
+            if surface == .listening || surface == .quickCapture {
+                // Quick Capture remains available for listening and visual
+                // evidence captures; the normal product route is the
+                // persistent conversation workspace below.
+                quickCommandWorkspace
+            } else {
                 VoiceTaskConversationWorkspaceView(
                     viewModel: viewModel,
                     onOpenAssistantQueue: {
@@ -220,12 +227,6 @@ struct VoiceCaptureView: View {
                     onResumeSession: viewModel.resumeConversationWorkspace,
                     onArchiveSession: viewModel.archiveConversationWorkspace
                 )
-            } else {
-                // Conversation remains available only for the explicit visual
-                // evidence route. The normal product surface is one Voice Quick
-                // Capture desk, so users do not have to choose between two
-                // overlapping capture implementations.
-                quickCommandWorkspace
             }
         }
         .task {

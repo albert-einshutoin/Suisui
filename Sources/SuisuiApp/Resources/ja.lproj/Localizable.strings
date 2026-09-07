@@ -307,9 +307,13 @@
 "Inbox captures stay local. Plans wait in Review › Assistant Queue before execution." = "Inboxキャプチャはローカルに保存されます。プランは実行前に「レビュー › アシスタントキュー」で待機します。";
 "Inbox captures stay local. Plans wait in Review › Pending Actions before execution." = "Inboxキャプチャはローカルに保存されます。プランは実行前に「レビュー › 保留中のアクション」で待機します。";
 "Stop recording to transcribe before Inbox capture or planning." = "Inboxキャプチャまたは計画の前に、録音を停止して文字起こししてください。";
+"Stop speaking" = "発話を停止";
+"Stops the short voice response without changing the reviewed proposal." = "レビュー済みの提案を変更せず、短い音声応答を停止します。";
 "Transcription is running; Save to Inbox unlocks after the recording is transcribed." = "文字起こし中です。録音の文字起こし後にInbox保存が有効になります。";
 "Plan generation is running; review appears below before execution." = "プラン生成中です。実行前のレビューが下に表示されます。";
 "Answer the clarification question before saving or generating a plan." = "保存またはプラン生成の前に、確認質問へ回答してください。";
+"Audio unavailable: %@" = "音声を利用できません: %@";
+"Voice response audio is unavailable." = "音声応答を利用できません。";
 "One clarification is allowed. Edit the capture or save it to Inbox." = "確認は1回までです。キャプチャを編集するか、Inboxへ保存してください。";
 "Resolve the current voice warning before saving or generating a plan." = "保存またはプラン生成の前に、現在の音声警告を解消してください。";
 "Type a command or task…" = "コマンドまたはタスクを入力…";

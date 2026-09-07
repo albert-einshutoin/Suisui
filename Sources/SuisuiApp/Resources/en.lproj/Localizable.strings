@@ -308,9 +308,13 @@
 "Inbox captures stay local. Plans wait in Review › Assistant Queue before execution." = "Inbox captures stay local. Plans wait in Review › Assistant Queue before execution.";
 "Inbox captures stay local. Plans wait in Review › Pending Actions before execution." = "Inbox captures stay local. Plans wait in Review › Pending Actions before execution.";
 "Stop recording to transcribe before Inbox capture or planning." = "Stop recording to transcribe before Inbox capture or planning.";
+"Stop speaking" = "Stop speaking";
+"Stops the short voice response without changing the reviewed proposal." = "Stops the short voice response without changing the reviewed proposal.";
 "Transcription is running; Save to Inbox unlocks after the recording is transcribed." = "Transcription is running; Save to Inbox unlocks after the recording is transcribed.";
 "Plan generation is running; review appears below before execution." = "Plan generation is running; review appears below before execution.";
 "Answer the clarification question before saving or generating a plan." = "Answer the clarification question before saving or generating a plan.";
+"Audio unavailable: %@" = "Audio unavailable: %@";
+"Voice response audio is unavailable." = "Voice response audio is unavailable.";
 "One clarification is allowed. Edit the capture or save it to Inbox." = "One clarification is allowed. Edit the capture or save it to Inbox.";
 "Resolve the current voice warning before saving or generating a plan." = "Resolve the current voice warning before saving or generating a plan.";
 "Type a command or task…" = "Type a command or task…";

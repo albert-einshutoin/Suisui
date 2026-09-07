@@ -30,6 +30,10 @@ final class VoiceTaskConversationWorkspaceSourceTests: XCTestCase {
         let workspace = try source("Sources/SuisuiApp/Views/VoiceTaskConversationWorkspaceView.swift")
         XCTAssertTrue(presentation.contains("case recording"))
         XCTAssertTrue(workspace.contains("Stop recording"))
+        XCTAssertTrue(workspace.contains("voice-conversation-stop-readout"))
+        XCTAssertTrue(workspace.contains("stopConversationReadout()"))
+        XCTAssertTrue(workspace.contains("voice-conversation-readout-error"))
+        XCTAssertTrue(workspace.contains("Audio unavailable: %@"))
         XCTAssertTrue(workspace.contains("accessibilityLabel"))
     }
 

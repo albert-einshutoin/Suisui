@@ -30,11 +30,180 @@ final class VoiceTaskConversationCommandPreparerTests: XCTestCase {
             .resolved(.task(id: 22, projectID: 7), reason: .explicitIdentifier))
     }
 
-    private func triage(_ input: String) -> LocalTriageDecision {
-        LocalTriageRouter().evaluate(LocalTriageRequest(
-            source: .text, normalizedInput: input, scope: .task,
-            availableCapabilities: [.taskRead, .taskWrite], providerReadiness: [],
-            dataPolicyVersion: 1, frozenAt: now, timeZoneID: "UTC"
+    func testSelectedTaskAcceptsNaturalDueDateWithoutPriority() throws {
+        let fixture = try makeFixture()
+        let input = "期限を明日に"
+        let prepared = try XCTUnwrap(fixture.preparer.prepare(
+            transcript: input,
+            triage: triage(input, selectedTaskID: 22),
+            explicitTaskID: nil,
+            sessionID: fixture.sessionID,
+            sourceTurnID: UUID(),
+            selectedProjectID: 7,
+            selectedTaskID: 22,
+            at: now
+        ))
+
+        XCTAssertEqual(prepared.intents.first?.operation, .updateDueDate)
+        XCTAssertNotNil(prepared.intents.first?.arguments["dueAt"])
+        XCTAssertNil(prepared.intents.first?.arguments["priority"])
+        XCTAssertEqual(prepared.requiredSlots, [])
+    }
+
+    func testNaturalDueDateUsesRequestTimeZone() throws {
+        let fixture = try makeFixture()
+        let input = "期限を明日に"
+        let requestTimeZoneID = TimeZone.current.secondsFromGMT(for: now) == 0
+            ? "Asia/Tokyo"
+            : "UTC"
+        let requestTimeZone = try XCTUnwrap(TimeZone(identifier: requestTimeZoneID))
+        let prepared = try XCTUnwrap(
+            fixture.preparer.prepare(
+                transcript: input,
+                triage: triage(input, selectedTaskID: 22),
+                explicitTaskID: nil,
+                sessionID: fixture.sessionID,
+                sourceTurnID: UUID(),
+                selectedProjectID: 7,
+                selectedTaskID: 22,
+                at: now,
+                timeZoneIdentifier: requestTimeZoneID
+            )
+        )
+
+        let expectedDate = try XCTUnwrap(
+            QuickAddDueDateParser.parse(
+                "task \(input)",
+                now: now,
+                timeZone: requestTimeZone
+            ).dueAt
+        )
+        XCTAssertEqual(
+            prepared.intents.first?.arguments["dueAt"],
+            .string(DeadlineDateParser.string(from: expectedDate))
+        )
+    }
+
+    func testNaturalDueDateRejectsInvalidRequestTimeZone() throws {
+        let fixture = try makeFixture()
+        let input = "期限を明日に"
+
+        XCTAssertThrowsError(
+            try fixture.preparer.prepare(
+                transcript: input,
+                triage: triage(input, selectedTaskID: 22),
+                explicitTaskID: nil,
+                sessionID: fixture.sessionID,
+                sourceTurnID: UUID(),
+                selectedProjectID: 7,
+                selectedTaskID: 22,
+                at: now,
+                timeZoneIdentifier: "Invalid/Timezone"
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationCommandPreparerError,
+                .invalidTimeZoneIdentifier
+            )
+        }
+    }
+
+    func testSelectedTaskKeepsListOrdinalCandidatesForFollowup() throws {
+        let fixture = try makeFixture()
+        _ = try prepareAndPublish(
+            fixture,
+            transcript: "List tasks",
+            triage: triage("List tasks"),
+            explicitTaskID: nil,
+            sessionID: fixture.sessionID,
+            sourceTurnID: UUID(),
+            selectedProjectID: nil,
+            selectedTaskID: nil,
+            at: now
+        )
+
+        let input = "Update the second task due date and priority high"
+        let prepared = try XCTUnwrap(
+            prepareAndPublish(
+                fixture,
+                transcript: input,
+                triage: triage(input, selectedTaskID: 22),
+                explicitTaskID: nil,
+                sessionID: fixture.sessionID,
+                sourceTurnID: UUID(),
+                selectedProjectID: 7,
+                selectedTaskID: 22,
+                at: now.addingTimeInterval(60)
+            )
+        )
+
+        let resolutionDate = now
+        XCTAssertEqual(
+            VoiceTaskReferenceResolver(now: { resolutionDate }).resolve(
+                try XCTUnwrap(prepared.referenceRequest)
+            ),
+            .resolved(.task(id: 22, projectID: 7), reason: .stableOrdinal)
+        )
+    }
+
+    func testSelectedTaskAfterListResolvesAnaphoricDueDate() throws {
+        let fixture = try makeFixture()
+        _ = try prepareAndPublish(
+            fixture,
+            transcript: "List tasks",
+            triage: triage("List tasks"),
+            explicitTaskID: nil,
+            sessionID: fixture.sessionID,
+            sourceTurnID: UUID(),
+            selectedProjectID: nil,
+            selectedTaskID: nil,
+            at: now
+        )
+
+        let input = "このタスクの期限を明日に"
+        let prepared = try XCTUnwrap(
+            prepareAndPublish(
+                fixture,
+                transcript: input,
+                triage: triage(input, selectedTaskID: 22),
+                explicitTaskID: nil,
+                sessionID: fixture.sessionID,
+                sourceTurnID: UUID(),
+                selectedProjectID: 7,
+                selectedTaskID: 22,
+                at: now.addingTimeInterval(60)
+            )
+        )
+
+        let referenceRequest = try XCTUnwrap(prepared.referenceRequest)
+        XCTAssertNil(referenceRequest.candidateOrderingFingerprint)
+        let resolutionDate = now
+        XCTAssertEqual(
+            VoiceTaskReferenceResolver(now: { resolutionDate }).resolve(referenceRequest),
+            .resolved(.task(id: 22, projectID: 7), reason: .selectedTask)
+        )
+    }
+
+    private func triage(
+        _ input: String,
+        selectedTaskID: Int64? = nil
+    ) -> LocalTriageDecision {
+        let normalized = LocalTriageRequest.normalize(input)
+        return LocalTriageRouter().evaluate(LocalTriageRequest(
+            source: .text,
+            normalizedInput: normalized,
+            scope: .task,
+            availableCapabilities: [.taskRead, .taskWrite],
+            supportedOperations: SQLiteVoiceTaskConversationCommandPreparer
+                .supportedOperations(
+                    for: normalized,
+                    hasSelectedTask: selectedTaskID != nil
+                ),
+            providerReadiness: [],
+            dataPolicyVersion: 1,
+            frozenAt: now,
+            timeZoneID: "UTC",
+            selectedTaskID: selectedTaskID
         ))
     }
 
