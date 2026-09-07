@@ -6306,6 +6306,37 @@ final class ProjectBoardStoreTests: XCTestCase {
 
         let approved = try AssistantQueueStateMachine.approve(firstItem, reviewerID: "tester")
         try assistantQueueStore.save(approved)
+        let unrelatedCalendarPlan = ActionPlan(
+            id: "ordinary-calendar-action",
+            userInput: "Create a separate Calendar event",
+            summary: "Create a separate Calendar event",
+            actions: [
+                PlanAction(
+                    id: "ordinary-calendar-action-item",
+                    tool: .calendarCreateEvent,
+                    arguments: [
+                        "title": .string("Separate event"),
+                        "startAt": .string("2026-06-30T13:00:00Z"),
+                        "endAt": .string("2026-06-30T14:00:00Z"),
+                        "taskId": .number(Double(task.id))
+                    ],
+                    riskLevel: .write,
+                    requiresUserConfirmation: true
+                )
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+        let unrelatedCalendarItem = AssistantQueueAdapter.makeItem(
+            actionPlan: unrelatedCalendarPlan,
+            sourceTranscript: unrelatedCalendarPlan.userInput,
+            interpretationSummary: unrelatedCalendarPlan.summary,
+            reason: "Separate Calendar event"
+        )
+        let unrelatedCalendarItemID = unrelatedCalendarItem.id
+        try assistantQueueStore.save(
+            try AssistantQueueStateMachine.approve(unrelatedCalendarItem, reviewerID: "tester")
+        )
         for index in 0..<500 {
             let fillerPlan = ActionPlan(
                 id: "schedule-invalidation-filler-\(index)",
@@ -6349,6 +6380,9 @@ final class ProjectBoardStoreTests: XCTestCase {
             invalidated.reviewReason,
             "Schedule proposal changed. Review the latest Calendar time before approval."
         )
+        let unrelatedCalendarAfterEdit = try assistantQueueStore.get(id: unrelatedCalendarItemID)
+        XCTAssertEqual(unrelatedCalendarAfterEdit.state, .approved)
+        XCTAssertNotNil(unrelatedCalendarAfterEdit.approval)
 
         XCTAssertTrue(viewModel.enqueueScheduleDraftCalendarApply(on: movedStart, calendar: calendar))
         let proposals = try assistantQueueStore.list(filter: .all(limit: Int.max)).compactMap { item -> String? in

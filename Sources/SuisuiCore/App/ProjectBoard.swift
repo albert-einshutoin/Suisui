@@ -5838,6 +5838,10 @@ public final class ProjectBoardViewModel: ObservableObject {
     private static func isCalendarProposalAction(_ action: PlanAction) -> Bool {
         switch action.tool {
         case .calendarCreateEvent, .calendarCreateDeadline, .calendarCreateWorkBlock:
+            guard let taskID = calendarTaskID(in: action),
+                  action.arguments["proposalID"]?.stringValue == CalendarProposalIdentity.make(taskID: taskID) else {
+                return false
+            }
             return true
         default:
             return false
