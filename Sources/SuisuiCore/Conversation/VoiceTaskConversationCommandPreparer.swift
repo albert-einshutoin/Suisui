@@ -56,7 +56,8 @@ public protocol VoiceTaskConversationCommandPreparing: Sendable {
         sourceTurnID: UUID,
         selectedProjectID: Int64?,
         selectedTaskID: Int64?,
-        at date: Date
+        at date: Date,
+        timeZoneIdentifier: String
     ) throws -> VoiceTaskConversationPreparedBegin?
 }
 
@@ -88,7 +89,8 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
         sourceTurnID: UUID,
         selectedProjectID: Int64?,
         selectedTaskID: Int64?,
-        at date: Date
+        at date: Date,
+        timeZoneIdentifier: String = TimeZone.current.identifier
     ) throws -> VoiceTaskConversationPreparedBegin? {
         let normalized = transcript
             .folding(
@@ -206,7 +208,11 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
             arguments["priority"] = .string(priority)
         }
         let dueDate = isoDate(in: normalized)
-            ?? naturalDueDate(in: normalized, at: date)
+            ?? naturalDueDate(
+                in: normalized,
+                at: date,
+                timeZoneIdentifier: timeZoneIdentifier
+            )
         if let dueDate {
             arguments["dueAt"] = .string(dueDate)
         }
@@ -368,11 +374,15 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
         return String(text[range])
     }
 
-    private func naturalDueDate(in text: String, at date: Date) -> String? {
+    private func naturalDueDate(
+        in text: String,
+        at date: Date,
+        timeZoneIdentifier: String
+    ) -> String? {
         QuickAddDueDateParser.parse(
             "task \(text)",
             now: date,
-            timeZone: .current
+            timeZone: TimeZone(identifier: timeZoneIdentifier) ?? .current
         ).dueAt.map(DeadlineDateParser.string(from:))
     }
 }

@@ -1127,7 +1127,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
                         sourceTurnID: sourceTurnID,
                         selectedProjectID: selectedProjectID,
                         selectedTaskID: selectedTaskID,
-                        at: currentDate
+                        at: currentDate,
+                        timeZoneIdentifier: timeZoneIdentifier
                     )
                 }
                 if let prepared {

@@ -50,6 +50,40 @@ final class VoiceTaskConversationCommandPreparerTests: XCTestCase {
         XCTAssertEqual(prepared.requiredSlots, [])
     }
 
+    func testNaturalDueDateUsesRequestTimeZone() throws {
+        let fixture = try makeFixture()
+        let input = "期限を明日に"
+        let requestTimeZoneID = TimeZone.current.secondsFromGMT(for: now) == 0
+            ? "Asia/Tokyo"
+            : "UTC"
+        let requestTimeZone = try XCTUnwrap(TimeZone(identifier: requestTimeZoneID))
+        let prepared = try XCTUnwrap(
+            fixture.preparer.prepare(
+                transcript: input,
+                triage: triage(input, selectedTaskID: 22),
+                explicitTaskID: nil,
+                sessionID: fixture.sessionID,
+                sourceTurnID: UUID(),
+                selectedProjectID: 7,
+                selectedTaskID: 22,
+                at: now,
+                timeZoneIdentifier: requestTimeZoneID
+            )
+        )
+
+        let expectedDate = try XCTUnwrap(
+            QuickAddDueDateParser.parse(
+                "task \(input)",
+                now: now,
+                timeZone: requestTimeZone
+            ).dueAt
+        )
+        XCTAssertEqual(
+            prepared.intents.first?.arguments["dueAt"],
+            .string(DeadlineDateParser.string(from: expectedDate))
+        )
+    }
+
     func testSelectedTaskKeepsListOrdinalCandidatesForFollowup() throws {
         let fixture = try makeFixture()
         _ = try prepareAndPublish(

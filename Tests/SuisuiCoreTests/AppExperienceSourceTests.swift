@@ -2828,7 +2828,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("press_ax_button \"sidebar-open-search\""))
         XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"command-palette-input\" \"present\""))
         XCTAssertTrue(script.contains("press_ax_button \"sidebar-action-voice-command\""))
-        XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"voice-command-root\" \"present\""))
+        XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"voice-conversation-workspace\" \"present\""))
+        XCTAssertEqual(
+            script.components(
+                separatedBy: "wait_for_process_ax_identifier \"voice-conversation-workspace\" \"present\""
+            ).count - 1,
+            3
+        )
         XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"settings-status-overview\" \"present\""))
         XCTAssertTrue(script.contains("ensure_sidebar_visible"))
         XCTAssertTrue(script.contains("close_window_containing_identifier"))
@@ -2870,7 +2876,7 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertTrue(
             script.contains(
-                "press_keyboard_shortcut 40 \"command\"\n  wait_for_process_ax_identifier \"command-palette-input\" \"present\"\n  press_keyboard_shortcut 9 \"command-shift\"\n  wait_for_process_ax_identifier \"voice-command-root\" \"present\"\n  press_keyboard_shortcut 18 \"command\" \"skip-board-focus\""
+                "press_keyboard_shortcut 40 \"command\"\n  wait_for_process_ax_identifier \"command-palette-input\" \"present\"\n  press_keyboard_shortcut 9 \"command-shift\"\n  wait_for_process_ax_identifier \"voice-conversation-workspace\" \"present\"\n  press_keyboard_shortcut 18 \"command\" \"skip-board-focus\""
             )
         )
         XCTAssertTrue(script.contains("press_keyboard_shortcut 9 \"command-shift\""))
