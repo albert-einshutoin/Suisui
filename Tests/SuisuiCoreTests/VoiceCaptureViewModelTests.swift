@@ -21,7 +21,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
 
     func testUnsupportedAdapterOperationsAreClassifiedBeforePlanning() async throws {
         let (viewModel, tasks, provider) = try makeLocalTriageViewModel()
-        for input in ["Complete task #22", "Move task #22 into project", "Count tasks", "Update task #22 due tomorrow"] {
+        for input in ["Complete task #22", "Move task #22 into project", "Count tasks"] {
             viewModel.updateDraftText(input)
             await viewModel.generatePlan()
             XCTAssertEqual(viewModel.localTriageDecision?.operation, .unsupported, input)
@@ -136,6 +136,87 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.inboxCaptureResult)
         XCTAssertTrue(provider.requests.isEmpty)
         XCTAssertTrue(try tasks.listAll().isEmpty)
+    }
+
+    func testConversationRuntimeAllowsMultipleClarificationsBeforeAnswer() async {
+        let firstQuestion = ClarificationQuestion(slot: .taskTitle, prompt: "Task title?")
+        let secondQuestion = ClarificationQuestion(slot: .project, prompt: "Which project?")
+        let orchestrator = RecordingVoiceConversationOrchestrator(outcomes: [
+            .clarification(firstQuestion),
+            .clarification(secondQuestion),
+            .answer(VoiceTaskConversationAnswer(
+                text: "The request is ready for review.",
+                source: .localDeterministic
+            ))
+        ])
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "unused", rawContent: "", actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            )),
+            conversationOrchestrator: orchestrator,
+            conversationSessionID: UUID(),
+            maximumClarificationTurns: 4
+        )
+
+        viewModel.updateDraftText("Create task:")
+        await viewModel.generatePlan()
+        XCTAssertEqual(viewModel.clarificationQuestion, firstQuestion)
+
+        await viewModel.submitClarificationAnswer("Write release notes")
+        XCTAssertEqual(viewModel.clarificationQuestion, secondQuestion)
+
+        await viewModel.submitClarificationAnswer("Suisui")
+        XCTAssertNil(viewModel.clarificationQuestion)
+        XCTAssertEqual(
+            viewModel.workspaceAnswer,
+            .answered(text: "The request is ready for review.", contextCount: 0)
+        )
+        XCTAssertNil(viewModel.auditErrorMessage)
+    }
+
+    func testConversationReadoutFailureKeepsTextAndCanBeStopped() async {
+        let answer = VoiceTaskConversationAnswer(
+            text: "The request is ready for review.",
+            source: .localDeterministic
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "unused", rawContent: "", actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            )),
+            conversationOrchestrator: RecordingVoiceConversationOrchestrator(
+                outcomes: [.answer(answer)]
+            ),
+            conversationSessionID: UUID(),
+            conversationReadout: { _ in
+                Task { "No installed voice is available." }
+            },
+            maximumClarificationTurns: 4
+        )
+
+        viewModel.updateDraftText("Create task:")
+        await viewModel.generatePlan()
+        let didReportFailure = await waitForVoiceCondition {
+            viewModel.conversationReadoutError != nil
+        }
+
+        XCTAssertTrue(didReportFailure)
+        XCTAssertFalse(viewModel.isConversationReadoutPlaying)
+        XCTAssertEqual(viewModel.workspaceAnswer, .answered(
+            text: answer.text,
+            contextCount: 0
+        ))
+        viewModel.stopConversationReadout()
+        XCTAssertNil(viewModel.conversationReadoutError)
+        XCTAssertEqual(viewModel.workspaceAnswer, .answered(
+            text: answer.text,
+            contextCount: 0
+        ))
     }
 
     func testLocalTriageUnknownAndCancelNeverReusePriorProposal() async throws {

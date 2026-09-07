@@ -443,28 +443,53 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         let helper = String(boardSource[helperStart.lowerBound..<helperEnd.lowerBound])
 
-        XCTAssertTrue(helper.contains("let task = viewModel.selectedTask"))
+        let scopeStart = try XCTUnwrap(
+            boardSource.range(of: "private func storeVoiceConversationScopeFromBoardContext()")
+        )
+        let scopeEnd = try XCTUnwrap(
+            boardSource.range(
+                of: "private func ",
+                range: scopeStart.upperBound..<boardSource.endIndex
+            )
+        )
+        let scopeHelper = String(boardSource[scopeStart.lowerBound..<scopeEnd.lowerBound])
+
+        XCTAssertTrue(scopeHelper.contains("let task = viewModel.selectedTask"))
         XCTAssertTrue(
-            helper.contains("let projectID = task?.projectID ?? viewModel.selectedProject?.id")
+            scopeHelper.contains("let projectID = task?.projectID ?? viewModel.selectedProject?.id")
         )
         XCTAssertTrue(
-            helper.contains("viewModel.snapshot.projects.first { $0.id == projectID }")
+            scopeHelper.contains("viewModel.snapshot.projects.first { $0.id == projectID }")
         )
-        XCTAssertTrue(helper.contains("projectID: projectID"))
-        XCTAssertTrue(helper.contains("projectName: project?.title"))
-        XCTAssertTrue(helper.contains("taskID: task?.id"))
-        XCTAssertTrue(helper.contains("taskName: task?.title"))
-        let store = try XCTUnwrap(
-            helper.range(of: "SuisuiVoiceConversationScopeBridge.store(")
+        XCTAssertTrue(scopeHelper.contains("projectID: projectID"))
+        XCTAssertTrue(scopeHelper.contains("projectName: project?.title"))
+        XCTAssertTrue(scopeHelper.contains("taskID: task?.id"))
+        XCTAssertTrue(scopeHelper.contains("taskName: task?.title"))
+        XCTAssertTrue(scopeHelper.contains("SuisuiVoiceConversationScopeBridge.store("))
+
+        let navigationStart = try XCTUnwrap(
+            boardSource.range(of: "private func navigateWithinScene(")
         )
-        let navigate = try XCTUnwrap(
-            helper.range(of: "navigateWithinScene(to: .voiceCommand)")
+        let navigationEnd = try XCTUnwrap(
+            boardSource.range(
+                of: "@ViewBuilder\n    private var routedProjectBoardContent",
+                range: navigationStart.upperBound..<boardSource.endIndex
+            )
         )
-        XCTAssertLessThan(store.lowerBound, navigate.lowerBound)
-        XCTAssertTrue(
-            helper.contains("name: .suisuiVoiceConversationScopeRequested")
+        let navigationHelper = String(
+            boardSource[navigationStart.lowerBound..<navigationEnd.lowerBound]
         )
-        XCTAssertTrue(helper.contains("NotificationCenter.default.post("))
+
+        XCTAssertTrue(navigationHelper.contains("if route == .voiceCommand"))
+        let navigationStore = try XCTUnwrap(
+            navigationHelper.range(of: "storeVoiceConversationScopeFromBoardContext()")
+        )
+        let navigationPost = try XCTUnwrap(
+            navigationHelper.range(of: "name: .suisuiVoiceConversationScopeRequested")
+        )
+        XCTAssertLessThan(navigationStore.lowerBound, navigationPost.lowerBound)
+
+        XCTAssertTrue(helper.contains("navigateWithinScene(to: .voiceCommand)"))
         XCTAssertFalse(
             sidebarCall.contains("onOpenVoiceCommand: openVoiceCommandFromBoardContext")
         )
@@ -4757,7 +4782,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testQuickCaptureRuntimeNeverInjectsAutomaticApproval() throws {
         let source = try readPackageFile("Sources/SuisuiApp/Composition/VoiceRuntimeFactory.swift")
-        XCTAssertTrue(source.contains("maximumClarificationTurns: 1"))
+        XCTAssertTrue(source.contains("maximumClarificationTurns: 4"))
         XCTAssertFalse(source.contains("lowRiskTaskAutoExecutor:"))
         XCTAssertFalse(source.contains("reviewViewModel.approve()"))
     }
@@ -6747,7 +6772,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(voiceSource.contains("voice-conversation-tab"))
         XCTAssertFalse(voiceSource.contains("TabView(selection: $selectedVoiceEvidenceTab)"))
         XCTAssertTrue(voiceSource.contains("Voice Quick"))
-        XCTAssertTrue(voiceSource.contains("Capture desk"))
+        XCTAssertTrue(voiceSource.contains("VoiceTaskConversationWorkspaceView("))
         XCTAssertTrue(voiceSource.contains("voice-command-clarification-limit"))
         XCTAssertTrue(voiceSource.contains("Pending Actions"))
         XCTAssertTrue(voiceSource.contains("voice-command-understood-action-"))

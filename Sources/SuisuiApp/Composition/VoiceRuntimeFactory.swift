@@ -54,7 +54,9 @@ extension AppRuntimeFactory {
                         try taskStore.get(id: taskID)
                     )
                 },
-                maximumClarificationTurns: 1
+                // Keep multi-slot conversations resumable while retaining a
+                // finite upper bound for malformed or repeated questions.
+                maximumClarificationTurns: 4
             )
             let projectBoardStore = SQLiteProjectBoardStore(connection: connection)
             let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)
@@ -129,7 +131,11 @@ extension AppRuntimeFactory {
             workspaceContextRetriever: workspaceContextRetriever,
             workspaceAnswerReadout: { answer in
                 speakWorkspaceAnswer(answer)
-            }
+            },
+            conversationReadout: { text in
+                makeConversationReadoutTask(text)
+            },
+            maximumClarificationTurns: 4
         )
         if let conversationStore {
             viewModel.configureConversationWorkspace(
@@ -174,10 +180,14 @@ extension AppRuntimeFactory {
     /// misconfigured Kokoro runtime must never turn a successful written
     /// answer into an error.
     private static func speakWorkspaceAnswer(_ answer: String) {
+        _ = makeConversationReadoutTask(answer)
+    }
+
+    private static func makeConversationReadoutTask(_ text: String) -> Task<String?, Never> {
         let settings = loadRuntimeSettings().settings
         let languageCode = AppSettings.normalizedTTSLanguageCode(settings.ttsLanguageCode)
         let request = TextToSpeechRequest(
-            text: limitedWorkspaceAnswerReadoutText(answer),
+            text: limitedWorkspaceAnswerReadoutText(text),
             languageCode: languageCode,
             voiceID: AppSettings.normalizedTTSVoiceID(
                 settings.selectedTTSVoiceID,
@@ -186,8 +196,18 @@ extension AppRuntimeFactory {
             )
         )
         let previewer = makeTextToSpeechPreviewer(settings: settings)
-        Task {
-            try? await previewer.playPreview(request)
+        return Task {
+            do {
+                try await previewer.playPreview(request)
+                return nil
+            } catch is CancellationError {
+                return nil
+            } catch {
+                return UserFacingErrorMessageSanitizer.message(
+                    from: error,
+                    fallback: "Voice response audio is unavailable."
+                )
+            }
         }
     }
 

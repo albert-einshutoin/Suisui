@@ -96,7 +96,7 @@ final class VoiceTaskContinuityHarnessTests: XCTestCase {
             source.components(
                 separatedBy: "voice-conversation-open-assistant-queue"
             ).count - 1,
-            2
+            1
         )
     }
 

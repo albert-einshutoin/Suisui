@@ -107,13 +107,15 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
             ? try conversationStore.listReferences(sessionID: sessionID, limit: 500) : []
         let latestSourceTurnID = references.first?.sourceTurnID
         let latestReferences = references.filter { $0.sourceTurnID == latestSourceTurnID }
+        let requestedOrdinal = Self.requestedOrdinal(in: normalized)
         let tasks: [TaskRecord]
         if triage.operation == .read {
             tasks = try (selectedProjectID.map {
                 try taskStore.listForProjectBoard(projectIDs: [$0], includeDanglingReferences: false)
                     .filter { $0.projectID == selectedProjectID }
             } ?? taskStore.listAll()).filter { $0.status != "completed" }.sorted { $0.id < $1.id }
-        } else if let taskID = explicitTaskID ?? selectedTaskID {
+        } else if let taskID = explicitTaskID ?? selectedTaskID,
+                  explicitTaskID != nil || requestedOrdinal == nil {
             tasks = [try taskStore.get(id: taskID)]
         } else if latestReferences.isEmpty {
             tasks = []
@@ -175,15 +177,16 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
             )
         }
 
-        guard let priority = Self.requestedPriority(in: normalized),
-              Self.requestsDueDateChange(normalized),
-              Self.refersToTask(normalized)
+        guard Self.requestsDueDateChange(normalized),
+              selectedTaskID != nil || Self.refersToTask(normalized)
         else {
             return nil
         }
 
-        let fingerprint = (explicitTaskID != nil || selectedTaskID != nil) ? nil : latestReferences.first?.orderingFingerprint
-        let ordinal = Self.requestedOrdinal(in: normalized)
+        let fingerprint = explicitTaskID != nil
+            ? nil
+            : latestReferences.first?.orderingFingerprint
+        let ordinal = requestedOrdinal
         let ordinalReference = ordinal.flatMap { requested in
             latestReferences.first { $0.ordinal == requested }
         }
@@ -198,10 +201,12 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
         let selectedProject = selectedProjectID.map(
             ConversationResolvedTarget.project
         )
-        var arguments: [String: JSONValue] = [
-            "priority": .string(priority),
-        ]
+        var arguments: [String: JSONValue] = [:]
+        if let priority = Self.requestedPriority(in: normalized) {
+            arguments["priority"] = .string(priority)
+        }
         let dueDate = isoDate(in: normalized)
+            ?? naturalDueDate(in: normalized, at: date)
         if let dueDate {
             arguments["dueAt"] = .string(dueDate)
         }
@@ -210,7 +215,9 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
             operation: .updateDueDate,
             tool: .taskUpdate,
             arguments: arguments,
-            summary: "Update task due date and priority"
+            summary: arguments["priority"] == nil
+                ? "Update task due date"
+                : "Update task due date and priority"
         )
         return VoiceTaskConversationPreparedBegin(
             requiredSlots: dueDate == nil ? [.dueDate] : [],
@@ -276,10 +283,13 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
         try conversationStore.saveTurnAndReferences(turn: turn, references: prepared.listReferences)
     }
 
-    static func supportedOperations(for text: String) -> Set<LocalTriageOperation> {
+    static func supportedOperations(
+        for text: String,
+        hasSelectedTask: Bool = false
+    ) -> Set<LocalTriageOperation> {
         var operations: Set<LocalTriageOperation> = [.taskCreate, .frontier, .externalWrite]
         if isTaskListRequest(text) { operations.insert(.read) }
-        if requestedPriority(in: text) != nil && requestsDueDateChange(text) && refersToTask(text) {
+        if requestsDueDateChange(text) && (hasSelectedTask || refersToTask(text)) {
             operations.insert(.taskDueDate)
         }
         return operations
@@ -356,5 +366,13 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
             return nil
         }
         return String(text[range])
+    }
+
+    private func naturalDueDate(in text: String, at date: Date) -> String? {
+        QuickAddDueDateParser.parse(
+            "task \(text)",
+            now: date,
+            timeZone: .current
+        ).dueAt.map(DeadlineDateParser.string(from:))
     }
 }

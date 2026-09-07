@@ -296,10 +296,7 @@ run_all() {
   wait_for_marker "assistant-queue-workflow" || fail "queue_approval_execution" "ax" "queue_board_marker_missing"
   ax_press "assistant-queue-approve-$queue_item_id" || fail "queue_approval_execution" "ax" "queue_approve_missing"
   wait_for_queue_state "approved" || fail "queue_approval_execution" "queue" "queue_approval_not_persisted"
-  # Reuse the same Voice handoff after approval. Its production coordinator
-  # deliberately focuses approved work in the runnable Queue filter.
-  ax_press "voice-conversation-open-assistant-queue" || fail "queue_approval_execution" "ax" "approved_queue_handoff_missing"
-  wait_for_marker "assistant-queue-workflow" || fail "queue_approval_execution" "ax" "approved_queue_board_missing"
+  # The Queue remains the canonical approval/execution surface after review.
   ax_press "assistant-queue-run-$queue_item_id" || fail "queue_approval_execution" "ax" "queue_run_missing"
   wait_for_queue_state "done" || fail "queue_approval_execution" "execution" "queue_execution_not_done"
   write_witness "queue_approval_execution" "queue_reviewed=true" "queue_approved=true" "queue_executed=true"

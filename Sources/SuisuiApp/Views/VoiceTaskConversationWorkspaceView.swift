@@ -347,6 +347,25 @@ private struct VoiceTaskConversationComposer: View {
                 .accessibilityIdentifier("voice-conversation-recording-status")
             }
 
+            if viewModel.isConversationReadoutPlaying {
+                Button {
+                    viewModel.stopConversationReadout()
+                } label: {
+                    Label("Stop speaking", systemImage: "stop.circle")
+                }
+                .accessibilityHint("Stops the short voice response without changing the reviewed proposal.")
+                .accessibilityIdentifier("voice-conversation-stop-readout")
+            }
+
+            if let error = viewModel.conversationReadoutError {
+                Label(
+                    localizedDisplay("Audio unavailable: %@", error),
+                    systemImage: "speaker.slash"
+                )
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("voice-conversation-readout-error")
+            }
+
             TextField(
                 viewModel.clarificationQuestion == nil
                     ? "Type a voice task request"
