@@ -298,6 +298,18 @@ final class OnboardingReadinessRegressionTests: XCTestCase {
         XCTAssertFalse(viewModel.isRefreshingProviderReadiness)
     }
 
+    func testDeferredOllamaProbeRetainsResumeBeforeRegistration() async {
+        let probe = DeferredOllamaEndpointHealthProbe()
+        probe.resume(with: .ready)
+        let completed = expectation(description: "early result is delivered")
+        Task {
+            let status = await probe.currentStatus()
+            XCTAssertEqual(status, .ready)
+            completed.fulfill()
+        }
+        await fulfillment(of: [completed], timeout: 2)
+    }
+
     // MARK: - Rerun coordinator (P2: 0/1/2 Project Board windows)
 
     @MainActor
@@ -786,19 +798,28 @@ private struct StaticOllamaEndpointHealthChecker: OllamaEndpointHealthChecking, 
 }
 
 private final class DeferredOllamaEndpointHealthProbe: OllamaEndpointHealthChecking, @unchecked Sendable {
+    // Both fields share the lock: refresh publishes .checking before its
+    // async-let probe necessarily registers, so an early result must survive.
     private var continuation: CheckedContinuation<OllamaEndpointHealth, Never>?
+    private var result: OllamaEndpointHealth?
     private let lock = OSAllocatedUnfairLock()
 
     init() {}
 
     func currentStatus() async -> OllamaEndpointHealth {
         await withCheckedContinuation { (continuation: CheckedContinuation<OllamaEndpointHealth, Never>) in
-            lock.withLock { self.continuation = continuation }
+            let ready = lock.withLock { () -> OllamaEndpointHealth? in
+                if let result { return result }
+                self.continuation = continuation
+                return nil
+            }
+            if let ready { continuation.resume(returning: ready) }
         }
     }
 
     func resume(with status: OllamaEndpointHealth) {
         let cont: CheckedContinuation<OllamaEndpointHealth, Never>? = lock.withLock {
+            result = status
             let current = continuation
             continuation = nil
             return current
