@@ -212,7 +212,7 @@ struct VoiceCaptureView: View {
         Group {
             if surface == .listening || surface == .quickCapture {
                 // Quick Capture remains available for listening and visual
-                // evidence fixtures; the normal product route is the
+                // evidence captures; the normal product route is the
                 // persistent conversation workspace below.
                 quickCommandWorkspace
             } else {
