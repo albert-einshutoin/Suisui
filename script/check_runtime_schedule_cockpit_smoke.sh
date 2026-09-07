@@ -462,6 +462,7 @@ pressButtonUntilSQLiteValue \
   "schedule-apply-calendar" \
   "SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END FROM assistant_queue_items WHERE id LIKE 'action-plan:schedule-draft-calendar-apply:%:task:%$unscheduled_task_id%' AND payload_kind='action_plan' AND state='waitingReview' AND risk_level='write' AND approval_json IS NULL AND (required_capabilities_json LIKE '%calendarCreateWorkBlock%' OR required_capabilities_json LIKE '%calendar.create_work_block%') AND required_capabilities_json LIKE '%providerExecutionApproval%' AND required_capabilities_json LIKE '%appPermission%' AND required_capabilities_json LIKE '%calendar%' AND payload_json LIKE '%\"requiresApproval\":true%';" \
   "1"
+waitForAXElementContaining "assistant-queue-workflow"
 verify_single_value "Calendar queue kept due task local" "SELECT CASE WHEN status='planned' AND due_at='$runtime_day_key' THEN 1 ELSE 0 END FROM tasks WHERE id=$due_task_id;" "1"
 verify_single_value "Calendar queue kept unscheduled task local" "SELECT CASE WHEN status='planned' AND due_at IS NULL THEN 1 ELSE 0 END FROM tasks WHERE id=$unscheduled_task_id;" "1"
 

@@ -93,6 +93,7 @@ private struct ScheduleQuickDraftSelection: Identifiable {
 
 struct ScheduleWorkflowView: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
+    private let onOpenPendingActions: () -> Void
     @State private var workloadReferenceDate = VisualEvidenceRuntimeContext.referenceDate()
     @State private var selectedWorkloadDayKey: String?
     @State private var selectedMode = ScheduleSurfaceMode.visualEvidenceInitialMode()
@@ -101,6 +102,14 @@ struct ScheduleWorkflowView: View {
     @State private var contentFilter: ScheduleContentFilter = .all
     @FocusState private var isScheduleSearchFocused: Bool
     @Environment(\.cockpitAuthoritativeContentWidth) private var authoritativeContentWidth
+
+    init(
+        viewModel: ProjectBoardViewModel,
+        onOpenPendingActions: @escaping () -> Void = {}
+    ) {
+        self.viewModel = viewModel
+        self.onOpenPendingActions = onOpenPendingActions
+    }
 
     var body: some View {
         GeometryReader { viewport in
@@ -403,7 +412,16 @@ struct ScheduleWorkflowView: View {
     }
 
     private func queueCalendarApply() {
-        _ = viewModel.enqueueScheduleDraftCalendarApply(on: workloadReferenceDate)
+        guard viewModel.enqueueScheduleDraftCalendarApply(on: workloadReferenceDate) else {
+            return
+        }
+        // The queue mutation posts the shared board-change notification. Let
+        // that reload settle before replacing Schedule with its canonical
+        // Pending Actions destination.
+        Task { @MainActor in
+            await Task.yield()
+            onOpenPendingActions()
+        }
     }
 
     private func moveWorkloadToPreviousWeek() {
@@ -2742,7 +2760,7 @@ private struct ScheduleQuickDraftComposer: View {
                 .accessibilityIdentifier("schedule-quick-draft-save")
             }
 
-            Label("Calendar is updated only after review in Assistant Queue.", systemImage: "lock.shield")
+            Label("Calendar is updated only after review in Pending Actions.", systemImage: "lock.shield")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -2768,11 +2786,11 @@ private struct ScheduleDraftApprovalControls: View {
             .accessibilityIdentifier("schedule-apply-calendar")
             .accessibilityHint(
                 hasDraft
-                    ? "Adds reviewed schedule blocks to Assistant Queue before any external Calendar write."
+                    ? "Adds reviewed schedule blocks to Pending Actions before any external Calendar write."
                     : "Create a schedule draft first."
             )
 
-            Text(hasDraft ? "External Calendar writes run from Assistant Queue after approval." : "Create a schedule draft first.")
+            Text(hasDraft ? "External Calendar writes run from Pending Actions after approval." : "Create a schedule draft first.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
