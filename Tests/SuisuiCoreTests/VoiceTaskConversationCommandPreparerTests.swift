@@ -88,6 +88,44 @@ final class VoiceTaskConversationCommandPreparerTests: XCTestCase {
         )
     }
 
+    func testSelectedTaskAfterListResolvesAnaphoricDueDate() throws {
+        let fixture = try makeFixture()
+        _ = try prepareAndPublish(
+            fixture,
+            transcript: "List tasks",
+            triage: triage("List tasks"),
+            explicitTaskID: nil,
+            sessionID: fixture.sessionID,
+            sourceTurnID: UUID(),
+            selectedProjectID: nil,
+            selectedTaskID: nil,
+            at: now
+        )
+
+        let input = "このタスクの期限を明日に"
+        let prepared = try XCTUnwrap(
+            prepareAndPublish(
+                fixture,
+                transcript: input,
+                triage: triage(input, selectedTaskID: 22),
+                explicitTaskID: nil,
+                sessionID: fixture.sessionID,
+                sourceTurnID: UUID(),
+                selectedProjectID: 7,
+                selectedTaskID: 22,
+                at: now.addingTimeInterval(60)
+            )
+        )
+
+        let referenceRequest = try XCTUnwrap(prepared.referenceRequest)
+        XCTAssertNil(referenceRequest.candidateOrderingFingerprint)
+        let resolutionDate = now
+        XCTAssertEqual(
+            VoiceTaskReferenceResolver(now: { resolutionDate }).resolve(referenceRequest),
+            .resolved(.task(id: 22, projectID: 7), reason: .selectedTask)
+        )
+    }
+
     private func triage(
         _ input: String,
         selectedTaskID: Int64? = nil

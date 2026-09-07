@@ -2995,6 +2995,72 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.recordedAudio?.duration, 2)
     }
 
+    func testCancelCurrentVoiceInputDiscardsLateTranscription() async {
+        let gate = VoicePlanningGate()
+        let sttProvider = DelayedCancellationAwareVoiceSTTProvider(gate: gate)
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: sttProvider,
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            ))
+        )
+
+        await viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
+        let stopTask = Task { @MainActor in
+            await viewModel.stopRecording(
+                outputURL: URL(filePath: "/tmp/suisui-canceled.m4a"),
+                at: Date(timeIntervalSince1970: 12)
+            )
+        }
+        await gate.waitUntilRequestReceived()
+
+        viewModel.cancelCurrentVoiceInput()
+        await gate.release()
+        await stopTask.value
+
+        XCTAssertTrue(sttProvider.didObserveCancellation)
+        XCTAssertEqual(viewModel.phase, .idle)
+        XCTAssertEqual(viewModel.recordingState, .idle)
+        XCTAssertEqual(viewModel.draft.text, "")
+        XCTAssertNil(viewModel.recordedAudio)
+    }
+
+    func testEditingDraftDuringTranscriptionKeepsNewInput() async {
+        let gate = VoicePlanningGate()
+        let sttProvider = DelayedCancellationAwareVoiceSTTProvider(gate: gate)
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: sttProvider,
+            llmProvider: FakeLLMProvider(response: PlanningResponse(
+                providerID: "fake",
+                rawContent: "{}",
+                actionPlan: nil,
+                validationResult: ActionPlanValidationResult(issues: [])
+            ))
+        )
+
+        await viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
+        let stopTask = Task { @MainActor in
+            await viewModel.stopRecording(
+                outputURL: URL(filePath: "/tmp/suisui-edited.m4a"),
+                at: Date(timeIntervalSince1970: 12)
+            )
+        }
+        await gate.waitUntilRequestReceived()
+
+        viewModel.updateDraftText("new input")
+        await gate.release()
+        await stopTask.value
+
+        XCTAssertTrue(sttProvider.didObserveCancellation)
+        XCTAssertEqual(viewModel.phase, .idle)
+        XCTAssertEqual(viewModel.draft.text, "new input")
+    }
+
     func testClearDeletesUnsavedTemporaryVoiceRecording() async throws {
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(
@@ -4249,6 +4315,32 @@ private final class DelayedRecordingVoiceLLMProvider: LLMProvider, @unchecked Se
         await gate.markRequestReceived()
         await gate.waitForRelease()
         return response
+    }
+}
+
+private final class DelayedCancellationAwareVoiceSTTProvider: SpeechToTextProvider, @unchecked Sendable {
+    let id: STTProviderID = .whisperKit
+    let availability = STTProviderAvailability(providerID: .whisperKit, isAvailable: true)
+    private let gate: VoicePlanningGate
+    private let lock = NSLock()
+    private var observedCancellation = false
+
+    init(gate: VoicePlanningGate) {
+        self.gate = gate
+    }
+
+    var didObserveCancellation: Bool {
+        lock.withLock { observedCancellation }
+    }
+
+    func transcribe(_ audio: RecordedAudio) async throws -> STTTranscript {
+        await gate.markRequestReceived()
+        await gate.waitForRelease()
+        lock.withLock {
+            observedCancellation = Task.isCancelled
+        }
+        try Task.checkCancellation()
+        return STTTranscript(text: "stale transcript")
     }
 }
 

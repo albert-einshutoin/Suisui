@@ -408,6 +408,8 @@ private struct VoiceTaskConversationComposer: View {
                 Button("Cancel") {
                     if viewModel.clarificationQuestion != nil {
                         viewModel.cancelClarification()
+                    } else {
+                        viewModel.cancelCurrentVoiceInput()
                     }
                     clarificationAnswer = ""
                     viewModel.updateDraftText("")

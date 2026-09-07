@@ -183,9 +183,9 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
             return nil
         }
 
-        let fingerprint = explicitTaskID != nil
-            ? nil
-            : latestReferences.first?.orderingFingerprint
+        let fingerprint = explicitTaskID == nil && requestedOrdinal != nil
+            ? latestReferences.first?.orderingFingerprint
+            : nil
         let ordinal = requestedOrdinal
         let ordinalReference = ordinal.flatMap { requested in
             latestReferences.first { $0.ordinal == requested }

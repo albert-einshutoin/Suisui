@@ -180,6 +180,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
     private var conversationCancellationTask: Task<VoiceTaskConversationOutcome, Never>?
     private var conversationReadoutTask: Task<String?, Never>?
     private var conversationReadoutID: UUID?
+    private var recordingOperationID = UUID()
+    private var activeTranscriptionTask: Task<STTTranscript, Error>?
+    private var activeTranscriptionTaskID: UUID?
     private var conversationWorkspaceStore: (any VoiceTaskConversationStore)?
     private var conversationWorkspaceTurnCursor:
         VoiceTaskConversationTurnCursor?
@@ -730,6 +733,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
         guard draft.text != text else {
             return
         }
+        if phase == .recording || phase == .transcribing {
+            cancelCurrentVoiceInput()
+        }
         stopConversationReadout()
         localTriageRequest = nil
         localTriageDecision = nil
@@ -758,10 +764,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
     public func clear() {
         stopConversationReadout()
         stopLowLatencyVoiceAgentMode()
-        stopInputLevelMonitoring()
         retryPendingTemporaryRecordingDeletions()
-        removeUnsavedTemporaryRecording()
-        audioRecorder.reset()
+        cancelCurrentVoiceInput()
         localTriageRequest = nil
         localTriageDecision = nil
         draftSource = .text
@@ -798,13 +802,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
     public func releaseTemporaryRecordingResources() {
         stopConversationReadout()
         stopLowLatencyVoiceAgentMode()
-        stopInputLevelMonitoring()
         retryPendingTemporaryRecordingDeletions()
-        removeUnsavedTemporaryRecording()
-        audioRecorder.reset()
-        recordedAudio = nil
-        lastTranscribedAudioURL = nil
-        recordingState = audioRecorder.state
+        cancelCurrentVoiceInput()
     }
 
     public func startLowLatencyVoiceAgentMode(
@@ -888,36 +887,65 @@ public final class VoiceCaptureViewModel: ObservableObject {
         stopConversationReadout()
         stopLowLatencyVoiceAgentMode()
         retryPendingTemporaryRecordingDeletions()
-        // Starting another take transfers ownership away from the previous
-        // unsaved temporary file. Delete it before the recorder can replace
-        // our in-memory reference, while preserving Inbox-owned recordings.
-        removeUnsavedTemporaryRecording()
-        recordedAudio = nil
-        lastTranscribedAudioURL = nil
+        cancelCurrentVoiceInput()
         if clarificationQuestion == nil {
             clarificationQuestionCount = 0
         }
+        let operationID = UUID()
+        recordingOperationID = operationID
         do {
             try await audioRecorder.start(at: date)
+            guard recordingOperationID == operationID else {
+                audioRecorder.reset()
+                recordingState = audioRecorder.state
+                return
+            }
             recordingState = audioRecorder.state
             phase = .recording
             startInputLevelMonitoring(at: date)
         } catch {
+            guard recordingOperationID == operationID else {
+                audioRecorder.reset()
+                recordingState = audioRecorder.state
+                return
+            }
             recordingState = audioRecorder.state
             phase = .failed(userMessage(for: error))
         }
     }
 
     public func stopRecording(outputURL: URL, at date: Date = Date()) async {
+        let operationID = recordingOperationID
         stopInputLevelMonitoring()
         do {
             phase = .transcribing
             let audio = try audioRecorder.stop(outputURL: outputURL, at: date)
             recordingState = audioRecorder.state
             recordedAudio = audio
-            let transcript = try await sttProvider.transcribe(audio)
+            let transcriptionID = UUID()
+            let transcriptionTask = Task { [sttProvider] in
+                try await sttProvider.transcribe(audio)
+            }
+            activeTranscriptionTask = transcriptionTask
+            activeTranscriptionTaskID = transcriptionID
+            defer {
+                if activeTranscriptionTaskID == transcriptionID {
+                    activeTranscriptionTask = nil
+                    activeTranscriptionTaskID = nil
+                }
+            }
+            let transcript = try await transcriptionTask.value
+            guard !transcriptionTask.isCancelled,
+                  recordingOperationID == operationID
+            else {
+                return
+            }
             if clarificationQuestion != nil {
-                await submitClarificationAnswer(transcript.text, inputMode: .voice)
+                await submitClarificationAnswer(
+                    transcript.text,
+                    inputMode: .voice,
+                    expectedRecordingOperationID: operationID
+                )
                 return
             }
             draftSource = .voice
@@ -937,11 +965,33 @@ public final class VoiceCaptureViewModel: ObservableObject {
             refreshRoutingResult()
             phase = .idle
         } catch {
+            guard recordingOperationID == operationID else {
+                return
+            }
             removeUnsavedTemporaryRecording()
             lastTranscribedAudioURL = nil
             savedInboxSourceAudioURL = nil
             recordingState = audioRecorder.state
             phase = .failed(userMessage(for: error))
+        }
+    }
+
+    /// Cancels microphone capture and invalidates any transcription that is
+    /// still allowed to update this workspace.
+    public func cancelCurrentVoiceInput() {
+        recordingOperationID = UUID()
+        activeTranscriptionTask?.cancel()
+        activeTranscriptionTask = nil
+        activeTranscriptionTaskID = nil
+        stopInputLevelMonitoring()
+        removeUnsavedTemporaryRecording()
+        audioRecorder.reset()
+        recordedAudio = nil
+        lastTranscribedAudioURL = nil
+        savedInboxSourceAudioURL = nil
+        recordingState = audioRecorder.state
+        if phase == .recording || phase == .transcribing {
+            phase = runtimeValidationMessage.map(VoiceCapturePhase.failed) ?? .idle
         }
     }
 
@@ -1196,6 +1246,31 @@ public final class VoiceCaptureViewModel: ObservableObject {
         availableTools: [ActionTool] = ActionTool.defaultPlanningTools,
         knowledgeFrameCandidates: [KnowledgeFrameCandidate] = []
     ) async {
+        await submitClarificationAnswer(
+            answer,
+            inputMode: inputMode,
+            currentDate: currentDate,
+            timeZoneIdentifier: timeZoneIdentifier,
+            availableTools: availableTools,
+            knowledgeFrameCandidates: knowledgeFrameCandidates,
+            expectedRecordingOperationID: nil
+        )
+    }
+
+    private func submitClarificationAnswer(
+        _ answer: String,
+        inputMode: ClarificationInputMode = .typed,
+        currentDate: Date = Date(),
+        timeZoneIdentifier: String = TimeZone.current.identifier,
+        availableTools: [ActionTool] = ActionTool.defaultPlanningTools,
+        knowledgeFrameCandidates: [KnowledgeFrameCandidate] = [],
+        expectedRecordingOperationID: UUID? = nil
+    ) async {
+        if let expectedRecordingOperationID,
+           recordingOperationID != expectedRecordingOperationID
+        {
+            return
+        }
         if let conversationOrchestrator,
            orchestratedClarificationQuestion != nil
         {
@@ -1210,6 +1285,11 @@ public final class VoiceCaptureViewModel: ObservableObject {
                     availableTools: availableTools
                 )
             )
+            if let expectedRecordingOperationID,
+               recordingOperationID != expectedRecordingOperationID
+            {
+                return
+            }
             await applyConversationOutcome(outcome, sourceTurnID: sourceTurnID)
             return
         }
@@ -1342,6 +1422,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     }
 
     public func cancelClarification() {
+        cancelCurrentVoiceInput()
         stopConversationReadout()
         clarificationSession = nil
         clarificationQuestionCount = 0
