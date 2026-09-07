@@ -719,7 +719,9 @@ struct ProjectBoardView: View {
             }
         case .review(.completed):
             DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())
-        case .review(.assistantQueue), .review(.automationActivity), .primary(.review):
+        case .review(.automationActivity):
+            ProjectWorkflowAutomationActivityView(viewModel: viewModel, appSettings: appSettings())
+        case .review(.assistantQueue), .primary(.review):
             AssistantQueueWorkflowView(viewModel: viewModel)
         case .review(.schedule), .settings, .voiceCommand:
             EmptyView()
@@ -1293,7 +1295,7 @@ struct ProjectBoardView: View {
 
     private func validatedRoute(_ route: BoardRoute) -> BoardRoute {
         switch route {
-        case .primary(.review), .review(.automationActivity):
+        case .primary(.review):
             return .review(.assistantQueue)
         case .project(let projectID):
             return viewModel.snapshot.projects.contains(where: { $0.id == projectID })

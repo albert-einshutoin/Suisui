@@ -61,6 +61,7 @@ struct ProjectBoardWorkHubView<Content: View>: View {
                 .accessibilityIdentifier("work-hub-smart-lists")
 
                 Section("Review") {
+                    workRow(.review(.automationActivity), title: "Automation Activity", systemImage: "doc.text.magnifyingglass")
                     workRow(
                         .review(.assistantQueue),
                         title: "Pending Actions",
@@ -100,7 +101,17 @@ struct ProjectBoardWorkHubView<Content: View>: View {
                     }
                 }
                 Section("Review") {
+                    compactDestination(.review(.automationActivity), title: "Automation Activity")
                     compactDestination(.review(.assistantQueue), title: "Pending Actions")
+                }
+                if let selectedCustomSmartList {
+                    Button(role: .destructive) {
+                        onDeleteSmartList(selectedCustomSmartList)
+                    } label: {
+                        Label("Delete Selected Smart List", systemImage: "trash")
+                    }
+                    .accessibilityIdentifier("work-hub-compact-delete-smart-list")
+                    .accessibilityHint("Deletes only the currently selected custom smart list.")
                 }
             } label: {
                 HStack(spacing: 6) {
@@ -181,6 +192,11 @@ struct ProjectBoardWorkHubView<Content: View>: View {
         .accessibilityIdentifier(workAccessibilityIdentifier(for: destination))
     }
 
+    private var selectedCustomSmartList: SmartList? {
+        guard case .smartList(let id) = route else { return nil }
+        return smartLists.first(where: { $0.id == id && !$0.isPreset })
+    }
+
     private var workSelection: Binding<BoardRoute?> {
         Binding(
             get: { selectedWorkRoute },
@@ -195,7 +211,8 @@ struct ProjectBoardWorkHubView<Content: View>: View {
         case .primary(.projects), .project: .primary(.projects)
         case .smartList: route
         case .review(.completed): .review(.completed)
-        case .review(.assistantQueue), .review(.automationActivity), .primary(.review):
+        case .review(.automationActivity): route
+        case .review(.assistantQueue), .primary(.review):
             .review(.assistantQueue)
         case .review(.schedule), .settings, .voiceCommand:
             nil
@@ -209,7 +226,8 @@ struct ProjectBoardWorkHubView<Content: View>: View {
         case .primary(.projects), .project: "Projects"
         case .smartList: "Smart Lists"
         case .review(.completed): "Completed"
-        case .review(.assistantQueue), .review(.automationActivity), .primary(.review): "Pending Actions"
+        case .review(.automationActivity): "Automation Activity"
+        case .review(.assistantQueue), .primary(.review): "Pending Actions"
         default: "Work"
         }
     }
@@ -220,7 +238,8 @@ struct ProjectBoardWorkHubView<Content: View>: View {
         case .primary(.inbox): "work-destination-inbox"
         case .primary(.projects): "work-destination-projects"
         case .review(.completed): "work-destination-completed"
-        case .review(.assistantQueue), .review(.automationActivity), .primary(.review):
+        case .review(.automationActivity): "work-destination-activity"
+        case .review(.assistantQueue), .primary(.review):
             "work-destination-pending-actions"
         case .smartList: "work-destination-smart-list"
         case .project, .review(.schedule), .settings, .voiceCommand:

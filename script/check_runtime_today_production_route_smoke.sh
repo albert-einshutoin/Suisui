@@ -506,8 +506,8 @@ route_text_for() {
     review-schedule:ja) printf '%s' "予定" ;;
     review-completed:en) printf '%s' "Completed" ;;
     review-completed:ja) printf '%s' "完了" ;;
-    review-automation:en) printf '%s' "Pending Actions" ;;
-    review-automation:ja) printf '%s' "保留中のアクション" ;;
+    review-automation:en) printf '%s' "Automation Activity" ;;
+    review-automation:ja) printf '%s' "自動化アクティビティ" ;;
     review-assistant-queue:en) printf '%s' "Pending Actions" ;;
     review-assistant-queue:ja) printf '%s' "保留中のアクション" ;;
     smart-list:en) printf '%s' "Due this week" ;;
@@ -844,7 +844,7 @@ run_normal_routes() {
     "smart-list|smart-list-v1:cHJlc2V0LWR1ZS10aGlzLXdlZWs=|work-hub-compact-navigation|smart-list-workflow"
     "work-completed|review:completed|work-hub-compact-navigation|done-workflow"
     "review-assistant-queue|review:assistant-queue|work-hub-compact-navigation|assistant-queue-workflow"
-    "review-automation|review:automation|work-hub-compact-navigation|assistant-queue-workflow"
+    "review-automation|review:automation|work-hub-compact-navigation|automation-activity-workflow"
   )
 
   for route_spec in "${routes[@]}"; do

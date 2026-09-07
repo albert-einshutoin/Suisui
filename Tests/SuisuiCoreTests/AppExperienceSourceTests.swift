@@ -810,6 +810,18 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(work.contains("work-destination-completed"))
     }
 
+    func testWorkPreservesReceiptHistoryAndCompactSmartListDeletion() throws {
+        let hub = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardWorkHubView.swift")
+        let board = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        XCTAssertTrue(hub.contains("compactDestination(.review(.automationActivity), title: \"Automation Activity\")"))
+        XCTAssertTrue(hub.contains("workRow(.review(.automationActivity), title: \"Automation Activity\", systemImage: \"doc.text.magnifyingglass\")"))
+        XCTAssertTrue(hub.contains("work-hub-compact-delete-smart-list"))
+        XCTAssertTrue(hub.contains("smartLists.first(where: { $0.id == id && !$0.isPreset })"))
+        XCTAssertTrue(hub.contains("onDeleteSmartList(selectedCustomSmartList)"))
+        XCTAssertTrue(board.contains("ProjectWorkflowAutomationActivityView(viewModel: viewModel, appSettings: appSettings())"))
+        XCTAssertFalse(board.contains("case .primary(.review), .review(.automationActivity):"))
+    }
+
     func testWorkHubExposesRelocatedDestinations() throws {
         let projectsSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift"
@@ -1099,7 +1111,7 @@ final class AppExperienceSourceTests: XCTestCase {
                 "smart-list|smart-list-v1:cHJlc2V0LWR1ZS10aGlzLXdlZWs=|work-hub-compact-navigation|smart-list-workflow",
                 "work-completed|review:completed|work-hub-compact-navigation|done-workflow",
                 "review-assistant-queue|review:assistant-queue|work-hub-compact-navigation|assistant-queue-workflow",
-                "review-automation|review:automation|work-hub-compact-navigation|assistant-queue-workflow",
+                "review-automation|review:automation|work-hub-compact-navigation|automation-activity-workflow",
             ]
         )
         XCTAssertEqual(routeRows.count, 10)
