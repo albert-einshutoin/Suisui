@@ -1246,6 +1246,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
         availableTools: [ActionTool] = ActionTool.defaultPlanningTools,
         knowledgeFrameCandidates: [KnowledgeFrameCandidate] = []
     ) async {
+        if inputMode == .typed && (phase == .recording || phase == .transcribing) {
+            cancelCurrentVoiceInput()
+        }
         await submitClarificationAnswer(
             answer,
             inputMode: inputMode,

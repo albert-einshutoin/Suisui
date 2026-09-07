@@ -380,6 +380,9 @@ private struct VoiceTaskConversationComposer: View {
                         if viewModel.clarificationQuestion == nil {
                             viewModel.updateDraftText(value)
                         } else {
+                            if viewModel.phase == .recording || viewModel.phase == .transcribing {
+                                viewModel.cancelCurrentVoiceInput()
+                            }
                             clarificationAnswer = value
                         }
                     }

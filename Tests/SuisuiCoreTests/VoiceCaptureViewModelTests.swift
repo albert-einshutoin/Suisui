@@ -3061,6 +3061,34 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.draft.text, "new input")
     }
 
+    func testTypedClarificationAnswerCancelsPendingVoiceAnswer() async throws {
+        let gate = VoicePlanningGate()
+        let sttProvider = DelayedCancellationAwareVoiceSTTProvider(gate: gate)
+        let (viewModel, _, _) = try makeLocalTriageViewModel(
+            sttProvider: sttProvider
+        )
+
+        viewModel.updateDraftText("Create task:")
+        await viewModel.generatePlan()
+        XCTAssertNotNil(viewModel.clarificationQuestion)
+        await viewModel.startRecording(at: Date(timeIntervalSince1970: 10))
+        let stopTask = Task { @MainActor in
+            await viewModel.stopRecording(
+                outputURL: URL(filePath: "/tmp/suisui-typed-clarification.m4a"),
+                at: Date(timeIntervalSince1970: 12)
+            )
+        }
+        await gate.waitUntilRequestReceived()
+
+        await viewModel.submitClarificationAnswer("Write release notes")
+        await gate.release()
+        await stopTask.value
+
+        XCTAssertTrue(sttProvider.didObserveCancellation)
+        XCTAssertNil(viewModel.clarificationQuestion)
+        XCTAssertEqual(viewModel.draft.text, "Create task:")
+    }
+
     func testClearDeletesUnsavedTemporaryVoiceRecording() async throws {
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(
