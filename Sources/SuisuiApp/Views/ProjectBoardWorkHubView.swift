@@ -118,10 +118,17 @@ struct ProjectBoardWorkHubView<Content: View>: View {
                     Image(systemName: "sidebar.left")
                         .accessibilityHidden(true)
                     Text(label)
-                    if assistantQueueCount > 0 {
+                    if selectedWorkRoute == .review(.assistantQueue), assistantQueueCount > 0 {
                         Text(verbatim: "\(assistantQueueCount)")
                             .font(.caption.weight(.semibold))
                             .monospacedDigit()
+                            .accessibilityLabel(
+                                localizedCount(
+                                    assistantQueueCount,
+                                    one: "%d item needs attention",
+                                    other: "%d items need attention"
+                                )
+                            )
                     }
                 }
                 .accessibilityElement(children: .combine)

@@ -810,6 +810,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(work.contains("work-destination-completed"))
     }
 
+    func testCompactWorkBadgeBelongsOnlyToPendingActions() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardWorkHubView.swift")
+        let start = try XCTUnwrap(source.range(of: "private var compactNavigation: some View"))
+        let end = try XCTUnwrap(source.range(of: "private func workRow("))
+        let compact = String(source[start.lowerBound..<end.lowerBound])
+
+        XCTAssertTrue(compact.contains("if selectedWorkRoute == .review(.assistantQueue), assistantQueueCount > 0 {"))
+        XCTAssertTrue(compact.contains(".accessibilityLabel("))
+        XCTAssertTrue(compact.contains("localizedCount("))
+        XCTAssertTrue(compact.contains("one: \"%d item needs attention\""))
+        XCTAssertTrue(compact.contains("other: \"%d items need attention\""))
+    }
+
     func testWorkPreservesReceiptHistoryAndCompactSmartListDeletion() throws {
         let hub = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardWorkHubView.swift")
         let board = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
