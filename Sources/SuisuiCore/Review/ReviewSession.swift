@@ -573,6 +573,9 @@ private extension String {
         case "projectid": "Project"
         case "taskid": "Task"
         case "calendarid": "Calendar"
+        case "calendaridentifier": "Calendar"
+        case "proposalid": "Proposal"
+        case "timezoneidentifier": "Timezone"
         case "remindername", "listname": "List"
         case "path", "filepath": "File"
         case "directory", "directorypath": "Folder"
@@ -590,7 +593,7 @@ private extension String {
         case "dueat", "duedate", "due", "startat", "starttime", "endat",
              "endtime", "scheduledat", "completedat", "remindat":
             .timestamp
-        case "projectid", "taskid", "calendarid", "eventid", "id":
+        case "projectid", "taskid", "calendarid", "calendaridentifier", "proposalid", "eventid", "id":
             .identifier
         case "title", "name", "summary", "detail", "details", "notes", "body",
              "content", "message", "subject":
@@ -609,7 +612,7 @@ private extension String {
             1
         // Internal row ids answer "which record" but never "what will happen",
         // so they sort behind every human-meaningful field.
-        case "projectid", "taskid", "calendarid", "eventid", "id":
+        case "projectid", "taskid", "calendarid", "calendaridentifier", "proposalid", "eventid", "id":
             3
         default:
             2

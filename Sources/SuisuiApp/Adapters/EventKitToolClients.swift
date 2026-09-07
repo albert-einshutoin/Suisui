@@ -50,7 +50,19 @@ final class EventKitCalendarClient: CalendarClient, @unchecked Sendable {
         event.endDate = endDate
         event.isAllDay = draft.isAllDay
         event.notes = draft.notes
-        event.calendar = eventStore.defaultCalendarForNewEvents
+        if let calendarIdentifier = draft.calendarIdentifier,
+           calendarIdentifier != CalendarProposalIdentity.defaultCalendarIdentifier {
+            guard let calendar = eventStore.calendar(withIdentifier: calendarIdentifier),
+                  calendar.allowsContentModifications else {
+                throw ToolClientError.notFound("The selected Calendar is unavailable or read-only.")
+            }
+            event.calendar = calendar
+        } else {
+            event.calendar = eventStore.defaultCalendarForNewEvents
+        }
+        if let timeZoneIdentifier = draft.timeZoneIdentifier {
+            event.timeZone = TimeZone(identifier: timeZoneIdentifier)
+        }
 
         try eventStore.save(event, span: .thisEvent, commit: true)
 
