@@ -38,10 +38,6 @@ public struct ShortcutRegistrationState: Equatable, Sendable {
     public var isRegistered: Bool {
         status == .registered
     }
-
-    public var conflictDescription: String? {
-        status == .conflict ? detail : nil
-    }
 }
 
 public protocol ShortcutClient: Sendable {
@@ -104,10 +100,6 @@ public final class VoiceShortcutOpenRequestGate {
     }
 
     public func markWindowVisible() {
-        clearPendingRequest()
-    }
-
-    public func markWindowClosed() {
         clearPendingRequest()
     }
 

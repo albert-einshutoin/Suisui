@@ -1692,18 +1692,6 @@ public actor DevelopmentRepositoryIndex {
     }
 }
 
-public struct SQLiteCodebaseMemoryConnector: CodebaseMemoryConnector {
-    private let index: DevelopmentRepositoryIndex
-
-    public init(index: DevelopmentRepositoryIndex) {
-        self.index = index
-    }
-
-    public func search(_ request: CodebaseMemorySearchRequest) async throws -> [CodebaseMemorySnippet] {
-        try await index.search(query: request.query, workspace: request.workspace)
-    }
-}
-
 private struct IndexedFile: Sendable {
     let relativePath: String
     let byteCount: Int

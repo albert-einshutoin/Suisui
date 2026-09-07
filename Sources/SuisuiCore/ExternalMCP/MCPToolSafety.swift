@@ -6,21 +6,6 @@ public enum ExternalMCPToolPermission: Equatable, Sendable {
     case writeWithApproval
     case dangerous
     case disabled
-
-    var toolPermissionLevel: ToolPermissionLevel? {
-        switch self {
-        case .read:
-            return .read
-        case .draft:
-            return .draft
-        case .writeWithApproval:
-            return .writeWithApproval
-        case .dangerous:
-            return .dangerous
-        case .disabled:
-            return nil
-        }
-    }
 }
 
 public enum ToolOrigin: Equatable, Sendable {

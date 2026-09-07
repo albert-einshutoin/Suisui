@@ -34,8 +34,4 @@ public struct MCPProcessLifecycleManager: Sendable {
     public func shutdown() async {
         await process.shutdown()
     }
-
-    public func killHungProcess() async {
-        await process.kill()
-    }
 }

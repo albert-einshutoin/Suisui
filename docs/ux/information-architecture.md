@@ -29,9 +29,11 @@ The default destination is **Today**
 (`ProjectBoardSelectionPersistence.swift`: persisted
 `defaultRawValue = "today"`; unresolved selections fall back to `.today`).
 
-`⌘1`–`⌘4` select the four primary destinations in rendered order
-(`BoardPrimaryDestination.orderedForKeyboardSelection`, wired in
-`ProjectBoardView.swift`). Inbox classification uses `⌃⌘1`–`⌃⌘4`.
+`⌘1`–`⌘4` select the four primary destinations in rendered order. They are
+declared as app menu commands in `SuisuiApp.swift` and delivered through
+`ProjectBoardSceneCoordinator.requestShortcut(.destination(_:))`;
+`BoardPrimaryDestination.orderedForKeyboardSelection` is not the source of
+that wiring. Inbox classification uses `⌃⌘1`–`⌃⌘4`.
 
 Owns:
 - All task/project reading and mutation surfaces: workflow views per

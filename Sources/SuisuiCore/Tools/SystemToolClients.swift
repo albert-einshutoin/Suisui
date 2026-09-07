@@ -337,57 +337,6 @@ public final class LocalFileAccessClient: FileAccessClient, @unchecked Sendable 
     }
 }
 
-public final class SecurityScopedBookmarkFileAccessClient: FileAccessClient, @unchecked Sendable {
-    private let bookmarkData: Data
-    private let fileManager: FileManager
-
-    public init(bookmarkData: Data, fileManager: FileManager = .default) {
-        self.bookmarkData = bookmarkData
-        self.fileManager = fileManager
-    }
-
-    public func createDirectory(relativePath: String) throws -> FileArtifact {
-        try withSecurityScopedAccess { client in
-            try client.createDirectory(relativePath: relativePath)
-        }
-    }
-
-    public func createMarkdownFile(relativePath: String, contents: String) throws -> FileArtifact {
-        try withSecurityScopedAccess { client in
-            try client.createMarkdownFile(relativePath: relativePath, contents: contents)
-        }
-    }
-
-    public func scan(relativePath: String) throws -> [FileArtifact] {
-        try withSecurityScopedAccess { client in
-            try client.scan(relativePath: relativePath)
-        }
-    }
-
-    private func withSecurityScopedAccess<T>(_ body: (LocalFileAccessClient) throws -> T) throws -> T {
-        var isStale = false
-        let workspaceRoot = try URL(
-            resolvingBookmarkData: bookmarkData,
-            options: [.withSecurityScope],
-            relativeTo: nil,
-            bookmarkDataIsStale: &isStale
-        )
-
-        guard !isStale else {
-            throw ToolClientError.invalidRequest("Workspace access bookmark is stale and must be renewed.")
-        }
-
-        let didStartAccessing = workspaceRoot.startAccessingSecurityScopedResource()
-        defer {
-            if didStartAccessing {
-                workspaceRoot.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        return try body(LocalFileAccessClient(workspaceRoot: workspaceRoot, fileManager: fileManager))
-    }
-}
-
 public struct MailDraftRecord: Equatable, Sendable {
     public var id: String
     public var to: String?
