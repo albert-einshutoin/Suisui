@@ -7795,6 +7795,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testUIScreenshotCaptureVerifiesTargetDestinationBeforeScreenshot() throws {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
+        XCTAssertTrue(script.contains("PROJECTS_TARGET_MARKERS=\"work-hub=>|projects-portfolio-overview=>$PROJECTS_ROUTE_LABEL\""))
         let axMarkerScript = try readPackageFile("script/ui_evidence_ax_marker_check.swift")
         let visualBaselines = try readPackageFile("docs/quality/visual-baselines.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")

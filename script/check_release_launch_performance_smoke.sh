@@ -819,7 +819,7 @@ measure_cold_launch_sample() {
   # correspond to real, operable UI rather than optimistic instrumentation.
   wait_for_visible_window
   wait_for_marker "project-board-sidebar-toggle"
-  wait_for_marker "voice-command-root"
+  wait_for_marker "voice-conversation-workspace"
 
   visible_elapsed_ms=$((visible_window_ms - launch_start_ms))
   command_ready_elapsed_ms=$((command_ready_ms - launch_start_ms))
@@ -961,7 +961,7 @@ LAST_DESTINATION_ELAPSED_MS=""
 # destination. This preserves the product route under test while median
 # enforcement filters one contended hosted-runner transition.
 for sample_index in $(seq 1 "$DESTINATION_SAMPLE_COUNT"); do
-  measure_destination "destination-secretary" "$sample_index" "sidebar-destination-secretary" "Secretary" "voice-command-root"
+  measure_destination "destination-secretary" "$sample_index" "sidebar-destination-secretary" "Secretary" "voice-conversation-workspace"
   DESTINATION_SECRETARY_SAMPLES+=("$LAST_DESTINATION_ELAPSED_MS")
   measure_destination "destination-schedule" "$sample_index" "sidebar-destination-schedule" "Schedule" "schedule-workflow"
   DESTINATION_SCHEDULE_SAMPLES+=("$LAST_DESTINATION_ELAPSED_MS")
