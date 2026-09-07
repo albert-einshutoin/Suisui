@@ -395,8 +395,6 @@ struct ProjectBoardView: View {
                 switch request.action {
                 case .commandPalette:
                     isCommandPaletteVisible = true
-                case let .destination(destination):
-                    boardRouteBinding.wrappedValue = .primary(destination)
                 case let .route(route):
                     if route == .voiceCommand {
                         openVoiceCommandFromBoardContext()
@@ -634,6 +632,30 @@ struct ProjectBoardView: View {
     private var routedProjectBoardContent: some View {
         let todaySettings = appSettings().normalizedForRuntime
         switch currentBoardRoute {
+        case .review(.schedule):
+            ScheduleWorkflowView(viewModel: viewModel)
+        case .primary(.today), .primary(.inbox), .primary(.projects), .primary(.review),
+             .project, .smartList, .review(.completed), .review(.assistantQueue),
+             .review(.automationActivity):
+            ProjectBoardWorkHubView(
+                route: boardRouteBinding,
+                smartLists: allSmartLists,
+                assistantQueueCount: viewModel.assistantQueueSnapshot.needsAttentionCount,
+                onCreateSmartList: { isPresentingSmartListEditor = true },
+                onDeleteSmartList: deleteSmartList
+            ) {
+                workHubContent(todaySettings: todaySettings)
+            }
+        case .settings:
+            embeddedSettingsWorkspace
+        case .voiceCommand:
+            embeddedVoiceWorkspace
+        }
+    }
+
+    @ViewBuilder
+    private func workHubContent(todaySettings: AppSettings) -> some View {
+        switch currentBoardRoute {
         case .primary(.today):
             TodayWorkflowView(
                 viewModel: viewModel,
@@ -667,7 +689,7 @@ struct ProjectBoardView: View {
                     requestsInboxQuickAddFocus = false
                 }
             )
-        case .primary(.projects), .project, .smartList:
+        case .primary(.projects), .project:
             ProjectBoardProjectsHubView(
                 route: boardRouteBinding,
                 projects: sidebarProjects,
@@ -685,17 +707,22 @@ struct ProjectBoardView: View {
             ) {
                 projectsHubContent
             }
-        case .primary(.review), .review:
-            ProjectBoardReviewHubView(
-                route: boardRouteBinding,
-                assistantQueueCount: viewModel.assistantQueueSnapshot.needsAttentionCount
-            ) {
-                reviewHubContent
+        case .smartList(let smartListID):
+            if let smartList = allSmartLists.first(where: { $0.id == smartListID }) {
+                SmartListWorkflowView(
+                    smartList: smartList,
+                    viewModel: viewModel,
+                    timeZoneIdentifier: appSettings().timeZoneIdentifier
+                )
+            } else {
+                ContentUnavailableView("Smart List Not Found", systemImage: "line.3.horizontal.decrease.circle")
             }
-        case .settings:
-            embeddedSettingsWorkspace
-        case .voiceCommand:
-            embeddedVoiceWorkspace
+        case .review(.completed):
+            DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())
+        case .review(.assistantQueue), .review(.automationActivity), .primary(.review):
+            AssistantQueueWorkflowView(viewModel: viewModel)
+        case .review(.schedule), .settings, .voiceCommand:
+            EmptyView()
         }
     }
 
@@ -733,32 +760,6 @@ struct ProjectBoardView: View {
                 ContentUnavailableView("Smart List Not Found", systemImage: "line.3.horizontal.decrease.circle")
             }
         case .primary, .review, .settings, .voiceCommand:
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder
-    private var reviewHubContent: some View {
-        switch currentBoardRoute {
-        case .primary(.review):
-            // Review opens on the canonical pending-action queue. Schedule and
-            // Completed remain sibling workflows; legacy activity routes stay
-            // available only for persisted links and are not product navigation.
-            AssistantQueueWorkflowView(viewModel: viewModel)
-        case .review(.schedule):
-            ScheduleWorkflowView(viewModel: viewModel)
-        case .review(.completed):
-            DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())
-        case .review(.automationActivity):
-            // Keep persisted deep links readable without exposing a second
-            // product route in the Review navigation.
-            ProjectWorkflowAutomationActivityView(
-                viewModel: viewModel,
-                appSettings: appSettings()
-            )
-        case .review(.assistantQueue):
-            AssistantQueueWorkflowView(viewModel: viewModel)
-        case .primary, .project, .smartList, .settings, .voiceCommand:
             EmptyView()
         }
     }
@@ -1292,7 +1293,7 @@ struct ProjectBoardView: View {
 
     private func validatedRoute(_ route: BoardRoute) -> BoardRoute {
         switch route {
-        case .primary(.review):
+        case .primary(.review), .review(.automationActivity):
             return .review(.assistantQueue)
         case .project(let projectID):
             return viewModel.snapshot.projects.contains(where: { $0.id == projectID })

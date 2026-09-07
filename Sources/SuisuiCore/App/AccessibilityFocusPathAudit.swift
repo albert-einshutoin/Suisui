@@ -125,7 +125,7 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
     // contract prevents losing the rail actions required when a task is ready.
     public static let todayCockpit = AccessibilityFocusPathRequirement(
         requiredNodeIDs: [
-            "sidebar-destination-today",
+            "work-destination-today",
             "today-workflow",
             "today-briefing-panel",
             "today-focus-recommendation",
@@ -142,7 +142,7 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
 
     public static let todayEmptyCockpit = AccessibilityFocusPathRequirement(
         requiredNodeIDs: [
-            "sidebar-destination-today",
+            "work-destination-today",
             "today-workflow",
             "today-briefing-panel",
             "today-focus-recommendation",
@@ -159,7 +159,7 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
     private static let approvalFlowCommonNodeIDs = [
         "inbox-selected-context",
         "inbox-action-grid",
-        "review-hub-compact-navigation",
+        "work-hub-compact-navigation",
         "projects-hub-compact-navigation",
         "assistant-queue-workflow"
     ]
@@ -187,7 +187,7 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
         expectedRolesByNodeID: [
             "inbox-selected-context": .group,
             "inbox-action-grid": .group,
-            "review-hub-compact-navigation": .button,
+            "work-hub-compact-navigation": .button,
             "projects-hub-compact-navigation": .button,
             "assistant-queue-workflow": .group,
             "assistant-queue-approve": .button,
@@ -198,7 +198,7 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
             "assistant-queue-edit-cancel": .button
         ],
         requiredHelpNodeIDs: [
-            "review-hub-compact-navigation",
+            "work-hub-compact-navigation",
             "projects-hub-compact-navigation",
             "assistant-queue-approve",
             "assistant-queue-more",
@@ -229,7 +229,7 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
         expectedRolesByNodeID: [
             "inbox-selected-context": .group,
             "inbox-action-grid": .group,
-            "review-hub-compact-navigation": .button,
+            "work-hub-compact-navigation": .button,
             "projects-hub-compact-navigation": .button,
             "assistant-queue-workflow": .group,
             "assistant-queue-run": .button,
@@ -240,7 +240,7 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
             "assistant-queue-edit-cancel": .button
         ],
         requiredHelpNodeIDs: [
-            "review-hub-compact-navigation",
+            "work-hub-compact-navigation",
             "projects-hub-compact-navigation",
             "assistant-queue-run",
             "assistant-queue-more",
@@ -264,13 +264,13 @@ public struct AccessibilityFocusPathRequirement: Equatable, Sendable {
         expectedRolesByNodeID: [
             "inbox-selected-context": .group,
             "inbox-action-grid": .group,
-            "review-hub-compact-navigation": .button,
+            "work-hub-compact-navigation": .button,
             "projects-hub-compact-navigation": .button,
             "assistant-queue-workflow": .group,
             "assistant-queue-retry": .button
         ],
         requiredHelpNodeIDs: [
-            "review-hub-compact-navigation",
+            "work-hub-compact-navigation",
             "projects-hub-compact-navigation",
             "assistant-queue-retry"
         ],

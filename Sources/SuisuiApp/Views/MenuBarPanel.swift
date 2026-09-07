@@ -100,10 +100,9 @@ struct MenuBarPanel: View {
     }
 
     private var summarySection: some View {
-        // The whole summary card is one tap target: "N tasks today" and
-        // "N overdue" both resolve on the board's Today view, so tapping any
-        // row opens the Project Board pre-selected on Today.
-        Button(action: openBoardOnToday) {
+        // The summary is work context, so it opens the Work surface while
+        // retaining the existing Today child route.
+        Button(action: openBoardOnWork) {
             VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
                 ForEach(viewModel.rows) { row in
                     SummaryRow(row: row)
@@ -116,7 +115,7 @@ struct MenuBarPanel: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Label("Open Today", systemImage: "chevron.right.circle")
+                Label("Open Work", systemImage: "chevron.right.circle")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.accentColor)
             }
@@ -125,14 +124,14 @@ struct MenuBarPanel: View {
         }
         .buttonStyle(.plain)
         .soloCard()
-        .help("Open the Project Board on Today")
+        .help("Open Work")
         .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("menu-bar-open-today")
-        .accessibilityLabel("Open Today")
-        .accessibilityHint("Opens the Project Board with the Today view selected.")
+        .accessibilityIdentifier("menu-bar-open-work")
+        .accessibilityLabel("Open Work")
+        .accessibilityHint("Opens Work with Today selected.")
     }
 
-    private func openBoardOnToday() {
+    private func openBoardOnWork() {
         // A broadcast is claimed atomically by one registered board. The
         // persisted value remains only the initial route for a new window.
         sceneCoordinator.openInActiveSceneOrRequestNew(route: .primary(.today)) {
@@ -143,21 +142,32 @@ struct MenuBarPanel: View {
     private var windowShortcutsRow: some View {
         HStack(spacing: SuisuiSpacing.sm) {
             Button {
-                openWindow(id: "project-board")
-            } label: {
-                Label("Project Board", systemImage: "rectangle.3.group")
-                    .frame(maxWidth: .infinity)
-            }
-
-            Button {
                 sceneCoordinator.openInActiveSceneOrRequestNew(route: .voiceCommand) {
                     openWindow(id: "project-board")
                 }
             } label: {
-                Label("Voice Command", systemImage: "mic")
+                Label("Secretary", systemImage: "person.crop.circle")
                     .frame(maxWidth: .infinity)
             }
-            .help("Opens Voice Command from this menu. Global Option + Space status is shown in Settings.")
+
+            Button {
+                sceneCoordinator.openInActiveSceneOrRequestNew(route: .review(.schedule)) {
+                    openWindow(id: "project-board")
+                }
+            } label: {
+                Label("Schedule", systemImage: "calendar")
+                    .frame(maxWidth: .infinity)
+            }
+
+            Button {
+                sceneCoordinator.openInActiveSceneOrRequestNew(route: .primary(.today)) {
+                    openWindow(id: "project-board")
+                }
+            } label: {
+                Label("Work", systemImage: "checklist")
+                    .frame(maxWidth: .infinity)
+            }
+            .help("Opens Work from this menu.")
         }
         .controlSize(.large)
     }

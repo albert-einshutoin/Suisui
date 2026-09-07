@@ -1,6 +1,6 @@
 # Information Architecture
 
-How Suisui's four surfaces divide responsibility, the modal rules they
+How Suisui's three primary surfaces divide responsibility, the modal rules they
 follow, and the primary flows between them. Every claim below is grounded in
 the current code (files cited inline); the final section lists honest gaps.
 
@@ -11,27 +11,30 @@ the current code (files cited inline); the final section lists honest gaps.
 The main window (`Sources/SuisuiApp/Views/ProjectBoardView.swift`,
 `ProjectWorkflow*.swift`).
 
-The source list owns exactly four stable product areas
-(`ProjectBoardSidebarView.swift`): **Today → Inbox → Projects → Review**.
-Feature-level navigation lives one level in, inside two hubs, so adding a
-workflow cannot grow the top level again:
+The source list owns exactly three stable product areas
+(`ProjectBoardSidebarView.swift`): **Secretary → Schedule → Work**.
+Settings is a utility surface. Work owns the existing task-oriented routes
+without changing their stores or mutation owners:
 
-- **Projects hub** (`ProjectBoardProjectsHubView.swift`): Portfolio, Smart
-  Lists, Active / Completed / Archived projects.
-- **Review hub** (`ProjectBoardReviewHubView.swift`): Plan → Schedule; Work →
-  Completed; Automation → Automation Activity, Assistant Queue.
+- **Secretary** (`VoiceCaptureView.swift`): conversation capture, interpretation,
+  clarification, and review handoff to the canonical Assistant Queue.
+- **Schedule** (`ProjectWorkflowScheduleView.swift`): local schedule drafts,
+  day/week presentation, and reviewed Calendar handoff.
+- **Work** (`ProjectBoardWorkHubView.swift`): Today, Inbox, Projects, Smart
+  Lists, Completed, and Pending Actions. Projects still reuses
+  `ProjectBoardProjectsHubView.swift` for project-specific operations.
 
-Both hubs render a second list beside the detail above
+Work renders a second list beside the detail above
 `ProjectBoardHubPresentationPolicy.wideMinimumWidth` (1100 pt) and collapse to
 a "Choose …" menu below it.
 
-The default destination is **Today**
+The default destination is **Secretary**
 (`ProjectBoardSelectionPersistence.swift`: persisted
-`defaultRawValue = "today"`; unresolved selections fall back to `.today`).
+`defaultRawValue = "secretary"`). Existing Today/Inbox/Projects/Review values
+remain readable and resolve to Work or Schedule as appropriate.
 
-`⌘1`–`⌘4` select the four primary destinations in rendered order
-(`BoardPrimaryDestination.orderedForKeyboardSelection`, wired in
-`ProjectBoardView.swift`). Inbox classification uses `⌃⌘1`–`⌃⌘4`.
+`⌘1`–`⌘3` select Secretary, Schedule, and Work in rendered order. Inbox
+classification keeps its existing `⌃⌘1`–`⌃⌘4` shortcuts.
 
 Owns:
 - All task/project reading and mutation surfaces: workflow views per
@@ -45,12 +48,13 @@ Owns:
   `ProjectBoardViewModel.runAssistantQueueItem(id:)`, which drives
   `AssistantQueueExecutionCoordinator` and produces execution receipts.
 
-Does not do: voice capture, plan drafting, or settings — commands arrive
-here already interpreted (from the Voice window, palette, or notifications).
+Does not do: own task/project persistence or a second execution authority.
+Work opens the existing stores and review executor through their current views.
 
-### Voice Command window (`voice-capture`)
+### Secretary workspace (`voice-capture`)
 
-`Sources/SuisuiApp/Views/VoiceCaptureView.swift`, three stacked zones.
+`Sources/SuisuiApp/Views/VoiceCaptureView.swift`, three stacked zones, opened
+as the Secretary route in the Project Board.
 
 Owns:
 - Capture (Zone 1): record/stop, typed transcript editing, Save to Inbox,
@@ -112,9 +116,8 @@ Owns:
 - Quick capture to Inbox: one text field + Add (⌘↩) via
   `MenuBarQuickCaptureController` (creates a backlog task in the Inbox
   project, with natural-language due-date parsing).
-- Window shortcuts: the summary card is one big "Open Today" button
-  (forces the board onto Today), plus Project Board and Voice Command
-  (⌥Space) buttons and a Settings link.
+- Window shortcuts: the summary card opens Work on Today, with Secretary,
+  Schedule, and Work buttons plus a Settings link.
 
 Does not do: task editing, plan review, or execution — every affordance
 either captures one Inbox task or routes to a full window.
@@ -151,7 +154,7 @@ either captures one Inbox task or routes to a full window.
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant V as Voice Command window
+    participant V as Secretary window
     participant Q as Assistant Queue (store)
     participant B as Project Board window
     U->>V: speak or type a command
@@ -261,7 +264,7 @@ dependency path requires it.
 
 | Issue | Candidate files | Minimum focused tests |
 | --- | --- | --- |
-| #613 Review boundary | `ProjectBoardReviewHubView.swift`, `ProjectWorkflowAssistantQueueView.swift`, `ActionReviewPanel.swift`, `AssistantQueue.swift` | `AssistantQueueExecutionTests`, then `ReviewSessionTests` for approval/edit changes |
+| #613 Review boundary | `ProjectBoardWorkHubView.swift`, `ProjectWorkflowAssistantQueueView.swift`, `ActionReviewPanel.swift`, `AssistantQueue.swift` | `AssistantQueueExecutionTests`, then `ReviewSessionTests` for approval/edit changes |
 | #408 Local Triage | `VoiceCommandRouter.swift`, `InboxTriage.swift`, new `LocalTriage.swift` only if the shared pure evaluator is needed | new `LocalTriageTests`, then `VoiceCommandRouterTests` for the Voice adapter |
 | #614 Voice Quick Capture | `VoiceCaptureView.swift`, `VoiceCaptureViewModel.swift`, `VoiceTaskConversationWorkspaceView.swift` | `VoiceCaptureViewModelTests`, then the affected cases in `AppExperienceSourceTests` |
 | #615 Schedule / Calendar | `ProjectWorkflowScheduleView.swift`, `ProjectBoard.swift`, `EventKitToolClients.swift`, `ProjectWorkflowAssistantQueueView.swift` | affected Schedule cases in `ProjectBoardStoreTests`, then `AssistantQueueExecutionTests` for execution handoff |

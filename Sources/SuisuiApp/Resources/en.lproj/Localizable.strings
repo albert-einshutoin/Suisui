@@ -1693,6 +1693,7 @@
 "Open Voice Command" = "Open Voice Command";
 "Opens Settings." = "Opens Settings.";
 "Opens Voice Command." = "Opens Voice Command.";
+"Opens Secretary." = "Opens Secretary.";
 "Opens the Inbox workflow entry for accessibility verification" = "Opens the Inbox workflow entry for accessibility verification";
 "Opens the Inbox workflow entry for accessibility verification." = "Opens the Inbox workflow entry for accessibility verification.";
 "Opens the Today workflow entry for accessibility verification" = "Opens the Today workflow entry for accessibility verification";
@@ -2363,3 +2364,13 @@
 "Preparation task due date" = "Preparation task due date";
 "Review in project" = "Review in project";
 "Suisui suggestion" = "Suisui suggestion";
+"Secretary" = "Secretary";
+"Open Work" = "Open Work";
+"Primary navigation" = "Primary navigation";
+"Navigate secretary, schedule, or work." = "Navigate secretary, schedule, or work.";
+"Choose Work destination." = "Choose Work destination.";
+"Work navigation" = "Work navigation";
+"Open Secretary" = "Open Secretary";
+"Finishes setup and opens Secretary." = "Finishes setup and opens Secretary.";
+"Opens Work from this menu." = "Opens Work from this menu.";
+"Opens Work with Today selected." = "Opens Work with Today selected.";

@@ -12,7 +12,7 @@ final class ProjectBoardSelectionPersistenceTests: XCTestCase {
     func testRawValuesRemainStableForSavedProjectBoardSelection() {
         XCTAssertEqual(ProjectBoardSelectionPersistence.storageKey, "suisui.projectBoard.selectedDestination")
         XCTAssertEqual(ProjectBoardSelectionPersistence.environmentOverrideKey, "SUISUI_PROJECT_BOARD_SELECTED_DESTINATION")
-        XCTAssertEqual(ProjectBoardSelectionPersistence.defaultRawValue, "today")
+        XCTAssertEqual(ProjectBoardSelectionPersistence.defaultRawValue, "secretary")
         XCTAssertEqual(ProjectBoardSelectionPersistence.rawValue(for: .inbox), "inbox")
         XCTAssertEqual(ProjectBoardSelectionPersistence.rawValue(for: .assistantQueue), "assistant-queue")
         XCTAssertEqual(ProjectBoardSelectionPersistence.rawValue(for: .today), "today")
@@ -120,6 +120,14 @@ final class ProjectBoardSelectionPersistenceTests: XCTestCase {
         XCTAssertEqual(
             ProjectBoardSelectionPersistence.rawValue(forTypedRoute: .review(.automationActivity)),
             "review:automation"
+        )
+        XCTAssertEqual(
+            ProjectBoardSelectionPersistence.rawValue(forTypedRoute: .review(.schedule)),
+            "schedule"
+        )
+        XCTAssertEqual(
+            ProjectBoardSelectionPersistence.rawValue(forTypedRoute: .voiceCommand),
+            "secretary"
         )
         XCTAssertEqual(ProjectBoardSelectionPersistence.rawValue(forTypedRoute: .project(0)), "project:0")
         XCTAssertEqual(ProjectBoardSelectionPersistence.rawValue(forTypedRoute: .smartList("")), "smart-list-v1:")

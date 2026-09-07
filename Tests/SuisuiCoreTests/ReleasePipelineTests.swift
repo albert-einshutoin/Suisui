@@ -5332,7 +5332,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains(#"Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\"1\", modifiers: [.command])"#))
         XCTAssertTrue(script.contains(#"Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\"2\", modifiers: [.command])"#))
         XCTAssertTrue(script.contains(#"Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\"3\", modifiers: [.command])"#))
-        XCTAssertTrue(script.contains(#"Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\"4\", modifiers: [.command])"#))
+        XCTAssertFalse(script.contains(#"Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\"4\", modifiers: [.command])"#))
         XCTAssertTrue(script.contains("Sources/SuisuiApp/Views/MenuBarPanel.swift::.keyboardShortcut(.return, modifiers: [.command])"))
         XCTAssertTrue(script.contains("--runtime"))
         XCTAssertTrue(script.contains("--skip-source-anchors"))
@@ -5374,11 +5374,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("Delete task cancel=>task-inspector-delete-confirmation-cancel"))
         XCTAssertFalse(script.contains("project-inspector-save=>Saves edits"))
         XCTAssertFalse(script.contains("project-inspector-delete=>Deletes the selected project"))
-        XCTAssertTrue(script.contains("Inbox sidebar=>sidebar-destination-inbox"))
-        XCTAssertTrue(script.contains("Today sidebar=>sidebar-destination-today"))
+        XCTAssertTrue(script.contains("Secretary sidebar=>sidebar-destination-secretary"))
+        XCTAssertTrue(script.contains("Schedule sidebar=>sidebar-destination-schedule"))
+        XCTAssertTrue(script.contains("Work sidebar=>sidebar-destination-work"))
         XCTAssertTrue(script.contains("Settings sidebar=>sidebar-action-settings"))
-        XCTAssertTrue(script.contains("Voice Command sidebar=>sidebar-action-voice-command"))
-        XCTAssertTrue(script.contains("Project navigation"))
+        XCTAssertTrue(script.contains("Primary navigation"))
         XCTAssertTrue(script.contains("Project board detail"))
         XCTAssertTrue(script.contains("Open task"))
         XCTAssertTrue(script.contains("Inline Task Composer"))
@@ -5427,7 +5427,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(checklist.contains("VoiceOver focus path AX identifier/help signals as `focusPathSignals=6/6`"))
         XCTAssertTrue(checklist.contains("destructive delete cancellation signals as `destructiveCancelSignals=1/1`"))
         XCTAssertTrue(checklist.contains("primary task button label/help signals as `buttonA11ySignals=8/8`"))
-        XCTAssertTrue(checklist.contains("Inbox, Today, Settings, and Voice Command entry signals as `screenSignals=4/4`"))
+        XCTAssertTrue(checklist.contains("Secretary, Schedule, Work, and Settings entry signals as `screenSignals=4/4`"))
         XCTAssertTrue(checklist.contains("scans visible windows by AX role"))
         XCTAssertTrue(phase14.contains("- [x] 主要buttonがAX labelまたはhelpを失ったら失敗するruntime smokeを追加する。"))
         XCTAssertTrue(phase14.contains("- [x] `check_accessibility_preflight.sh --runtime` の対象画面をInbox/Today/Settingsへ広げる。"))
@@ -7463,7 +7463,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1"))
         XCTAssertTrue(script.contains("/usr/bin/env -i"))
         XCTAssertFalse(script.contains("SUISUI_LAUNCH_RECOVERY_MODE="))
-        XCTAssertTrue(script.contains("SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=\"today\""))
+        XCTAssertTrue(script.contains("\"today|today|work-hub-compact-navigation|today-workflow\""))
         XCTAssertTrue(script.contains("project-board-sidebar-toggle"))
         XCTAssertTrue(script.contains("today-workflow"))
         XCTAssertTrue(script.contains("ui_evidence_ax_identifier_count.swift"))
@@ -7570,7 +7570,7 @@ final class ReleasePipelineTests: XCTestCase {
         let script = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
 
         XCTAssertTrue(boardSource.contains("selectedDestination == .inbox ? .hidden : .automatic"))
-        XCTAssertTrue(script.contains("if [[ \"$route_id\" != \"inbox\" ]]; then"))
+        XCTAssertTrue(script.contains("if [[ \"$route_id\" != \"inbox\" && \"$route_id\" != \"work-inbox\" ]]; then"))
         XCTAssertTrue(script.contains("wait_for_marker_until \"project-board-sidebar-toggle\" \"\" \"$case_deadline\""))
         XCTAssertTrue(script.contains("wait_for_marker_until \"$route_sidebar_marker\" \"\" \"$case_deadline\""))
         XCTAssertTrue(script.contains("wait_for_marker_until \"$route_content_marker\" \"$route_text\" \"$case_deadline\""))
@@ -8038,14 +8038,12 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(contentSizeHelper.contains("Int(components[1]) != nil"))
         XCTAssertTrue(script.contains("inspector-wide-open"))
         XCTAssertTrue(script.contains("window-wide"))
-        XCTAssertTrue(script.contains("destination-inbox"))
+        XCTAssertTrue(script.contains("destination-secretary"))
         XCTAssertTrue(script.contains("destination-schedule"))
-        XCTAssertTrue(script.contains("destination-completed"))
-        XCTAssertTrue(script.contains("destination-review-assistant-queue"))
-        XCTAssertTrue(script.contains("destination-today"))
-        XCTAssertTrue(script.contains("sidebar-destination-inbox"))
+        XCTAssertTrue(script.contains("destination-work"))
+        XCTAssertTrue(script.contains("sidebar-destination-secretary"))
         XCTAssertTrue(script.contains("sidebar-destination-schedule"))
-        XCTAssertTrue(script.contains("sidebar-destination-completed"))
+        XCTAssertTrue(script.contains("sidebar-destination-work"))
         XCTAssertFalse(script.contains("sidebar-destination-review"))
         XCTAssertTrue(script.contains("readonly SIDEBAR_DESTINATION_FIRST_ROW_CENTER_Y_OFFSET_PX=142"))
         XCTAssertTrue(script.contains("readonly SIDEBAR_DESTINATION_ROW_STRIDE_PX=34"))
@@ -8055,19 +8053,18 @@ final class ReleasePipelineTests: XCTestCase {
             mappingLines,
             [
                 "case \"$destination_identifier\" in",
-                "sidebar-destination-inbox)", "destination_index=0", ";;",
-                "sidebar-destination-today)", "destination_index=1", ";;",
-                "sidebar-destination-projects)", "destination_index=2", ";;",
-                "sidebar-destination-schedule)", "destination_index=3", ";;",
-                "sidebar-destination-completed)", "destination_index=4", ";;",
+                "sidebar-destination-secretary)", "destination_index=0", ";;",
+                "sidebar-destination-schedule)", "destination_index=1", ";;",
+                "sidebar-destination-work)", "destination_index=2", ";;",
             ]
         )
         XCTAssertTrue(coordinateFallbackSource.contains("target_x=$((window_x + SIDEBAR_DESTINATION_ROW_CENTER_X_OFFSET_PX))"))
         XCTAssertTrue(coordinateFallbackSource.contains("target_y=$((window_y + SIDEBAR_DESTINATION_FIRST_ROW_CENTER_Y_OFFSET_PX + destination_index * SIDEBAR_DESTINATION_ROW_STRIDE_PX))"))
+        XCTAssertTrue(script.contains("assert_sidebar_destination_window_size_stable \"destination-secretary\" \"sidebar-destination-secretary\" \"Secretary\" \"voice-command-root\""))
         XCTAssertTrue(script.contains("assert_sidebar_destination_window_size_stable \"destination-schedule\" \"sidebar-destination-schedule\" \"Schedule\" \"schedule-workflow\""))
-        XCTAssertTrue(script.contains("assert_sidebar_destination_window_size_stable \"destination-completed\" \"sidebar-destination-completed\" \"Completed\" \"done-workflow\""))
-        XCTAssertTrue(script.contains("review-destination-assistant-queue"))
-        XCTAssertTrue(script.contains("sidebar-destination-today"))
+        XCTAssertTrue(script.contains("assert_sidebar_destination_window_size_stable \"destination-work\" \"sidebar-destination-work\" \"Work\" \"work-hub\""))
+        XCTAssertFalse(script.contains("review-destination-assistant-queue"))
+        XCTAssertFalse(script.contains("sidebar-destination-today"))
         XCTAssertTrue(script.contains("BLOCKER: Project Board window size changed after selecting"))
         XCTAssertTrue(script.contains("BLOCKER: layout frame overlaps after"))
         XCTAssertTrue(script.contains("BLOCKER: layout frame is clipped outside window after"))
@@ -8124,11 +8121,11 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("SUISUI_FORCE_PROJECT_BOARD_FALLBACK"))
         XCTAssertTrue(script.contains("HOME=\"$PERFORMANCE_HOME\""))
         XCTAssertTrue(script.contains("CFFIXED_USER_HOME=\"$PERFORMANCE_HOME\""))
-        XCTAssertTrue(script.contains("SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=\"today\""))
+        XCTAssertTrue(script.contains("SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=\"secretary\""))
         XCTAssertTrue(script.contains("prepare_production_fixture"))
         XCTAssertTrue(script.contains("wait_for_database_schema"))
         XCTAssertTrue(script.contains("source_command = 'ui-performance'"))
-        XCTAssertTrue(script.contains("wait_for_marker \"today-workflow\""))
+        XCTAssertTrue(script.contains("wait_for_marker \"voice-command-root\""))
         XCTAssertTrue(script.contains("ax_wait_for_owned_app_pid"))
         XCTAssertTrue(script.contains("application processes whose unix id is appPID"))
         XCTAssertTrue(script.contains("set targetProcess to item 1 of matchingProcesses"))
@@ -8189,7 +8186,7 @@ final class ReleasePipelineTests: XCTestCase {
         )
         let destinationAggregationStart = try XCTUnwrap(
             script.range(
-                of: "median_destination_inbox_ms=",
+                of: "median_destination_secretary_ms=",
                 range: destinationLoopEnd.upperBound..<script.endIndex
             )
         ).lowerBound
@@ -8231,15 +8228,15 @@ final class ReleasePipelineTests: XCTestCase {
         for pair in zip(phaseOrder, phaseOrder.dropFirst()) {
             XCTAssertLessThan(pair.0, pair.1)
         }
-        let inboxValueMutation = destinationSampleLoop.replacingOccurrences(
+        let scheduleValueMutation = destinationSampleLoop.replacingOccurrences(
             of: "  \(scheduleMeasure)\n  \(scheduleAppend)",
             with: "  \(scheduleAppend)\n  \(scheduleMeasure)"
         )
-        XCTAssertNotEqual(inboxValueMutation, destinationSampleLoop)
+        XCTAssertNotEqual(scheduleValueMutation, destinationSampleLoop)
         XCTAssertThrowsError(
             try orderedShellStatementIndices(
                 [scheduleMeasure, scheduleAppend],
-                in: inboxValueMutation
+                in: scheduleValueMutation
             )
         )
         XCTAssertFalse(script.contains("sidebar-destination-review"))
@@ -8276,16 +8273,17 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertLessThan(retriedPress.lowerBound, markerWait.lowerBound)
         XCTAssertLessThan(markerWait.lowerBound, measurementEnd.lowerBound)
         XCTAssertTrue(script.contains("measure_review_assistant_queue"))
-        XCTAssertTrue(script.contains("try_click_destination \"review-destination-assistant-queue\""))
-        XCTAssertTrue(script.contains("click_sidebar_destination \"review-hub-compact-navigation\" \"Review view chooser\""))
-        XCTAssertTrue(script.contains("click_destination_until_available \"review-hub-compact-destination-assistant-queue\" \"Pending Actions\""))
+        XCTAssertTrue(script.contains("try_click_destination \"work-destination-pending-actions\""))
+        XCTAssertTrue(script.contains("click_sidebar_destination \"work-hub-compact-navigation\" \"Work view chooser\""))
+        XCTAssertTrue(script.contains("click_destination_until_available \"work-destination-pending-actions\" \"Pending Actions\""))
         XCTAssertTrue(script.contains("wait_for_marker \"assistant-queue-workflow\""))
         XCTAssertFalse(script.contains("sidebar-destination-assistant-queue"))
-        XCTAssertTrue(script.contains("measure_destination \"destination-today\" \"$sample_index\" \"sidebar-destination-today\" \"Today\" \"today-workflow\""))
+        XCTAssertTrue(script.contains("measure_destination \"destination-secretary\" \"$sample_index\" \"sidebar-destination-secretary\" \"Secretary\" \"voice-command-root\""))
+        XCTAssertTrue(script.contains("measure_destination \"destination-work\" \"$sample_index\" \"sidebar-destination-work\" \"Work\" \"work-hub\""))
         XCTAssertTrue(script.contains("record_elapsed_sample \"$label-sample-$sample_index\""))
         XCTAssertTrue(script.contains("record_elapsed_sample \"destination-assistant-queue-sample-$sample_index\""))
-        XCTAssertTrue(script.contains("median_destination_today_ms"))
-        XCTAssertTrue(script.contains("record_elapsed_sample \"destination-today\" \"$median_destination_today_ms\" \"$MAX_DESTINATION_SWITCH_MS\""))
+        XCTAssertTrue(script.contains("median_destination_secretary_ms"))
+        XCTAssertTrue(script.contains("record_elapsed_sample \"destination-secretary\" \"$median_destination_secretary_ms\" \"$MAX_DESTINATION_SWITCH_MS\""))
         XCTAssertFalse(script.contains("ax_wait_for_visible_window"))
         XCTAssertTrue(script.contains("/usr/bin/swiftc \"$AX_PRESS_ELEMENT_HELPER\" -o \"$AX_PRESS_ELEMENT_HELPER_EXECUTABLE\""))
         XCTAssertTrue(script.contains("/usr/bin/swiftc \"$AX_MARKER_HELPER\" -o \"$AX_MARKER_HELPER_EXECUTABLE\""))

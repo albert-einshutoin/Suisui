@@ -432,7 +432,7 @@ open_app() {
   fi
   /usr/bin/env -i PATH="$PATH" TMPDIR="$OUTPUT_DIR" HOME="$PERFORMANCE_HOME" CFFIXED_USER_HOME="$PERFORMANCE_HOME" \
     SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 SUISUI_DATABASE_PATH="$PERFORMANCE_DATABASE_PATH" \
-    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="today" \
+    SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="secretary" \
     SUISUI_LAUNCH_TIMELINE_PATH="$timeline_path" \
     "$APP_BINARY" -ApplePersistenceIgnoreState YES >/dev/null 2>"$APP_STDERR_FIFO" &
   APP_LAUNCH_PID=$!
@@ -819,7 +819,7 @@ measure_cold_launch_sample() {
   # correspond to real, operable UI rather than optimistic instrumentation.
   wait_for_visible_window
   wait_for_marker "project-board-sidebar-toggle"
-  wait_for_marker "today-workflow"
+  wait_for_marker "voice-command-root"
 
   visible_elapsed_ms=$((visible_window_ms - launch_start_ms))
   command_ready_elapsed_ms=$((command_ready_ms - launch_start_ms))
@@ -859,14 +859,14 @@ measure_review_assistant_queue() {
   local sample_index="$1"
   local start_ms end_ms
   start_ms="$(now_ms)"
-  if try_click_destination "review-destination-assistant-queue"; then
-    printf "OK: selected Pending Actions from wide Review navigation\n"
+  if try_click_destination "work-destination-pending-actions"; then
+    printf "OK: selected Pending Actions from wide Work navigation\n"
   else
-    # The default CI window can render Review in compact mode. Open the visible
+    # The default CI window can render Work in compact mode. Open the visible
     # chooser and press its stable menu-item identifier without changing the
     # product's adaptive breakpoint solely for performance evidence.
-    click_sidebar_destination "review-hub-compact-navigation" "Review view chooser"
-    click_destination_until_available "review-hub-compact-destination-assistant-queue" "Pending Actions"
+    click_sidebar_destination "work-hub-compact-navigation" "Work view chooser"
+    click_destination_until_available "work-destination-pending-actions" "Pending Actions"
   fi
   wait_for_marker "assistant-queue-workflow"
   end_ms="$(now_ms)"
@@ -951,37 +951,36 @@ activate_app
 # the measured destination samples so AX setup latency cannot be mistaken for
 # a product navigation regression.
 wait_for_marker "project-board-sidebar"
-DESTINATION_INBOX_SAMPLES=()
+DESTINATION_SECRETARY_SAMPLES=()
 DESTINATION_SCHEDULE_SAMPLES=()
 DESTINATION_ASSISTANT_QUEUE_SAMPLES=()
-DESTINATION_TODAY_SAMPLES=()
+DESTINATION_WORK_SAMPLES=()
 LAST_DESTINATION_ELAPSED_MS=""
 
 # Repeat the real navigation cycle instead of pressing an already-selected
 # destination. This preserves the product route under test while median
 # enforcement filters one contended hosted-runner transition.
 for sample_index in $(seq 1 "$DESTINATION_SAMPLE_COUNT"); do
-  measure_destination "destination-inbox" "$sample_index" "sidebar-destination-inbox" "Inbox" "inbox-workflow"
-  DESTINATION_INBOX_SAMPLES+=("$LAST_DESTINATION_ELAPSED_MS")
-  # Schedule is the represented sidebar entry for review workflows. Assistant
-  # Queue remains a separately measured nested transition so the benchmark
-  # proves both the new IA and the existing review workflow path.
+  measure_destination "destination-secretary" "$sample_index" "sidebar-destination-secretary" "Secretary" "voice-command-root"
+  DESTINATION_SECRETARY_SAMPLES+=("$LAST_DESTINATION_ELAPSED_MS")
   measure_destination "destination-schedule" "$sample_index" "sidebar-destination-schedule" "Schedule" "schedule-workflow"
   DESTINATION_SCHEDULE_SAMPLES+=("$LAST_DESTINATION_ELAPSED_MS")
+  measure_destination "destination-work" "$sample_index" "sidebar-destination-work" "Work" "work-hub"
+  DESTINATION_WORK_SAMPLES+=("$LAST_DESTINATION_ELAPSED_MS")
+  # Pending Actions remains a separately measured nested transition so the
+  # benchmark proves the consolidated Work surface still reaches the canonical queue.
   measure_review_assistant_queue "$sample_index"
   DESTINATION_ASSISTANT_QUEUE_SAMPLES+=("$LAST_DESTINATION_ELAPSED_MS")
-  measure_destination "destination-today" "$sample_index" "sidebar-destination-today" "Today" "today-workflow"
-  DESTINATION_TODAY_SAMPLES+=("$LAST_DESTINATION_ELAPSED_MS")
 done
 
-median_destination_inbox_ms="$(median_elapsed_ms "${DESTINATION_INBOX_SAMPLES[@]}")"
+median_destination_secretary_ms="$(median_elapsed_ms "${DESTINATION_SECRETARY_SAMPLES[@]}")"
 median_destination_schedule_ms="$(median_elapsed_ms "${DESTINATION_SCHEDULE_SAMPLES[@]}")"
 median_destination_assistant_queue_ms="$(median_elapsed_ms "${DESTINATION_ASSISTANT_QUEUE_SAMPLES[@]}")"
-median_destination_today_ms="$(median_elapsed_ms "${DESTINATION_TODAY_SAMPLES[@]}")"
-record_elapsed_sample "destination-inbox" "$median_destination_inbox_ms" "$MAX_DESTINATION_SWITCH_MS"
+median_destination_work_ms="$(median_elapsed_ms "${DESTINATION_WORK_SAMPLES[@]}")"
+record_elapsed_sample "destination-secretary" "$median_destination_secretary_ms" "$MAX_DESTINATION_SWITCH_MS"
 record_elapsed_sample "destination-schedule" "$median_destination_schedule_ms" "$MAX_DESTINATION_SWITCH_MS"
+record_elapsed_sample "destination-work" "$median_destination_work_ms" "$MAX_DESTINATION_SWITCH_MS"
 record_elapsed_sample "destination-assistant-queue" "$median_destination_assistant_queue_ms" "$MAX_DESTINATION_SWITCH_MS"
-record_elapsed_sample "destination-today" "$median_destination_today_ms" "$MAX_DESTINATION_SWITCH_MS"
 
 printf '\nStatus: passed\n' >>"$SUMMARY_FILE"
 printf "OK: release launch performance smoke passed; artifacts written to %s\n" "$OUTPUT_DIR"

@@ -31,17 +31,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("case board"))
     }
 
-    func testProjectBoardSidebarMatchesApprovedTodaySampleStructure() throws {
+    func testProjectBoardSidebarMatchesSecretaryScheduleWorkStructure() throws {
         let sidebarSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift"
         )
         let requiredMarkers = [
-            "sidebar-destination-inbox",
-            "sidebar-destination-today",
-            "sidebar-destination-projects",
+            "sidebar-destination-secretary",
             "sidebar-destination-schedule",
-            "sidebar-destination-completed",
-            "sidebar-action-voice-command",
+            "sidebar-destination-work",
             "sidebar-action-settings",
         ]
 
@@ -80,8 +77,8 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertTrue(searchButton.contains(".contentShape(Rectangle())"))
         XCTAssertFalse(sidebarSource.contains("ScrollView {"))
-        XCTAssertTrue(sidebarSource.contains("sidebar-destination-completed"))
-        XCTAssertTrue(sidebarSource.contains("sidebar-action-voice-command"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-destination-secretary"))
+        XCTAssertTrue(sidebarSource.contains("sidebar-destination-work"))
         XCTAssertTrue(sidebarSource.contains("sidebar-action-settings"))
         XCTAssertTrue(sidebarSource.contains(".layoutPriority(1)"))
 
@@ -194,44 +191,42 @@ final class AppExperienceSourceTests: XCTestCase {
         let expectedEnglish = [
             "Suisui": "Suisui",
             "Welcome to Suisui": "Welcome to Suisui",
-            "Inbox": "Inbox",
+            "Secretary": "Secretary",
             "Schedule": "Schedule",
+            "Work": "Work",
+            "Primary navigation": "Primary navigation",
             "Add Task": "Add Task",
             "Quick Actions": "Quick Actions",
             "Search": "Search",
             "Completed": "Completed",
             "Add by Voice": "Add by Voice",
             "Block Time": "Block Time",
-            "Navigate work or open a quick action.": "Navigate work or open a quick action.",
+            "Navigate secretary, schedule, or work.": "Navigate secretary, schedule, or work.",
             "Opens the command palette.": "Opens the command palette.",
             "Creates a local schedule draft without writing Calendar.":
                 "Creates a local schedule draft without writing Calendar.",
-            "No items today": "No items today",
-            "No projects": "No projects",
             "No scheduled items": "No scheduled items",
-            "No completed items": "No completed items",
             "Opens this section.": "Opens this section.",
         ]
         let expectedJapanese = [
             "Suisui": "Suisui",
             "Welcome to Suisui": "Suisuiへようこそ",
-            "Inbox": "受信箱",
+            "Secretary": "秘書",
             "Schedule": "スケジュール",
+            "Work": "仕事",
+            "Primary navigation": "メインナビゲーション",
             "Add Task": "タスクを追加",
             "Quick Actions": "クイックアクション",
             "Search": "検索",
             "Completed": "完了",
             "Add by Voice": "音声で追加",
             "Block Time": "時間をブロック",
-            "Navigate work or open a quick action.":
-                "作業画面へ移動するか、クイックアクションを開きます。",
+            "Navigate secretary, schedule, or work.":
+                "秘書・予定・仕事へ移動します。",
             "Opens the command palette.": "コマンドパレットを開きます。",
             "Creates a local schedule draft without writing Calendar.":
                 "カレンダーへ書き込まず、ローカルのスケジュール下書きを作成します。",
-            "No items today": "今日の項目はありません",
-            "No projects": "プロジェクトはありません",
             "No scheduled items": "予定項目はありません",
-            "No completed items": "完了済みの項目はありません",
             "Opens this section.": "このセクションを開きます。",
         ]
 
@@ -329,10 +324,10 @@ final class AppExperienceSourceTests: XCTestCase {
         )
         XCTAssertTrue(search.contains(".help(LocalizedStringKey(\"Opens the command palette.\"))"))
 
-        XCTAssertTrue(root.contains(".accessibilityLabel(Text(LocalizedStringKey(\"Project navigation\")))"))
+        XCTAssertTrue(root.contains(".accessibilityLabel(Text(LocalizedStringKey(\"Primary navigation\")))"))
         XCTAssertTrue(
             root.contains(
-                ".accessibilityHint(Text(LocalizedStringKey(\"Navigate work or open a quick action.\")))"
+                ".accessibilityHint(Text(LocalizedStringKey(\"Navigate secretary, schedule, or work.\")))"
             )
         )
 
@@ -343,7 +338,7 @@ final class AppExperienceSourceTests: XCTestCase {
             )
         )
         XCTAssertEqual(sidebar.components(separatedBy: "\"Opens this section.\"").count - 1, 1)
-        XCTAssertFalse(destinationRow.contains("Navigate work or open a quick action."))
+        XCTAssertFalse(destinationRow.contains("Navigate secretary, schedule, or work."))
         XCTAssertTrue(sidebar.contains("case .route(let destination):"))
         XCTAssertTrue(sidebar.contains("route = destination"))
         XCTAssertFalse(sidebar.contains("preconditionFailure"))
@@ -388,11 +383,7 @@ final class AppExperienceSourceTests: XCTestCase {
             )
         )
         for mapping in [
-            "case .inbox: localizedDisplay(\"No pending items\")",
-            "case .today: localizedDisplay(\"No items today\")",
-            "case .projects: localizedDisplay(\"No projects\")",
             "case .schedule: localizedDisplay(\"No scheduled items\")",
-            "case .completed: localizedDisplay(\"No completed items\")",
         ] {
             XCTAssertTrue(countValue.contains(mapping), "Missing zero-count mapping: \(mapping)")
         }
@@ -737,17 +728,17 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testNestedHubsUseCompactPresentationPolicyAtNarrowWidths() throws {
         let projects = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift")
-        let review = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift")
+        let work = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardWorkHubView.swift")
 
-        for source in [projects, review] {
+        for source in [projects, work] {
             XCTAssertTrue(source.contains("GeometryReader"))
             XCTAssertTrue(source.contains("ProjectBoardHubPresentationPolicy.presentation"))
             XCTAssertTrue(source.contains("case .compact:"))
             XCTAssertTrue(source.contains("case .wide:"))
         }
         XCTAssertTrue(projects.contains("projects-hub-compact-navigation"))
-        XCTAssertTrue(review.contains("review-hub-compact-navigation"))
-        XCTAssertTrue(review.contains("review-hub-compact-destination-assistant-queue"))
+        XCTAssertTrue(work.contains("work-hub-compact-navigation"))
+        XCTAssertTrue(work.contains("work-destination-pending-actions"))
     }
 
     func testCompactProjectsHubPreservesWideNavigationAndActionParity() throws {
@@ -784,22 +775,15 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(block.contains("projects-hub-compact-add-project"))
     }
 
-    func testCompactHubLabelsUseTypedPresentationAndPreserveDestinationParity() throws {
-        let review = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift")
+    func testCompactHubLabelsPreserveDestinationParity() throws {
+        let work = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardWorkHubView.swift")
         let projects = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift")
 
-        let reviewCompactStart = try XCTUnwrap(
-            review.range(of: "private var compactNavigation")
+        let workCompactStart = try XCTUnwrap(work.range(of: "private var compactNavigation"))
+        let workCompactEnd = try XCTUnwrap(
+            work.range(of: "private func compactDestination", range: workCompactStart.upperBound..<work.endIndex)
         )
-        let reviewCompactEnd = try XCTUnwrap(
-            review.range(
-                of: "private func compactDestination",
-                range: reviewCompactStart.upperBound..<review.endIndex
-            )
-        )
-        let reviewCompact = String(
-            review[reviewCompactStart.lowerBound..<reviewCompactEnd.lowerBound]
-        )
+        let workCompact = String(work[workCompactStart.lowerBound..<workCompactEnd.lowerBound])
         let projectsCompactStart = try XCTUnwrap(
             projects.range(of: "private var compactNavigation")
         )
@@ -814,40 +798,23 @@ final class AppExperienceSourceTests: XCTestCase {
         )
 
         XCTAssertTrue(
-            reviewCompact.contains("ProjectBoardCompactNavigationPresentation.review(")
-        )
-        XCTAssertTrue(
             projectsCompact.contains("ProjectBoardCompactNavigationPresentation.projects(")
         )
-        XCTAssertTrue(reviewCompact.contains("compactLabel(presentation)"))
         XCTAssertTrue(projectsCompact.contains("compactLabel(presentation)"))
-        XCTAssertTrue(reviewCompact.contains("case .localized"))
-        XCTAssertTrue(reviewCompact.contains("case .verbatim"))
         XCTAssertTrue(projectsCompact.contains("case .localized"))
         XCTAssertTrue(projectsCompact.contains("case .verbatim"))
-        XCTAssertTrue(reviewCompact.contains(".help(\"Choose Review destination.\")"))
+        XCTAssertTrue(workCompact.contains(".help(\"Choose Work destination.\")"))
         XCTAssertTrue(projectsCompact.contains(".help(\"Choose Project destination.\")"))
-        XCTAssertTrue(reviewCompact.contains("\"%d item needs attention\""))
-        XCTAssertTrue(reviewCompact.contains("\"%d items need attention\""))
-        XCTAssertFalse(reviewCompact.contains("Label(\"Choose Review View\""))
         XCTAssertFalse(projectsCompact.contains("Label(\"Choose Project View\""))
-
-        for identifier in [
-            "review-hub-compact-destination-schedule",
-            "review-hub-compact-destination-completed",
-            "review-hub-compact-destination-assistant-queue"
-        ] {
-            XCTAssertTrue(review.contains(identifier))
-        }
+        XCTAssertTrue(work.contains("Pending Actions"))
+        XCTAssertTrue(work.contains("work-destination-completed"))
     }
 
-    func testProjectsAndReviewHubsExposeRelocatedDestinations() throws {
+    func testWorkHubExposesRelocatedDestinations() throws {
         let projectsSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift"
         )
-        let reviewSource = try readPackageFile(
-            "Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift"
-        )
+        let workSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardWorkHubView.swift")
 
         XCTAssertTrue(projectsSource.contains("projects-hub-portfolio"))
         XCTAssertTrue(projectsSource.contains("projects-hub-smart-lists"))
@@ -855,13 +822,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(projectsSource.contains("projects-hub-completed"))
         XCTAssertTrue(projectsSource.contains("projects-hub-archived"))
 
-        XCTAssertTrue(reviewSource.contains("review-hub"))
-        XCTAssertTrue(reviewSource.contains("review-destination-schedule"))
-        XCTAssertTrue(reviewSource.contains("review-destination-completed"))
-        XCTAssertTrue(reviewSource.contains("review-destination-assistant-queue"))
-        XCTAssertTrue(reviewSource.contains("Pending Actions"))
-        XCTAssertFalse(reviewSource.contains("review-destination-automation-activity"))
-        XCTAssertTrue(reviewSource.contains("review-hub-compact-destination-assistant-queue"))
+        XCTAssertTrue(workSource.contains("work-hub"))
+        XCTAssertTrue(workSource.contains("work-destination-today"))
+        XCTAssertTrue(workSource.contains("work-destination-inbox"))
+        XCTAssertTrue(workSource.contains("work-destination-projects"))
+        XCTAssertTrue(workSource.contains("work-destination-completed"))
+        XCTAssertTrue(workSource.contains("work-destination-pending-actions"))
+        XCTAssertFalse(workSource.contains("review-destination-automation-activity"))
     }
 
     func testEvidenceRouteOverrideRemainsProcessLocalWhileNavigationStaysTyped() throws {
@@ -1123,17 +1090,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertEqual(
             routeRows,
             [
-                "inbox|inbox|sidebar-destination-inbox|inbox-workflow",
-                "today|today|sidebar-destination-today|today-workflow",
-                "review|primary:review|sidebar-destination-schedule|review-hub",
-                "review-schedule|review:schedule|sidebar-destination-schedule|schedule-workflow",
-                "review-completed|review:completed|sidebar-destination-completed|done-workflow",
-                "review-automation|review:automation|sidebar-destination-schedule|automation-activity-workflow",
-                "review-assistant-queue|review:assistant-queue|sidebar-destination-schedule|assistant-queue-workflow",
-                "projects|projects|sidebar-destination-projects|projects-portfolio-overview",
+                "secretary|secretary|project-board-sidebar-toggle|voice-conversation-workspace",
+                "review-schedule|schedule|project-board-sidebar-toggle|schedule-workflow",
+                "work|work|work-hub-compact-navigation|work-hub",
+                "today|today|work-hub-compact-navigation|today-workflow",
+                "work-inbox|inbox|work-hub-compact-navigation|inbox-workflow",
+                "work-projects|projects|work-hub-compact-navigation|projects-portfolio-overview",
+                "smart-list|smart-list-v1:cHJlc2V0LWR1ZS10aGlzLXdlZWs=|work-hub-compact-navigation|smart-list-workflow",
+                "work-completed|review:completed|work-hub-compact-navigation|done-workflow",
+                "review-assistant-queue|review:assistant-queue|work-hub-compact-navigation|assistant-queue-workflow",
+                "review-automation|review:automation|work-hub-compact-navigation|assistant-queue-workflow",
             ]
         )
-        XCTAssertEqual(routeRows.count, 8)
+        XCTAssertEqual(routeRows.count, 10)
         XCTAssertThrowsError(try bashArrayStringPayloads(in: routesSource + "\n  unquoted-extra"))
         XCTAssertEqual(
             try bashArrayStringPayloads(in: #"  "route-with-\"escaped-quote\"""#),
@@ -1144,7 +1113,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(routeRows.contains { $0.contains("sidebar-destination-review") })
         XCTAssertTrue(script.contains("navigate_to_seed_project()"))
         XCTAssertTrue(script.contains("\"project:$seed_project_id\""))
-        XCTAssertTrue(script.contains("\"sidebar-destination-projects\""))
+        XCTAssertTrue(script.contains("\"work-hub-compact-navigation\""))
         XCTAssertTrue(script.contains("project-sidebar-row-$seed_project_id"))
         XCTAssertTrue(script.contains("route_content_marker=\"project-board-detail\""))
         XCTAssertTrue(script.contains("route_content_marker=\"project-inspector\""))
@@ -1229,7 +1198,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(persistenceSource.contains("case assistantQueue"))
         XCTAssertTrue(persistenceSource.contains("return \"assistant-queue\""))
-        XCTAssertTrue(boardSource.contains("review-destination-assistant-queue"))
+        XCTAssertTrue(boardSource.contains("work-destination-pending-actions"))
         XCTAssertTrue(boardSource.contains("case .review(.assistantQueue):"))
         XCTAssertTrue(boardSource.contains("AssistantQueueWorkflowView(viewModel: viewModel)"))
         XCTAssertTrue(boardSource.contains("case .primary(.review):"))
@@ -1547,7 +1516,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(persistenceSource.contains("case projects"))
         XCTAssertTrue(persistenceSource.contains("case .projects:"))
         XCTAssertTrue(persistenceSource.contains("return \"projects\""))
-        XCTAssertTrue(boardSource.contains("sidebar-destination-projects"))
+        XCTAssertTrue(boardSource.contains("work-destination-projects"))
         XCTAssertTrue(boardSource.contains(".tag(BoardRoute.primary(.projects))"))
         XCTAssertTrue(boardSource.contains("ProjectsPortfolioOverview("))
         XCTAssertTrue(boardSource.contains(".tag(BoardRoute.project(project.id))"))
@@ -1839,7 +1808,7 @@ final class AppExperienceSourceTests: XCTestCase {
             "Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift",
             "Sources/SuisuiApp/Views/ProjectWorkflowScheduleView.swift",
             "Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift",
-            "Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift",
+            "Sources/SuisuiApp/Views/ProjectBoardWorkHubView.swift",
             "Sources/SuisuiApp/Views/SettingsStatusOverviewView.swift",
             "Sources/SuisuiApp/Views/VoiceCaptureView.swift"
         ]
@@ -2156,9 +2125,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("inspector-wide-stays-closed"))
         XCTAssertFalse(script.contains("inspector-wide-restored"))
         XCTAssertTrue(script.contains("\"sidebar-destination-schedule\" \"Schedule\" \"schedule-workflow\""))
-        XCTAssertTrue(script.contains("\"sidebar-destination-completed\" \"Completed\" \"done-workflow\""))
+        XCTAssertTrue(script.contains("\"sidebar-destination-work\" \"Work\" \"work-hub\""))
         XCTAssertFalse(script.contains("sidebar-destination-review"))
-        XCTAssertTrue(script.contains("\"review-destination-assistant-queue\" \"assistant-queue-workflow\""))
+        XCTAssertTrue(script.contains("destination-work"))
         XCTAssertTrue(script.contains("LAYOUT_STABILITY_FRAME_DELTA_THRESHOLD_PX:-0"))
     }
 
@@ -2827,7 +2796,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("exercise_sidebar_entrypoints"))
         XCTAssertTrue(script.contains("press_ax_button \"sidebar-open-search\""))
         XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"command-palette-input\" \"present\""))
-        XCTAssertTrue(script.contains("press_ax_button \"sidebar-action-voice-command\""))
+        XCTAssertTrue(script.contains("press_ax_button \"sidebar-destination-secretary\""))
         XCTAssertTrue(script.contains("wait_for_process_ax_identifier \"voice-conversation-workspace\" \"present\""))
         XCTAssertEqual(
             script.components(
@@ -2844,7 +2813,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("SUISUI_RUNTIME_CRUD_RECOVERY_MODE=1"))
         XCTAssertTrue(script.contains("SUISUI_RUNTIME_CRUD_RECOVERY_MODE=1 \\\n    SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1"))
         XCTAssertTrue(script.contains("press_ax_button \"project-board-settings-link\""))
-        XCTAssertTrue(script.contains("press_ax_button \"project-board-voice-command\""))
+        XCTAssertTrue(script.contains("press_ax_button \"sidebar-destination-secretary\""))
         XCTAssertTrue(script.contains("PID-owned AX button was not pressable"))
         XCTAssertTrue(script.contains("click_sidebar_toggle() {\n  press_ax_button \"project-board-sidebar-toggle\"\n}"))
         XCTAssertTrue(script.contains("exercise_keyboard_entrypoints() {\n  launch_header_layout_candidate\n  wait_for_project_detail_visible"))
@@ -2871,15 +2840,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertFalse(script.contains("exercise_primary_destination_shortcut()"))
         XCTAssertTrue(
             script.contains(
-                "press_keyboard_shortcut 18 \"command\" \"skip-board-focus\"\n  wait_for_process_ax_identifier \"today-workflow\" \"present\"\n  wait_for_process_ax_identifier \"projects-portfolio-overview\" \"absent\"\n  press_keyboard_shortcut 20 \"command\" \"skip-board-focus\"\n  wait_for_process_ax_identifier \"projects-portfolio-overview\" \"present\"\n  wait_for_process_ax_identifier \"today-workflow\" \"absent\"\n  press_keyboard_shortcut 19 \"command\" \"skip-board-focus\"\n  wait_for_process_ax_identifier \"inbox-workflow\" \"present\"\n  wait_for_process_ax_identifier \"projects-portfolio-overview\" \"absent\"\n  press_keyboard_shortcut 21 \"command\" \"skip-board-focus\"\n  wait_for_process_ax_identifier \"review-hub\" \"present\"\n  wait_for_process_ax_identifier \"inbox-workflow\" \"absent\"\n  press_keyboard_shortcut 43 \"command\" \"skip-board-focus\"\n  wait_for_process_ax_identifier \"settings-status-overview\" \"present\""
+                "press_keyboard_shortcut 18 \"command\"\n  wait_for_process_ax_identifier \"voice-conversation-workspace\" \"present\"\n  press_keyboard_shortcut 19 \"command\" \"skip-board-focus\"\n  wait_for_process_ax_identifier \"schedule-workflow\" \"present\"\n  wait_for_process_ax_identifier \"voice-conversation-workspace\" \"absent\"\n  press_keyboard_shortcut 20 \"command\" \"skip-board-focus\"\n  wait_for_process_ax_identifier \"today-workflow\" \"present\"\n  wait_for_process_ax_identifier \"work-hub\" \"present\"\n  wait_for_process_ax_identifier \"schedule-workflow\" \"absent\"\n  press_keyboard_shortcut 43 \"command\" \"skip-board-focus\"\n  wait_for_process_ax_identifier \"settings-status-overview\" \"present\""
             )
         )
-        XCTAssertTrue(
-            script.contains(
-                "press_keyboard_shortcut 40 \"command\"\n  wait_for_process_ax_identifier \"command-palette-input\" \"present\"\n  press_keyboard_shortcut 9 \"command-shift\"\n  wait_for_process_ax_identifier \"voice-conversation-workspace\" \"present\"\n  press_keyboard_shortcut 18 \"command\" \"skip-board-focus\""
-            )
-        )
-        XCTAssertTrue(script.contains("press_keyboard_shortcut 9 \"command-shift\""))
+        XCTAssertTrue(script.contains("press_keyboard_shortcut 40 \"command\"\n  wait_for_process_ax_identifier \"command-palette-input\" \"present\""))
+        XCTAssertFalse(script.contains("press_keyboard_shortcut 9 \"command-shift\""))
         XCTAssertTrue(script.contains("press_keyboard_shortcut 43 \"command\""))
         XCTAssertTrue(script.contains("project-board-export-tasks"))
         XCTAssertTrue(script.contains("project-board-import-tasks"))
@@ -2966,7 +2931,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let modelSource = try readPackageFile("Sources/SuisuiCore/WorkManagement/WorkManagementModels.swift")
 
         XCTAssertTrue(persistenceSource.contains("case done"))
-        XCTAssertTrue(boardSource.contains("review-destination-completed"))
+        XCTAssertTrue(boardSource.contains("work-destination-completed"))
         XCTAssertTrue(boardSource.contains("case .review(.completed):"))
         XCTAssertTrue(boardSource.contains("DoneWorkflowView(viewModel: viewModel, appSettings: appSettings())"))
         XCTAssertTrue(workflowSource.contains(".accessibilityIdentifier(\"done-workflow\")"))
@@ -3461,25 +3426,31 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(audit.contains("Task / Project inspector はcompact summaryを先頭に追加済み"))
     }
 
-    func testProjectBoardPromotesInboxAndTodayAsFirstClassDestinations() throws {
+    func testProjectBoardGroupsWorkDestinationsUnderWorkHub() throws {
         let source = try readProjectBoardSurfaceSources()
+        let ownerSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let workHubSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardWorkHubView.swift")
         let workflowSource = try readProjectWorkflowSources()
         let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
 
         XCTAssertTrue(source.contains("ProjectBoardSidebarView("))
-        XCTAssertTrue(source.contains("sidebar-destination-inbox"))
-        XCTAssertTrue(source.contains("sidebar-destination-today"))
-        XCTAssertTrue(source.contains("sidebar-destination-projects"))
+        XCTAssertTrue(source.contains("sidebar-destination-secretary"))
         XCTAssertTrue(source.contains("sidebar-destination-schedule"))
-        XCTAssertTrue(source.contains("sidebar-destination-completed"))
-        XCTAssertFalse(source.contains("sidebar-destination-review"))
+        XCTAssertTrue(source.contains("sidebar-destination-work"))
+        XCTAssertTrue(workHubSource.contains("work-destination-today"))
+        XCTAssertTrue(workHubSource.contains("work-destination-inbox"))
+        XCTAssertTrue(workHubSource.contains("work-destination-projects"))
+        XCTAssertTrue(workHubSource.contains("work-destination-completed"))
+        XCTAssertTrue(workHubSource.contains("work-destination-pending-actions"))
+        XCTAssertTrue(workHubSource.contains("work-hub-smart-list"))
+        XCTAssertFalse(ownerSource.contains("ProjectBoardReviewHubView("))
+        XCTAssertTrue(ownerSource.contains("ProjectBoardWorkHubView("))
         XCTAssertFalse(
             try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift")
                 .contains("sidebar-destination-catch-up")
         )
         XCTAssertTrue(source.contains("InboxWorkflowView("))
         XCTAssertTrue(source.contains("TodayWorkflowView("))
-        XCTAssertTrue(source.contains("ProjectBoardReviewHubView("))
         XCTAssertTrue(workflowSource.contains("InboxActionPanel("))
         XCTAssertTrue(workflowSource.contains("viewModel.convertSelectedTaskToProject()"))
         XCTAssertTrue(workflowSource.contains("viewModel.scheduleSelectedTaskForToday()"))
@@ -3513,7 +3484,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(persistenceSource.contains("public enum ProjectBoardSidebarDestination"))
         XCTAssertTrue(persistenceSource.contains("public enum ProjectBoardSelectionPersistence"))
-        XCTAssertTrue(persistenceSource.contains("static let defaultRawValue = \"today\""))
+        XCTAssertTrue(persistenceSource.contains("static let defaultRawValue = \"secretary\""))
         XCTAssertTrue(persistenceSource.contains("case .inbox:\n            return \"inbox\""))
         XCTAssertTrue(persistenceSource.contains("case .today:\n            return \"today\""))
         XCTAssertTrue(persistenceSource.contains("case .catchUp:\n            return \"catch-up\""))
@@ -3531,21 +3502,17 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(persistenceSource.contains("availableProjects.contains(where: { $0.id == projectID }) else {\n                    return .today"))
     }
 
-    func testSidebarShowsApprovedDestinationsInSampleOrder() throws {
+    func testSidebarShowsSecretaryScheduleWorkInOrder() throws {
         let sidebarSource = try readPackageFile(
             "Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift"
         )
 
-        let inboxRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-inbox"))
-        let todayRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-today"))
-        let projectsRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-projects"))
+        let secretaryRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-secretary"))
         let scheduleRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-schedule"))
-        let completedRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-completed"))
+        let workRow = try XCTUnwrap(sidebarSource.range(of: "sidebar-destination-work"))
 
-        XCTAssertLessThan(inboxRow.lowerBound, todayRow.lowerBound)
-        XCTAssertLessThan(todayRow.lowerBound, projectsRow.lowerBound)
-        XCTAssertLessThan(projectsRow.lowerBound, scheduleRow.lowerBound)
-        XCTAssertLessThan(scheduleRow.lowerBound, completedRow.lowerBound)
+        XCTAssertLessThan(secretaryRow.lowerBound, scheduleRow.lowerBound)
+        XCTAssertLessThan(scheduleRow.lowerBound, workRow.lowerBound)
         XCTAssertFalse(sidebarSource.contains("project-sidebar-row-"))
         XCTAssertFalse(sidebarSource.contains("sidebar-destination-catch-up"))
         XCTAssertFalse(sidebarSource.contains("sidebar-destination-assistant-queue"))
@@ -3569,9 +3536,9 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains(".suisuiProjectBoardShortcutRequested"))
         XCTAssertTrue(appSource.contains("@ObservedObject private var projectBoardSceneCoordinator"))
         XCTAssertTrue(appSource.contains("projectBoardSceneCoordinator.requestShortcut(.commandPalette)"))
-        XCTAssertTrue(appSource.contains("CommandMenu(localizedDisplay(\"Project navigation\"))"))
+        XCTAssertTrue(appSource.contains("CommandMenu(localizedDisplay(\"Primary navigation\"))"))
         XCTAssertFalse(appSource.contains("CommandMenu(\"Navigate\")"))
-        for title in ["Search", "Today", "Inbox", "Projects", "Review"] {
+        for title in ["Search", "Secretary", "Schedule", "Work"] {
             XCTAssertTrue(appSource.contains("Button(localizedDisplay(\"\(title)\"))"))
         }
         XCTAssertTrue(coordinatorSource.contains("func requestShortcut(_ action: ProjectBoardShortcutAction)"))
@@ -3591,7 +3558,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains(".keyboardShortcut(\"1\", modifiers: [.command])"))
         XCTAssertTrue(appSource.contains(".keyboardShortcut(\"2\", modifiers: [.command])"))
         XCTAssertTrue(appSource.contains(".keyboardShortcut(\"3\", modifiers: [.command])"))
-        XCTAssertTrue(appSource.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
+        XCTAssertFalse(appSource.contains(".keyboardShortcut(\"4\", modifiers: [.command])"))
         XCTAssertFalse(appSource.contains(".keyboardShortcut(\"5\", modifiers: [.command])"))
         XCTAssertTrue(workflowSource.contains("keyboardShortcut: \"1\""))
         XCTAssertTrue(workflowSource.contains("keyboardShortcut: \"2\""))
@@ -4372,7 +4339,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("\"Delete this task?\""))
     }
 
-    func testProjectBoardVoiceOverFocusPathIsSourceAnchored() throws {
+    func testProjectBoardVoiceOverFocusPathUsesConsolidatedNavigation() throws {
         let boardSource = try readProjectBoardSurfaceSources()
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
@@ -4380,14 +4347,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-board-sidebar\")"))
         XCTAssertTrue(
             boardSource.contains(
-                ".accessibilityLabel(Text(LocalizedStringKey(\"Project navigation\")))"
+                ".accessibilityLabel(Text(LocalizedStringKey(\"Primary navigation\")))"
             )
         )
-        XCTAssertTrue(boardSource.contains("LocalizedStringKey(\"Navigate work or open a quick action.\")"))
-        XCTAssertTrue(boardSource.contains("sidebar-destination-today"))
+        XCTAssertTrue(boardSource.contains("LocalizedStringKey(\"Navigate secretary, schedule, or work.\")"))
+        XCTAssertTrue(boardSource.contains("sidebar-destination-secretary"))
         XCTAssertTrue(boardSource.contains("sidebar-destination-schedule"))
-        XCTAssertTrue(boardSource.contains("sidebar-destination-completed"))
-        XCTAssertFalse(boardSource.contains("sidebar-destination-review"))
+        XCTAssertTrue(boardSource.contains("sidebar-destination-work"))
+        XCTAssertTrue(boardSource.contains("work-destination-completed"))
         XCTAssertTrue(boardSource.contains(".accessibilityIdentifier(\"project-sidebar-row-\\(project.id)\")"))
         XCTAssertTrue(boardSource.contains(".accessibilityLabel(project.accessibilityProjectsHubLabel)"))
         XCTAssertTrue(boardSource.contains(".tag(BoardRoute.project(project.id))"))
@@ -5243,7 +5210,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
         let modelSource = try readPackageFile("Sources/SuisuiCore/WorkManagement/WorkManagementModels.swift")
 
-        XCTAssertTrue(boardSource.contains("review-destination-schedule"))
+        XCTAssertTrue(boardSource.contains("sidebar-destination-schedule"))
         XCTAssertTrue(boardSource.contains("case .review(.schedule):"))
         XCTAssertTrue(boardSource.contains("ScheduleWorkflowView(viewModel: viewModel)"))
         XCTAssertTrue(persistenceSource.contains("case schedule"))
@@ -5538,12 +5505,13 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"schedule-agenda-external-event-\\(event.id)\")"))
     }
 
-    func testScheduleUsesFullWidthReviewHubAtWideWindowSizes() throws {
-        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift")
+    func testScheduleRemainsATopLevelWorkflow() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
 
-        XCTAssertTrue(source.contains("if case .review(.schedule) = route"))
-        XCTAssertTrue(source.contains("return .compact"))
-        XCTAssertTrue(source.contains("presentation(for: proxy.size.width)"))
+        XCTAssertTrue(source.contains("case .review(.schedule):"))
+        XCTAssertTrue(source.contains("ScheduleWorkflowView(viewModel: viewModel)"))
+        XCTAssertTrue(source.contains("ProjectBoardWorkHubView("))
+        XCTAssertFalse(source.contains("ProjectBoardReviewHubView("))
     }
 
     func testAppAndCLIShareDefaultDatabaseLocation() throws {
@@ -8005,10 +7973,10 @@ final class AppExperienceSourceTests: XCTestCase {
     func testPhase12ClickPathAuditTracksNewWorkflowScreens() throws {
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
 
-        XCTAssertTrue(audit.contains("| Inbox voice detail | sidebar `Inbox` -> item row | 2 | Pass |"))
-        XCTAssertTrue(audit.contains("| Projects overview確認 | sidebar `Projects` | 1 | Pass |"))
+        XCTAssertTrue(audit.contains("| Inbox voice detail | `Work` -> `Inbox` -> item row | 3 | Pass |"))
+        XCTAssertTrue(audit.contains("| Projects overview確認 | `Work` -> `Projects` | 2 | Pass |"))
         XCTAssertTrue(audit.contains("| Schedule確認 | sidebar `Schedule` | 1 | Pass |"))
-        XCTAssertTrue(audit.contains("| Done確認 | sidebar `Done` | 1 | Pass |"))
+        XCTAssertTrue(audit.contains("| Completed確認 | `Work` -> `Completed` | 2 | Pass |"))
         XCTAssertTrue(audit.contains("| Settings integrations確認 | Settings -> Status Overview | 1 | Pass |"))
         XCTAssertTrue(audit.contains("Phase 12 screenshot evidence"))
         XCTAssertTrue(audit.contains("inbox-voice-light.png"))
@@ -8209,10 +8177,10 @@ final class AppExperienceSourceTests: XCTestCase {
 
         XCTAssertTrue(clickPath.contains("## Phase 14 access-flow map (2026-07-03)"))
         XCTAssertTrue(clickPath.contains("| User goal | Access flow | Current reachability | Follow-up / PR |"))
-        XCTAssertTrue(clickPath.contains("app launch -> sidebar `Schedule` -> `Generate Draft` -> `Queue Calendar Apply` -> Assistant Queue approval"))
-        XCTAssertTrue(clickPath.contains("app launch -> sidebar `Done` -> completed task row -> `Follow Up` / `Reopen`"))
+        XCTAssertTrue(clickPath.contains("app launch -> `Schedule` -> `Generate Draft` -> `Queue Calendar Apply` -> Assistant Queue approval"))
+        XCTAssertTrue(clickPath.contains("app launch -> `Work` -> `Completed` -> completed task row -> `Follow Up` / `Reopen`"))
         XCTAssertTrue(clickPath.contains("app launch -> `Settings...` / `Command+,` -> `Sync` -> Google Calendar save flow -> `Save Calendar` -> `Check Readiness`"))
-        XCTAssertTrue(clickPath.contains("app launch -> Voice Command -> record or type -> `Save to Inbox` / `Generate Plan` -> Inbox or Assistant Queue review"))
+        XCTAssertTrue(clickPath.contains("app launch -> `Secretary` -> record or type -> `Save to Inbox` / `Generate Plan` -> Work Inbox or Pending Actions review"))
         XCTAssertTrue(clickPath.contains("developer/release -> `./script/build_and_run.sh --verify` -> Project Board visible-window proof"))
 
         for token in ["#208 / PR #218", "#209 / PR #217", "#210 / PR #215", "#211 / PR #216", "#212 / PR #214"] {
@@ -8223,7 +8191,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(clickPath.contains("| Settings Google Calendar save/readiness |"))
         XCTAssertTrue(clickPath.contains("| Schedule apply after draft generation |"))
         XCTAssertTrue(clickPath.contains("| Done row recovery actions |"))
-        XCTAssertTrue(clickPath.contains("| Voice Command first-run path |"))
+        XCTAssertTrue(clickPath.contains("| Secretary first-run path |"))
         XCTAssertTrue(clickPath.contains("| Launch visible-window verifier |"))
     }
 

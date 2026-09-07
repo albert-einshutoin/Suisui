@@ -44,18 +44,15 @@ To launch the app with the product-path smoke check:
 ./script/build_and_run.sh --verify
 ```
 
-After launch, type a request in **Inbox** or open **Voice Command** and speak. Review the proposed plan, edit it if needed, and approve only the actions you want Suisui to perform.
+After launch, open **Secretary** to type or speak a request. Review the proposed plan, edit it if needed, and approve only the actions you want Suisui to perform. **Schedule** covers calendar planning; **Work** groups Today, Inbox, Projects, Smart Lists, Completed, and Pending Actions.
 
 Suisui follows the macOS language by default. You can pin the app to English or Japanese from **Settings > Appearance > Language**.
 
 ## Product Areas
 
-- **Inbox** — capture work from text or voice.
-- **Today** — see priorities, due work, and next actions.
-- **Projects** — organize projects, tasks, milestones, and documents.
+- **Secretary** — capture text or voice and review the proposed Action Plan.
 - **Schedule** — review plans, workload, and calendar items on a timeline.
-- **Done** — review completed work and follow-up candidates.
-- **Voice Command** — turn speech into a reviewable Action Plan.
+- **Work** — open Today, Inbox, Projects, Smart Lists, Completed, and Pending Actions.
 - **Settings** — configure AI, speech, integrations, MCP, permissions, appearance, and language.
 
 ## Core Workflow
@@ -69,7 +66,7 @@ Suisui follows the macOS language by default. You can pin the app to English or 
 ## What Suisui Can Do
 
 - Create Action Plans from voice or text.
-- Manage work through Inbox, Today, Projects, Schedule, and Done.
+- Manage work through Secretary, Schedule, Work, and Settings.
 - Review AI proposals before changing projects or tasks.
 - Draft Apple Calendar, Reminders, and Notifications actions within granted permissions.
 - Create Markdown deliverables in reviewed local destinations without silently overwriting files.
@@ -90,7 +87,7 @@ Choose a provider in **Settings > AI** and save your API key. Secrets are stored
 - **STT:** choose on-device Apple Speech with no API key, OpenAI Transcribe, or a configured whisper.cpp runtime and compatible local model.
 - **TTS:** choose macOS System Speech with no model download, or configure Kokoro and a compatible local model.
 - Speech models are not bundled. Select their file or directory from Settings.
-- Voice Command requires microphone permission from macOS.
+- Secretary voice capture requires microphone permission from macOS.
 
 ### Apple Services and Integrations
 

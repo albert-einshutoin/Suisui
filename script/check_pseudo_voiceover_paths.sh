@@ -78,9 +78,16 @@ REQUIRED_MARKERS=(
   "today-rail-next-action"
   "today-rail-task-detail"
   "today-rail-actions-menu"
+  "work-hub"
+  "work-hub-navigation"
+  "work-destination-today"
+  "work-destination-inbox"
+  "work-destination-projects"
+  "work-destination-completed"
+  "work-destination-smart-list"
+  "work-destination-pending-actions"
   "inbox-selected-context"
   "inbox-action-grid"
-  "review-hub-compact-navigation"
   "projects-hub-compact-navigation"
   "assistant-queue-workflow"
   "assistant-queue-approve"
@@ -109,11 +116,9 @@ TODAY_UI_ACCESSIBILITY_IDENTIFIERS=(
 
 SIDEBAR_ACCESSIBILITY_MARKERS=(
   '.accessibilityIdentifier(accessibilityIdentifier(for: item.id))'
-  'case .inbox: "sidebar-destination-inbox"'
-  'case .today: "sidebar-destination-today"'
-  'case .projects: "sidebar-destination-projects"'
+  'case .secretary: "sidebar-destination-secretary"'
   'case .schedule: "sidebar-destination-schedule"'
-  'case .completed: "sidebar-destination-completed"'
+  'case .work: "sidebar-destination-work"'
 )
 
 TODAY_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift"
@@ -121,7 +126,7 @@ SIDEBAR_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectBoardSidebarView.swift"
 SIDEBAR_DESTINATION_SOURCE="$ROOT_DIR/Sources/SuisuiCore/App/ProjectBoardSelectionPersistence.swift"
 INBOX_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift"
 ASSISTANT_QUEUE_WORKFLOW_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectWorkflowAssistantQueueView.swift"
-REVIEW_HUB_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectBoardReviewHubView.swift"
+WORK_HUB_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectBoardWorkHubView.swift"
 PROJECTS_HUB_SOURCE="$ROOT_DIR/Sources/SuisuiApp/Views/ProjectBoardProjectsHubView.swift"
 
 INBOX_APPROVAL_FLOW_MARKERS=(
@@ -129,8 +134,10 @@ INBOX_APPROVAL_FLOW_MARKERS=(
   '.accessibilityIdentifier("inbox-action-grid")'
 )
 
-REVIEW_HUB_APPROVAL_FLOW_MARKERS=(
-  '.accessibilityIdentifier("review-hub-compact-navigation")'
+WORK_HUB_APPROVAL_FLOW_MARKERS=(
+  '.accessibilityIdentifier("work-hub")'
+  '.accessibilityIdentifier("work-hub-navigation")'
+  '.accessibilityIdentifier(workAccessibilityIdentifier(for: destination))'
 )
 
 PROJECTS_HUB_APPROVAL_FLOW_MARKERS=(
@@ -158,7 +165,7 @@ SOURCES=(
   "$SIDEBAR_SOURCE"
   "$INBOX_WORKFLOW_SOURCE"
   "$ASSISTANT_QUEUE_WORKFLOW_SOURCE"
-  "$REVIEW_HUB_SOURCE"
+  "$WORK_HUB_SOURCE"
   "$PROJECTS_HUB_SOURCE"
   "$ROOT_DIR/docs/quality/accessibility-focus-paths.md"
 )
@@ -206,9 +213,9 @@ if ! check_source_markers \
   missing=$((missing + 1))
 fi
 if ! check_source_markers \
-  "$REVIEW_HUB_SOURCE" \
-  "ProjectBoardReviewHubView.swift" \
-  "${REVIEW_HUB_APPROVAL_FLOW_MARKERS[@]}"; then
+  "$WORK_HUB_SOURCE" \
+  "ProjectBoardWorkHubView.swift" \
+  "${WORK_HUB_APPROVAL_FLOW_MARKERS[@]}"; then
   missing=$((missing + 1))
 fi
 if ! check_source_markers \

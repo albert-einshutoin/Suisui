@@ -56,6 +56,8 @@ final class ProjectBoardRouteTests: XCTestCase {
         XCTAssertEqual(route(from: "review:automation"), .review(.automationActivity))
         XCTAssertEqual(route(from: "review:assistant-queue"), .review(.assistantQueue))
         XCTAssertEqual(route(from: "settings"), .settings)
+        XCTAssertEqual(route(from: "secretary"), .voiceCommand)
+        XCTAssertEqual(route(from: "work"), .primary(.today))
     }
 
     func testExistingProjectDecodesAndMissingProjectFallsBackToToday() {
@@ -113,12 +115,12 @@ final class ProjectBoardRouteTests: XCTestCase {
             (.primary(.inbox), "primary:inbox"),
             (.primary(.projects), "primary:projects"),
             (.primary(.review), "primary:review"),
-            (.review(.schedule), "review:schedule"),
+            (.review(.schedule), "schedule"),
             (.review(.completed), "review:completed"),
             (.review(.automationActivity), "review:automation"),
             (.review(.assistantQueue), "review:assistant-queue"),
             (.settings, "settings"),
-            (.voiceCommand, "voice-command")
+            (.voiceCommand, "secretary")
         ]
 
         for (route, expectedRawValue) in routeRawValues {

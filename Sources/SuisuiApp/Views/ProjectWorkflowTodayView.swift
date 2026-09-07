@@ -95,6 +95,7 @@ struct TodayWorkflowView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today-workflow")
+        .accessibilityLabel("Today")
     }
 
     /// Evidence pins a sample-like weather chip without calling WeatherKit.

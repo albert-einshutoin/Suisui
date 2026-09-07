@@ -185,9 +185,11 @@ private struct SuisuiWindowCommands: Commands {
             Divider()
 
             Button {
-                openWindow(id: "project-board")
+                projectBoardSceneCoordinator.openInActiveSceneOrRequestNew(route: .primary(.today)) {
+                    openWindow(id: "project-board")
+                }
             } label: {
-                Label("Project Board", systemImage: "rectangle.3.group")
+                Label("Work", systemImage: "checklist")
             }
             .keyboardShortcut("0", modifiers: [.command])
 
@@ -196,12 +198,12 @@ private struct SuisuiWindowCommands: Commands {
                     openWindow(id: "project-board")
                 }
             } label: {
-                Label("Voice Command", systemImage: "mic")
+                Label("Secretary", systemImage: "person.crop.circle")
             }
             .keyboardShortcut("v", modifiers: [.command, .shift])
         }
 
-        CommandMenu(localizedDisplay("Project navigation")) {
+        CommandMenu(localizedDisplay("Primary navigation")) {
             Button(localizedDisplay("Search")) {
                 projectBoardSceneCoordinator.requestShortcut(.commandPalette)
             }
@@ -210,28 +212,22 @@ private struct SuisuiWindowCommands: Commands {
 
             Divider()
 
-            Button(localizedDisplay("Today")) {
-                projectBoardSceneCoordinator.requestShortcut(.destination(.today))
+            Button(localizedDisplay("Secretary")) {
+                projectBoardSceneCoordinator.requestShortcut(.route(.voiceCommand))
             }
             .keyboardShortcut("1", modifiers: [.command])
             .disabled(projectBoardSceneCoordinator.activeSceneID == nil)
 
-            Button(localizedDisplay("Inbox")) {
-                projectBoardSceneCoordinator.requestShortcut(.destination(.inbox))
+            Button(localizedDisplay("Schedule")) {
+                projectBoardSceneCoordinator.requestShortcut(.route(.review(.schedule)))
             }
             .keyboardShortcut("2", modifiers: [.command])
             .disabled(projectBoardSceneCoordinator.activeSceneID == nil)
 
-            Button(localizedDisplay("Projects")) {
-                projectBoardSceneCoordinator.requestShortcut(.destination(.projects))
+            Button(localizedDisplay("Work")) {
+                projectBoardSceneCoordinator.requestShortcut(.route(.primary(.today)))
             }
             .keyboardShortcut("3", modifiers: [.command])
-            .disabled(projectBoardSceneCoordinator.activeSceneID == nil)
-
-            Button(localizedDisplay("Review")) {
-                projectBoardSceneCoordinator.requestShortcut(.destination(.review))
-            }
-            .keyboardShortcut("4", modifiers: [.command])
             .disabled(projectBoardSceneCoordinator.activeSceneID == nil)
         }
     }

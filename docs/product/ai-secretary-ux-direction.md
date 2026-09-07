@@ -28,6 +28,12 @@ These invariants are release gates for removing, merging, or simplifying screens
 
 The product direction describes both the Public Alpha and later secretary capabilities. Only the MVP 0 rows below block Public Alpha validation. Post-MVP work starts only after the design-partner gate records `Go`.
 
+For MVP 0, the main navigation is **Secretary → Schedule → Work**. Secretary
+owns the existing conversation capture and review handoff; Schedule owns
+reviewable time placement; Work groups Today, Inbox, Projects, Smart Lists,
+Completed, and Pending Actions. Settings remains a utility, while Menu Bar and
+Onboarding are entry points into these same three surfaces.
+
 | Capability | Delivery phase | Tracking issues |
 | --- | --- | --- |
 | Screen and feature inventory for the 17 product groups | MVP 0 | #611, #612 |

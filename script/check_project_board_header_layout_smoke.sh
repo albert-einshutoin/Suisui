@@ -731,13 +731,13 @@ exercise_sidebar_entrypoints() {
   wait_for_process_ax_identifier "command-palette-input" "present"
   launch_header_layout_candidate
   wait_for_project_detail_visible
-  press_ax_button "sidebar-action-voice-command"
+  press_ax_button "sidebar-destination-secretary"
   wait_for_process_ax_identifier "voice-conversation-workspace" "present"
-  # Voice Command keeps a modal surface above the board toolbar. Relaunch so
+  # Secretary keeps a modal surface above the board toolbar. Relaunch so
   # the following settings and keyboard contracts can reach sidebar-toggle.
   launch_header_layout_candidate
   wait_for_project_detail_visible
-  printf "OK: sidebar Search and Voice Command opened their destination surfaces\n"
+  printf "OK: sidebar Search and Secretary opened their destination surfaces\n"
 }
 
 exercise_settings_utility() {
@@ -830,23 +830,18 @@ exercise_keyboard_entrypoints() {
 
   press_keyboard_shortcut 40 "command"
   wait_for_process_ax_identifier "command-palette-input" "present"
-  press_keyboard_shortcut 9 "command-shift"
+  press_keyboard_shortcut 18 "command"
   wait_for_process_ax_identifier "voice-conversation-workspace" "present"
-  press_keyboard_shortcut 18 "command" "skip-board-focus"
-  wait_for_process_ax_identifier "today-workflow" "present"
-  wait_for_process_ax_identifier "projects-portfolio-overview" "absent"
-  press_keyboard_shortcut 20 "command" "skip-board-focus"
-  wait_for_process_ax_identifier "projects-portfolio-overview" "present"
-  wait_for_process_ax_identifier "today-workflow" "absent"
   press_keyboard_shortcut 19 "command" "skip-board-focus"
-  wait_for_process_ax_identifier "inbox-workflow" "present"
-  wait_for_process_ax_identifier "projects-portfolio-overview" "absent"
-  press_keyboard_shortcut 21 "command" "skip-board-focus"
-  wait_for_process_ax_identifier "review-hub" "present"
-  wait_for_process_ax_identifier "inbox-workflow" "absent"
+  wait_for_process_ax_identifier "schedule-workflow" "present"
+  wait_for_process_ax_identifier "voice-conversation-workspace" "absent"
+  press_keyboard_shortcut 20 "command" "skip-board-focus"
+  wait_for_process_ax_identifier "today-workflow" "present"
+  wait_for_process_ax_identifier "work-hub" "present"
+  wait_for_process_ax_identifier "schedule-workflow" "absent"
   press_keyboard_shortcut 43 "command" "skip-board-focus"
   wait_for_process_ax_identifier "settings-status-overview" "present"
-  printf "OK: hidden-sidebar keyboard shortcuts opened Search, Voice Command, and Settings\n"
+  printf "OK: hidden-sidebar keyboard shortcuts opened Secretary, Schedule, Work, and Settings\n"
 }
 
 exercise_runtime_crud_recovery_entrypoints() {
@@ -858,9 +853,9 @@ exercise_runtime_crud_recovery_entrypoints() {
   press_ax_button "project-board-settings-link"
 
   activate_app
-  press_ax_button "project-board-voice-command"
+  press_ax_button "sidebar-destination-secretary"
   wait_for_process_ax_identifier "voice-conversation-workspace" "present"
-  printf "OK: runtime CRUD recovery Settings and Voice Command reached their destination surfaces\n"
+  printf "OK: runtime CRUD recovery Settings and Secretary reached their destination surfaces\n"
 }
 
 exercise_terminal_utility() {
