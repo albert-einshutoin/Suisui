@@ -6274,6 +6274,65 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testEditingScheduleDraftInvalidatesApprovedCalendarProposal() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-30T09:10:00Z")
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Schedule Queue"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Review calendar plan",
+            projectID: project.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-30"
+        ))
+
+        _ = viewModel.prepareScheduleDraft(on: referenceDate, calendar: calendar)
+        XCTAssertTrue(viewModel.enqueueScheduleDraftCalendarApply(on: referenceDate, calendar: calendar))
+        let firstItemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        let firstItem = try assistantQueueStore.get(id: firstItemID)
+        guard case .actionPlan(let firstPlan) = firstItem.payload else {
+            return XCTFail("Expected first schedule action plan")
+        }
+        let firstProposalID = try XCTUnwrap(firstPlan.actions.first?.arguments["proposalID"]?.stringValue)
+        XCTAssertEqual(firstProposalID, CalendarProposalIdentity.make(taskID: task.id))
+
+        let approved = try AssistantQueueStateMachine.approve(firstItem, reviewerID: "tester")
+        try assistantQueueStore.save(approved)
+
+        let movedStart = try isoDate("2026-06-30T11:00:00Z")
+        let movedEnd = try isoDate("2026-06-30T11:30:00Z")
+        XCTAssertTrue(viewModel.placeTaskInScheduleDraft(
+            taskID: task.id,
+            startAt: movedStart,
+            endAt: movedEnd,
+            calendar: calendar
+        ))
+
+        let invalidated = try assistantQueueStore.get(id: firstItemID)
+        XCTAssertEqual(invalidated.state, .waitingReview)
+        XCTAssertNil(invalidated.approval)
+        XCTAssertEqual(
+            invalidated.reviewReason,
+            "Schedule proposal changed. Review the latest Calendar time before approval."
+        )
+
+        XCTAssertTrue(viewModel.enqueueScheduleDraftCalendarApply(on: movedStart, calendar: calendar))
+        let proposals = try assistantQueueStore.list(filter: .all(limit: 10)).compactMap { item -> String? in
+            guard case .actionPlan(let plan) = item.payload else { return nil }
+            return plan.actions.first?.arguments["proposalID"]?.stringValue
+        }
+        XCTAssertEqual(proposals.filter { $0 == firstProposalID }.count, 2)
+    }
+
+    @MainActor
     func testScheduleDraftCalendarQueueUsesContentDigestSoUpdatedDraftDoesNotReuseStalePayload() throws {
         var calendar = utcCalendar()
         calendar.firstWeekday = 2
