@@ -808,7 +808,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
     public func startLowLatencyVoiceAgentMode(
         currentDate: Date = Date(),
-        timeZoneIdentifier: String = TimeZone.current.identifier,
+        timeZoneIdentifier: String = TimeZone.autoupdatingCurrent.identifier,
         availableTools: [ActionTool] = ActionTool.defaultPlanningTools,
         knowledgeFrameCandidates: [KnowledgeFrameCandidate] = []
     ) async {
@@ -1003,7 +1003,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     public func generatePlan(
         source: RequestSource? = nil,
         currentDate: Date = Date(),
-        timeZoneIdentifier: String = TimeZone.current.identifier,
+        timeZoneIdentifier: String = TimeZone.autoupdatingCurrent.identifier,
         availableTools: [ActionTool] = ActionTool.defaultPlanningTools,
         knowledgeFrameCandidates: [KnowledgeFrameCandidate] = []
     ) async {
@@ -1243,7 +1243,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         _ answer: String,
         inputMode: ClarificationInputMode = .typed,
         currentDate: Date = Date(),
-        timeZoneIdentifier: String = TimeZone.current.identifier,
+        timeZoneIdentifier: String = TimeZone.autoupdatingCurrent.identifier,
         availableTools: [ActionTool] = ActionTool.defaultPlanningTools,
         knowledgeFrameCandidates: [KnowledgeFrameCandidate] = []
     ) async {
@@ -1265,7 +1265,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         _ answer: String,
         inputMode: ClarificationInputMode = .typed,
         currentDate: Date = Date(),
-        timeZoneIdentifier: String = TimeZone.current.identifier,
+        timeZoneIdentifier: String = TimeZone.autoupdatingCurrent.identifier,
         availableTools: [ActionTool] = ActionTool.defaultPlanningTools,
         knowledgeFrameCandidates: [KnowledgeFrameCandidate] = [],
         expectedRecordingOperationID: UUID? = nil
@@ -1355,7 +1355,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     /// then hand the redacted answer to the readout closure for TTS.
     public func askWorkspaceQuestion(
         currentDate: Date = Date(),
-        timeZoneIdentifier: String = TimeZone.current.identifier
+        timeZoneIdentifier: String = TimeZone.autoupdatingCurrent.identifier
     ) async {
         let question = draft.normalizedText
         guard !question.isEmpty else {

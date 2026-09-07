@@ -94,7 +94,7 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
         selectedProjectID: Int64?,
         selectedTaskID: Int64?,
         at date: Date,
-        timeZoneIdentifier: String = TimeZone.current.identifier
+        timeZoneIdentifier: String = TimeZone.autoupdatingCurrent.identifier
     ) throws -> VoiceTaskConversationPreparedBegin? {
         let normalized = transcript
             .folding(
