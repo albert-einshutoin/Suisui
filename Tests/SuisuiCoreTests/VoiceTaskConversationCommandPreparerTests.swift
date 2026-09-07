@@ -84,6 +84,30 @@ final class VoiceTaskConversationCommandPreparerTests: XCTestCase {
         )
     }
 
+    func testNaturalDueDateRejectsInvalidRequestTimeZone() throws {
+        let fixture = try makeFixture()
+        let input = "期限を明日に"
+
+        XCTAssertThrowsError(
+            try fixture.preparer.prepare(
+                transcript: input,
+                triage: triage(input, selectedTaskID: 22),
+                explicitTaskID: nil,
+                sessionID: fixture.sessionID,
+                sourceTurnID: UUID(),
+                selectedProjectID: 7,
+                selectedTaskID: 22,
+                at: now,
+                timeZoneIdentifier: "Invalid/Timezone"
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? VoiceTaskConversationCommandPreparerError,
+                .invalidTimeZoneIdentifier
+            )
+        }
+    }
+
     func testSelectedTaskKeepsListOrdinalCandidatesForFollowup() throws {
         let fixture = try makeFixture()
         _ = try prepareAndPublish(

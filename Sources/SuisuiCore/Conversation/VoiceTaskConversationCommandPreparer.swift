@@ -61,6 +61,10 @@ public protocol VoiceTaskConversationCommandPreparing: Sendable {
     ) throws -> VoiceTaskConversationPreparedBegin?
 }
 
+public enum VoiceTaskConversationCommandPreparerError: Error, Equatable, Sendable {
+    case invalidTimeZoneIdentifier
+}
+
 /// Converts an authorized local decision into existing conversation intents.
 /// Unrecognized arguments remain unresolved; they never select a provider.
 public final class SQLiteVoiceTaskConversationCommandPreparer:
@@ -207,12 +211,14 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
         if let priority = Self.requestedPriority(in: normalized) {
             arguments["priority"] = .string(priority)
         }
-        let dueDate = isoDate(in: normalized)
+        let dueDate = try (
+            isoDate(in: normalized)
             ?? naturalDueDate(
                 in: normalized,
                 at: date,
                 timeZoneIdentifier: timeZoneIdentifier
             )
+        )
         if let dueDate {
             arguments["dueAt"] = .string(dueDate)
         }
@@ -378,11 +384,14 @@ public final class SQLiteVoiceTaskConversationCommandPreparer:
         in text: String,
         at date: Date,
         timeZoneIdentifier: String
-    ) -> String? {
-        QuickAddDueDateParser.parse(
+    ) throws -> String? {
+        guard let timeZone = TimeZone(identifier: timeZoneIdentifier) else {
+            throw VoiceTaskConversationCommandPreparerError.invalidTimeZoneIdentifier
+        }
+        return QuickAddDueDateParser.parse(
             "task \(text)",
             now: date,
-            timeZone: TimeZone(identifier: timeZoneIdentifier) ?? .current
+            timeZone: timeZone
         ).dueAt.map(DeadlineDateParser.string(from:))
     }
 }
