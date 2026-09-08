@@ -154,22 +154,3 @@ public struct CodexInboundMessage: Decodable, Equatable, Sendable {
         }
     }
 }
-
-public struct CodexJSONRPCRequest<Params: Encodable & Sendable>: Encodable, Sendable {
-    public let jsonrpc = "2.0"
-    public let id: Int64
-    public let method: String
-    public let params: Params
-
-    public init(id: Int64, method: String, params: Params) {
-        self.id = id
-        self.method = method
-        self.params = params
-    }
-}
-
-public struct CodexJSONRPCResponse<Result: Decodable & Sendable>: Decodable, Sendable {
-    public let jsonrpc: String
-    public let id: Int64
-    public let result: Result
-}

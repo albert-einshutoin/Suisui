@@ -134,7 +134,6 @@ public struct LLMProviderCatalogEntry: Identifiable, Equatable, Sendable {
 }
 
 public enum LLMProviderCatalog {
-    public static let defaultProviderID: LLMProviderID = .openaiResponses
     public static let unavailableReason = "Not available in this build"
 
     public static let allEntries: [LLMProviderCatalogEntry] = [

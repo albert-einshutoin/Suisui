@@ -863,7 +863,6 @@
 "%@ is overdue." = "%@ is overdue.";
 "%@ is high priority." = "%@ is high priority.";
 "Focused on \"%@\"." = "Focused on \"%@\".";
-"No focus task is available." = "No focus task is available.";
 "Prepared %d time blocks for schedule review." = "Prepared %d time blocks for schedule review.";
 "%d projects compared" = "%d projects compared";
 "%d project compared" = "%d project compared";

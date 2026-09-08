@@ -56,8 +56,6 @@ public struct PublicAlphaParticipantID: Codable, Equatable, Hashable, Sendable {
         var container = encoder.singleValueContainer()
         try container.encode(digest)
     }
-
-    public var redactedValue: String { digest }
 }
 
 public struct PublicAlphaBuildIdentity: Codable, Equatable, Hashable, Sendable {
