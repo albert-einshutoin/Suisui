@@ -32,7 +32,11 @@ public final class PublicAlphaRuntimeMeasurement: @unchecked Sendable {
             }
             var updatedLedger = ledger
             let event = try PublicAlphaStageEvent(
-                eventID: Self.eventID(stage: stage, sourceID: sourceID),
+                eventID: Self.eventID(
+                    participantID: participantID,
+                    stage: stage,
+                    sourceID: sourceID
+                ),
                 participantID: participantID,
                 stage: stage,
                 mark: mark,
@@ -47,8 +51,14 @@ public final class PublicAlphaRuntimeMeasurement: @unchecked Sendable {
         }
     }
 
-    private static func eventID(stage: PublicAlphaStage, sourceID: String) -> UUID {
-        let digest = SHA256.hash(data: Data("\(stage.rawValue):\(sourceID)".utf8))
+    private static func eventID(
+        participantID: PublicAlphaParticipantID,
+        stage: PublicAlphaStage,
+        sourceID: String
+    ) -> UUID {
+        let digest = SHA256.hash(
+            data: Data("\(participantID.digest):\(stage.rawValue):\(sourceID)".utf8)
+        )
         let hex = digest.map { String(format: "%02x", $0) }.joined()
         let characters = Array(hex)
         let groups = [
