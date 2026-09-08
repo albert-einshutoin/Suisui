@@ -6135,7 +6135,9 @@ final class AppExperienceSourceTests: XCTestCase {
         let appSource = try readAppShellSource()
         let projectRuntimeSource = try readPackageFile("Sources/SuisuiApp/Composition/ProjectBoardRuntimeFactory.swift")
         let coordinatorFactoryStart = try XCTUnwrap(projectRuntimeSource.range(of: "private static func makeAssistantQueueExecutionCoordinator("))
-        let coordinatorFactoryEnd = try XCTUnwrap(projectRuntimeSource.range(of: "\n}\n\nprivate struct UnavailableProjectBoardStore", range: coordinatorFactoryStart.upperBound..<projectRuntimeSource.endIndex))
+        // The coordinator factory is the last member of the runtime extension, so
+        // the extension's closing brace bounds the slice.
+        let coordinatorFactoryEnd = try XCTUnwrap(projectRuntimeSource.range(of: "\n}\n", options: .backwards, range: coordinatorFactoryStart.upperBound..<projectRuntimeSource.endIndex))
         let coordinatorFactory = String(projectRuntimeSource[coordinatorFactoryStart.lowerBound..<coordinatorFactoryEnd.lowerBound])
         let registryFactoryStart = try XCTUnwrap(appSource.range(of: "static func makeRuntimeToolRegistry("))
         let registryFactory = String(appSource[registryFactoryStart.lowerBound...])
