@@ -45,7 +45,7 @@ public final class PublicAlphaRuntimeMeasurement: @unchecked Sendable {
         workID: String? = nil,
         workReference: PublicAlphaWorkReference? = nil,
         sessionID: UUID? = nil,
-        build: PublicAlphaBuildIdentity? = nil,
+        isRecovery: Bool = false,
         failureCategory: PublicAlphaFailureCategory? = nil,
         abandonReason: PublicAlphaAbandonReason? = nil,
         at date: Date = Date()
@@ -74,7 +74,8 @@ public final class PublicAlphaRuntimeMeasurement: @unchecked Sendable {
                     try reference(kind: "session", value: $0.uuidString)
                 },
                 sourceReference: try reference(kind: "source", value: sourceID),
-                build: build ?? self.build,
+                // A recovered receipt has no execution-time build evidence.
+                build: isRecovery ? nil : build,
                 stage: stage,
                 mark: mark,
                 occurredAt: date,

@@ -1741,7 +1741,9 @@ final class AssistantQueueStoreTests: XCTestCase {
     func testProjectBoardViewModelApproveAndRunUsesFreshApprovalRevision() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("alpha-execution-\(UUID().uuidString)/ledger.json")
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-        let measurement = try PublicAlphaRuntimeMeasurement(url: url, participantSeed: "test")
+        let buildA = try PublicAlphaBuildIdentity(appVersion: "1.0", sourceCommit: "aaaaaaa")
+        let buildB = try PublicAlphaBuildIdentity(appVersion: "2.0", sourceCommit: "bbbbbbb")
+        let measurement = try PublicAlphaRuntimeMeasurement(url: url, participantSeed: "test", build: buildA)
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         let boardStore = SQLiteProjectBoardStore(connection: connection)
@@ -1762,7 +1764,7 @@ final class AssistantQueueStoreTests: XCTestCase {
                 permissionLevel: .writeWithApproval
             ) { _, context in
                 XCTAssertNotNil(context.approvalToken)
-                return ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created approve and run task")
+                return ToolResult(tool: .taskCreate, status: .succeeded, summary: "Created approve and run task", output: ["taskId": .number(1)])
             }
         ])
         let coordinator = AssistantQueueExecutionCoordinator(
@@ -1797,6 +1799,33 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertEqual(ledger.stageEvents.map(\.stage), [.reviewableActionPlan, .approvedLocalAction, .localExecution])
         XCTAssertEqual(Set(ledger.stageEvents.compactMap(\.workReference)).count, 1)
         XCTAssertNil(try ledger.report().stageCompletionCounts[.outcomeClosed])
+        XCTAssertEqual(ledger.stageEvents.last?.build, buildA)
+
+        // Simulate a receipt persisted on A before measurement, then recovery on B.
+        let recoveryURL = url.deletingLastPathComponent().appendingPathComponent("recovery.json")
+        let beforeCrash = try PublicAlphaRuntimeMeasurement(url: recoveryURL, participantSeed: "test", build: buildA)
+        beforeCrash.record(.reviewableActionPlan, mark: .completed, sourceID: waiting.id, workID: "job")
+        for ledgerURL in [recoveryURL, url] {
+            let reopened = try PublicAlphaRuntimeMeasurement(url: ledgerURL, participantSeed: "test", build: buildB)
+            let restoredViewModel = ProjectBoardViewModel(
+                store: boardStore, assistantQueueStore: assistantQueueStore,
+                executionReceiptStore: receiptStore, publicAlphaMeasurement: reopened
+            )
+            restoredViewModel.load()
+            restoredViewModel.refreshExecutionReceiptAuditSnapshots()
+            restoredViewModel.refreshExecutionReceiptAuditSnapshots()
+            XCTAssertNil(restoredViewModel.executionReceiptHistorySnapshot.unavailableMessage)
+            XCTAssertFalse(try receiptStore.list(matching: ExecutionReceiptSearchFilter(visibleSurface: .auditLog)).isEmpty)
+            let exported = try PublicAlphaValidationLedger(recovering: reopened.exportWeek(containing: Date(timeIntervalSince1970: 505)))
+            let executions = exported.stageEvents.filter { $0.stage == .localExecution }
+            XCTAssertEqual(executions.count, 1)
+            XCTAssertEqual(executions.first?.occurredAt, receiptStore.receipts.first?.finishedAt)
+            if ledgerURL == recoveryURL {
+                XCTAssertNil(executions.first?.build)
+            } else {
+                XCTAssertEqual(executions.first?.build, buildA)
+            }
+        }
     }
 
     @MainActor

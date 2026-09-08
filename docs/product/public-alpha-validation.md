@@ -100,7 +100,10 @@ the visible receipt row record `approved_local_action`, `local_execution` and
 does not count as success. Task Done never creates an Outcome event.
 
 Receipt history reconciles the receipts it already loads after a crash between
-execution and measurement. Event identities make replay a no-op. No additional
+execution and measurement. Event identities make replay a no-op. Recovered
+execution does not infer a build identity: its receipt timestamp is
+preserved but its execution-time build remains unknown. An existing event keeps
+its originally recorded build when replayed. No additional
 repository or task scan is performed. Unreadable measurement data is preserved;
 storage failure emits a fixed, content-free diagnostic and does not stop work.
 An event that could not be persisted is unobserved, not a successful sample.

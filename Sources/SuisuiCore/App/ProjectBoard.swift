@@ -7011,7 +7011,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         let receipts = try store.list(matching: executionReceiptHistoryFilter(), limit: 100)
         // Reconcile the already-loaded durable receipts after a crash between
         // execution and measurement. This does not scan any additional work.
-        receipts.forEach(recordPublicAlphaExecution)
+        receipts.forEach { recordPublicAlphaExecution($0, isRecovery: true) }
         return ExecutionReceiptHistoryReadModel.snapshot(
             from: receipts,
             limit: 10
@@ -7585,7 +7585,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 id: id,
                 expectedMutationRevision: expectedMutationRevision
             )
-            recordPublicAlphaExecution(result.receipt)
+            recordPublicAlphaExecution(result.receipt, isRecovery: false)
             _ = refreshAssistantQueueSnapshot()
             refreshExecutionReceiptHistorySnapshot()
             if result.item.state == .done {
@@ -7607,7 +7607,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
-    private func recordPublicAlphaExecution(_ receipt: ExecutionReceipt) {
+    private func recordPublicAlphaExecution(_ receipt: ExecutionReceipt, isRecovery: Bool) {
         guard [.succeeded, .failed, .canceled].contains(receipt.status),
               let queueID = receipt.assistantQueueItemID,
               let reference = try? publicAlphaMeasurement?.workReference(sourceID: queueID, stage: .reviewableActionPlan)
@@ -7615,6 +7615,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         publicAlphaMeasurement?.record(
             .localExecution, mark: receipt.status == .succeeded ? .completed : .failed,
             sourceID: receipt.id, workReference: reference,
+            isRecovery: isRecovery,
             failureCategory: receipt.status == .succeeded ? nil : .reliability,
             at: receipt.finishedAt ?? receipt.createdAt
         )
