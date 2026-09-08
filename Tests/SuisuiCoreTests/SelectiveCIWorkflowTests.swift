@@ -90,7 +90,7 @@ final class SelectiveCIWorkflowTests: XCTestCase {
         let rustJob = String(workflow[rustStart.lowerBound..<visualStart.lowerBound])
 
         XCTAssertTrue(rustJob.contains("needs:\n      - test_strategy"))
-        XCTAssertTrue(rustJob.contains("if: ${{ always() && github.event_name == 'pull_request' && needs.test_strategy.outputs.strategy != 'full' }}"))
+        XCTAssertTrue(rustJob.contains("if: ${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.test_strategy.outputs.strategy != 'full' }}"))
 
         XCTAssertTrue(workflow.contains("TEST_STRATEGY_RESULT: ${{ needs.test_strategy.result }}"))
         XCTAssertTrue(workflow.contains("TEST_STRATEGY: ${{ needs.test_strategy.outputs.strategy }}"))

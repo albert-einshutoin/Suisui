@@ -77,7 +77,7 @@ final class CIGateWorkflowTests: XCTestCase {
         let needsStart = try XCTUnwrap(performanceJob.range(of: "    needs:\n"))
         let conditionStart = try XCTUnwrap(
             performanceJob.range(
-                of: "    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}",
+                of: "    if: ${{ always() && !cancelled() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}",
                 range: needsStart.upperBound..<performanceJob.endIndex
             )
         )
@@ -109,7 +109,7 @@ final class CIGateWorkflowTests: XCTestCase {
 
         XCTAssertTrue(
             performanceJob.contains(
-                "    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}"
+                "    if: ${{ always() && !cancelled() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}"
             )
         )
         XCTAssertFalse(

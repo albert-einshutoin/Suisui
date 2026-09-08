@@ -215,6 +215,7 @@ prepare_header_layout_candidate() {
   rm -f "$HEADER_LAYOUT_DATABASE_PATH" "$HEADER_LAYOUT_DATABASE_PATH-wal" "$HEADER_LAYOUT_DATABASE_PATH-shm"
 
   SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_DISABLE_PROJECT_BOARD_PRESENTATION_PERSISTENCE=1 \
     SUISUI_LAUNCH_RECOVERY_MODE=1 \
     SUISUI_DATABASE_PATH="$HEADER_LAYOUT_DATABASE_PATH" \
     "$APP_BINARY" &
@@ -339,6 +340,7 @@ launch_header_layout_candidate() {
   terminate_app
   rm -f "$CONTENT_SIZE_FILE"
   SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_DISABLE_PROJECT_BOARD_PRESENTATION_PERSISTENCE=1 \
     SUISUI_APP_SETTINGS_SUITE_NAME="$SETTINGS_SUITE" \
     SUISUI_LANGUAGE_PREFERENCE="$language" \
     SUISUI_DISABLE_PROJECT_BOARD_FALLBACK=1 \
@@ -351,11 +353,14 @@ launch_header_layout_candidate() {
   wait_for_app_process
   activate_app
   wait_for_visible_windows
+  wait_for_project_detail_visible
+  ensure_sidebar_visible
 }
 
 launch_runtime_crud_recovery_candidate() {
   terminate_app
   SUISUI_DISABLE_KEYCHAIN_SECRET_STORE=1 \
+    SUISUI_DISABLE_PROJECT_BOARD_PRESENTATION_PERSISTENCE=1 \
     SUISUI_APP_SETTINGS_SUITE_NAME="$SETTINGS_SUITE" \
     SUISUI_LAUNCH_RECOVERY_MODE=1 \
     SUISUI_RUNTIME_CRUD_RECOVERY_MODE=1 \
@@ -398,7 +403,7 @@ on run argv
     if (count of matchingProcesses) is not 1 then return "0"
     tell item 1 of matchingProcesses
       repeat with candidateWindow in windows
-        if my containsIdentifier(candidateWindow, "project-board-detail", 0) then
+        if my containsIdentifier(candidateWindow, "project-board-sidebar-toggle", 0) and my containsIdentifier(candidateWindow, "project-board-integrations-menu", 0) then
           return (count of toolbars of candidateWindow) as text
         end if
       end repeat
@@ -729,15 +734,23 @@ exercise_sidebar_entrypoints() {
   ensure_sidebar_visible
   press_ax_button "sidebar-open-search"
   wait_for_process_ax_identifier "command-palette-input" "present"
-  launch_header_layout_candidate
-  wait_for_project_detail_visible
+  # Search is an overlay and Secretary is an in-board route. Exercise their
+  # dismissal/navigation without restarting the process between user actions.
+  activate_app
+  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null
+on run argv
+  tell application "System Events"
+    tell (first process whose unix id is (item 1 of argv as integer))
+      key code 53
+    end tell
+  end tell
+end run
+APPLESCRIPT
+  wait_for_process_ax_identifier "command-palette-input" "absent"
   press_ax_button "sidebar-destination-secretary"
   wait_for_process_ax_identifier "voice-conversation-workspace" "present"
-  # Secretary keeps a modal surface above the board toolbar. Relaunch so
-  # the following settings and keyboard contracts can reach sidebar-toggle.
-  launch_header_layout_candidate
-  wait_for_project_detail_visible
   printf "OK: sidebar Search and Secretary opened their destination surfaces\n"
+
 }
 
 exercise_settings_utility() {
@@ -1643,8 +1656,8 @@ assert_window_respects_minimum
 assert_action_buttons_are_trailing "minimum-width"
 capture_window "minimum-width"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
-exercise_sidebar_entrypoints
 exercise_toolbar_utilities
+exercise_sidebar_entrypoints
 exercise_settings_utility
 
 launch_header_layout_candidate "japanese"
@@ -1656,8 +1669,8 @@ assert_window_respects_minimum
 assert_action_buttons_are_trailing "minimum-width-japanese"
 capture_window "minimum-width-japanese"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
-exercise_sidebar_entrypoints
 exercise_toolbar_utilities
+exercise_sidebar_entrypoints
 exercise_settings_utility
 
 exercise_runtime_crud_recovery_entrypoints

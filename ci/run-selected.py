@@ -74,7 +74,7 @@ def _test_commands(plan: dict) -> List[Dict[str, object]]:
                 {
                     "category": category,
                     "target": target,
-                    "argv": ["swift", "test", "--filter", target],
+                    "argv": ["swift", "test", "--skip-build", "--filter", target],
                 }
             )
     if not commands:
@@ -104,7 +104,7 @@ def _run(repo: Path, argv: List[str]) -> Tuple[int, float, str]:
         check=False,
     )
     duration = time.monotonic() - started
-    print(_sanitize(result.stdout), end="")
+    print(_sanitize(result.stdout), end="", flush=True)
     return result.returncode, duration, result.stdout
 
 
@@ -181,8 +181,7 @@ def main() -> int:
         return 2
 
     if arguments.dry_run:
-        report = _base_report("passed", commands, time.monotonic() - started)
-        report["successCount"] = len(commands)
+        report = _base_report("planned", commands, time.monotonic() - started)
         _write_report(report_path, report)
         return 0
 
@@ -190,19 +189,17 @@ def main() -> int:
     results = []
     quality_failed = False
     selection_setup_error = None
-    for argv in _quality_commands():
-        status, duration, _ = _run(repo, argv)
-        results.append(
-            {
-                "category": "quality",
-                "argv": argv,
-                "status": "passed" if status == 0 else "failed",
-                "durationSeconds": round(duration, 3),
-            }
-        )
-        if status != 0:
-            quality_failed = True
-            break
+    # Always refresh this checkout's test products before --skip-build. A cache
+    # hit alone is never evidence that the current source compiled or passed.
+    build_argv = ["swift", "build", "--build-tests"]
+    status, duration, _ = _run(repo, build_argv)
+    quality_failed = status != 0
+    results.append({
+        "category": "quality",
+        "argv": build_argv,
+        "status": "failed" if quality_failed else "passed",
+        "durationSeconds": round(duration, 3),
+    })
 
     if not quality_failed:
         for command in commands:
@@ -227,6 +224,23 @@ def main() -> int:
                     "selected test filter executed zero tests: " + str(command["target"])
                 )
                 result["status"] = "setup-failed"
+                break
+
+    # Related failures reach the log before packaging and source contracts;
+    # their failure status survives any later successful quality gates.
+    if not quality_failed and selection_setup_error is None:
+        for argv in _quality_commands():
+            status, duration, _ = _run(repo, argv)
+            results.append(
+                {
+                    "category": "quality",
+                    "argv": argv,
+                    "status": "passed" if status == 0 else "failed",
+                    "durationSeconds": round(duration, 3),
+                }
+            )
+            if status != 0:
+                quality_failed = True
                 break
 
     test_results = [result for result in results if result["category"] != "quality"]

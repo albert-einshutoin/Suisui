@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
@@ -31,24 +32,31 @@ EXCLUDED_MANIFESTS = {
 
 def detect_projects(repo: Path) -> List[Dict[str, str]]:
     detected: Dict[Tuple[str, str], Dict[str, str]] = {}
-    for path in repo.rglob("*"):
-        if any(part in EXCLUDED_DIRECTORIES for part in path.relative_to(repo).parts):
-            continue
-        if not path.is_file() or path.name not in MANIFEST_TYPES:
-            continue
-        manifest = path.relative_to(repo).as_posix()
-        if manifest in EXCLUDED_MANIFESTS:
-            continue
-        project_type, tool = MANIFEST_TYPES[path.name]
-        project_path = path.parent.relative_to(repo).as_posix() or "."
-        key = (project_path, project_type)
-        detected[key] = {
-            "path": project_path,
-            "type": project_type,
-            "tool": tool,
-            "manifest": manifest,
-            "adapter": "swift" if project_type == "swift" else "unsupported",
-        }
+
+    def raise_scan_error(error: OSError) -> None:
+        raise error
+
+    for directory, directories, filenames in os.walk(repo, onerror=raise_scan_error):
+        directories[:] = sorted(name for name in directories if name not in EXCLUDED_DIRECTORIES)
+        for name in sorted(filenames):
+            if name not in MANIFEST_TYPES:
+                continue
+            path = Path(directory) / name
+            if not path.is_file():
+                continue
+            manifest = path.relative_to(repo).as_posix()
+            if manifest in EXCLUDED_MANIFESTS:
+                continue
+            project_type, tool = MANIFEST_TYPES[path.name]
+            project_path = path.parent.relative_to(repo).as_posix() or "."
+            key = (project_path, project_type)
+            detected[key] = {
+                "path": project_path,
+                "type": project_type,
+                "tool": tool,
+                "manifest": manifest,
+                "adapter": "swift" if project_type == "swift" else "unsupported",
+            }
     return sorted(detected.values(), key=lambda item: (item["path"], item["type"]))
 
 

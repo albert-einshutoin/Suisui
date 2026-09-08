@@ -43,13 +43,13 @@ class ExecutionContractTests(unittest.TestCase):
         result, report = self._run_selected(plan)
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertEqual(report["status"], "passed")
+        self.assertEqual(report["status"], "planned")
         self.assertEqual(report["targetCount"], 3)
-        self.assertEqual(report["successCount"], 3)
+        self.assertEqual(report["successCount"], 0)
         self.assertEqual(report["failureCount"], 0)
         self.assertEqual(
             report["commands"][0]["argv"],
-            ["swift", "test", "--filter", "WidgetTests"],
+            ["swift", "test", "--skip-build", "--filter", "WidgetTests"],
         )
         self.assertTrue(all(isinstance(item["argv"], list) for item in report["commands"]))
 
@@ -76,6 +76,31 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "setup-failed")
         self.assertIn("zero tests", report["failureReason"])
 
+    def test_selected_runner_builds_once_before_filters_and_defers_quality(self) -> None:
+        result, report = self._run_selected_with_fake_toolchain(
+            "Executed 3 tests, with 0 failures (0 unexpected)\n",
+            targets=["WidgetTests", "OtherTests"],
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        commands = [item["argv"] for item in report["commands"]]
+        self.assertEqual(commands[:3], [
+            ["swift", "build", "--build-tests"],
+            ["swift", "test", "--skip-build", "--filter", "WidgetTests"],
+            ["swift", "test", "--skip-build", "--filter", "OtherTests"],
+        ])
+        self.assertEqual(report["executedTestCount"], 6)
+        self.assertIn(["./script/check_security_regressions.sh"], commands[3:])
+
+    def test_selected_runner_never_runs_stale_tests_after_build_failure(self) -> None:
+        result, report = self._run_selected_with_fake_toolchain(
+            "Executed 3 tests, with 0 failures (0 unexpected)\n",
+            build_exit_code=1,
+        )
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(report["status"], "failed")
+        self.assertEqual(report["executedTestCount"], 0)
+        self.assertFalse(any(item["argv"][:2] == ["swift", "test"] for item in report["commands"]))
+
     def test_selected_runner_reports_actual_test_counts_instead_of_filter_count(self) -> None:
         result, report = self._run_selected_with_fake_toolchain(
             "Executed 3 tests, with 1 test skipped and 0 failures (0 unexpected)\n"
@@ -98,6 +123,39 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertEqual(report.get("successCount"), 1)
         self.assertEqual(report.get("failureCount"), 2)
         self.assertEqual(report.get("skippedCount"), 1)
+
+    def test_complete_runner_reuses_discovery_build_and_blocks_failed_discovery(self) -> None:
+        # Exercise the real shell runner; the temporary toolchain only controls
+        # compilation/test results, so stale artifacts cannot hide a bad order.
+        import shutil
+        for discovery_exit in (0, 1):
+            with self.subTest(discovery_exit=discovery_exit), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "script").mkdir()
+                (root / "config/quality").mkdir(parents=True)
+                for name in ("run_complete_swiftpm_tests.sh", "ci_redact_stream.sh"):
+                    shutil.copy2(REPOSITORY_ROOT / "script" / name, root / "script" / name)
+                (root / "config/quality/swiftpm-test-baseline.txt").write_text("1\n")
+                (root / "config/quality/swiftpm-max-skipped-tests.txt").write_text("0\n")
+                (root / "swift").write_text(
+                    '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALL_LOG"\n'
+                    'if [ "$*" = "test list" ]; then\n'
+                    '  echo Module.WidgetTests/testExample; exit "$DISCOVERY_EXIT"\n'
+                    'fi\n'
+                    '[ "$*" = "test --skip-build" ] || exit 9\n'
+                    'echo "Executed 1 test, with 0 failures (0 unexpected)"\n'
+                )
+                (root / "swift").chmod(0o755)
+                environment = os.environ.copy()
+                for key in ("SUISUI_SWIFTPM_ARTIFACT_DIR", "SUISUI_SWIFTPM_TEST_BASELINE_FILE", "SUISUI_SWIFTPM_MAX_SKIPPED_FILE"):
+                    environment.pop(key, None)
+                environment.update(PATH=str(root) + os.pathsep + environment["PATH"],
+                                   CALL_LOG=str(root / "calls"), DISCOVERY_EXIT=str(discovery_exit))
+                result = subprocess.run([str(root / "script/run_complete_swiftpm_tests.sh")],
+                                        env=environment, capture_output=True, text=True)
+                calls = (root / "calls").read_text().splitlines()
+                self.assertEqual(calls, ["test list", "test --skip-build"] if discovery_exit == 0 else ["test list"])
+                self.assertEqual(result.returncode, discovery_exit, result.stdout + result.stderr)
 
     def test_full_runner_is_independent_from_planner_and_runs_canonical_gates(self) -> None:
         self.assertTrue(FULL_RUNNER.exists(), "independent full runner must exist")
@@ -1233,6 +1291,8 @@ class ExecutionContractTests(unittest.TestCase):
         test_output: str,
         *,
         test_exit_code: int = 0,
+        build_exit_code: int = 0,
+        targets=None,
     ):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1252,6 +1312,7 @@ class ExecutionContractTests(unittest.TestCase):
             swift = fake_bin / "swift"
             swift.write_text(
                 "#!/bin/sh\n"
+                "if [ \"${1:-}\" = build ]; then exit \"${FAKE_SWIFT_BUILD_EXIT_CODE:-0}\"; fi\n"
                 "if [ \"${1:-}\" = test ]; then\n"
                 "  printf '%s' \"${FAKE_SWIFT_TEST_OUTPUT:-}\"\n"
                 "  exit \"${FAKE_SWIFT_TEST_EXIT_CODE:-0}\"\n"
@@ -1266,7 +1327,7 @@ class ExecutionContractTests(unittest.TestCase):
                 json.dumps(
                     {
                         "strategy": "selective",
-                        "unitTestTargets": ["WidgetTests"],
+                        "unitTestTargets": targets or ["WidgetTests"],
                         "integrationTestTargets": [],
                         "smokeTestTargets": [],
                         "e2eTestTargets": [],
@@ -1278,6 +1339,7 @@ class ExecutionContractTests(unittest.TestCase):
             environment["PATH"] = str(fake_bin) + os.pathsep + environment["PATH"]
             environment["FAKE_SWIFT_TEST_OUTPUT"] = test_output
             environment["FAKE_SWIFT_TEST_EXIT_CODE"] = str(test_exit_code)
+            environment["FAKE_SWIFT_BUILD_EXIT_CODE"] = str(build_exit_code)
             result = subprocess.run(
                 [
                     "python3",

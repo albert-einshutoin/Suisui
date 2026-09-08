@@ -108,3 +108,22 @@ cache keyはOS、CPU architecture、Swift major、`Package.swift`/`Package.resol
 ## 出力とセキュリティ
 
 planとexecutionはJSONで、test targetは英数字と `/` だけを許可し、`subprocess`へshellなしのargv配列で渡す。PRコードをcredential付きの `pull_request_target` で実行しない。test出力はpathとsecret-like値をredactし、artifactは短期保存する。完全runnerはplanner/config/testから独立し、解析系が壊れても既存の完全SwiftPM、source contract、security gateを実行できる。
+
+## 同一実行内のビルド再利用と早期フィードバック
+
+選択runnerは `swift build --build-tests` が成功した後、各対象を
+`swift test --skip-build --filter <target>` で実行する。filterごとの件数検証と
+失敗集計を維持し、全対象の実行後に既存のbuild、source contract、securityを
+実行する。関連テストの失敗を先に表示し、後続gateの成功で上書きしない。
+ビルド失敗時はテストを実行せず失敗する。別実行の成功結果は再利用しない。
+
+完全SwiftPM runnerも、毎回 `swift test list` でビルドと一覧取得に成功してから
+`swift test --skip-build` で全件を実行する。baseline、発見件数と実行件数の照合、
+skip上限、ログredactionは従来通り検証する。テスト実行中は同じcheckoutの
+ソースや `.build` を編集・別プロセスでビルドしない。並行作業には別worktreeを使う。
+
+`ci/run-selected.py --dry-run` のreportは `status=planned`、実行・成功件数0であり、
+検証成功の証跡として使わない。`commands` ごとの `durationSeconds` で待ち時間を
+比較できる。ローカルの増分ビルドはSwiftPMの `.build` を利用し、Nx/Turborepoや
+テスト成功の永続キャッシュは追加しない。PRのbase/headはコミット差分であり、
+未コミット・未追跡の変更まで選択できるという保証はない。
