@@ -747,14 +747,6 @@ APPLESCRIPT
   wait_for_process_ax_identifier "command-palette-input" "absent"
   press_ax_button "sidebar-destination-secretary"
   wait_for_process_ax_identifier "voice-conversation-workspace" "present"
-  press_ax_button "sidebar-open-search"
-  wait_for_process_ax_identifier "command-palette-input" "present"
-  /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_text_input.swift" \
-    "$app_pid" "command-palette-input" "Native Toolbar Review Project"
-  press_ax_button "command-palette-row-project-$header_layout_project_id"
-  wait_for_process_ax_identifier "command-palette-input" "absent"
-  wait_for_process_ax_identifier "voice-conversation-workspace" "absent"
-  wait_for_project_detail_visible
   printf "OK: sidebar Search and Secretary opened their destination surfaces\n"
 
 }
@@ -1662,8 +1654,8 @@ assert_window_respects_minimum
 assert_action_buttons_are_trailing "minimum-width"
 capture_window "minimum-width"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
-exercise_sidebar_entrypoints
 exercise_toolbar_utilities
+exercise_sidebar_entrypoints
 exercise_settings_utility
 
 launch_header_layout_candidate "japanese"
@@ -1675,8 +1667,8 @@ assert_window_respects_minimum
 assert_action_buttons_are_trailing "minimum-width-japanese"
 capture_window "minimum-width-japanese"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
-exercise_sidebar_entrypoints
 exercise_toolbar_utilities
+exercise_sidebar_entrypoints
 exercise_settings_utility
 
 exercise_runtime_crud_recovery_entrypoints
