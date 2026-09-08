@@ -503,6 +503,11 @@ done < <(find "$BUILD_DIR" -maxdepth 1 -type f -name "*.dylib" -print0)
   printf '%s\n' '  <string>APPL</string>'
   printf '%s\n' '  <key>CFBundleShortVersionString</key>'
   printf '  <string>%s</string>\n' "$MARKETING_VERSION"
+  # Only identify a reproducible candidate; a dirty checkout is unknown.
+  if [[ -z "$(git -C "$ROOT_DIR" status --porcelain --untracked-files=normal)" ]]; then
+    printf '%s\n' '  <key>SuisuiSourceCommit</key>'
+    printf '  <string>%s</string>\n' "$(git -C "$ROOT_DIR" rev-parse HEAD)"
+  fi
   printf '%s\n' '  <key>CFBundleVersion</key>'
   printf '  <string>%s</string>\n' "$CURRENT_PROJECT_VERSION"
   printf '%s\n' '  <key>LSApplicationCategoryType</key>'

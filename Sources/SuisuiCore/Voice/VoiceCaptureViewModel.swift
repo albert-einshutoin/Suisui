@@ -147,6 +147,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         (any VoiceTaskConversationCommandPreparing)?
     private let conversationSessionID: UUID
     private let inboxCaptureSaver: (any InboxVoiceCaptureSaving)?
+    private let publicAlphaMeasurement: PublicAlphaRuntimeMeasurement?
     private let inboxTriageCommandParser: InboxVoiceTriageCommandParser
     private let developmentProjectProvider: () -> ProjectRecord?
     private let developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder
@@ -166,6 +167,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
     // Save-to-Inbox must be tied to the audio that produced the current
     // transcript so a failed new recording cannot reuse stale typed text.
     private var lastTranscribedAudioURL: URL?
+    // Shared by capture, review, and approval events for the current local job.
+    private var publicAlphaWorkReference: PublicAlphaWorkReference?
     // Identifies the source take already persisted to Inbox so repeated Save
     // cannot duplicate its task. Deletion ownership is tracked separately:
     // a copied temporary source can be both saved and pending cleanup.
@@ -211,6 +214,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             (any VoiceTaskConversationCommandPreparing)? = nil,
         conversationSessionID: UUID,
         inboxCaptureSaver: (any InboxVoiceCaptureSaving)? = nil,
+        publicAlphaMeasurement: PublicAlphaRuntimeMeasurement? = nil,
         developmentProjectProvider: @escaping () -> ProjectRecord? = { nil },
         developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder = VoiceDevelopmentPullRequestAutomationRequestBuilder(),
         appSettingsProvider: @escaping @Sendable () -> AppSettings = { .default },
@@ -245,6 +249,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.conversationCommandPreparer = conversationCommandPreparer
         self.conversationSessionID = conversationSessionID
         self.inboxCaptureSaver = inboxCaptureSaver
+        self.publicAlphaMeasurement = publicAlphaMeasurement
         self.developmentProjectProvider = developmentProjectProvider
         self.developmentPullRequestAutomationRequestBuilder = developmentPullRequestAutomationRequestBuilder
         self.appSettingsProvider = appSettingsProvider
@@ -272,6 +277,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.liveIntentPreview = nil
         self.inboxTriageCommandParser = InboxVoiceTriageCommandParser()
         self.lastTranscribedAudioURL = nil
+        self.publicAlphaWorkReference = nil
         self.savedInboxSourceAudioURL = nil
         self.lowLatencyStreamID = UUID()
         self.activeConversationSourceTurnID = nil
@@ -291,6 +297,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         assistantQueueStore: (any AssistantQueueStore)? = nil,
         commandRouter: any VoiceCommandRouting = VoiceCommandRouter(),
         inboxCaptureSaver: (any InboxVoiceCaptureSaving)? = nil,
+        publicAlphaMeasurement: PublicAlphaRuntimeMeasurement? = nil,
         developmentProjectProvider: @escaping () -> ProjectRecord? = { nil },
         developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder = VoiceDevelopmentPullRequestAutomationRequestBuilder(),
         appSettingsProvider: @escaping @Sendable () -> AppSettings = { .default },
@@ -323,6 +330,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             conversationCommandPreparer: nil,
             conversationSessionID: UUID(),
             inboxCaptureSaver: inboxCaptureSaver,
+            publicAlphaMeasurement: publicAlphaMeasurement,
             developmentProjectProvider: developmentProjectProvider,
             developmentPullRequestAutomationRequestBuilder: developmentPullRequestAutomationRequestBuilder,
             appSettingsProvider: appSettingsProvider,
@@ -714,6 +722,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             return
         }
         await waitForPendingConversationCancellation()
+        publicAlphaWorkReference = try? publicAlphaMeasurement?.workReference(sessionID: conversationSessionID)
         let sourceTurnID = UUID()
         activeConversationSourceTurnID = sourceTurnID
         let outcome = await conversationOrchestrator.handle(
@@ -739,6 +748,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         stopConversationReadout()
         localTriageRequest = nil
         localTriageDecision = nil
+        publicAlphaWorkReference = nil
         draftSource = .text
         draft.text = text
         conversationWorkspaceLocalAnswerItems = []
@@ -767,6 +777,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         retryPendingTemporaryRecordingDeletions()
         cancelCurrentVoiceInput()
         localTriageRequest = nil
+        publicAlphaWorkReference = nil
         localTriageDecision = nil
         draftSource = .text
         draft = TranscriptDraft()
@@ -962,6 +973,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
             lastTranscribedAudioURL = audio.fileURL
             savedInboxSourceAudioURL = nil
             developmentPullRequestAutomationRequest = nil
+            publicAlphaWorkReference = try? PublicAlphaWorkReference(sourceID: operationID.uuidString)
+            recordPublicAlphaCapture(at: date)
             refreshRoutingResult()
             phase = .idle
         } catch {
@@ -1029,6 +1042,10 @@ public final class VoiceCaptureViewModel: ObservableObject {
         activeConversationSourceTurnID = sourceTurnID
         await waitForPendingConversationCancellation()
         guard activeConversationSourceTurnID == sourceTurnID, draft.normalizedText == input else { return }
+        if publicAlphaWorkReference == nil {
+            publicAlphaWorkReference = try? PublicAlphaWorkReference(sourceID: sourceTurnID.uuidString)
+        }
+        recordPublicAlphaCapture(at: currentDate)
         var routedCommand = commandRouter.route(transcript: input)
         routingResult = routedCommand
 
@@ -1448,6 +1465,14 @@ public final class VoiceCaptureViewModel: ObservableObject {
             ) { current in
                 try AssistantQueueStateMachine.approve(current, reviewerID: reviewerID)
             }
+            if let reference = try? publicAlphaMeasurement?.workReference(
+                sourceID: assistantQueueItem.id, stage: .reviewableActionPlan
+            ) {
+                publicAlphaMeasurement?.record(
+                    .approvedLocalAction, mark: .completed,
+                    sourceID: assistantQueueItem.id, workReference: reference
+                )
+            }
             return true
         } catch {
             refreshAssistantQueueItemAfterMutationFailure(id: assistantQueueItem.id)
@@ -1590,6 +1615,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 )
                 guard activeConversationSourceTurnID == sourceTurnID else { return }
                 assistantQueueItem = persisted
+                recordPublicAlphaReviewEvent(for: persisted)
                 phase = .reviewReady
                 readConversationAloud(plan.summary)
             } catch {
@@ -1867,6 +1893,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
 
         updateDraftText(normalized)
+        // A new finalized utterance is a new input even when its text repeats.
+        publicAlphaWorkReference = try? PublicAlphaWorkReference(sourceID: UUID().uuidString)
         await generatePlan(
             source: .voice,
             currentDate: currentDate,
@@ -2397,6 +2425,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                     )
                     guard activeConversationSourceTurnID == sourceTurnID else { return }
                     assistantQueueItem = persisted
+                    recordPublicAlphaReviewEvent(for: persisted)
                 }
             } catch {
                 guard activeConversationSourceTurnID == sourceTurnID else { return }
@@ -2499,13 +2528,17 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
     private func persistNewAssistantQueueItemIfNeeded(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
         guard let assistantQueueStore else {
+            recordPublicAlphaReviewEvent(for: item)
             return item
         }
         do {
-            if let inserted = try assistantQueueStore.insertIfAbsent(item) {
-                return inserted
+            let persisted = if let inserted = try assistantQueueStore.insertIfAbsent(item) {
+                inserted
+            } else {
+                try assistantQueueStore.get(id: item.id)
             }
-            return try assistantQueueStore.get(id: item.id)
+            recordPublicAlphaReviewEvent(for: persisted)
+            return persisted
         } catch {
             // Queue persistence is fail-closed because review approval must not
             // happen against work that disappears after a restart.
@@ -2873,6 +2906,24 @@ public final class VoiceCaptureViewModel: ObservableObject {
             interpretationSummary: routedCommand.interpretationSummary,
             reason: "Voice planning draft needs review.",
             costPreview: assistantQueueCostPreview(for: response)
+        )
+    }
+
+    private func recordPublicAlphaCapture(at date: Date) {
+        guard let reference = publicAlphaWorkReference else { return }
+        publicAlphaMeasurement?.record(
+            .firstCapture, mark: .completed, sourceID: reference.digest,
+            workReference: reference, sessionID: conversationSessionID, at: date
+        )
+    }
+
+    private func recordPublicAlphaReviewEvent(for item: AssistantQueueItem) {
+        guard item.state == .waitingReview, let reference = publicAlphaWorkReference else { return }
+        publicAlphaMeasurement?.record(
+            .reviewableActionPlan,
+            mark: .completed,
+            sourceID: item.id,
+            workReference: reference
         )
     }
 

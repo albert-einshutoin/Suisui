@@ -6856,6 +6856,19 @@ final class AppExperienceSourceTests: XCTestCase {
         )
     }
 
+    func testOptionalMeasurementKeepsEstablishedPrivacyControlsFirstAndUsesCaptureClock() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/SettingsPrivacyFeatureView.swift")
+        let privacy = try XCTUnwrap(source.range(of: "Section(\"Privacy\")"))
+        let measurement = try XCTUnwrap(source.range(of: "Section(\"Local measurement\")"))
+        let watcher = try XCTUnwrap(source.range(of: "Section(\"Watcher\")"))
+        XCTAssertLessThan(privacy.lowerBound, measurement.lowerBound)
+        XCTAssertLessThan(measurement.lowerBound, watcher.lowerBound)
+        XCTAssertTrue(source.contains("measurementWeek = VisualEvidenceRuntimeContext.referenceDate()"))
+        for control in ["toggle", "week", "export", "import", "delete"] {
+            XCTAssertTrue(source.contains("settings-alpha-measurement-\(control)"))
+        }
+    }
+
     func testSettingsPrivacyDiagnosticsExportIsMetadataOnlyWithInlineError() throws {
         let appSource = try readAppShellSource()
         let coreSource = try readPackageFile("Sources/SuisuiCore/App/DiagnosticsReport.swift")
