@@ -225,7 +225,7 @@ jobs:
       - test_strategy
     # run-full already validates both crates. The dedicated job is needed only
     # for selective PRs, where run-pr-ci intentionally skips that full runner.
-    if: ${{ always() && github.event_name == 'pull_request' && needs.test_strategy.outputs.strategy != 'full' }}
+    if: ${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.test_strategy.outputs.strategy != 'full' }}
     runs-on: macos-26
     timeout-minutes: 30
     steps:
@@ -252,7 +252,7 @@ jobs:
     needs:
       - test_strategy
       - full_validation
-    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_runtime == 'true') }}
+    if: ${{ always() && !cancelled() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_runtime == 'true') }}
     runs-on: macos-26
     timeout-minutes: 60
     steps:
@@ -296,7 +296,7 @@ jobs:
       - full_validation
     # An unavailable or malformed selector result is not permission to skip.
     # Only an explicit false decision may omit the expensive visual matrix.
-    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_visual_state != '0') }}
+    if: ${{ always() && !cancelled() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_visual_state != '0') }}
     runs-on: macos-26
     timeout-minutes: 60
     strategy:
@@ -350,7 +350,7 @@ jobs:
       - full_validation
       - kokoro-rust-poc
       - ui-visual-locales
-    if: ${{ always() }}
+    if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -406,7 +406,7 @@ jobs:
     needs:
       - test_strategy
       - full_validation
-    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}
+    if: ${{ always() && !cancelled() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}
     runs-on: macos-26
     timeout-minutes: 15
     steps:
@@ -460,7 +460,7 @@ jobs:
       - ui-runtime
       - ui-visual
       - ui-performance-build
-    if: ${{ always() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}
+    if: ${{ always() && !cancelled() && (github.event_name != 'pull_request' || needs.test_strategy.outputs.ui_performance == 'true') }}
     runs-on: macos-26
     timeout-minutes: 30
     steps:
