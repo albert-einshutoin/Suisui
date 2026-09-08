@@ -501,7 +501,7 @@ private struct VoiceTaskConversationCloseout: View {
             }
         }
         .font(.caption)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("voice-conversation-closeout")
     }
 

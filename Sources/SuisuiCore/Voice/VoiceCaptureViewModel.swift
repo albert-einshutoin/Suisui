@@ -439,7 +439,11 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 for: session.state
             )
             try reloadConversationWorkspaceTurns()
-            try restorePublishedConversationReviewIfNeeded()
+            do {
+                try restorePublishedConversationReviewIfNeeded()
+            } catch {
+                phase = .failed("Conversation review could not be restored. Check Assistant Queue.")
+            }
         } catch {
             conversationWorkspaceTurnListState = .failed(
                 message: "Conversation history is unavailable."

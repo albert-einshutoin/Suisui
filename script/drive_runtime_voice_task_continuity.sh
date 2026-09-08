@@ -45,6 +45,7 @@ source_turn_id=""
 action_plan_id=""
 relation_count=""
 route_transition_count=0
+screen_transition_count=0
 window_size=""
 
 usage() {
@@ -318,7 +319,7 @@ assert_measurement_ledger() {
     "candidate_stage_count=$required_stages" \
     "external_write_count=$actual_external_writes" \
     "transcript_row_count=$actual_transcript_rows" \
-    "screen_transition_count=$route_transition_count" \
+    "screen_transition_count=$screen_transition_count" \
     "input_proposal_queue_result_receipt=present"
 }
 
@@ -383,6 +384,7 @@ run_all() {
   [[ -n "$queue_item_id" ]] || fail "queue_approval_execution" "queue" "review_queue_item_missing"
   ax_press "voice-conversation-open-assistant-queue" || fail "queue_approval_execution" "ax" "queue_handoff_control_missing"
   wait_for_marker "assistant-queue-workflow" || fail "queue_approval_execution" "ax" "queue_board_marker_missing"
+  ((screen_transition_count += 1))
   ax_press "assistant-queue-approve-$queue_item_id" || fail "queue_approval_execution" "ax" "queue_approve_missing"
   wait_for_queue_state "approved" || fail "queue_approval_execution" "queue" "queue_approval_not_persisted"
   # The Queue remains the canonical approval/execution surface after review.
@@ -399,15 +401,18 @@ run_all() {
   ax_press "sidebar-destination-work" || fail "route_round_trip" "ax" "work_destination_missing"
   wait_for_marker "work-hub" || fail "route_round_trip" "ax" "work_destination_not_rendered"
   ((route_transition_count += 1))
+  ((screen_transition_count += 1))
   ax_press "sidebar-destination-schedule" || fail "route_round_trip" "ax" "schedule_destination_missing"
   wait_for_marker "schedule-workflow" || fail "route_round_trip" "ax" "schedule_destination_not_rendered"
   ((route_transition_count += 1))
+  ((screen_transition_count += 1))
   ax_press "sidebar-destination-secretary" || fail "route_round_trip" "ax" "secretary_destination_missing"
   wait_for_marker "voice-conversation-workspace" || fail "route_round_trip" "ax" "secretary_return_missing"
   ax_press "voice-conversation-understanding-disclosure" || fail "route_round_trip" "ax" "understanding_disclosure_missing"
   wait_for_marker "voice-conversation-proposal" || fail "route_round_trip" "conversation" "conversation_proposal_not_restored"
   wait_for_marker "voice-conversation-queue-handoff" || fail "route_round_trip" "conversation" "conversation_queue_not_restored"
   ((route_transition_count += 1))
+  ((screen_transition_count += 1))
   assert_session_scope "route_round_trip"
   assert_restored_action_link || fail "route_round_trip" "receipt" "action_link_changed"
   write_witness \

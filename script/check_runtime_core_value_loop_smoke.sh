@@ -102,14 +102,14 @@ write_manifest() {
   local english_stages="" japanese_stages=""
   local candidate_ok=false
 
-  if [[ -s "$english_facts" ]]; then
+  if validate_locale_facts english; then
     english_external_writes="$(read_number_fact "$english_facts" external_write_count)"
     english_transcript_rows="$(read_number_fact "$english_facts" transcript_row_count)"
     english_screen_transitions="$(read_number_fact "$english_facts" screen_transition_count)"
     english_route_transitions="$(read_number_fact "$english_facts" route_transitions)"
     english_stages="$(read_fact "$english_facts" candidate_stage_count || true)"
   fi
-  if [[ -s "$japanese_facts" ]]; then
+  if validate_locale_facts japanese; then
     japanese_external_writes="$(read_number_fact "$japanese_facts" external_write_count)"
     japanese_transcript_rows="$(read_number_fact "$japanese_facts" transcript_row_count)"
     japanese_screen_transitions="$(read_number_fact "$japanese_facts" screen_transition_count)"
@@ -144,7 +144,7 @@ write_manifest() {
       sourceCommit: $source,
       candidate: {
         locales: ["english", "japanese"],
-        sameJobID: $candidate_ok,
+        sameJobWithinEachLocale: $candidate_ok,
         buildMatchesSource: $candidate_ok,
         resultMatchesSource: $candidate_ok
       },
