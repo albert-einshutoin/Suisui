@@ -6,6 +6,7 @@ import Foundation
 public enum PublicAlphaValidationError: Error, Equatable, Sendable {
     case emptyParticipantSeed
     case invalidParticipantDigest
+    case invalidWorkReference
     case invalidAppVersion
     case invalidSourceCommit
     case invalidStageMetadata
@@ -58,6 +59,40 @@ public struct PublicAlphaParticipantID: Codable, Equatable, Hashable, Sendable {
     }
 
     public var redactedValue: String { digest }
+}
+
+/// A closed, opaque reference shared by the events for one local job. The
+/// source identifier is hashed before it can reach the persisted ledger.
+public struct PublicAlphaWorkReference: Codable, Equatable, Hashable, Sendable {
+    public let digest: String
+
+    public init(digest: String) throws {
+        let normalized = digest.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard normalized.range(of: #"^sha256:[a-f0-9]{64}$"#, options: .regularExpression) != nil else {
+            throw PublicAlphaValidationError.invalidWorkReference
+        }
+        self.digest = normalized
+    }
+
+    public init(sourceID: String) throws {
+        guard !sourceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PublicAlphaValidationError.invalidWorkReference
+        }
+        let digest = SHA256.hash(data: Data(sourceID.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        self.digest = "sha256:\(digest)"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        try self.init(digest: container.decode(String.self))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(digest)
+    }
 }
 
 public struct PublicAlphaBuildIdentity: Codable, Equatable, Hashable, Sendable {
@@ -183,6 +218,7 @@ public enum PublicAlphaConsentMode: String, Codable, CaseIterable, Sendable {
 public struct PublicAlphaStageEvent: Codable, Equatable, Sendable {
     public let eventID: UUID
     public let participantID: PublicAlphaParticipantID
+    public let workReference: PublicAlphaWorkReference?
     public let stage: PublicAlphaStage
     public let mark: PublicAlphaStageMark
     public let occurredAt: Date
@@ -192,6 +228,7 @@ public struct PublicAlphaStageEvent: Codable, Equatable, Sendable {
     public init(
         eventID: UUID = UUID(),
         participantID: PublicAlphaParticipantID,
+        workReference: PublicAlphaWorkReference? = nil,
         stage: PublicAlphaStage,
         mark: PublicAlphaStageMark,
         occurredAt: Date,
@@ -205,6 +242,7 @@ public struct PublicAlphaStageEvent: Codable, Equatable, Sendable {
         }
         self.eventID = eventID
         self.participantID = participantID
+        self.workReference = workReference
         self.stage = stage
         self.mark = mark
         self.occurredAt = occurredAt
@@ -217,6 +255,7 @@ public struct PublicAlphaStageEvent: Codable, Equatable, Sendable {
         try self.init(
             eventID: container.decode(UUID.self, forKey: .eventID),
             participantID: container.decode(PublicAlphaParticipantID.self, forKey: .participantID),
+            workReference: container.decodeIfPresent(PublicAlphaWorkReference.self, forKey: .workReference),
             stage: container.decode(PublicAlphaStage.self, forKey: .stage),
             mark: container.decode(PublicAlphaStageMark.self, forKey: .mark),
             occurredAt: container.decode(Date.self, forKey: .occurredAt),

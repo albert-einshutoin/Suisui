@@ -9,11 +9,24 @@ final class PublicAlphaValidationTests: XCTestCase {
             .appendingPathComponent("ledger.json")
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         let measurement = try PublicAlphaRuntimeMeasurement(url: url, participantSeed: "opaque-seed")
-        measurement.record(.firstCapture, mark: .completed, sourceID: "capture-1")
-        measurement.record(.firstCapture, mark: .completed, sourceID: "capture-1")
+        XCTAssertEqual(
+            measurement.record(.firstCapture, mark: .completed, sourceID: "capture-1", workID: "job-1"),
+            .inserted
+        )
+        XCTAssertEqual(
+            measurement.record(.firstCapture, mark: .completed, sourceID: "capture-1", workID: "job-1"),
+            .duplicate
+        )
+        XCTAssertEqual(
+            measurement.record(.reviewableActionPlan, mark: .completed, sourceID: "queue-1", workID: "job-1"),
+            .inserted
+        )
         let ledger = try PublicAlphaValidationLedger(recovering: Data(contentsOf: url))
-        XCTAssertEqual(ledger.stageEvents.count, 1)
-        XCTAssertFalse(String(decoding: try ledger.encodedSnapshot(), as: UTF8.self).contains("opaque-seed"))
+        XCTAssertEqual(ledger.stageEvents.count, 2)
+        XCTAssertEqual(Set(ledger.stageEvents.compactMap(\.workReference)).count, 1)
+        let encoded = String(decoding: try ledger.encodedSnapshot(), as: UTF8.self)
+        XCTAssertFalse(encoded.contains("opaque-seed"))
+        XCTAssertFalse(encoded.contains("job-1"))
     }
 
     func testRuntimeMeasurementDoesNotOverwriteUnreadableLedger() throws {
@@ -26,9 +39,17 @@ final class PublicAlphaValidationTests: XCTestCase {
         try invalidData.write(to: url)
 
         let measurement = try PublicAlphaRuntimeMeasurement(url: url, participantSeed: "opaque-seed")
-        measurement.record(.firstCapture, mark: .completed, sourceID: "capture-1")
+        XCTAssertEqual(
+            measurement.record(.firstCapture, mark: .completed, sourceID: "capture-1"),
+            .failed
+        )
 
         XCTAssertEqual(try Data(contentsOf: url), invalidData)
+    }
+
+    func testWorkReferenceRejectsRawOrMalformedPersistedValues() throws {
+        XCTAssertThrowsError(try PublicAlphaWorkReference(sourceID: ""))
+        XCTAssertThrowsError(try PublicAlphaWorkReference(digest: "job-1"))
     }
     func testClosedSchemaDoesNotEncodeSeedOrProhibitedContent() throws {
         let seed = UUID().uuidString

@@ -167,6 +167,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
     // Save-to-Inbox must be tied to the audio that produced the current
     // transcript so a failed new recording cannot reuse stale typed text.
     private var lastTranscribedAudioURL: URL?
+    // Shared by capture, review, and approval events for the current local job.
+    private var publicAlphaWorkID: String?
     // Identifies the source take already persisted to Inbox so repeated Save
     // cannot duplicate its task. Deletion ownership is tracked separately:
     // a copied temporary source can be both saved and pending cleanup.
@@ -275,6 +277,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.liveIntentPreview = nil
         self.inboxTriageCommandParser = InboxVoiceTriageCommandParser()
         self.lastTranscribedAudioURL = nil
+        self.publicAlphaWorkID = nil
         self.savedInboxSourceAudioURL = nil
         self.lowLatencyStreamID = UUID()
         self.activeConversationSourceTurnID = nil
@@ -744,6 +747,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         stopConversationReadout()
         localTriageRequest = nil
         localTriageDecision = nil
+        publicAlphaWorkID = nil
         draftSource = .text
         draft.text = text
         conversationWorkspaceLocalAnswerItems = []
@@ -967,10 +971,12 @@ public final class VoiceCaptureViewModel: ObservableObject {
             lastTranscribedAudioURL = audio.fileURL
             savedInboxSourceAudioURL = nil
             developmentPullRequestAutomationRequest = nil
+            publicAlphaWorkID = operationID.uuidString
             publicAlphaMeasurement?.record(
                 .firstCapture,
                 mark: .completed,
                 sourceID: operationID.uuidString,
+                workID: operationID.uuidString,
                 at: date
             )
             refreshRoutingResult()
@@ -999,6 +1005,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         audioRecorder.reset()
         recordedAudio = nil
         lastTranscribedAudioURL = nil
+        publicAlphaWorkID = nil
         savedInboxSourceAudioURL = nil
         recordingState = audioRecorder.state
         if phase == .recording || phase == .transcribing {
@@ -1040,11 +1047,14 @@ public final class VoiceCaptureViewModel: ObservableObject {
         activeConversationSourceTurnID = sourceTurnID
         await waitForPendingConversationCancellation()
         guard activeConversationSourceTurnID == sourceTurnID, draft.normalizedText == input else { return }
+        let workID = publicAlphaWorkID ?? sourceTurnID.uuidString
+        publicAlphaWorkID = workID
         if case .text = requestSource {
             publicAlphaMeasurement?.record(
                 .firstCapture,
                 mark: .completed,
-                sourceID: sourceTurnID.uuidString,
+                sourceID: workID,
+                workID: workID,
                 at: currentDate
             )
         }
@@ -1470,7 +1480,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
             publicAlphaMeasurement?.record(
                 .approvedLocalAction,
                 mark: .completed,
-                sourceID: assistantQueueItem.id
+                sourceID: assistantQueueItem.id,
+                workID: publicAlphaWorkID ?? assistantQueueItem.id
             )
             return true
         } catch {
@@ -2911,7 +2922,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         publicAlphaMeasurement?.record(
             .reviewableActionPlan,
             mark: .completed,
-            sourceID: item.id
+            sourceID: item.id,
+            workID: publicAlphaWorkID ?? item.id
         )
     }
 

@@ -40,8 +40,10 @@ the existing explicit Review boundary.
 
 ## Closed data contract
 
-`PublicAlphaStageEvent` stores only a pseudonymous participant digest, one
-closed stage/mark, a timestamp, and closed failure/abandonment categories.
+`PublicAlphaStageEvent` stores only a pseudonymous participant digest, an
+opaque work-reference digest, one closed stage/mark, a timestamp, and closed
+failure/abandonment categories. The work reference links stages from one local
+job without persisting its source identifier.
 `PublicAlphaValidationSnapshot` stores the weekly counts and coded categories:
 
 | Field | Contract |

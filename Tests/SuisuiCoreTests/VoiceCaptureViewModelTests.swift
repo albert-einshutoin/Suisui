@@ -641,6 +641,50 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(logger.recordedEvents.map(\.status), [.started, .succeeded])
     }
 
+    func testGeneratePlanReusesMeasurementWorkIDAcrossRetries() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("public-alpha-voice-\(UUID().uuidString)", isDirectory: true)
+        let url = directory.appendingPathComponent("ledger.json")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let response = PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-retry",
+                userInput: "Create a task",
+                summary: "Create task",
+                actions: [PlanAction(id: "action-retry", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        )
+        let measurement = try PublicAlphaRuntimeMeasurement(
+            url: url,
+            participantSeed: "opaque-seed"
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: response),
+            planningReadinessProvider: { Self.readyPlanningProvider("fake") },
+            assistantQueueStore: RecordingAssistantQueueStore(),
+            publicAlphaMeasurement: measurement
+        )
+
+        viewModel.updateDraftText("Draft release brief")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 1), timeZoneIdentifier: "UTC")
+
+        let ledger = try PublicAlphaValidationLedger(recovering: Data(contentsOf: url))
+        XCTAssertEqual(
+            ledger.stageEvents.map(\.stage),
+            [.firstCapture, .reviewableActionPlan]
+        )
+        XCTAssertEqual(Set(ledger.stageEvents.compactMap(\.workReference)).count, 1)
+    }
+
     func testGeneratePlanDefaultsToNonDeveloperPlanningTools() async {
         let response = PlanningResponse(
             providerID: "recording",
