@@ -1298,7 +1298,7 @@ assert_layout_stable "inspector-wide-stays-closed"
 set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_WIDE_WIDTH" "$LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT"
 assert_layout_stable "window-wide"
 
-assert_sidebar_destination_window_size_stable "destination-secretary" "sidebar-destination-secretary" "Secretary" "voice-command-root"
+assert_sidebar_destination_window_size_stable "destination-secretary" "sidebar-destination-secretary" "Secretary" "voice-conversation-workspace"
 assert_sidebar_destination_window_size_stable "destination-schedule" "sidebar-destination-schedule" "Schedule" "schedule-workflow"
 assert_sidebar_destination_window_size_stable "destination-work" "sidebar-destination-work" "Work" "work-hub"
 

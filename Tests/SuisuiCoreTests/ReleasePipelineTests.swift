@@ -8060,7 +8060,7 @@ final class ReleasePipelineTests: XCTestCase {
         )
         XCTAssertTrue(coordinateFallbackSource.contains("target_x=$((window_x + SIDEBAR_DESTINATION_ROW_CENTER_X_OFFSET_PX))"))
         XCTAssertTrue(coordinateFallbackSource.contains("target_y=$((window_y + SIDEBAR_DESTINATION_FIRST_ROW_CENTER_Y_OFFSET_PX + destination_index * SIDEBAR_DESTINATION_ROW_STRIDE_PX))"))
-        XCTAssertTrue(script.contains("assert_sidebar_destination_window_size_stable \"destination-secretary\" \"sidebar-destination-secretary\" \"Secretary\" \"voice-command-root\""))
+        XCTAssertTrue(script.contains("assert_sidebar_destination_window_size_stable \"destination-secretary\" \"sidebar-destination-secretary\" \"Secretary\" \"voice-conversation-workspace\""))
         XCTAssertTrue(script.contains("assert_sidebar_destination_window_size_stable \"destination-schedule\" \"sidebar-destination-schedule\" \"Schedule\" \"schedule-workflow\""))
         XCTAssertTrue(script.contains("assert_sidebar_destination_window_size_stable \"destination-work\" \"sidebar-destination-work\" \"Work\" \"work-hub\""))
         XCTAssertFalse(script.contains("review-destination-assistant-queue"))
