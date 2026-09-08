@@ -92,6 +92,10 @@ final class VoiceTaskContinuityHarnessTests: XCTestCase {
         XCTAssertTrue(source.contains("sidebar-destination-secretary"))
         XCTAssertTrue(source.contains("active_project_id=$PROJECT_ID"))
         XCTAssertTrue(source.contains("active_task_id=$TASK_TWO_ID"))
+        XCTAssertTrue(source.contains("issue-617"))
+        XCTAssertTrue(source.contains("LOCALE"))
+        XCTAssertTrue(source.contains("resize_owned_window"))
+        XCTAssertTrue(source.contains("voice-conversation-receipt"))
         XCTAssertEqual(
             source.components(
                 separatedBy: "voice-conversation-open-assistant-queue"
@@ -104,10 +108,30 @@ final class VoiceTaskContinuityHarnessTests: XCTestCase {
         let source = try driverScript()
 
         XCTAssertTrue(source.contains("execution_receipt_id"))
+        XCTAssertTrue(source.contains("source_turn_id"))
+        XCTAssertTrue(source.contains("action_plan_id"))
+        XCTAssertTrue(source.contains("relation_count"))
         XCTAssertTrue(source.contains("assistant_queue_item_id='$queue_item_id'"))
         XCTAssertTrue(source.contains("ExecutionReceipts"))
         XCTAssertTrue(source.contains("receipt_filename="))
         XCTAssertTrue(source.contains("receipt_file_id"))
+        XCTAssertTrue(source.contains("assert_measurement_ledger"))
+    }
+
+    func testGivenCoreValueLoopScriptWhenValidateThenRunsObservedJourneyPerLocale() throws {
+        let source = try coreValueLoopScript()
+
+        XCTAssertTrue(source.contains("check_runtime_voice_task_continuity_smoke.sh"))
+        XCTAssertTrue(source.contains("run_locale english"))
+        XCTAssertTrue(source.contains("run_locale japanese"))
+        XCTAssertTrue(source.contains("externalWrites"))
+        XCTAssertTrue(source.contains("transcriptRowsObserved"))
+        XCTAssertTrue(source.contains("screenTransitions"))
+        XCTAssertTrue(source.contains("manualVoiceOver"))
+        XCTAssertFalse(source.contains("check_runtime_inbox_triage_smoke.sh"))
+        XCTAssertFalse(source.contains("check_runtime_schedule_cockpit_smoke.sh"))
+        XCTAssertFalse(source.contains("\"externalWrites\": 0"))
+        XCTAssertFalse(source.contains("\"rawTranscriptStored\": false"))
     }
 
     func testGivenBundledDriverWhenRestartingThenRequeriesActionLinkReceiptAndResumeSummary() throws {
@@ -165,6 +189,10 @@ final class VoiceTaskContinuityHarnessTests: XCTestCase {
         try String(contentsOf: packageRoot().appendingPathComponent("script/drive_runtime_voice_task_continuity.sh"), encoding: .utf8)
     }
 
+    private func coreValueLoopScript() throws -> String {
+        try String(contentsOf: packageRoot().appendingPathComponent("script/check_runtime_core_value_loop_smoke.sh"), encoding: .utf8)
+    }
+
     private func packageRoot() -> URL {
         var directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         while directory.path != "/" {
@@ -203,6 +231,9 @@ private enum VoiceTaskContinuityHarnessContract {
         "pre_approval_snapshot",
         "queue_approval_execution",
         "postcondition_receipt_action_link",
+        "route_round_trip",
+        "result_displayed",
+        "measurement",
         "restart",
         "resume",
         "redacted_source_bound_artifact"
@@ -242,7 +273,26 @@ private enum VoiceTaskContinuityHarnessContract {
         guard source.contains("contains_rejected_evidence \"$artifact_file\" && fail_stage") && source.contains("/Users/") && source.contains("sk-") else {
             throw Error.missingEvidenceRejection
         }
-        for fact in ["database_mutated", "queue_approved", "receipt_link", "action_link", "session_resumed", "resume_project_scope", "resume_task_scope"] where !source.contains("\"\(fact)\"") {
+        for fact in [
+            "database_mutated",
+            "queue_approved",
+            "receipt_link",
+            "action_link",
+            "relation_count",
+            "same_session",
+            "proposal_preserved",
+            "queue_item_preserved",
+            "result_receipt_ax",
+            "same_work_id",
+            "candidate_build_matches_source",
+            "candidate_result_matches_source",
+            "external_write_count",
+            "transcript_row_count",
+            "screen_transition_count",
+            "session_resumed",
+            "resume_project_scope",
+            "resume_task_scope"
+        ] where !source.contains("\"\(fact)\"") {
             throw Error.missingStage("witness fact: \(fact)")
         }
         guard !source.contains("SUISUI_FAKE") && !source.contains("--fake-provider") else {

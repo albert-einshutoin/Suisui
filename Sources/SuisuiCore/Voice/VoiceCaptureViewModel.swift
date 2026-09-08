@@ -439,6 +439,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 for: session.state
             )
             try reloadConversationWorkspaceTurns()
+            try restorePublishedConversationReviewIfNeeded()
         } catch {
             conversationWorkspaceTurnListState = .failed(
                 message: "Conversation history is unavailable."
@@ -492,6 +493,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
         do {
             let current = try assistantQueueStore.get(id: itemID)
             assistantQueueItem = current
+            let receiptID = try latestConversationActionLink(
+                queueItemID: itemID
+            )?.executionReceiptID
             switch current.state {
             case .done:
                 let actions: [PlanAction]
@@ -506,21 +510,71 @@ public final class VoiceCaptureViewModel: ObservableObject {
                     }.count,
                     changedCount: actions.filter {
                         $0.tool != .taskCreate
-                    }.count
+                    }.count,
+                    receiptID: receiptID
                 )
+                if let receiptID,
+                   let reference = try? publicAlphaMeasurement?.workReference(
+                       sourceID: receiptID,
+                       stage: .localExecution
+                   )
+                {
+                    publicAlphaMeasurement?.record(
+                        .resultDisplayed,
+                        mark: .completed,
+                        sourceID: receiptID,
+                        workReference: reference
+                    )
+                }
             case .blocked, .failed, .rejected:
                 conversationWorkspaceCloseout = .init(
-                    unresolvedCount: 1
+                    unresolvedCount: 1,
+                    receiptID: receiptID
                 )
             case .captured, .interpreted, .drafted, .waitingReview,
                  .approved, .running, .deferred:
                 conversationWorkspaceCloseout = .init(
-                    pendingCount: 1
+                    pendingCount: 1,
+                    receiptID: receiptID
                 )
             }
         } catch {
             conversationWorkspaceCloseout = .init(unresolvedCount: 1)
         }
+    }
+
+    private func restorePublishedConversationReviewIfNeeded() throws {
+        guard assistantQueueItem == nil,
+              let assistantQueueStore,
+              let linkStore = conversationWorkspaceStore as? any ConversationActionLinkStore,
+              let link = try linkStore.latestActionLink(sessionID: conversationSessionID),
+              let queueItemID = link.assistantQueueItemID
+        else {
+            return
+        }
+
+        let item = try assistantQueueStore.get(id: queueItemID)
+        assistantQueueItem = item
+        if case .actionPlan(let plan) = item.payload {
+            planningResponse = PlanningResponse(
+                providerID: "voice-conversation-orchestrator",
+                rawContent: "",
+                actionPlan: plan,
+                validationResult: ActionPlanValidator().validate(plan)
+            )
+            if item.state == .waitingReview || item.state == .approved {
+                phase = .reviewReady
+            }
+        }
+    }
+
+    private func latestConversationActionLink(
+        queueItemID: String
+    ) throws -> ConversationActionLink? {
+        guard let store = conversationWorkspaceStore as? any ConversationActionLinkStore else {
+            return nil
+        }
+        return try store.latestActionLink(assistantQueueItemID: queueItemID)
     }
 
     public func pauseConversationWorkspace() {

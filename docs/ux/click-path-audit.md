@@ -46,6 +46,12 @@ Phase 14 product review maps each major user goal as `app launch -> entry point 
 
 Historical Phase 14 evidence remains linked to the preserved workflow owners: #208 / PR #218, #209 / PR #217, #210 / PR #215, #211 / PR #216, and #212 / PR #214. Issue #616 changes their primary entry surfaces without changing the approval and mutation boundaries.
 
+## #617 core value loop runtime evidence
+
+`./script/check_runtime_core_value_loop_smoke.sh` runs the current clean candidate in English and Japanese with a fresh isolated SQLite database for each locale. The single owned app lifecycle proves the normal Project Board → Secretary route, typed request, clarification, proposal, Queue approval/execution, linked Receipt, route round-trip, and restart/resume of the same conversation session. The manifest records the observed external-write count, stored transcript-row count, and route-transition count; it does not substitute fixed success values.
+
+This is typed/AX evidence. Manual VoiceOver and real microphone/STT/TTS evidence remain separate and are not claimed by this command.
+
 ## Phase 14 hard-to-access or unproven paths
 
 | Path | Access issue found | Verification layer | Status |

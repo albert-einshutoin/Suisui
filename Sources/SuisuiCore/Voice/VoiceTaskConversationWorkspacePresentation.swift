@@ -207,17 +207,20 @@ public struct VoiceTaskConversationWorkspacePresentation: Equatable, Sendable {
         public let changedCount: Int
         public let pendingCount: Int
         public let unresolvedCount: Int
+        public let receiptID: String?
 
         public init(
             createdCount: Int = 0,
             changedCount: Int = 0,
             pendingCount: Int = 0,
-            unresolvedCount: Int = 0
+            unresolvedCount: Int = 0,
+            receiptID: String? = nil
         ) {
             self.createdCount = max(0, createdCount)
             self.changedCount = max(0, changedCount)
             self.pendingCount = max(0, pendingCount)
             self.unresolvedCount = max(0, unresolvedCount)
+            self.receiptID = receiptID
         }
     }
 

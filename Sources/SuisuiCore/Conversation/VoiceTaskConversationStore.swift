@@ -150,6 +150,7 @@ public protocol ConversationActionLinkStore: Sendable {
     func latestActionLink(
         assistantQueueItemID: String
     ) throws -> ConversationActionLink?
+    func latestActionLink(sessionID: UUID) throws -> ConversationActionLink?
 }
 
 public protocol VoiceTaskConversationRetentionStore: Sendable {

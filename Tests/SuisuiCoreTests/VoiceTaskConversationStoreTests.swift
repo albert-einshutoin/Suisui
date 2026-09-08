@@ -744,6 +744,10 @@ final class VoiceTaskConversationStoreTests: XCTestCase {
             ),
             link
         )
+        XCTAssertEqual(
+            try store.latestActionLink(sessionID: session.id),
+            link
+        )
     }
 
     func testLatestActionLinkRoundTripsEveryReviewedTaskSnapshot() throws {

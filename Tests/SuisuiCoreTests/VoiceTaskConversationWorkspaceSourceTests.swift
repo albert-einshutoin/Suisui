@@ -122,6 +122,17 @@ final class VoiceTaskConversationWorkspaceSourceTests: XCTestCase {
         XCTAssertFalse(understanding.contains("executeAssistantQueue"))
     }
 
+    func testGivenCompletedConversationWhenRenderThenShowsReceiptMarker() throws {
+        let workspace = try source("Sources/SuisuiApp/Views/VoiceTaskConversationWorkspaceView.swift")
+        let presentation = try source("Sources/SuisuiCore/Voice/VoiceTaskConversationWorkspacePresentation.swift")
+        let viewModel = try source("Sources/SuisuiCore/Voice/VoiceCaptureViewModel.swift")
+
+        XCTAssertTrue(workspace.contains("voice-conversation-receipt"))
+        XCTAssertTrue(presentation.contains("public let receiptID: String?"))
+        XCTAssertTrue(viewModel.contains("latestConversationActionLink(\n                queueItemID: itemID"))
+        XCTAssertTrue(viewModel.contains(".resultDisplayed"))
+    }
+
     func testGivenDeterministicTaskListWhenRenderThenShowsStructuredItems() throws {
         let workspace = try source(
             "Sources/SuisuiApp/Views/VoiceTaskConversationWorkspaceView.swift"

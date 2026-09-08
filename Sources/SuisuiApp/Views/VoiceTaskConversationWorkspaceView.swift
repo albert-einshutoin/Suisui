@@ -493,6 +493,12 @@ private struct VoiceTaskConversationCloseout: View {
                 closeout.unresolvedCount,
                 icon: "questionmark.circle"
             )
+            if let receiptID = closeout.receiptID {
+                Label("Receipt: \(receiptID)", systemImage: "checkmark.seal")
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .accessibilityIdentifier("voice-conversation-receipt")
+            }
         }
         .font(.caption)
         .accessibilityElement(children: .combine)
