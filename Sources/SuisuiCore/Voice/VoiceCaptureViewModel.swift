@@ -967,6 +967,12 @@ public final class VoiceCaptureViewModel: ObservableObject {
             lastTranscribedAudioURL = audio.fileURL
             savedInboxSourceAudioURL = nil
             developmentPullRequestAutomationRequest = nil
+            publicAlphaMeasurement?.record(
+                .firstCapture,
+                mark: .completed,
+                sourceID: operationID.uuidString,
+                at: date
+            )
             refreshRoutingResult()
             phase = .idle
         } catch {
@@ -1034,6 +1040,14 @@ public final class VoiceCaptureViewModel: ObservableObject {
         activeConversationSourceTurnID = sourceTurnID
         await waitForPendingConversationCancellation()
         guard activeConversationSourceTurnID == sourceTurnID, draft.normalizedText == input else { return }
+        if case .text = requestSource {
+            publicAlphaMeasurement?.record(
+                .firstCapture,
+                mark: .completed,
+                sourceID: sourceTurnID.uuidString,
+                at: currentDate
+            )
+        }
         var routedCommand = commandRouter.route(transcript: input)
         routingResult = routedCommand
 
@@ -1233,7 +1247,6 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 removeOwnedTemporaryRecording(at: recordedAudio.fileURL)
             }
             inboxCaptureResult = result
-            publicAlphaMeasurement?.record(.firstCapture, mark: .completed, at: date)
             savedInboxSourceAudioURL = recordedAudio.fileURL
             auditErrorMessage = nil
         } catch {
@@ -1454,7 +1467,11 @@ public final class VoiceCaptureViewModel: ObservableObject {
             ) { current in
                 try AssistantQueueStateMachine.approve(current, reviewerID: reviewerID)
             }
-            publicAlphaMeasurement?.record(.approvedLocalAction, mark: .completed)
+            publicAlphaMeasurement?.record(
+                .approvedLocalAction,
+                mark: .completed,
+                sourceID: assistantQueueItem.id
+            )
             return true
         } catch {
             refreshAssistantQueueItemAfterMutationFailure(id: assistantQueueItem.id)
@@ -1597,6 +1614,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 )
                 guard activeConversationSourceTurnID == sourceTurnID else { return }
                 assistantQueueItem = persisted
+                recordPublicAlphaReviewEvent(for: persisted)
                 phase = .reviewReady
                 readConversationAloud(plan.summary)
             } catch {
@@ -2374,9 +2392,6 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 try auditRecorder?.recordCompleted(response: response)
             }
             phase = response.validationResult.isValid ? .reviewReady : .failed("ActionPlan validation failed.")
-            if response.validationResult.isValid {
-                publicAlphaMeasurement?.record(.reviewableActionPlan, mark: .completed)
-            }
             do {
                 if let plan = response.actionPlan,
                    let queueItem = makeAssistantQueueItem(
@@ -2407,6 +2422,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                     )
                     guard activeConversationSourceTurnID == sourceTurnID else { return }
                     assistantQueueItem = persisted
+                    recordPublicAlphaReviewEvent(for: persisted)
                 }
             } catch {
                 guard activeConversationSourceTurnID == sourceTurnID else { return }
@@ -2509,13 +2525,17 @@ public final class VoiceCaptureViewModel: ObservableObject {
 
     private func persistNewAssistantQueueItemIfNeeded(_ item: AssistantQueueItem) throws -> AssistantQueueItem {
         guard let assistantQueueStore else {
+            recordPublicAlphaReviewEvent(for: item)
             return item
         }
         do {
-            if let inserted = try assistantQueueStore.insertIfAbsent(item) {
-                return inserted
+            let persisted = if let inserted = try assistantQueueStore.insertIfAbsent(item) {
+                inserted
+            } else {
+                try assistantQueueStore.get(id: item.id)
             }
-            return try assistantQueueStore.get(id: item.id)
+            recordPublicAlphaReviewEvent(for: persisted)
+            return persisted
         } catch {
             // Queue persistence is fail-closed because review approval must not
             // happen against work that disappears after a restart.
@@ -2883,6 +2903,15 @@ public final class VoiceCaptureViewModel: ObservableObject {
             interpretationSummary: routedCommand.interpretationSummary,
             reason: "Voice planning draft needs review.",
             costPreview: assistantQueueCostPreview(for: response)
+        )
+    }
+
+    private func recordPublicAlphaReviewEvent(for item: AssistantQueueItem) {
+        guard item.state == .waitingReview else { return }
+        publicAlphaMeasurement?.record(
+            .reviewableActionPlan,
+            mark: .completed,
+            sourceID: item.id
         )
     }
 

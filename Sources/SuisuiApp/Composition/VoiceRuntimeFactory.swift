@@ -32,11 +32,9 @@ extension AppRuntimeFactory {
                 defaults.set(value, forKey: seedKey)
                 return value
             }()
-            let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "dev"
-            let commit = (Bundle.main.object(forInfoDictionaryKey: "SuisuiSourceCommit") as? String) ?? "ce02746"
             return try? PublicAlphaRuntimeMeasurement(
                 url: support.appendingPathComponent("PublicAlphaValidation/ledger.json"),
-                participantSeed: seed, appVersion: version, sourceCommit: commit
+                participantSeed: seed
             )
         }()
         do {

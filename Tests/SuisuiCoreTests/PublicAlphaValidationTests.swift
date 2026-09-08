@@ -4,15 +4,31 @@ import XCTest
 
 final class PublicAlphaValidationTests: XCTestCase {
     func testRuntimeMeasurementPersistsClosedEventsWithoutRawContent() throws {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("public-alpha-(UUID().uuidString)/ledger.json")
-        let measurement = try PublicAlphaRuntimeMeasurement(
-            url: url, participantSeed: "opaque-seed", appVersion: "dev", sourceCommit: "ce02746"
-        )
-        measurement.record(.firstCapture, mark: .completed)
-        measurement.record(.firstCapture, mark: .completed)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("public-alpha-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("ledger.json")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let measurement = try PublicAlphaRuntimeMeasurement(url: url, participantSeed: "opaque-seed")
+        measurement.record(.firstCapture, mark: .completed, sourceID: "capture-1")
+        measurement.record(.firstCapture, mark: .completed, sourceID: "capture-1")
         let ledger = try PublicAlphaValidationLedger(recovering: Data(contentsOf: url))
-        XCTAssertEqual(ledger.stageEvents.count, 2)
+        XCTAssertEqual(ledger.stageEvents.count, 1)
         XCTAssertFalse(String(decoding: try ledger.encodedSnapshot(), as: UTF8.self).contains("opaque-seed"))
+    }
+
+    func testRuntimeMeasurementDoesNotOverwriteUnreadableLedger() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("public-alpha-\(UUID().uuidString)", isDirectory: true)
+        let url = directory.appendingPathComponent("ledger.json")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let invalidData = Data("not-json".utf8)
+        try invalidData.write(to: url)
+
+        let measurement = try PublicAlphaRuntimeMeasurement(url: url, participantSeed: "opaque-seed")
+        measurement.record(.firstCapture, mark: .completed, sourceID: "capture-1")
+
+        XCTAssertEqual(try Data(contentsOf: url), invalidData)
     }
     func testClosedSchemaDoesNotEncodeSeedOrProhibitedContent() throws {
         let seed = UUID().uuidString
