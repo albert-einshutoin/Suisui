@@ -45,9 +45,9 @@ public protocol ProjectBoardStore {
     func deleteProjectMilestone(id: Int64) throws
 }
 
-/// Fail-closed store used when the persistent store cannot be opened. Every
-/// operation rethrows the original open error so the UI reports the real cause
-/// instead of silently working against an empty in-memory board.
+/// Fail-closed store used when the persistent store cannot be opened.
+/// Operations rethrow the original open error, except workspace-path updates,
+/// which retain the protocol's default validation error.
 public struct UnavailableProjectBoardStore: ProjectBoardStore {
     public let error: Error
 
