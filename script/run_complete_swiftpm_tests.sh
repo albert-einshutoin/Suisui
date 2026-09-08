@@ -429,7 +429,9 @@ test_status=0
 test_publication_status=0
 test_pipeline_statuses=()
 set +e
-swift test 2>&1 | sanitize_swift_output | tee "$TEST_OUTPUT_FILE"
+# Discovery above built the current test products successfully. Execute those
+# exact products without repeating SwiftPM build planning; never skip discovery.
+swift test --skip-build 2>&1 | sanitize_swift_output | tee "$TEST_OUTPUT_FILE"
 test_pipeline_statuses=("${PIPESTATUS[@]}")
 set -e
 test_status="${test_pipeline_statuses[0]}"
