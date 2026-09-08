@@ -3,6 +3,17 @@ import XCTest
 @testable import SuisuiCore
 
 final class PublicAlphaValidationTests: XCTestCase {
+    func testRuntimeMeasurementPersistsClosedEventsWithoutRawContent() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("public-alpha-(UUID().uuidString)/ledger.json")
+        let measurement = try PublicAlphaRuntimeMeasurement(
+            url: url, participantSeed: "opaque-seed", appVersion: "dev", sourceCommit: "ce02746"
+        )
+        measurement.record(.firstCapture, mark: .completed)
+        measurement.record(.firstCapture, mark: .completed)
+        let ledger = try PublicAlphaValidationLedger(recovering: Data(contentsOf: url))
+        XCTAssertEqual(ledger.stageEvents.count, 2)
+        XCTAssertFalse(String(decoding: try ledger.encodedSnapshot(), as: UTF8.self).contains("opaque-seed"))
+    }
     func testClosedSchemaDoesNotEncodeSeedOrProhibitedContent() throws {
         let seed = UUID().uuidString
         let participantID = try PublicAlphaParticipantID(seed: seed)

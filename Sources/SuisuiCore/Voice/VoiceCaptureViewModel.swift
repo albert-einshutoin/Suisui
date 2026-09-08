@@ -147,6 +147,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         (any VoiceTaskConversationCommandPreparing)?
     private let conversationSessionID: UUID
     private let inboxCaptureSaver: (any InboxVoiceCaptureSaving)?
+    private let publicAlphaMeasurement: PublicAlphaRuntimeMeasurement?
     private let inboxTriageCommandParser: InboxVoiceTriageCommandParser
     private let developmentProjectProvider: () -> ProjectRecord?
     private let developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder
@@ -211,6 +212,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             (any VoiceTaskConversationCommandPreparing)? = nil,
         conversationSessionID: UUID,
         inboxCaptureSaver: (any InboxVoiceCaptureSaving)? = nil,
+        publicAlphaMeasurement: PublicAlphaRuntimeMeasurement? = nil,
         developmentProjectProvider: @escaping () -> ProjectRecord? = { nil },
         developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder = VoiceDevelopmentPullRequestAutomationRequestBuilder(),
         appSettingsProvider: @escaping @Sendable () -> AppSettings = { .default },
@@ -245,6 +247,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.conversationCommandPreparer = conversationCommandPreparer
         self.conversationSessionID = conversationSessionID
         self.inboxCaptureSaver = inboxCaptureSaver
+        self.publicAlphaMeasurement = publicAlphaMeasurement
         self.developmentProjectProvider = developmentProjectProvider
         self.developmentPullRequestAutomationRequestBuilder = developmentPullRequestAutomationRequestBuilder
         self.appSettingsProvider = appSettingsProvider
@@ -291,6 +294,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         assistantQueueStore: (any AssistantQueueStore)? = nil,
         commandRouter: any VoiceCommandRouting = VoiceCommandRouter(),
         inboxCaptureSaver: (any InboxVoiceCaptureSaving)? = nil,
+        publicAlphaMeasurement: PublicAlphaRuntimeMeasurement? = nil,
         developmentProjectProvider: @escaping () -> ProjectRecord? = { nil },
         developmentPullRequestAutomationRequestBuilder: VoiceDevelopmentPullRequestAutomationRequestBuilder = VoiceDevelopmentPullRequestAutomationRequestBuilder(),
         appSettingsProvider: @escaping @Sendable () -> AppSettings = { .default },
@@ -323,6 +327,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             conversationCommandPreparer: nil,
             conversationSessionID: UUID(),
             inboxCaptureSaver: inboxCaptureSaver,
+            publicAlphaMeasurement: publicAlphaMeasurement,
             developmentProjectProvider: developmentProjectProvider,
             developmentPullRequestAutomationRequestBuilder: developmentPullRequestAutomationRequestBuilder,
             appSettingsProvider: appSettingsProvider,
@@ -1228,6 +1233,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 removeOwnedTemporaryRecording(at: recordedAudio.fileURL)
             }
             inboxCaptureResult = result
+            publicAlphaMeasurement?.record(.firstCapture, mark: .completed, at: date)
             savedInboxSourceAudioURL = recordedAudio.fileURL
             auditErrorMessage = nil
         } catch {
@@ -1448,6 +1454,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             ) { current in
                 try AssistantQueueStateMachine.approve(current, reviewerID: reviewerID)
             }
+            publicAlphaMeasurement?.record(.approvedLocalAction, mark: .completed)
             return true
         } catch {
             refreshAssistantQueueItemAfterMutationFailure(id: assistantQueueItem.id)
@@ -2367,6 +2374,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 try auditRecorder?.recordCompleted(response: response)
             }
             phase = response.validationResult.isValid ? .reviewReady : .failed("ActionPlan validation failed.")
+            if response.validationResult.isValid {
+                publicAlphaMeasurement?.record(.reviewableActionPlan, mark: .completed)
+            }
             do {
                 if let plan = response.actionPlan,
                    let queueItem = makeAssistantQueueItem(

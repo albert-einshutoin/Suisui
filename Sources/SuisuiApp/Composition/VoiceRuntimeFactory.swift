@@ -23,6 +23,22 @@ extension AppRuntimeFactory {
         var workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])?
         var runtimeValidationMessage: String?
         var initialFailureMessage: String?
+        let publicAlphaMeasurement: PublicAlphaRuntimeMeasurement? = {
+            guard let support = try? applicationSupportDirectoryURL() else { return nil }
+            let defaults = UserDefaults.standard
+            let seedKey = "suisui.publicAlphaParticipantSeed"
+            let seed = defaults.string(forKey: seedKey) ?? {
+                let value = UUID().uuidString
+                defaults.set(value, forKey: seedKey)
+                return value
+            }()
+            let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "dev"
+            let commit = (Bundle.main.object(forInfoDictionaryKey: "SuisuiSourceCommit") as? String) ?? "ce02746"
+            return try? PublicAlphaRuntimeMeasurement(
+                url: support.appendingPathComponent("PublicAlphaValidation/ledger.json"),
+                participantSeed: seed, appVersion: version, sourceCommit: commit
+            )
+        }()
         do {
             auditLogger = try makeAuditLogger()
             let connection = try migratedConnection()
@@ -125,6 +141,7 @@ extension AppRuntimeFactory {
             conversationCommandPreparer: conversationCommandPreparer,
             conversationSessionID: conversationSessionID,
             inboxCaptureSaver: inboxCaptureService,
+            publicAlphaMeasurement: publicAlphaMeasurement,
             developmentProjectProvider: developmentProjectProvider,
             appSettingsProvider: { loadRuntimeSettings().settings },
             managedCostRateCardProvider: { managedCostRateCardResolver.rateCard(for: $0) },
