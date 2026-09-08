@@ -81,7 +81,7 @@ public enum ProjectBoardSidebarDestination: Hashable, Sendable {
 public enum ProjectBoardSelectionPersistence {
     public static let storageKey = "suisui.projectBoard.selectedDestination"
     public static let environmentOverrideKey = "SUISUI_PROJECT_BOARD_SELECTED_DESTINATION"
-    public static let defaultRawValue = "today"
+    public static let defaultRawValue = "secretary"
 
     public static var environmentOverrideRawValue: String? {
         let rawValue = ProcessInfo.processInfo.environment[environmentOverrideKey]?

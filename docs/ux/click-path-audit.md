@@ -21,11 +21,12 @@
 
 | 画面 | 入口 | 現状 |
 | --- | --- | --- |
-| Project Board | 起動時のメインwindow、menu barの `Project Board` | SidebarにInbox、Today、Projectsが固定表示され、Project overview/board/list、task composer、inspectorを扱う主要画面。 |
-| Voice Command | board toolbarの `Voice Command`、menu barの `Voice Command` | CaptureとAI action reviewの導線がある。現状ではInboxの代替に近い。 |
+| Project Board | 起動時のメインwindow、menu barの `Work` | Secretary、Schedule、Workの3面を入口にし、Work内で既存のworkflowを扱う主要画面。 |
+| Secretary | board sidebarの `Secretary`、menu barの `Secretary` | Capture → Interpret → Reviewの入口。既存のVoice/Queue経路へつながる。 |
+| Schedule | board sidebarの `Schedule`、menu barの `Schedule` | 予定の確認、ローカルdraft、承認後のCalendar handoffを扱う。 |
+| Work | board sidebarの `Work`、menu barの `Work` | Today、Inbox、Projects、Smart Lists、Completed、Pending Actionsをまとめて扱う。 |
 | Settings | macOS app menuの `Settings...`、`Command+,`、macOS Settings scene | 先頭のStatus OverviewでAI Provider、MCP、Sync、Privacyを確認でき、続くSettings Overview Pro Value rowでSync/MCPの有料価値とFree/local-only/fail-closed境界が分かる。ThemeはSettings内のAppearance tabに集約する。 |
-| Inbox | sidebarの `Inbox` | 未処理taskを実データから表示し、Task化、Project化、今日へ予定、後で確認を選択中itemへ1クリックで適用できる。 |
-| Today | sidebarの `Today` | due/overdueの未完了taskを実データから表示し、overdue/today件数、local focus suggestion、30分単位のtime block、task inspectorへつながる。 |
+| Work destinations | Work内の `Today` / `Inbox` / `Projects` / `Smart Lists` / `Completed` / `Pending Actions` | 旧workflowを既存store・executor・receipt経路のまま再利用し、一次ナビゲーションだけを集約する。 |
 | Project Detail | sidebarの個別project row | 1Projectの実行管理としてOverview / Board / List、Task、Artifact、Timeline、Milestone、Local Suggestionsを扱う。 |
 
 ## Phase 14 access-flow map (2026-07-03)
@@ -34,14 +35,16 @@ Phase 14 product review maps each major user goal as `app launch -> entry point 
 
 | User goal | Access flow | Current reachability | Follow-up / PR |
 | --- | --- | --- | --- |
-| Project Board work | app launch -> Project Board -> sidebar `Projects` / project row -> Overview / Board / List -> inspector/details | Reachable. Current screenshots show the board, cards, inspector, and project overview as coherent first-run work surfaces. | Existing Phase 12 evidence |
-| Inbox triage | app launch -> sidebar `Inbox` -> capture or select item -> `Make Task` / `Make Project` / `Schedule Today` / `Review Later` -> optional Undo | Reachable. Runtime Inbox triage smoke covers mutation and undo path. | Existing runtime smoke |
-| Today planning | app launch -> sidebar `Today` -> Daily Planning Review / command area / review rail -> Focus / Schedule Block / Reminder Draft | Reachable. Runtime Today completion smoke covers Today rail, local schedule draft, reminder draft, and visible completion. | Existing runtime smoke |
-| Schedule Calendar apply | app launch -> sidebar `Schedule` -> `Generate Draft` -> `Queue Calendar Apply` -> Assistant Queue approval | Reachable but previously hard to follow because draft generation and Calendar apply were separated vertically. | #209 / PR #217 |
-| Done recovery/follow-up | app launch -> sidebar `Done` -> completed task row -> `Follow Up` / `Reopen` | Reachable but row/action relationship was weak on wide windows. | #210 / PR #215 |
+| Project Board work | app launch -> Project Board -> `Work` -> `Projects` / project row -> Overview / Board / List -> inspector/details | Reachable. Work is the primary container; existing project operations remain unchanged. | Issue #616 |
+| Inbox triage | app launch -> `Work` -> `Inbox` -> capture or select item -> `Make Task` / `Make Project` / `Schedule Today` / `Review Later` -> optional Undo | Reachable. Runtime Inbox triage smoke covers mutation and undo path. | Existing runtime smoke |
+| Today planning | app launch -> `Work` -> `Today` -> Daily Planning Review / command area / review rail -> Focus / Schedule Block / Reminder Draft | Reachable. Runtime Today completion smoke covers Today rail, local schedule draft, reminder draft, and visible completion. | Existing runtime smoke |
+| Schedule Calendar apply | app launch -> `Schedule` -> `Generate Draft` -> `Queue Calendar Apply` -> Assistant Queue approval | Reachable. Schedule remains a top-level planning surface and Calendar writes stay approval-gated. | Issue #616 |
+| Completed recovery/follow-up | app launch -> `Work` -> `Completed` -> completed task row -> `Follow Up` / `Reopen` | Reachable through the Work hub; row/action behavior is unchanged. | Issue #616 |
 | Settings Google Calendar destination | app launch -> `Settings...` / `Command+,` -> `Sync` -> Google Calendar save flow -> `Save Calendar` -> `Check Readiness` | Source identifiers existed, but runtime AX proof was unstable until the save-flow group and settings smoke were hardened. | #208 / PR #218 |
-| Voice Command planning or capture | app launch -> Voice Command -> record or type -> `Save to Inbox` / `Generate Plan` -> Inbox or Assistant Queue review | Reachable, but the empty initial state did not explain record/type -> inbox/plan -> approval. | #211 / PR #216 |
+| Secretary planning or capture | app launch -> `Secretary` -> record or type -> `Save to Inbox` / `Generate Plan` -> Work Inbox or Pending Actions review | Reachable; the surface name is consolidated while the existing capture and review handoff remains. | Issue #616 |
 | Launch readiness proof | developer/release -> `./script/build_and_run.sh --verify` -> Project Board visible-window proof | Required for release evidence, but default timeout could false-block cold SwiftUI launch. | #212 / PR #214 |
+
+Historical Phase 14 evidence remains linked to the preserved workflow owners: #208 / PR #218, #209 / PR #217, #210 / PR #215, #211 / PR #216, and #212 / PR #214. Issue #616 changes their primary entry surfaces without changing the approval and mutation boundaries.
 
 ## Phase 14 hard-to-access or unproven paths
 
@@ -50,14 +53,14 @@ Phase 14 product review maps each major user goal as `app launch -> entry point 
 | Settings Google Calendar save/readiness | Runtime Settings save path could hang or miss `settings-google-calendar-id-save`; duplicate generic Save Settings identifiers made AX targeting brittle. | source + runtime + security | Fixed in #208 / PR #218; `./script/check_runtime_settings_save_smoke.sh` proves isolated UserDefaults persistence without token or path leakage. |
 | Schedule apply after draft generation | `Queue Calendar Apply` was below the cockpit flow, so users could generate a draft and lose the next approval step. | source + runtime schedule smoke + visual | Fixed in #209 / PR #217; apply approval stays next to the draft flow and still routes Calendar writes through Assistant Queue. |
 | Done row recovery actions | `Follow Up` and `Reopen` were functionally present but visually detached from the completed task row on wide layouts. | source + visual | Fixed in #210 / PR #215; actions are attached to each completed row. |
-| Voice Command first-run path | Empty state did not teach that users can record or type, then either save to Inbox or generate an approval-reviewed plan. | source + localization + visual; runtime voice smoke remains a follow-up for AX text submission | Improved in #211 / PR #216; initial state now explains examples, readiness, Inbox save, and plan generation. |
+| Secretary first-run path | Empty state must teach that users can record or type, then either save to Work Inbox or generate an approval-reviewed plan. | source + localization + visual; runtime voice smoke remains a follow-up for AX text submission | Issue #616 keeps the existing VoiceCaptureView flow under the Secretary surface. |
 | Launch visible-window verifier | `build_and_run.sh --verify` could report a false blocker before the Project Board window appeared on a cold SwiftUI launch. | source + runtime verifier + security | Fixed in #212 / PR #214; default verify timeout now covers cold launch recovery. |
 
 ## クリック数
 
 | 操作 | 導線 | クリック数 | 判定 | メモ |
 | --- | --- | ---: | --- | --- |
-| menu barからProject Boardを開く | menu bar icon -> `Project Board` | 2 | Pass | 通常起動ではProject Boardが最初に出るため、起動後は0クリック。 |
+| menu barからWorkを開く | menu bar icon -> `Work` | 2 | Pass | 通常起動ではSecretaryが最初に出る。Workは1クリックで既存workflowへ入れる。 |
 | menu bar Quick Add | menu bar icon -> `Quick Add`入力 -> `Add` | 2 | Pass | menu bar Quick AddからInboxへ0画面遷移で実タスクを作れる。Project Boardを開かなくてもlocal DBへ保存し、Board/MenuBar summaryへ変更通知する。 |
 | Project作成 | sidebarの `Add Project` | 1 | Pass | 速い。作成直後にtitle編集が明確である状態は維持したい。 |
 | Project選択 | sidebar project row | 1 | Pass | ネイティブsidebar listで繰り返し操作に向いている。 |
@@ -65,14 +68,14 @@ Phase 14 product review maps each major user goal as `app launch -> entry point 
 | Project artifact確認 | Project overview -> `Artifacts` section | 1-2 | Pass | SQLite `artifacts` のproject/task linkを表示し、未連携時はno tracked artifactsとして扱う。 |
 | Project artifact追加 | Project overview -> `Expected artifact path` -> `Track Artifact` | 2 | Pass | 絶対パスだけをexpected artifactとしてlocal SQLiteへ保存し、相対パスはworkspace未確定として保存しない。 |
 | Project artifact削除 | Project overview -> Artifact row `Remove artifact link` | 1 | Pass | 実ファイルは削除せず、local SQLiteのartifact linkだけを削除する。存在しないlinkはmock successにしない。 |
-| Inbox確認 | sidebar `Inbox` | 1 | Pass | Capture先が見える。選択中itemは右inspectorで編集できる。 |
-| Inbox voice detail | sidebar `Inbox` -> item row | 2 | Pass | Seeded voice memo metadata、transcript、interpretation summaryをInbox内で確認できる。 |
-| Inbox / Todayのrow完了toggle | workflow rowのcheckbox button | 1 | Pass | Inspectorを開かず、local SQLiteのTask statusをDone/Plannedへ実mutationする。 |
-| Inbox item分類 | item選択 -> `Make Task` / `Make Project` / `Schedule Today` / `Review Later` | 2 | Pass | 分類action自体は1クリック。選択済みなら即実行され、store mutationを通る。 |
-| Today確認 | sidebar `Today` | 1 | Pass | 今日以前の未完了task、期限内訳、local focus suggestion、time blockがproject横断で見える。 |
-| Projects overview確認 | sidebar `Projects` | 1 | Pass | Project portfolio overviewで進捗、リスク、期限、次アクションを横断確認できる。 |
+| Inbox確認 | `Work` -> `Inbox` | 2 | Pass | Capture先が見える。選択中itemは右inspectorで編集できる。 |
+| Inbox voice detail | `Work` -> `Inbox` -> item row | 3 | Pass | Seeded voice memo metadata、transcript、interpretation summaryをInbox内で確認できる。 |
+| Inbox / Todayのrow完了toggle | `Work` -> workflow rowのcheckbox button | 2 | Pass | Inspectorを開かず、local SQLiteのTask statusをDone/Plannedへ実mutationする。 |
+| Inbox item分類 | `Work` -> `Inbox` -> item選択 -> `Make Task` / `Make Project` / `Schedule Today` / `Review Later` | 3 | Pass | 分類action自体は1クリック。選択済みなら即実行され、store mutationを通る。 |
+| Today確認 | `Work` -> `Today` | 2 | Pass | 今日以前の未完了task、期限内訳、local focus suggestion、time blockがproject横断で見える。 |
+| Projects overview確認 | `Work` -> `Projects` | 2 | Pass | Project portfolio overviewで進捗、リスク、期限、次アクションを横断確認できる。 |
 | Schedule確認 | sidebar `Schedule` | 1 | Pass | Unscheduled tasks、draft blocks、approval tokenをCalendar write前に確認できる。 |
-| Done確認 | sidebar `Done` | 1 | Pass | completed_at履歴、完了Project、最近の完了taskを確認できる。 |
+| Completed確認 | `Work` -> `Completed` | 2 | Pass | completed_at履歴、完了Project、最近の完了taskを確認できる。 |
 | 選択中ProjectにTask作成 | headerの `Add Task` -> 入力 -> `Add` | 2 | Pass | 目標達成。columnの `+` と空columnの追加導線も2クリック。 |
 | 別ProjectにTask作成 | sidebar project -> `Add Task` -> 入力 -> `Add` | 3 | Pass | 目的地変更があるため3操作だが、`Add Task` はOverview/HeaderからでもBoardへ切り替えてinline composerを即表示するため、押下後に入力欄を探す必要はない。Inbox capture用途はmenu bar Quick Addを使う。 |
 | Taskを隣のstatusへ移動 | cardのchevron left/right | 1 | Pass | 目標達成。ドラッグしないユーザーにも分かりやすい。 |
@@ -98,8 +101,8 @@ Phase 14 product review maps each major user goal as `app launch -> entry point 
 | Sync状態確認 | Settings -> Status Overviewを見る | 1 | Pass | Planと状態がSettings先頭で分かる。Sync tabではpaid value rowがPro価値、Freeのlocal-only境界、backend未構成状態をtoggle前に示す。MCP/Sync tabはOverviewの `Show advanced settings` toggleをONにすると表示される。ON後の導線は従来通り。 |
 | Pro価値確認 | Settings -> OverviewのPro Value rowを見る | 1 | Pass | Settings Overview Pro Value rowで、SyncとAdvanced MCP Executionの価値、Free/local-only、backend未構成、tools/call前のentitlement/policy/approval境界がタブ移動なしで分かる。 |
 | Free userでSync開始 | Settings -> `External Sync` toggle | 2 | Pass | network前にupgrade gateで止まる。Free stays local / no data leaves this Mac の境界もtoggle前に見える。 |
-| text commandからplan生成 | Voice Command -> 入力 -> `Generate Plan` | 2 | Pass | 生成後にreview panelが同じ画面へ出る。 |
-| 録音からplan生成 | Voice Command -> `Record` -> `Stop` -> `Generate Plan` | 4 | Watch | 音声captureとしては自然だが、Inbox代替としては重い。 |
+| text commandからplan生成 | Secretary -> 入力 -> `Generate Plan` | 2 | Pass | 生成後にreview panelが同じ画面へ出る。 |
+| 録音からplan生成 | Secretary -> `Record` -> `Stop` -> `Generate Plan` | 4 | Watch | 音声captureとしては自然だが、Work Inboxへの保存またはPending Actions reviewへ続く。 |
 | Review実行 | `Approve` -> `Execute` | 2 | Pass | write actionは承認必須。approval不要なら1クリックで実行できる。 |
 
 ## ギャップ
@@ -152,7 +155,7 @@ Problem: Suisuiは実働するboardとlocal dataを持ったが、まだ日々�
 
 User pull: Project overviewでTask、Artifact、Timeline、Local suggestionが同じ画面にまとまり、Project inspectorで編集、削除、提案適用まで同じ右側の操作面に揃った。
 
-Retention hook: Todayは日次のdefault surfaceに近づき、Project overviewは週次/案件単位の確認面になった。次はkeyboard/focusとスクリーンショット検証を詰め、繰り返し操作の摩擦を減らす。
+Retention hook: Secretaryがcapture、Scheduleが予定、Workが日次/案件単位の確認面を担う。次はkeyboard/focusとスクリーンショット検証を詰め、繰り返し操作の摩擦を減らす。
 
 Monetization: Syncとadvanced MCPのgateは実装済み。Pro価値はSettings Overview Pro Value row、Sync paid value row、MCP paid execution boundary rowで、disabled toggleではなくstatus rowとして見える。
 
@@ -181,7 +184,7 @@ Project boardのkanban surfaceにフォーカスがあるとき(タスクカー�
 
 ### Smart Lists
 
-Sidebarの`Smart Lists` sectionにpreset(`Due this week`、`High priority`、`Overdue`)と保存済みリストが並ぶ。`New Smart List…`でstatus/priority/due-within/overdue/検索テキストを組み合わせたフィルタを保存でき、選択するとboard detailに一致タスクのflat listが出る(Todayと同じrow componentを再利用)。選択は`selectedDestination`とは独立した`selectedSmartListID`で管理し、どちらか一方だけがアクティブになる。
+Workの`Smart Lists` sectionにpreset(`Due this week`、`High priority`、`Overdue`)と保存済みリストが並ぶ。`New Smart List…`でstatus/priority/due-within/overdue/検索テキストを組み合わせたフィルタを保存でき、選択するとboard detailに一致タスクのflat listが出る(Todayと同じrow componentを再利用)。選択は`selectedDestination`とは独立した`selectedSmartListID`で管理し、どちらか一方だけがアクティブになる。
 
 ## UX review fixes (2026-07-27)
 
@@ -197,7 +200,7 @@ fix shipped in this pass.
 | 英語の複数形が壊れていた（`1 open tasks`） | `localizedCount(_:one:other:)` を追加し、主要サーフェスの可算名詞を単複2キーに分離。 | `Sources/SuisuiApp/LocalizedDisplay.swift` ほか |
 | Todayに「次の一手」を指す面が4つあった | 内容が「他の候補はMoreにあります」だけの `TodayAISuggestionCard` を削除。焦点面はassistant railに一本化。 | `Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift` |
 | Settings Overviewが状態名だけの折りたたみ2行だった | グループラベルに件数と対象名を表示し、`Needs Attention` は既定で展開。`needsAction` をグレーからattentionトーンへ。 | `Sources/SuisuiApp/Views/SettingsStatusOverviewView.swift` |
-| `⌘1`–`⌘4` がInbox分類に割り当てられ、サイドバーにキーボード導線がなかった | `⌘1`–`⌘4` を Today / Inbox / Projects / Review に割り当て、分類は `⌃⌘1`–`⌃⌘4` へ移動（tooltipにキー表示）。 | `Sources/SuisuiApp/Views/ProjectBoardView.swift`, `Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift` |
+| `⌘1`–`⌘3` の一次導線を整理した | `⌘1` Secretary、`⌘2` Schedule、`⌘3` Workに割り当て、Work内の分類は既存のworkflow操作へ委譲。 | `Sources/SuisuiApp/SuisuiApp.swift`, `Sources/SuisuiApp/Views/ProjectBoardWorkHubView.swift` |
 | カードのタイトルが1行で切れ、説明文が3行取っていた | タイトルを3行 + `layoutPriority(1)`、説明を2行に。 | `Sources/SuisuiApp/Views/ProjectBoardDetailViews.swift` |
 | Projects overviewが全カードに同じ判定ルール文を繰り返していた | ヘッダーの `info.circle` に1回だけ表示。 | `Sources/SuisuiApp/Views/ProjectBoardDetailViews.swift` |
 | Assistant Queueが空でも `0 selected` と無効ボタンを表示していた | 行がない間はtriage/batchツールバーを出さない。 | `Sources/SuisuiApp/Views/ProjectWorkflowAssistantQueueView.swift` |

@@ -64,11 +64,14 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(script.contains("SIDEBAR_DESTINATION_SOURCE"))
         XCTAssertTrue(script.contains(".accessibilityIdentifier(\\\"$identifier\\\")"))
         for identifier in [
-            "sidebar-destination-inbox",
-            "sidebar-destination-today",
-            "sidebar-destination-projects",
+            "sidebar-destination-secretary",
             "sidebar-destination-schedule",
-            "sidebar-destination-completed"
+            "sidebar-destination-work",
+            "work-destination-today",
+            "work-destination-inbox",
+            "work-destination-projects",
+            "work-destination-completed",
+            "work-destination-pending-actions"
         ] {
             XCTAssertTrue(script.contains(identifier), "script must check live sidebar marker \(identifier)")
         }
@@ -99,11 +102,9 @@ final class QualitySourceContractTests: XCTestCase {
 
         for marker in [
             ".accessibilityIdentifier(accessibilityIdentifier(for: item.id))",
-            #"case .inbox: "sidebar-destination-inbox""#,
-            #"case .today: "sidebar-destination-today""#,
-            #"case .projects: "sidebar-destination-projects""#,
+            #"case .secretary: "sidebar-destination-secretary""#,
             #"case .schedule: "sidebar-destination-schedule""#,
-            #"case .completed: "sidebar-destination-completed""#
+            #"case .work: "sidebar-destination-work""#
         ] {
             XCTAssertTrue(script.contains(marker), "sidebar gate must inspect \(marker)")
         }

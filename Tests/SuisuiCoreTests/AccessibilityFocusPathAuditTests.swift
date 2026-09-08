@@ -202,7 +202,7 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
 
     func testPseudoVoiceOverAuditAcceptsCompleteTodayCockpitPath() {
         let nodes = [
-            node("sidebar-destination-today", role: .button, label: "Today, 3 open due or overdue tasks", help: "Opens Today cockpit."),
+            node("work-destination-today", role: .button, label: "Today, 3 open due or overdue tasks", help: "Opens Today cockpit."),
             node("today-workflow", role: .group, label: "Today"),
             node("today-briefing-panel", role: .group, label: "Today briefing"),
             node("today-focus-recommendation", role: .group, label: "Ship release"),
@@ -227,7 +227,7 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
 
     func testPseudoVoiceOverAuditRequiresTodayRailActionsNotOnlyScreenshotMarkers() {
         let nodes = [
-            node("sidebar-destination-today", role: .button, label: "Today", help: "Opens Today cockpit."),
+            node("work-destination-today", role: .button, label: "Today", help: "Opens Today cockpit."),
             node("today-workflow", role: .group, label: "Today"),
             node("today-briefing-panel", role: .group, label: "Today briefing"),
             node("today-focus-recommendation", role: .group, label: "Ship release"),
@@ -250,7 +250,7 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
 
     func testPseudoVoiceOverAuditAcceptsEmptyTodayCockpitWithoutRailActions() {
         let nodes = [
-            node("sidebar-destination-today", role: .button, label: "Today, 0 open due or overdue tasks", help: "Opens Today cockpit."),
+            node("work-destination-today", role: .button, label: "Today, 0 open due or overdue tasks", help: "Opens Today cockpit."),
             node("today-workflow", role: .group, label: "Today"),
             node("today-briefing-panel", role: .group, label: "Today briefing"),
             node("today-focus-recommendation", role: .group, label: "No focus task"),
@@ -609,10 +609,10 @@ final class AccessibilityFocusPathAuditTests: XCTestCase {
             node("inbox-selected-context", role: .group, label: "Selected Item"),
             node("inbox-action-grid", role: .group, label: "Inbox classification actions"),
             node(
-                "review-hub-compact-navigation",
+                "work-hub-compact-navigation",
                 role: .button,
-                label: "Review view chooser",
-                help: "Choose Review destination."
+                label: "Work view chooser",
+                help: "Choose Work destination."
             ),
             node(
                 "projects-hub-compact-navigation",

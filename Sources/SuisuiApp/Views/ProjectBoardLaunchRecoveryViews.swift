@@ -144,7 +144,7 @@ private struct ProjectBoardUIEvidenceProjectsOverviewRecoveryView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Label("Projects", systemImage: "folder")
                     .font(.headline)
-                    .accessibilityIdentifier("sidebar-destination-projects")
+                    .accessibilityIdentifier("work-destination-projects")
 
                 Text("Portfolio Watchlist")
                     .font(.subheadline)
@@ -686,7 +686,7 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
             }
             .buttonStyle(.plain)
             .help("Opens the Inbox workflow entry for accessibility verification")
-            .accessibilityIdentifier("sidebar-destination-inbox")
+            .accessibilityIdentifier("work-destination-inbox")
             .accessibilityHint("Opens the Inbox workflow entry for accessibility verification.")
 
             Button {
@@ -698,7 +698,7 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
             }
             .buttonStyle(.plain)
             .help("Opens the Today workflow entry for accessibility verification")
-            .accessibilityIdentifier("sidebar-destination-today")
+            .accessibilityIdentifier("work-destination-today")
             .accessibilityHint("Opens the Today workflow entry for accessibility verification.")
 
             Button {
@@ -728,12 +728,12 @@ private struct ProjectBoardRuntimeCRUDRecoveryView: View {
                 isShowingEmbeddedSettings = false
                 isShowingEmbeddedVoice.toggle()
             } label: {
-                Label("Voice Command", systemImage: "mic")
+                Label("Secretary", systemImage: "person.crop.circle")
             }
             .buttonStyle(.bordered)
-            .help("Open Voice Command")
-            .accessibilityIdentifier("project-board-voice-command")
-            .accessibilityHint("Opens Voice Command.")
+            .help("Open Secretary")
+            .accessibilityIdentifier("sidebar-destination-secretary")
+            .accessibilityHint("Opens Secretary.")
 
             ForEach(viewModel.snapshot.projects) { project in
                 Button {

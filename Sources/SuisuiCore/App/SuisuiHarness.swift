@@ -111,7 +111,7 @@ public enum SuisuiHarnessTodayCockpitOperation: String, Codable, CaseIterable, E
         switch self {
         case .openToday:
             [
-                "sidebar-destination-today",
+                "work-destination-today",
                 "today-workflow"
             ]
         case .captureCommand:

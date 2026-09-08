@@ -37,7 +37,7 @@ REQUIRED_RUNTIME_CRUD_MARKERS=(
   "task-inspector-delete"
 )
 REQUIRED_RUNTIME_FOCUS_MARKERS=(
-  "Project navigation=>project-board-sidebar"
+  "Primary navigation=>project-board-sidebar"
   "Project board detail=>project-board-detail"
   "Open task=>task-card-open-details"
   "Inline Task Composer=>project-header-add-task"
@@ -55,10 +55,10 @@ REQUIRED_RUNTIME_BUTTON_A11Y_MARKERS=(
   "task-inspector-delete=>Deletes the selected task"
 )
 REQUIRED_RUNTIME_SCREEN_MARKERS=(
-  "Inbox sidebar=>sidebar-destination-inbox"
-  "Today sidebar=>sidebar-destination-today"
+  "Secretary sidebar=>sidebar-destination-secretary"
+  "Schedule sidebar=>sidebar-destination-schedule"
+  "Work sidebar=>sidebar-destination-work"
   "Settings sidebar=>sidebar-action-settings"
-  "Voice Command sidebar=>sidebar-action-voice-command"
 )
 REQUIRED_RUNTIME_DESTRUCTIVE_CANCEL_MARKERS=(
   "Delete task cancel=>task-inspector-delete-confirmation-cancel"
@@ -66,7 +66,7 @@ REQUIRED_RUNTIME_DESTRUCTIVE_CANCEL_MARKERS=(
 
 REQUIRED_FUNCTIONAL_SURFACE_ANCHORS=(
   "project-board::project-board-sidebar"
-  "project-board::Project navigation"
+  "project-board::Primary navigation"
   "project-board::project-board-detail"
   "project-board::project-kanban-board"
   "project-board::project-board-show-archived"
@@ -158,7 +158,6 @@ REQUIRED_SOURCE_OWNER_ASSERTIONS=(
   "Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\"1\", modifiers: [.command])"
   "Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\"2\", modifiers: [.command])"
   "Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\"3\", modifiers: [.command])"
-  "Sources/SuisuiApp/SuisuiApp.swift::.keyboardShortcut(\"4\", modifiers: [.command])"
   "Sources/SuisuiApp/Views/MenuBarPanel.swift::.keyboardShortcut(.return, modifiers: [.command])"
 )
 

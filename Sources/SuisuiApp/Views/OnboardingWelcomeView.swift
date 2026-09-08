@@ -88,11 +88,11 @@ struct OnboardingWelcomeView: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: SuisuiSpacing.sm) {
-                onboardingFlowPill(systemImage: "tray.fill", title: "Capture")
+                onboardingFlowPill(systemImage: "person.crop.circle", title: "Secretary")
                 flowArrow
-                onboardingFlowPill(systemImage: "sun.max.fill", title: "Today")
+                onboardingFlowPill(systemImage: "calendar", title: "Schedule")
                 flowArrow
-                onboardingFlowPill(systemImage: "checkmark.seal", title: "Complete")
+                onboardingFlowPill(systemImage: "checklist", title: "Work")
             }
             .padding(.top, SuisuiSpacing.sm)
             .accessibilityElement(children: .combine)
@@ -250,14 +250,14 @@ struct OnboardingWelcomeView: View {
                 }
             } label: {
                 Label(
-                    displayedPlanningState.isReady ? "Open Voice Command" : "Finish Setup Later",
+                    displayedPlanningState.isReady ? "Open Secretary" : "Finish Setup Later",
                     systemImage: displayedPlanningState.isReady ? "mic.circle" : "arrow.right.circle"
                 )
             }
-            .accessibilityIdentifier("onboarding-open-voice-command")
+            .accessibilityIdentifier("onboarding-open-secretary")
             .accessibilityHint(
                 displayedPlanningState.isReady
-                    ? "Finishes setup and opens Voice Command."
+                    ? "Finishes setup and opens Secretary."
                     : "Closes setup. You can run setup again from Settings."
             )
         }

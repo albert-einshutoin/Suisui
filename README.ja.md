@@ -35,23 +35,20 @@ cd Suisui
 ./script/build_and_run.sh --verify
 ```
 
-初回起動後は、サイドバーのInboxで文章を入力するか、Voice Commandを開いて話しかけます。提案された計画を確認し、必要なら修正してから承認してください。プロジェクトやタスクへの書き込みは承認後に実行されます。
+初回起動後は、Secretaryで文章を入力するか話しかけます。提案された計画を確認し、必要なら修正してから承認してください。Scheduleでは予定を確認し、WorkではToday、Inbox、Projects、Smart Lists、Completed、Pending Actionsをまとめて扱えます。
 
 アプリの言語はmacOSの設定を引き継ぎます。アプリ内の「設定 > 外観 > 言語」から日本語または英語に固定することもできます。
 
 ## 画面の役割
 
-- **Inbox**: 思いついた仕事を文章や音声で受け取る入口
-- **Today**: 今日やること、期限、次の行動を確認する場所
-- **Projects**: プロジェクトとタスクを整理する場所
+- **Secretary**: 文章や音声を受け取り、Action Planをレビューする入口
 - **Schedule**: 予定と時間軸を確認する場所
-- **Done**: 完了した仕事と次のフォローアップを振り返る場所
-- **Voice Command**: 音声から計画案を作る場所
+- **Work**: Today、Inbox、Projects、Smart Lists、Completed、Pending Actionsをまとめて扱う場所
 - **設定**: AI、STT、TTS、連携、MCP、権限、表示、言語を整える場所
 
 ## 最初のワークフロー
 
-1. Inboxへ「来週金曜までにリリース準備を終えたい」のように入力します。
+1. Secretaryへ「来週金曜までにリリース準備を終えたい」のように入力します。
 2. Suisuiが不足情報を確認し、プロジェクト、タスク、期限の案を作ります。
 3. 内容、保存先、期限、実行される操作を確認します。
 4. 修正が必要なら編集し、問題なければ承認します。
@@ -68,7 +65,7 @@ cd Suisui
 - **STT**: ローカル音声認識にはwhisper.cppと対応モデルを設定します。
 - **TTS**: ローカル読み上げにはKokoroと対応モデルを設定します。
 - モデルはアプリへ同梱されていません。設定画面でファイルやディレクトリのパスを直接入力するか、Finder形式の選択ボタンから指定できます。
-- Voice Commandを使う場合は、macOSからマイク権限を許可してください。
+- Secretaryの音声入力を使う場合は、macOSからマイク権限を許可してください。
 
 ### macOS連携
 
@@ -78,7 +75,7 @@ cd Suisui
 
 - 音声または文章からAction Planを作る
 - 提案をレビューしてからプロジェクトやタスクへ反映する
-- Today、Inbox、Projects、Schedule、Doneで仕事を整理する
+- Secretary、Schedule、Work、Settingsから仕事を整理する
 - Apple Calendar、Reminders、Notificationsと権限の範囲で連携する
 - Markdown成果物を安全な保存先へ下書きする
 - 期限超過やフォローアップ候補を見つける

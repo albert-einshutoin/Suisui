@@ -677,20 +677,14 @@ click_sidebar_destination_by_coordinate() {
   read -r window_id window_x window_y window_width window_height <"$WINDOW_METADATA_FILE"
 
   case "$destination_identifier" in
-    sidebar-destination-inbox)
+    sidebar-destination-secretary)
       destination_index=0
       ;;
-    sidebar-destination-today)
+    sidebar-destination-schedule)
       destination_index=1
       ;;
-    sidebar-destination-projects)
+    sidebar-destination-work)
       destination_index=2
-      ;;
-    sidebar-destination-schedule)
-      destination_index=3
-      ;;
-    sidebar-destination-completed)
-      destination_index=4
       ;;
     *)
       echo "BLOCKER: no coordinate fallback for sidebar destination: $destination_identifier" >&2
@@ -1304,11 +1298,9 @@ assert_layout_stable "inspector-wide-stays-closed"
 set_project_board_window_size "$LAYOUT_STABILITY_WINDOW_WIDE_WIDTH" "$LAYOUT_STABILITY_WINDOW_WIDE_HEIGHT"
 assert_layout_stable "window-wide"
 
-assert_sidebar_destination_window_size_stable "destination-inbox" "sidebar-destination-inbox" "Inbox" "inbox-workflow"
+assert_sidebar_destination_window_size_stable "destination-secretary" "sidebar-destination-secretary" "Secretary" "voice-command-root"
 assert_sidebar_destination_window_size_stable "destination-schedule" "sidebar-destination-schedule" "Schedule" "schedule-workflow"
-assert_sidebar_destination_window_size_stable "destination-completed" "sidebar-destination-completed" "Completed" "done-workflow"
-assert_ax_destination_window_size_stable "destination-review-assistant-queue" "review-destination-assistant-queue" "assistant-queue-workflow"
-assert_sidebar_destination_window_size_stable "destination-today" "sidebar-destination-today" "Today" "today-workflow"
+assert_sidebar_destination_window_size_stable "destination-work" "sidebar-destination-work" "Work" "work-hub"
 
 write_json_artifacts
 

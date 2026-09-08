@@ -209,7 +209,7 @@ Run the accessibility preflight before the manual VoiceOver pass. The source-onl
 ./script/check_accessibility_preflight.sh --runtime
 ```
 
-The runtime preflight is intentionally stricter than a process/window check: it scans visible windows by AX role and fails if the best release-candidate window has fewer than the minimum buttons, text fields, or static texts, if it exposes unlabeled AX buttons, if a button only reports the generic `button` label without help or child text, if the visible Project Board does not expose the expected task lifecycle AX identifier/help signals as `crudSignals=8/8`, if the primary task button label/help signals as `buttonA11ySignals=8/8` are incomplete, if Inbox, Today, Settings, and Voice Command entry signals as `screenSignals=4/4` are incomplete, if it does not expose the VoiceOver focus path AX identifier/help signals as `focusPathSignals=6/6`, or if opening Delete Task does not expose destructive delete cancellation signals as `destructiveCancelSignals=1/1`. The task lifecycle signals cover Add Task, Open task, status movement, local suggestion apply, task Save, selected-task automation review, approved execution, and Delete Task. The focus path signals cover Project navigation, Project board detail, Open task, Inline Task Composer, Status controls, and Task inspector so a low-information AX tree is not enough evidence for the manual VoiceOver pass.
+The runtime preflight is intentionally stricter than a process/window check: it scans visible windows by AX role and fails if the best release-candidate window has fewer than the minimum buttons, text fields, or static texts, if it exposes unlabeled AX buttons, if a button only reports the generic `button` label without help or child text, if the visible Project Board does not expose the expected task lifecycle AX identifier/help signals as `crudSignals=8/8`, if the primary task button label/help signals as `buttonA11ySignals=8/8` are incomplete, if Secretary, Schedule, Work, and Settings entry signals as `screenSignals=4/4` are incomplete, if it does not expose the VoiceOver focus path AX identifier/help signals as `focusPathSignals=6/6`, or if opening Delete Task does not expose destructive delete cancellation signals as `destructiveCancelSignals=1/1`. The task lifecycle signals cover Add Task, Open task, status movement, local suggestion apply, task Save, selected-task automation review, approved execution, and Delete Task. The focus path signals cover Project navigation, Project board detail, Open task, Inline Task Composer, Status controls, and Task inspector so a low-information AX tree is not enough evidence for the manual VoiceOver pass.
 
 When reviewing a local release candidate in a visible macOS session, include the runtime AX smoke in the readiness report:
 
@@ -248,7 +248,7 @@ Each focus-path note must name the concrete VoiceOver observation, control, or f
   --checked-by "Reviewer Name" \
   --accessibility-environment "VoiceOver/keyboard/device details used for the manual pass" \
   --capture-runtime-ax-smoke \
-  --project-navigation-note "Concrete VoiceOver observation for sidebar Inbox, Today, and Project navigation." \
+  --project-navigation-note "Concrete VoiceOver observation for Secretary, Schedule, Work, and Project navigation." \
   --project-board-detail-note "Concrete VoiceOver observation for selected project board context." \
   --open-task-note "Concrete VoiceOver observation for opening task details without pointer drag." \
   --inline-task-composer-note "Concrete VoiceOver observation for title/detail/priority/due/create/cancel paths." \
@@ -266,7 +266,7 @@ Each focus-path note must name the concrete VoiceOver observation, control, or f
   --checked-by "Reviewer Name" \
   --accessibility-environment "VoiceOver/keyboard/device details used for the manual pass" \
   --capture-runtime-ax-smoke \
-  --project-navigation-note "Concrete VoiceOver observation for sidebar Inbox, Today, and Project navigation." \
+  --project-navigation-note "Concrete VoiceOver observation for Secretary, Schedule, Work, and Project navigation." \
   --project-board-detail-note "Concrete VoiceOver observation for selected project board context." \
   --open-task-note "Concrete VoiceOver observation for opening task details without pointer drag." \
   --inline-task-composer-note "Concrete VoiceOver observation for title/detail/priority/due/create/cancel paths." \

@@ -34,7 +34,7 @@ Source commit: 07ad23c
 | Lightweight PR gate | source + build | available | `scripts/ci.sh` | Use as the default fast PR verifier; opt into runtime, visual, or release lanes with SUISUI_CI_* flags. |
 | Focused tests | source + unit | passed | `swift test --filter <suite>` | Run the three owner suites when touching UI contracts, release gates, or Project Board persistence. |
 | Full test suite | unit + integration | passed | `swift test` | Run before closing the Phase14 exit gate. |
-| Runtime smoke | runtime AX | passed | `script/check_runtime_accessible_crud_smoke.sh` | Run on a visible macOS session to cover CRUD, Inbox, Today, Settings, Voice Command, and layout stability. |
+| Runtime smoke | runtime AX | passed | `script/check_runtime_accessible_crud_smoke.sh` | Run on a visible macOS session to cover CRUD, Secretary, Schedule, Work, Settings, and layout stability. |
 | Visual smoke | visual | passed | `script/check_visual_regression_smoke.sh` | Use screenshot doctor first, then compare Light/Dark/System evidence. |
 | Manual evidence | manual | VoiceOver: stale (passed; expected ad1e616); Competitor: pending | `docs/release/evidence/accessibility-voiceover.md` | Manual findings must link back through docs/quality/manual-to-automated-regression.md. |
 | Release readiness handoff | release | available | `script/release_readiness_report.sh` | Run after quality gaps are classified; readiness remains the release gate, not this dashboard. |
