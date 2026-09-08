@@ -896,6 +896,7 @@ struct ExecutionReceiptHistoryRowView: View {
         .padding(.vertical, 6)
         .accessibilityElement(children: .ignore)
         .accessibilityIdentifier("execution-receipt-row-\(row.id)")
+        .onAppear { AppRuntimeFactory.recordPublicAlphaResultDisplayed(receiptID: row.id) }
         .accessibilityLabel("Execution receipt")
         .accessibilityValue(row.accessibilityValue)
         .accessibilityHint("Shows the redacted outcome, usage state, references, sources, and receipt identifier for approved AI work.")

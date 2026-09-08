@@ -23,6 +23,7 @@ extension AppRuntimeFactory {
         var workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])?
         var runtimeValidationMessage: String?
         var initialFailureMessage: String?
+        let publicAlphaMeasurement = try? makePublicAlphaMeasurement()
         do {
             auditLogger = try makeAuditLogger()
             let connection = try migratedConnection()
@@ -125,6 +126,7 @@ extension AppRuntimeFactory {
             conversationCommandPreparer: conversationCommandPreparer,
             conversationSessionID: conversationSessionID,
             inboxCaptureSaver: inboxCaptureService,
+            publicAlphaMeasurement: publicAlphaMeasurement,
             developmentProjectProvider: developmentProjectProvider,
             appSettingsProvider: { loadRuntimeSettings().settings },
             managedCostRateCardProvider: { managedCostRateCardResolver.rateCard(for: $0) },

@@ -641,6 +641,51 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(logger.recordedEvents.map(\.status), [.started, .succeeded])
     }
 
+    func testGeneratePlanReusesMeasurementWorkIDAcrossRetries() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("public-alpha-voice-\(UUID().uuidString)", isDirectory: true)
+        let url = directory.appendingPathComponent("ledger.json")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let response = PlanningResponse(
+            providerID: "fake",
+            rawContent: "{}",
+            actionPlan: ActionPlan(
+                id: "plan-retry",
+                userInput: "Create a task",
+                summary: "Create task",
+                actions: [PlanAction(id: "action-retry", tool: .taskCreate)],
+                riskLevel: .write,
+                requiresApproval: true
+            ),
+            validationResult: ActionPlanValidationResult(issues: [])
+        )
+        let measurement = try PublicAlphaRuntimeMeasurement(
+            url: url,
+            participantSeed: "opaque-seed"
+        )
+        let viewModel = VoiceCaptureViewModel(
+            audioRecorder: FakeAudioRecorder(),
+            sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
+            llmProvider: FakeLLMProvider(response: response),
+            planningReadinessProvider: { Self.readyPlanningProvider("fake") },
+            assistantQueueStore: RecordingAssistantQueueStore(),
+            publicAlphaMeasurement: measurement
+        )
+
+        viewModel.updateDraftText("Draft release brief")
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 0), timeZoneIdentifier: "UTC")
+        viewModel.cancelCurrentVoiceInput()
+        await viewModel.generatePlan(currentDate: Date(timeIntervalSince1970: 1), timeZoneIdentifier: "UTC")
+
+        let ledger = try PublicAlphaValidationLedger(recovering: Data(contentsOf: url))
+        XCTAssertEqual(
+            ledger.stageEvents.map(\.stage),
+            [.firstCapture, .reviewableActionPlan]
+        )
+        XCTAssertEqual(Set(ledger.stageEvents.compactMap(\.workReference)).count, 1)
+    }
+
     func testGeneratePlanDefaultsToNonDeveloperPlanningTools() async {
         let response = PlanningResponse(
             providerID: "recording",
@@ -763,6 +808,9 @@ final class VoiceCaptureViewModelTests: XCTestCase {
     }
 
     func testClarifiedNotificationDraftIncludesDestinationAnswerInQueueReviewPayload() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("alpha-clarification-\(UUID().uuidString)/ledger.json")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let measurement = try PublicAlphaRuntimeMeasurement(url: url, participantSeed: "test")
         let provider = RecordingVoiceLLMProvider(response: PlanningResponse(
             providerID: "fake",
             rawContent: "{}",
@@ -773,7 +821,8 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             audioRecorder: FakeAudioRecorder(),
             sttProvider: FakeSTTProvider(transcript: STTTranscript(text: "")),
             llmProvider: provider,
-            assistantQueueStore: RecordingAssistantQueueStore()
+            assistantQueueStore: RecordingAssistantQueueStore(),
+            publicAlphaMeasurement: measurement
         )
 
         viewModel.updateDraftText("通知して")
@@ -781,6 +830,9 @@ final class VoiceCaptureViewModelTests: XCTestCase {
 
         XCTAssertEqual(viewModel.routingResult?.intent, .clarify)
         XCTAssertEqual(viewModel.clarificationQuestion?.slot, .destination)
+
+        await viewModel.startRecording()
+        viewModel.cancelCurrentVoiceInput()
 
         await viewModel.submitClarificationAnswer(
             "Slack release channel token=sk-destination-secret",
@@ -801,6 +853,9 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertTrue(body.contains("Original voice request:\n通知して"))
         XCTAssertTrue(body.contains("Clarification answers:\n- destination: Slack release channel token=[REDACTED_SECRET]"))
         XCTAssertFalse(body.contains("sk-destination-secret"))
+        let ledger = try PublicAlphaValidationLedger(recovering: Data(contentsOf: url))
+        XCTAssertEqual(ledger.stageEvents.map(\.stage), [.firstCapture, .reviewableActionPlan])
+        XCTAssertEqual(Set(ledger.stageEvents.compactMap(\.workReference)).count, 1)
     }
 
     func testExplicitExternalSendDoesNotCreateMailDraftQueueOrProviderCall() async throws {
@@ -3969,6 +4024,9 @@ final class VoiceCaptureViewModelTests: XCTestCase {
     }
 
     func testLowLatencyAgentModeFinalCommandCreatesAssistantQueueItemBeforeExecution() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("alpha-stream-\(UUID().uuidString)/ledger.json")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let measurement = try PublicAlphaRuntimeMeasurement(url: url, participantSeed: "test")
         let sttProvider = StreamingSTTProviderFixture()
         let llmProvider = RecordingVoiceLLMProvider(response: PlanningResponse(
             providerID: "recording",
@@ -3982,6 +4040,7 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             sttProvider: sttProvider,
             llmProvider: llmProvider,
             assistantQueueStore: store,
+            publicAlphaMeasurement: measurement,
             appSettingsProvider: { Self.lowLatencyLocalVoiceAgentSettings() }
         )
 
@@ -4001,6 +4060,8 @@ final class VoiceCaptureViewModelTests: XCTestCase {
             .providerExecutionApproval
         ])
         XCTAssertFalse(item.redactedSummary.contains("sk-low-latency-secret"))
+        let ledger = try PublicAlphaValidationLedger(recovering: Data(contentsOf: url))
+        XCTAssertEqual(ledger.stageEvents.map(\.stage), [.firstCapture])
         viewModel.stopLowLatencyVoiceAgentMode()
     }
 

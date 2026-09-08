@@ -115,12 +115,12 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertFalse(
             performanceJob.contains("if: ${{ always() && needs.ui-performance-build.result == 'success'")
         )
-        XCTAssertTrue(guardSource.contains("if: ${{ needs.ui-performance-build.result != 'success' }}"))
+        XCTAssertTrue(guardSource.contains("if: ${{ needs.ui-performance-build.result != 'success' || needs.ui-performance-build.outputs.artifact-id == '' }}"))
         XCTAssertTrue(guardSource.contains("failure_reason=ui-performance-build-did-not-succeed"))
         XCTAssertTrue(guardSource.contains("exit 1"))
         XCTAssertTrue(
-            performanceJob.contains("name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}"),
-            "The producer/consumer artifact must remain scoped to the current workflow attempt"
+            performanceJob.contains("artifact-ids: ${{ needs.ui-performance-build.outputs.artifact-id }}"),
+            "A consumer-only rerun must use the successful producer's artifact, not its own attempt number"
         )
     }
 
@@ -142,9 +142,13 @@ final class CIGateWorkflowTests: XCTestCase {
         XCTAssertTrue(buildJob.contains("uses: actions/upload-artifact@v4"))
         XCTAssertTrue(buildJob.contains("name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}"))
         XCTAssertTrue(buildJob.contains("overwrite: true"))
+        XCTAssertTrue(buildJob.contains("artifact-id: ${{ steps.upload-performance-app.outputs.artifact-id }}"))
+        XCTAssertTrue(buildJob.contains("id: upload-performance-app"))
 
         XCTAssertTrue(measureJob.contains("uses: actions/download-artifact@v4"))
-        XCTAssertTrue(measureJob.contains("name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}"))
+        XCTAssertTrue(measureJob.contains("artifact-ids: ${{ needs.ui-performance-build.outputs.artifact-id }}"))
+        XCTAssertTrue(measureJob.contains("merge-multiple: true"))
+        XCTAssertFalse(measureJob.contains("name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}"))
         XCTAssertTrue(measureJob.contains("SUISUI_PERFORMANCE_ARTIFACT_DIR:"))
         XCTAssertTrue(measureJob.contains("SUISUI_PERFORMANCE_USE_PREBUILT_APP: 1"))
         XCTAssertFalse(measureJob.contains("Restore Swift build cache"))

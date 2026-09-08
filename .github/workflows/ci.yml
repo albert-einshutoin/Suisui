@@ -403,6 +403,8 @@ jobs:
 
   ui-performance-build:
     name: UI Performance Build (release artifact)
+    outputs:
+      artifact-id: ${{ steps.upload-performance-app.outputs.artifact-id }}
     needs:
       - test_strategy
       - full_validation
@@ -442,6 +444,7 @@ jobs:
             "$source_commit" "$archive_sha256" >"$manifest"
 
       - name: Upload immutable release performance app
+        id: upload-performance-app
         uses: actions/upload-artifact@v4
         with:
           name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}
@@ -465,7 +468,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Require successful performance artifact build
-        if: ${{ needs.ui-performance-build.result != 'success' }}
+        if: ${{ needs.ui-performance-build.result != 'success' || needs.ui-performance-build.outputs.artifact-id == '' }}
         run: |
           echo "failure_category=dependency" >&2
           echo "failure_reason=ui-performance-build-did-not-succeed" >&2
@@ -482,7 +485,9 @@ jobs:
       - name: Download immutable release performance app
         uses: actions/download-artifact@v4
         with:
-          name: ui-performance-app-${{ github.run_id }}-${{ github.run_attempt }}
+          # A failed-job rerun can reuse a build from an earlier attempt.
+          artifact-ids: ${{ needs.ui-performance-build.outputs.artifact-id }}
+          merge-multiple: true
           path: .tmp/ui-performance-app
 
       - name: Measure production runtime

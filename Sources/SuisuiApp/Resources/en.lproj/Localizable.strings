@@ -2373,3 +2373,19 @@
 "Finishes setup and opens Secretary." = "Finishes setup and opens Secretary.";
 "Opens Work from this menu." = "Opens Work from this menu.";
 "Opens Work with Today selected." = "Opens Work with Today selected.";
+/* Public alpha local measurement */
+"Local measurement" = "Local measurement";
+"Record local measurement" = "Record local measurement";
+"Records opaque work references and event counts on this Mac. No transcript or task content is included. Missing measurements remain unknown." = "Records opaque work references and event counts on this Mac. No transcript or task content is included. Missing measurements remain unknown.";
+"Measurement week" = "Measurement week";
+"Export selected week’s measurement…" = "Export selected week’s measurement…";
+"Import user-confirmed weekly record…" = "Import user-confirmed weekly record…";
+"Delete local measurement…" = "Delete local measurement…";
+"Delete local measurement?" = "Delete local measurement?";
+"Delete local measurement" = "Delete local measurement";
+"Removes this participant’s events and weekly records and stops measurement. Tasks and receipts are kept." = "Removes this participant’s events and weekly records and stops measurement. Tasks and receipts are kept.";
+"Local measurement could not be exported." = "Local measurement could not be exported.";
+"Local measurement could not be deleted." = "Local measurement could not be deleted.";
+"Import user-confirmed weekly record?" = "Import user-confirmed weekly record?";
+"Confirm that commitment, outcome and feedback counts were verified with the participant. Task completion alone is not an achieved outcome." = "Confirm that commitment, outcome and feedback counts were verified with the participant. Task completion alone is not an achieved outcome.";
+"The weekly record could not be imported. Check its participant, week, build and counts." = "The weekly record could not be imported. Check its participant, week, build and counts.";

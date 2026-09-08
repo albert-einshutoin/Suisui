@@ -2373,3 +2373,19 @@
 "Finishes setup and opens Secretary." = "セットアップを完了して秘書を開きます。";
 "Opens Work from this menu." = "このメニューから仕事を開きます。";
 "Opens Work with Today selected." = "今日を選択した状態で仕事を開きます。";
+/* Public alpha local measurement */
+"Local measurement" = "ローカル計測";
+"Record local measurement" = "ローカル計測を記録";
+"Records opaque work references and event counts on this Mac. No transcript or task content is included. Missing measurements remain unknown." = "このMacに仕事の不透明な参照とイベント件数を記録します。発話やタスクの本文は含みません。未計測の値は不明として扱います。";
+"Measurement week" = "計測の週";
+"Export selected week’s measurement…" = "選択した週の計測をエクスポート…";
+"Import user-confirmed weekly record…" = "利用者確認済みの週次記録をインポート…";
+"Delete local measurement…" = "ローカル計測を削除…";
+"Delete local measurement?" = "ローカル計測を削除しますか？";
+"Delete local measurement" = "ローカル計測を削除";
+"Removes this participant’s events and weekly records and stops measurement. Tasks and receipts are kept." = "この参加者のイベントと週次記録を削除して計測を停止します。タスクと実行記録は保持します。";
+"Local measurement could not be exported." = "ローカル計測をエクスポートできませんでした。";
+"Local measurement could not be deleted." = "ローカル計測を削除できませんでした。";
+"Import user-confirmed weekly record?" = "利用者確認済みの週次記録をインポートしますか？";
+"Confirm that commitment, outcome and feedback counts were verified with the participant. Task completion alone is not an achieved outcome." = "約束・成果・フィードバックの件数を参加者と確認したことを確認してください。タスクの完了だけでは成果達成とみなしません。";
+"The weekly record could not be imported. Check its participant, week, build and counts." = "週次記録をインポートできませんでした。参加者・週・ビルド・件数を確認してください。";
