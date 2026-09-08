@@ -353,6 +353,8 @@ launch_header_layout_candidate() {
   wait_for_app_process
   activate_app
   wait_for_visible_windows
+  wait_for_project_detail_visible
+  ensure_sidebar_visible
 }
 
 launch_runtime_crud_recovery_candidate() {
@@ -401,7 +403,7 @@ on run argv
     if (count of matchingProcesses) is not 1 then return "0"
     tell item 1 of matchingProcesses
       repeat with candidateWindow in windows
-        if my containsIdentifier(candidateWindow, "project-board-detail", 0) then
+        if my containsIdentifier(candidateWindow, "project-board-sidebar-toggle", 0) and my containsIdentifier(candidateWindow, "project-board-integrations-menu", 0) then
           return (count of toolbars of candidateWindow) as text
         end if
       end repeat
