@@ -732,15 +732,31 @@ exercise_sidebar_entrypoints() {
   ensure_sidebar_visible
   press_ax_button "sidebar-open-search"
   wait_for_process_ax_identifier "command-palette-input" "present"
-  launch_header_layout_candidate
-  wait_for_project_detail_visible
+  # Search is an overlay and Secretary is an in-board route. Exercise their
+  # dismissal/navigation without restarting the process between user actions.
+  activate_app
+  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null
+on run argv
+  tell application "System Events"
+    tell (first process whose unix id is (item 1 of argv as integer))
+      key code 53
+    end tell
+  end tell
+end run
+APPLESCRIPT
+  wait_for_process_ax_identifier "command-palette-input" "absent"
   press_ax_button "sidebar-destination-secretary"
   wait_for_process_ax_identifier "voice-conversation-workspace" "present"
-  # Secretary keeps a modal surface above the board toolbar. Relaunch so
-  # the following settings and keyboard contracts can reach sidebar-toggle.
-  launch_header_layout_candidate
+  press_ax_button "sidebar-open-search"
+  wait_for_process_ax_identifier "command-palette-input" "present"
+  /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_text_input.swift" \
+    "$app_pid" "command-palette-input" "Native Toolbar Review Project"
+  press_ax_button "command-palette-row-project-$header_layout_project_id"
+  wait_for_process_ax_identifier "command-palette-input" "absent"
+  wait_for_process_ax_identifier "voice-conversation-workspace" "absent"
   wait_for_project_detail_visible
   printf "OK: sidebar Search and Secretary opened their destination surfaces\n"
+
 }
 
 exercise_settings_utility() {
