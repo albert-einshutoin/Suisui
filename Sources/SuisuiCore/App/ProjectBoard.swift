@@ -663,6 +663,7 @@ public final class ProjectBoardViewModel: ObservableObject {
     private var assistantQueueExecutionCoordinator: AssistantQueueExecutionCoordinator?
     private let assistantQueueExecutionCoordinatorFactory: (() -> AssistantQueueExecutionCoordinator?)?
     private let executionReceiptStore: (any ExecutionReceiptStore)?
+    private let publicAlphaMeasurement: PublicAlphaRuntimeMeasurement?
     private let missedTaskReviewStateStore: any MissedTaskReviewStateStore
     private let missedTaskFollowUpNotificationClient: (any NotificationClient)?
     private let externalTaskLinkStore: (any ExternalTaskLinkStore)?
@@ -727,6 +728,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         assistantQueueExecutionCoordinator: AssistantQueueExecutionCoordinator? = nil,
         assistantQueueExecutionCoordinatorFactory: (() -> AssistantQueueExecutionCoordinator?)? = nil,
         executionReceiptStore: (any ExecutionReceiptStore)? = nil,
+        publicAlphaMeasurement: PublicAlphaRuntimeMeasurement? = nil,
         missedTaskReviewStateStore: any MissedTaskReviewStateStore = VolatileMissedTaskReviewStateStore(),
         missedTaskFollowUpNotificationClient: (any NotificationClient)? = nil,
         externalTaskLinkStore: (any ExternalTaskLinkStore)? = nil,
@@ -746,6 +748,7 @@ public final class ProjectBoardViewModel: ObservableObject {
         self.assistantQueueExecutionCoordinator = assistantQueueExecutionCoordinator
         self.assistantQueueExecutionCoordinatorFactory = assistantQueueExecutionCoordinatorFactory
         self.executionReceiptStore = executionReceiptStore
+        self.publicAlphaMeasurement = publicAlphaMeasurement
         self.missedTaskReviewStateStore = missedTaskReviewStateStore
         self.missedTaskFollowUpNotificationClient = missedTaskFollowUpNotificationClient
         self.externalTaskLinkStore = externalTaskLinkStore
@@ -7006,6 +7009,9 @@ public final class ProjectBoardViewModel: ObservableObject {
         store: any ExecutionReceiptStore
     ) throws -> ExecutionReceiptHistorySnapshot {
         let receipts = try store.list(matching: executionReceiptHistoryFilter(), limit: 100)
+        // Reconcile the already-loaded durable receipts after a crash between
+        // execution and measurement. This does not scan any additional work.
+        receipts.forEach(recordPublicAlphaExecution)
         return ExecutionReceiptHistoryReadModel.snapshot(
             from: receipts,
             limit: 10
@@ -7579,6 +7585,7 @@ public final class ProjectBoardViewModel: ObservableObject {
                 id: id,
                 expectedMutationRevision: expectedMutationRevision
             )
+            recordPublicAlphaExecution(result.receipt)
             _ = refreshAssistantQueueSnapshot()
             refreshExecutionReceiptHistorySnapshot()
             if result.item.state == .done {
@@ -7600,6 +7607,19 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
     }
 
+    private func recordPublicAlphaExecution(_ receipt: ExecutionReceipt) {
+        guard [.succeeded, .failed, .canceled].contains(receipt.status),
+              let queueID = receipt.assistantQueueItemID,
+              let reference = try? publicAlphaMeasurement?.workReference(sourceID: queueID, stage: .reviewableActionPlan)
+        else { return }
+        publicAlphaMeasurement?.record(
+            .localExecution, mark: receipt.status == .succeeded ? .completed : .failed,
+            sourceID: receipt.id, workReference: reference,
+            failureCategory: receipt.status == .succeeded ? nil : .reliability,
+            at: receipt.finishedAt ?? receipt.createdAt
+        )
+    }
+
     private func transitionAssistantQueueItem(
         id: String,
         expectedMutationRevision: String? = nil,
@@ -7614,12 +7634,18 @@ public final class ProjectBoardViewModel: ObservableObject {
         }
 
         do {
-            _ = try assistantQueueStore.transition(id: id) { current in
+            let updated = try assistantQueueStore.transition(id: id) { current in
                 if let expectedMutationRevision,
                    current.mutationRevision != expectedMutationRevision {
                     throw AssistantQueueStaleReviewError()
                 }
                 return try transform(current)
+            }
+            if updated.state == .approved,
+               let reference = try? publicAlphaMeasurement?.workReference(sourceID: id, stage: .reviewableActionPlan) {
+                publicAlphaMeasurement?.record(
+                    .approvedLocalAction, mark: .completed, sourceID: id, workReference: reference
+                )
             }
             _ = refreshAssistantQueueSnapshot()
             errorMessage = nil

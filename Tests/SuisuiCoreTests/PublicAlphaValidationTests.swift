@@ -3,6 +3,27 @@ import XCTest
 @testable import SuisuiCore
 
 final class PublicAlphaValidationTests: XCTestCase {
+    func testConfirmedEventRequiresExistingParticipantWorkAndDeduplicates() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("alpha-confirmation-\(UUID().uuidString)/ledger.json")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let measurement = try PublicAlphaRuntimeMeasurement(url: url, participantSeed: "participant")
+        let participant = try PublicAlphaParticipantID(seed: "participant")
+        let work = try PublicAlphaWorkReference(sourceID: "work")
+        let event = try PublicAlphaStageEvent(participantID: participant, workReference: work,
+                                             stage: .outcomeClosed, mark: .completed, occurredAt: Date())
+        XCTAssertThrowsError(try measurement.saveConfirmedEvent(event))
+        XCTAssertEqual(measurement.record(.firstCapture, mark: .completed, sourceID: "capture", workReference: work), .inserted)
+        try measurement.saveConfirmedEvent(event)
+        try measurement.saveConfirmedEvent(event)
+        XCTAssertEqual(try PublicAlphaValidationLedger(recovering: Data(contentsOf: url)).stageEvents.count, 2)
+        let automatic = try PublicAlphaStageEvent(participantID: participant, workReference: work,
+                                                 stage: .localExecution, mark: .completed, occurredAt: Date())
+        XCTAssertThrowsError(try measurement.saveConfirmedEvent(automatic))
+        try measurement.deleteParticipant()
+        XCTAssertThrowsError(try measurement.saveConfirmedEvent(event))
+    }
+
     func testRuntimeMeasurementPersistsClosedEventsWithoutRawContent() throws {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("public-alpha-\(UUID().uuidString)", isDirectory: true)
@@ -47,10 +68,228 @@ final class PublicAlphaValidationTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: url), invalidData)
     }
 
+    func testRuntimeMeasurementRecoversOpaqueWorkIdentityAcrossInstances() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("public-alpha-\(UUID().uuidString)", isDirectory: true)
+        let url = directory.appendingPathComponent("ledger.json")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let sessionID = UUID()
+        let build = try PublicAlphaBuildIdentity(appVersion: "1.2.3", sourceCommit: "abcdef1")
+        let first = try PublicAlphaRuntimeMeasurement(
+            url: url,
+            participantSeed: "recovery-seed",
+            build: build
+        )
+        XCTAssertEqual(
+            first.record(
+                .firstCapture,
+                mark: .completed,
+                sourceID: "capture-id",
+                workID: "job-id",
+                sessionID: sessionID
+            ),
+            .inserted
+        )
+
+        let reopened = try PublicAlphaRuntimeMeasurement(url: url, participantSeed: "recovery-seed")
+        let recovered = try XCTUnwrap(reopened.workReference(sessionID: sessionID))
+        XCTAssertEqual(
+            reopened.record(
+                .localExecution,
+                mark: .failed,
+                sourceID: "receipt-id",
+                workReference: recovered,
+                failureCategory: .reliability
+            ),
+            .inserted
+        )
+        XCTAssertEqual(
+            try reopened.workReference(sourceID: "receipt-id", stage: .localExecution),
+            recovered
+        )
+        let ledger = try PublicAlphaValidationLedger(recovering: Data(contentsOf: url))
+        XCTAssertEqual(ledger.stageEvents.first?.build, build)
+        XCTAssertEqual(ledger.stageEvents.last?.failureCategory, .reliability)
+        let encoded = String(decoding: try ledger.encodedSnapshot(), as: UTF8.self)
+        for rawValue in ["recovery-seed", "capture-id", "job-id", "receipt-id", sessionID.uuidString] {
+            XCTAssertFalse(encoded.contains(rawValue))
+        }
+    }
+
+    func testParticipantDeletionTombstoneBlocksStaleInstancesAndSnapshots() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("public-alpha-\(UUID().uuidString)", isDirectory: true)
+        let url = directory.appendingPathComponent("ledger.json")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let deleting = try PublicAlphaRuntimeMeasurement(url: url, participantSeed: "delete-seed")
+        let stale = try PublicAlphaRuntimeMeasurement(url: url, participantSeed: "delete-seed")
+        XCTAssertEqual(
+            stale.record(.firstCapture, mark: .completed, sourceID: "before-delete"),
+            .inserted
+        )
+
+        try deleting.deleteParticipant()
+
+        XCTAssertEqual(
+            stale.record(.resultDisplayed, mark: .completed, sourceID: "stale-event"),
+            .disabled
+        )
+        XCTAssertNil(try stale.workReference(sourceID: "before-delete", stage: .firstCapture))
+        XCTAssertThrowsError(
+            try stale.saveSnapshot(makeSnapshot(participantID: PublicAlphaParticipantID(seed: "delete-seed")))
+        ) { error in
+            XCTAssertEqual(error as? PublicAlphaValidationError, .participantDeleted)
+        }
+        let ledger = try PublicAlphaValidationLedger(recovering: Data(contentsOf: url))
+        XCTAssertTrue(ledger.stageEvents.isEmpty)
+        XCTAssertTrue(ledger.weeklySnapshots.isEmpty)
+        XCTAssertTrue(ledger.isDeleted(participantID: try PublicAlphaParticipantID(seed: "delete-seed")))
+    }
+
+    func testDisabledMeasurementDoesNotCreateLedger() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("public-alpha-\(UUID().uuidString)", isDirectory: true)
+        let url = directory.appendingPathComponent("ledger.json")
+        let measurement = try PublicAlphaRuntimeMeasurement(
+            url: url,
+            participantSeed: "disabled-seed",
+            isEnabled: { false }
+        )
+
+        XCTAssertEqual(
+            measurement.record(.firstCapture, mark: .completed, sourceID: "capture"),
+            .disabled
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+    }
+
+    func testWeeklyExportContainsOnlyCurrentParticipantAndUTCWeek() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("public-alpha-\(UUID().uuidString)", isDirectory: true)
+        let url = directory.appendingPathComponent("ledger.json")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let current = try PublicAlphaRuntimeMeasurement(url: url, participantSeed: "current-seed")
+        let other = try PublicAlphaRuntimeMeasurement(url: url, participantSeed: "deleted-seed")
+        let selectedWeek = Date(timeIntervalSince1970: 0)
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let nextWeekStart = try XCTUnwrap(calendar.dateInterval(of: .weekOfYear, for: selectedWeek)?.end)
+        XCTAssertEqual(
+            current.record(
+                .firstCapture,
+                mark: .completed,
+                sourceID: "current-source",
+                at: selectedWeek
+            ),
+            .inserted
+        )
+        XCTAssertEqual(
+            current.record(
+                .resultDisplayed,
+                mark: .completed,
+                sourceID: "outside-source",
+                at: nextWeekStart
+            ),
+            .inserted
+        )
+        try current.saveSnapshot(
+            makeSnapshot(
+                participantID: PublicAlphaParticipantID(seed: "current-seed"),
+                weekStart: selectedWeek
+            )
+        )
+        XCTAssertEqual(
+            other.record(.firstCapture, mark: .completed, sourceID: "deleted-source", at: selectedWeek),
+            .inserted
+        )
+        try other.deleteParticipant()
+
+        let export = try current.exportWeek(containing: selectedWeek)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: export) as? [String: Any])
+        XCTAssertEqual(object["schemaVersion"] as? Int, 1)
+        XCTAssertEqual(object["participantID"] as? String, try PublicAlphaParticipantID(seed: "current-seed").digest)
+        XCTAssertEqual((object["stageEvents"] as? [[String: Any]])?.count, 1)
+        XCTAssertEqual((object["weeklySnapshots"] as? [[String: Any]])?.count, 1)
+        let json = String(decoding: export, as: UTF8.self)
+        XCTAssertTrue(json.contains(try PublicAlphaParticipantID(seed: "current-seed").digest))
+        XCTAssertFalse(json.contains(try PublicAlphaParticipantID(seed: "deleted-seed").digest))
+        for rawValue in ["current-source", "outside-source", "deleted-source"] {
+            XCTAssertFalse(json.contains(rawValue))
+        }
+
+        let deletedExport = try other.exportWeek(containing: selectedWeek)
+        let deletedJSON = String(decoding: deletedExport, as: UTF8.self)
+        XCTAssertFalse(deletedJSON.contains(try PublicAlphaParticipantID(seed: "deleted-seed").digest))
+    }
+
+    func testEmptyWeeklyExportCarriesCurrentParticipantIdentity() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("public-alpha-\(UUID().uuidString)/ledger.json")
+        let measurement = try PublicAlphaRuntimeMeasurement(url: url, participantSeed: "empty-week-seed")
+
+        let export = try measurement.exportWeek(containing: Date(timeIntervalSince1970: 0))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: export) as? [String: Any])
+        XCTAssertEqual(object["schemaVersion"] as? Int, 1)
+        XCTAssertEqual(
+            object["participantID"] as? String,
+            try PublicAlphaParticipantID(seed: "empty-week-seed").digest
+        )
+        XCTAssertEqual((object["stageEvents"] as? [Any])?.count, 0)
+        XCTAssertEqual((object["weeklySnapshots"] as? [Any])?.count, 0)
+    }
+
+    func testSnapshotSaveRejectsAnotherParticipant() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("public-alpha-\(UUID().uuidString)/ledger.json")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let measurement = try PublicAlphaRuntimeMeasurement(url: url, participantSeed: "current-seed")
+
+        XCTAssertThrowsError(
+            try measurement.saveSnapshot(
+                makeSnapshot(participantID: PublicAlphaParticipantID(seed: "other-seed"))
+            )
+        ) { error in
+            XCTAssertEqual(error as? PublicAlphaValidationError, .participantMismatch)
+        }
+    }
+
     func testWorkReferenceRejectsRawOrMalformedPersistedValues() throws {
         XCTAssertThrowsError(try PublicAlphaWorkReference(sourceID: ""))
         XCTAssertThrowsError(try PublicAlphaWorkReference(digest: "job-1"))
     }
+
+    func testLegacyLedgerWithoutNewOptionalFieldsRemainsRecoverable() throws {
+        let participantID = try PublicAlphaParticipantID(seed: "legacy-seed")
+        var ledger = PublicAlphaValidationLedger()
+        _ = ledger.append(
+            try PublicAlphaStageEvent(
+                participantID: participantID,
+                stage: .firstCapture,
+                mark: .completed,
+                occurredAt: Date(timeIntervalSince1970: 0)
+            )
+        )
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: ledger.encodedSnapshot()) as? [String: Any]
+        )
+        object.removeValue(forKey: "deletedParticipantIDs")
+        var events = try XCTUnwrap(object["stageEvents"] as? [[String: Any]])
+        for key in ["workReference", "sessionReference", "sourceReference", "build"] {
+            events[0].removeValue(forKey: key)
+        }
+        object["stageEvents"] = events
+
+        let recovered = try PublicAlphaValidationLedger(
+            recovering: JSONSerialization.data(withJSONObject: object)
+        )
+        XCTAssertEqual(recovered.stageEvents.count, 1)
+        XCTAssertNil(recovered.stageEvents[0].workReference)
+        XCTAssertNil(recovered.stageEvents[0].sessionReference)
+        XCTAssertNil(recovered.stageEvents[0].sourceReference)
+        XCTAssertNil(recovered.stageEvents[0].build)
+        XCTAssertTrue(recovered.deletedParticipantIDs.isEmpty)
+    }
+
     func testClosedSchemaDoesNotEncodeSeedOrProhibitedContent() throws {
         let seed = UUID().uuidString
         let participantID = try PublicAlphaParticipantID(seed: seed)

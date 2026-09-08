@@ -339,6 +339,9 @@ struct SettingsView: View {
             presentBackupExportPanel: builder.presentBackupExportPanel,
             presentBackupRestorePanel: builder.presentBackupRestorePanel,
             presentDiagnosticsExportPanel: builder.presentDiagnosticsExportPanel,
+            presentMeasurementExportPanel: builder.presentMeasurementExportPanel,
+            presentMeasurementImportPanel: builder.presentMeasurementImportPanel,
+            deleteMeasurement: builder.deleteMeasurement,
             applyPendingBackupRestore: builder.applyPendingBackupRestore
         )
     }
@@ -1324,6 +1327,65 @@ struct SettingsPrivacyProjectionBuilder {
             diagnosticsExportErrorMessage = nil
         } catch {
             diagnosticsExportErrorMessage = error.localizedDescription
+        }
+    }
+
+    func presentMeasurementExportPanel(containing date: Date) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "suisui-measurement-week.json"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                let measurement = try AppRuntimeFactory.makePublicAlphaMeasurement()
+                try measurement.exportWeek(containing: date).write(to: url, options: .atomic)
+                diagnosticsExportErrorMessage = nil
+            } catch {
+                diagnosticsExportErrorMessage = String(localized: "Local measurement could not be exported.")
+            }
+        }
+    }
+
+    func deleteMeasurement() {
+        do {
+            try AppRuntimeFactory.deletePublicAlphaMeasurement()
+            diagnosticsExportErrorMessage = nil
+        } catch {
+            diagnosticsExportErrorMessage = String(localized: "Local measurement could not be deleted.")
+        }
+    }
+
+    func presentMeasurementImportPanel() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            let confirmation = NSAlert()
+            confirmation.messageText = String(localized: "Import user-confirmed weekly record?")
+            confirmation.informativeText = String(localized: "Confirm that commitment, outcome and feedback counts were verified with the participant. Task completion alone is not an achieved outcome.")
+            confirmation.addButton(withTitle: String(localized: "Import"))
+            confirmation.addButton(withTitle: String(localized: "Cancel"))
+            guard confirmation.runModal() == .alertFirstButtonReturn else { return }
+            do {
+                let data = try Data(contentsOf: url)
+                let measurement = try AppRuntimeFactory.makePublicAlphaMeasurement()
+                // The two existing closed records have distinct identity fields; never
+                // retry a failed event decode as a weekly aggregate.
+                guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      (object["eventID"] != nil) != (object["snapshotID"] != nil) else {
+                    throw PublicAlphaValidationError.invalidSnapshot
+                }
+                if object["eventID"] != nil {
+                    try measurement.saveConfirmedEvent(JSONDecoder().decode(PublicAlphaStageEvent.self, from: data))
+                } else {
+                    try measurement.saveSnapshot(JSONDecoder().decode(PublicAlphaValidationSnapshot.self, from: data))
+                }
+                diagnosticsExportErrorMessage = nil
+            } catch {
+                diagnosticsExportErrorMessage = String(localized: "The weekly record could not be imported. Check its participant, week, build and counts.")
+            }
         }
     }
 

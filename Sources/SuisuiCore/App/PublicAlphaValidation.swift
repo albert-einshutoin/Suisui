@@ -10,6 +10,9 @@ public enum PublicAlphaValidationError: Error, Equatable, Sendable {
     case invalidAppVersion
     case invalidSourceCommit
     case invalidStageMetadata
+    case participantMismatch
+    case participantDeleted
+    case measurementDisabled
     case invalidCount(String)
     case invalidRate(String)
     case invalidSnapshot
@@ -138,6 +141,9 @@ public enum PublicAlphaStage: String, Codable, CaseIterable, Hashable, Sendable 
     case clarification = "clarification"
     case reviewableActionPlan = "reviewable_action_plan"
     case approvedLocalAction = "approved_local_action"
+    case localExecution = "local_execution"
+    case resultDisplayed = "result_displayed"
+    case confirmedCommitment = "confirmed_commitment"
     case followUpWaiting = "follow_up_waiting"
     case outcomeTracked = "outcome_tracked"
     case outcomeClosed = "outcome_closed"
@@ -219,6 +225,9 @@ public struct PublicAlphaStageEvent: Codable, Equatable, Sendable {
     public let eventID: UUID
     public let participantID: PublicAlphaParticipantID
     public let workReference: PublicAlphaWorkReference?
+    public let sessionReference: PublicAlphaWorkReference?
+    public let sourceReference: PublicAlphaWorkReference?
+    public let build: PublicAlphaBuildIdentity?
     public let stage: PublicAlphaStage
     public let mark: PublicAlphaStageMark
     public let occurredAt: Date
@@ -229,6 +238,9 @@ public struct PublicAlphaStageEvent: Codable, Equatable, Sendable {
         eventID: UUID = UUID(),
         participantID: PublicAlphaParticipantID,
         workReference: PublicAlphaWorkReference? = nil,
+        sessionReference: PublicAlphaWorkReference? = nil,
+        sourceReference: PublicAlphaWorkReference? = nil,
+        build: PublicAlphaBuildIdentity? = nil,
         stage: PublicAlphaStage,
         mark: PublicAlphaStageMark,
         occurredAt: Date,
@@ -243,6 +255,9 @@ public struct PublicAlphaStageEvent: Codable, Equatable, Sendable {
         self.eventID = eventID
         self.participantID = participantID
         self.workReference = workReference
+        self.sessionReference = sessionReference
+        self.sourceReference = sourceReference
+        self.build = build
         self.stage = stage
         self.mark = mark
         self.occurredAt = occurredAt
@@ -256,6 +271,9 @@ public struct PublicAlphaStageEvent: Codable, Equatable, Sendable {
             eventID: container.decode(UUID.self, forKey: .eventID),
             participantID: container.decode(PublicAlphaParticipantID.self, forKey: .participantID),
             workReference: container.decodeIfPresent(PublicAlphaWorkReference.self, forKey: .workReference),
+            sessionReference: container.decodeIfPresent(PublicAlphaWorkReference.self, forKey: .sessionReference),
+            sourceReference: container.decodeIfPresent(PublicAlphaWorkReference.self, forKey: .sourceReference),
+            build: container.decodeIfPresent(PublicAlphaBuildIdentity.self, forKey: .build),
             stage: container.decode(PublicAlphaStage.self, forKey: .stage),
             mark: container.decode(PublicAlphaStageMark.self, forKey: .mark),
             occurredAt: container.decode(Date.self, forKey: .occurredAt),
@@ -371,6 +389,7 @@ public struct PublicAlphaValidationSnapshot: Codable, Equatable, Sendable {
 public enum PublicAlphaLedgerAppendResult: Equatable, Sendable {
     case inserted
     case duplicate
+    case participantDeleted
 }
 
 /// Local append-only ledger used by the validation program. It is Codable so
@@ -379,10 +398,12 @@ public enum PublicAlphaLedgerAppendResult: Equatable, Sendable {
 public struct PublicAlphaValidationLedger: Codable, Equatable, Sendable {
     public private(set) var stageEvents: [PublicAlphaStageEvent]
     public private(set) var weeklySnapshots: [PublicAlphaValidationSnapshot]
+    public private(set) var deletedParticipantIDs: Set<PublicAlphaParticipantID>
 
     public init() {
         self.stageEvents = []
         self.weeklySnapshots = []
+        self.deletedParticipantIDs = []
     }
 
     public init(recovering data: Data) throws {
@@ -393,10 +414,17 @@ public struct PublicAlphaValidationLedger: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.stageEvents = try container.decode([PublicAlphaStageEvent].self, forKey: .stageEvents)
         self.weeklySnapshots = try container.decode([PublicAlphaValidationSnapshot].self, forKey: .weeklySnapshots)
+        self.deletedParticipantIDs = try container.decodeIfPresent(
+            Set<PublicAlphaParticipantID>.self,
+            forKey: .deletedParticipantIDs
+        ) ?? []
         try validateUniqueIDs()
     }
 
     public mutating func append(_ event: PublicAlphaStageEvent) -> PublicAlphaLedgerAppendResult {
+        guard !deletedParticipantIDs.contains(event.participantID) else {
+            return .participantDeleted
+        }
         guard !stageEvents.contains(where: { $0.eventID == event.eventID }) else {
             return .duplicate
         }
@@ -405,6 +433,9 @@ public struct PublicAlphaValidationLedger: Codable, Equatable, Sendable {
     }
 
     public mutating func append(_ snapshot: PublicAlphaValidationSnapshot) -> PublicAlphaLedgerAppendResult {
+        guard !deletedParticipantIDs.contains(snapshot.participantID) else {
+            return .participantDeleted
+        }
         guard !weeklySnapshots.contains(where: {
             $0.snapshotID == snapshot.snapshotID
                 || ($0.participantID == snapshot.participantID && $0.weekStart == snapshot.weekStart)
@@ -424,6 +455,11 @@ public struct PublicAlphaValidationLedger: Codable, Equatable, Sendable {
     public mutating func delete(participantID: PublicAlphaParticipantID) {
         stageEvents.removeAll { $0.participantID == participantID }
         weeklySnapshots.removeAll { $0.participantID == participantID }
+        deletedParticipantIDs.insert(participantID)
+    }
+
+    public func isDeleted(participantID: PublicAlphaParticipantID) -> Bool {
+        deletedParticipantIDs.contains(participantID)
     }
 
     public func report() throws -> PublicAlphaValidationReport {
@@ -461,6 +497,11 @@ public struct PublicAlphaValidationLedger: Codable, Equatable, Sendable {
     }
 
     private func validateUniqueIDs() throws {
+        guard stageEvents.allSatisfy({ !deletedParticipantIDs.contains($0.participantID) }),
+              weeklySnapshots.allSatisfy({ !deletedParticipantIDs.contains($0.participantID) })
+        else {
+            throw PublicAlphaValidationError.invalidSnapshot
+        }
         for snapshots in Dictionary(grouping: weeklySnapshots, by: \.participantID).values {
             guard Set(snapshots.map(\.weekStart)).count == snapshots.count else {
                 throw PublicAlphaValidationError.invalidSnapshot

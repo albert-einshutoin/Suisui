@@ -87,9 +87,60 @@ frequency is retained rather than deduplicated, including `not_delivered`;
 the operator must state which categories form the helpful numerator and the
 feedback denominator in the ADR.
 
-This PR defines the contract and its pure report boundary. Connecting product
-events to the runtime diagnostics UI and the broader metric glossary remains a
-separate #630 task; the broader #385 program is not required for this preparation. No hidden telemetry is enabled here.
+## Local runtime measurement (#630)
+
+Settings > Privacy > Local measurement enables collection explicitly; it is
+off by default and never sends data remotely. Normal text, recorded speech and
+hands-free finalized utterances record `first_capture`. Clarification retains
+the same opaque work reference; session references in the existing ledger allow
+conversation restoration to recover it. A durably published Review records
+`reviewable_action_plan`; Queue approval, the persisted execution receipt and
+the visible receipt row record `approved_local_action`, `local_execution` and
+`result_displayed`. Execution failure uses a closed reliability category and
+does not count as success. Task Done never creates an Outcome event.
+
+Receipt history reconciles the receipts it already loads after a crash between
+execution and measurement. Event identities make replay a no-op. No additional
+repository or task scan is performed. Unreadable measurement data is preserved;
+storage failure emits a fixed, content-free diagnostic and does not stop work.
+An event that could not be persisted is unobserved, not a successful sample.
+
+The development app bundle embeds `SuisuiSourceCommit` only for a clean
+checkout. Events include the validated bundle version and commit when present.
+Dirty/unidentified builds keep build identity absent and cannot establish the
+candidate-version evidence required by #407.
+
+Choose a date in Settings and export that UTC ISO week to local JSON. It
+contains the existing closed events and snapshots so counts can be recalculated
+by decoding `PublicAlphaValidationLedger`. Missing snapshots and build identities
+are unknown; an empty export is not evidence of zero outcomes or a Go decision.
+
+The same confirmed-record import also accepts a `PublicAlphaStageEvent` for
+`confirmed_commitment`, `outcome_tracked`, or `outcome_closed` with a completed
+mark, fresh event UUID, current participant digest and an existing opaque work
+reference from the export. The operator must obtain participant confirmation;
+no task/receipt status creates these events automatically. Unknown work references,
+another participant, automatic stages and deleted participants are rejected.
+Reimporting the same event ID is a no-op. Event and snapshot identity fields
+select the existing closed record type; failed decoding never falls back.
+
+The operator can import a `PublicAlphaValidationSnapshot` JSON file through
+Settings after explicitly confirming its counts with the participant. Use the
+participant digest from the export, a fresh snapshot UUID, the observed build,
+and the selected week's timestamp. Foundation JSON dates are seconds since
+2001-01-01 UTC; the contract normalizes the week to Monday UTC. Required fields
+are those of `PublicAlphaValidationSnapshot`; feedback retains category counts,
+not a category set. Import rejects another participant and invalid counts.
+Interview text stays outside this file. A repeated participant/week is a replay,
+not a second sample. This connects operator-confirmed outcomes and feedback
+without inferring achievement from Task Done.
+
+Delete local measurement removes the participant's events and snapshots and
+stops collection. A persisted deletion marker rejects replay from existing
+windows. Re-enabling measurement starts a new participant in newly opened
+windows; old windows cannot resurrect the deleted records. Work data and
+execution receipts are retained. Session/work/source references are hashes;
+no transcript, source identifier, path, or arbitrary metadata is stored.
 
 ## Weekly operator flow
 

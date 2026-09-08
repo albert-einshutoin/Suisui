@@ -1739,6 +1739,9 @@ final class AssistantQueueStoreTests: XCTestCase {
 
     @MainActor
     func testProjectBoardViewModelApproveAndRunUsesFreshApprovalRevision() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("alpha-execution-\(UUID().uuidString)/ledger.json")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let measurement = try PublicAlphaRuntimeMeasurement(url: url, participantSeed: "test")
         let connection = try SQLiteConnection(path: ":memory:")
         try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
         let boardStore = SQLiteProjectBoardStore(connection: connection)
@@ -1749,6 +1752,7 @@ final class AssistantQueueStoreTests: XCTestCase {
             state: .waitingReview,
             summary: "Create approve and run task"
         )
+        measurement.record(.reviewableActionPlan, mark: .completed, sourceID: waiting.id, workID: "job")
         try assistantQueueStore.save(waiting)
         let registry = try ToolRegistry(tools: [
             StaticTool(
@@ -1772,7 +1776,8 @@ final class AssistantQueueStoreTests: XCTestCase {
             store: boardStore,
             assistantQueueStore: assistantQueueStore,
             assistantQueueExecutionCoordinator: coordinator,
-            executionReceiptStore: receiptStore
+            executionReceiptStore: receiptStore,
+            publicAlphaMeasurement: measurement
         )
 
         viewModel.load()
@@ -1788,6 +1793,10 @@ final class AssistantQueueStoreTests: XCTestCase {
         XCTAssertEqual(receiptStore.receipts.first?.assistantQueueItemID, waiting.id)
         XCTAssertEqual(viewModel.integrationStatusMessage, "Executed Assistant Queue item.")
         XCTAssertNil(viewModel.errorMessage)
+        let ledger = try PublicAlphaValidationLedger(recovering: Data(contentsOf: url))
+        XCTAssertEqual(ledger.stageEvents.map(\.stage), [.reviewableActionPlan, .approvedLocalAction, .localExecution])
+        XCTAssertEqual(Set(ledger.stageEvents.compactMap(\.workReference)).count, 1)
+        XCTAssertNil(try ledger.report().stageCompletionCounts[.outcomeClosed])
     }
 
     @MainActor

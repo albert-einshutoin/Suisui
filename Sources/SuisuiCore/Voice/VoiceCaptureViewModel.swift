@@ -168,7 +168,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
     // transcript so a failed new recording cannot reuse stale typed text.
     private var lastTranscribedAudioURL: URL?
     // Shared by capture, review, and approval events for the current local job.
-    private var publicAlphaWorkID: String?
+    private var publicAlphaWorkReference: PublicAlphaWorkReference?
     // Identifies the source take already persisted to Inbox so repeated Save
     // cannot duplicate its task. Deletion ownership is tracked separately:
     // a copied temporary source can be both saved and pending cleanup.
@@ -277,7 +277,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         self.liveIntentPreview = nil
         self.inboxTriageCommandParser = InboxVoiceTriageCommandParser()
         self.lastTranscribedAudioURL = nil
-        self.publicAlphaWorkID = nil
+        self.publicAlphaWorkReference = nil
         self.savedInboxSourceAudioURL = nil
         self.lowLatencyStreamID = UUID()
         self.activeConversationSourceTurnID = nil
@@ -722,6 +722,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
             return
         }
         await waitForPendingConversationCancellation()
+        publicAlphaWorkReference = try? publicAlphaMeasurement?.workReference(sessionID: conversationSessionID)
         let sourceTurnID = UUID()
         activeConversationSourceTurnID = sourceTurnID
         let outcome = await conversationOrchestrator.handle(
@@ -747,7 +748,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         stopConversationReadout()
         localTriageRequest = nil
         localTriageDecision = nil
-        publicAlphaWorkID = nil
+        publicAlphaWorkReference = nil
         draftSource = .text
         draft.text = text
         conversationWorkspaceLocalAnswerItems = []
@@ -776,6 +777,7 @@ public final class VoiceCaptureViewModel: ObservableObject {
         retryPendingTemporaryRecordingDeletions()
         cancelCurrentVoiceInput()
         localTriageRequest = nil
+        publicAlphaWorkReference = nil
         localTriageDecision = nil
         draftSource = .text
         draft = TranscriptDraft()
@@ -971,14 +973,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
             lastTranscribedAudioURL = audio.fileURL
             savedInboxSourceAudioURL = nil
             developmentPullRequestAutomationRequest = nil
-            publicAlphaWorkID = operationID.uuidString
-            publicAlphaMeasurement?.record(
-                .firstCapture,
-                mark: .completed,
-                sourceID: operationID.uuidString,
-                workID: operationID.uuidString,
-                at: date
-            )
+            publicAlphaWorkReference = try? PublicAlphaWorkReference(sourceID: operationID.uuidString)
+            recordPublicAlphaCapture(at: date)
             refreshRoutingResult()
             phase = .idle
         } catch {
@@ -1005,7 +1001,6 @@ public final class VoiceCaptureViewModel: ObservableObject {
         audioRecorder.reset()
         recordedAudio = nil
         lastTranscribedAudioURL = nil
-        publicAlphaWorkID = nil
         savedInboxSourceAudioURL = nil
         recordingState = audioRecorder.state
         if phase == .recording || phase == .transcribing {
@@ -1047,17 +1042,10 @@ public final class VoiceCaptureViewModel: ObservableObject {
         activeConversationSourceTurnID = sourceTurnID
         await waitForPendingConversationCancellation()
         guard activeConversationSourceTurnID == sourceTurnID, draft.normalizedText == input else { return }
-        let workID = publicAlphaWorkID ?? sourceTurnID.uuidString
-        publicAlphaWorkID = workID
-        if case .text = requestSource {
-            publicAlphaMeasurement?.record(
-                .firstCapture,
-                mark: .completed,
-                sourceID: workID,
-                workID: workID,
-                at: currentDate
-            )
+        if publicAlphaWorkReference == nil {
+            publicAlphaWorkReference = try? PublicAlphaWorkReference(sourceID: sourceTurnID.uuidString)
         }
+        recordPublicAlphaCapture(at: currentDate)
         var routedCommand = commandRouter.route(transcript: input)
         routingResult = routedCommand
 
@@ -1477,12 +1465,14 @@ public final class VoiceCaptureViewModel: ObservableObject {
             ) { current in
                 try AssistantQueueStateMachine.approve(current, reviewerID: reviewerID)
             }
-            publicAlphaMeasurement?.record(
-                .approvedLocalAction,
-                mark: .completed,
-                sourceID: assistantQueueItem.id,
-                workID: publicAlphaWorkID ?? assistantQueueItem.id
-            )
+            if let reference = try? publicAlphaMeasurement?.workReference(
+                sourceID: assistantQueueItem.id, stage: .reviewableActionPlan
+            ) {
+                publicAlphaMeasurement?.record(
+                    .approvedLocalAction, mark: .completed,
+                    sourceID: assistantQueueItem.id, workReference: reference
+                )
+            }
             return true
         } catch {
             refreshAssistantQueueItemAfterMutationFailure(id: assistantQueueItem.id)
@@ -1903,6 +1893,8 @@ public final class VoiceCaptureViewModel: ObservableObject {
         }
 
         updateDraftText(normalized)
+        // A new finalized utterance is a new input even when its text repeats.
+        publicAlphaWorkReference = try? PublicAlphaWorkReference(sourceID: UUID().uuidString)
         await generatePlan(
             source: .voice,
             currentDate: currentDate,
@@ -2917,13 +2909,21 @@ public final class VoiceCaptureViewModel: ObservableObject {
         )
     }
 
+    private func recordPublicAlphaCapture(at date: Date) {
+        guard let reference = publicAlphaWorkReference else { return }
+        publicAlphaMeasurement?.record(
+            .firstCapture, mark: .completed, sourceID: reference.digest,
+            workReference: reference, sessionID: conversationSessionID, at: date
+        )
+    }
+
     private func recordPublicAlphaReviewEvent(for item: AssistantQueueItem) {
-        guard item.state == .waitingReview else { return }
+        guard item.state == .waitingReview, let reference = publicAlphaWorkReference else { return }
         publicAlphaMeasurement?.record(
             .reviewableActionPlan,
             mark: .completed,
             sourceID: item.id,
-            workID: publicAlphaWorkID ?? item.id
+            workReference: reference
         )
     }
 

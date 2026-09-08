@@ -7,9 +7,36 @@ import SwiftUI
 struct SettingsPrivacyFeatureView: View {
     @ObservedObject var settingsViewModel: AppSettingsViewModel
     let context: SettingsPrivacyDependencies
+    @AppStorage("suisui.publicAlphaMeasurementEnabled") private var measurementEnabled = false
+    @State private var confirmingMeasurementDeletion = false
+    @State private var measurementWeek = Date()
 
     var body: some View {
         Form {
+            Section("Local measurement") {
+                Toggle("Record local measurement", isOn: $measurementEnabled)
+                    .accessibilityIdentifier("settings-alpha-measurement-toggle")
+                Text("Records opaque work references and event counts on this Mac. No transcript or task content is included. Missing measurements remain unknown.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                DatePicker("Measurement week", selection: $measurementWeek, displayedComponents: .date)
+                    .accessibilityIdentifier("settings-alpha-measurement-week")
+                Button("Export selected week’s measurement…") {
+                    context.presentMeasurementExportPanel(measurementWeek)
+                }
+                    .accessibilityIdentifier("settings-alpha-measurement-export")
+                Button("Import user-confirmed weekly record…", action: context.presentMeasurementImportPanel)
+                    .accessibilityIdentifier("settings-alpha-measurement-import")
+                Button("Delete local measurement…", role: .destructive) {
+                    confirmingMeasurementDeletion = true
+                }
+                .accessibilityIdentifier("settings-alpha-measurement-delete")
+                .confirmationDialog("Delete local measurement?", isPresented: $confirmingMeasurementDeletion) {
+                    Button("Delete local measurement", role: .destructive, action: context.deleteMeasurement)
+                } message: {
+                    Text("Removes this participant’s events and weekly records and stops measurement. Tasks and receipts are kept.")
+                }
+            }
             Section("Privacy") {
                 Toggle(
                     "Notifications",
@@ -399,6 +426,9 @@ struct SettingsPrivacyDependencies {
     let presentBackupExportPanel: () -> Void
     let presentBackupRestorePanel: () -> Void
     let presentDiagnosticsExportPanel: () -> Void
+    let presentMeasurementExportPanel: (Date) -> Void
+    let presentMeasurementImportPanel: () -> Void
+    let deleteMeasurement: () -> Void
     let applyPendingBackupRestore: () -> Void
 }
 

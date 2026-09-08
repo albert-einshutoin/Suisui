@@ -85,6 +85,7 @@ extension AppRuntimeFactory {
                     )
                 },
                 executionReceiptStore: executionReceiptStore,
+                publicAlphaMeasurement: try? makePublicAlphaMeasurement(),
                 missedTaskReviewStateStore: SQLiteMissedTaskReviewStateStore(connection: connection),
                 missedTaskFollowUpNotificationClient: UserNotificationsNotificationClient(),
                 externalTaskLinkStore: externalTaskLinkStore,

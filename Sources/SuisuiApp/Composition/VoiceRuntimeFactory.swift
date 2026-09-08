@@ -23,20 +23,7 @@ extension AppRuntimeFactory {
         var workspaceContextRetriever: (@Sendable (String) throws -> [WorkspaceContextSnippet])?
         var runtimeValidationMessage: String?
         var initialFailureMessage: String?
-        let publicAlphaMeasurement: PublicAlphaRuntimeMeasurement? = {
-            guard let support = try? applicationSupportDirectoryURL() else { return nil }
-            let defaults = UserDefaults.standard
-            let seedKey = "suisui.publicAlphaParticipantSeed"
-            let seed = defaults.string(forKey: seedKey) ?? {
-                let value = UUID().uuidString
-                defaults.set(value, forKey: seedKey)
-                return value
-            }()
-            return try? PublicAlphaRuntimeMeasurement(
-                url: support.appendingPathComponent("PublicAlphaValidation/ledger.json"),
-                participantSeed: seed
-            )
-        }()
+        let publicAlphaMeasurement = try? makePublicAlphaMeasurement()
         do {
             auditLogger = try makeAuditLogger()
             let connection = try migratedConnection()
