@@ -334,7 +334,10 @@ private struct VoiceTaskConversationComposer: View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
             if isRecording || isTranscribing {
                 HStack(spacing: SuisuiSpacing.sm) {
-                    VoiceConversationInputLevelMeter(meter: viewModel.inputLevelMeter)
+                    VoiceInputLevelMeter(
+                        meter: viewModel.inputLevelMeter,
+                        accessibilityIdentifier: "voice-conversation-input-level-meter"
+                    )
                     Label(
                         isRecording ? "Recording" : "Transcribing",
                         systemImage: isRecording ? "mic.fill" : "waveform"
@@ -462,41 +465,6 @@ private struct VoiceTaskConversationComposer: View {
     private func recordingOutputURL() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("suisui-conversation-\(UUID().uuidString).m4a")
-    }
-}
-
-private struct VoiceConversationInputLevelMeter: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ObservedObject var meter: MicrophoneInputLevelMeter
-
-    private static let barThresholds: [Double] = [0.05, 0.2, 0.4, 0.6, 0.8]
-
-    var body: some View {
-        Group {
-            if reduceMotion {
-                Text("Recording")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tint)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(SuisuiSurface.groupedContent, in: Capsule())
-            } else {
-                HStack(alignment: .bottom, spacing: 3) {
-                    ForEach(Array(Self.barThresholds.enumerated()), id: \.offset) { index, threshold in
-                        Capsule()
-                            .fill(meter.inputLevel >= threshold ? AnyShapeStyle(.tint) : SuisuiSurface.groupedContent)
-                            .frame(width: 4, height: 8 + CGFloat(index) * 3)
-                    }
-                }
-                .animation(
-                    SuisuiMotion.animation(duration: SuisuiMotion.quick, reduceMotion: reduceMotion),
-                    value: meter.inputLevel
-                )
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Microphone input level")
-        .accessibilityIdentifier("voice-conversation-input-level-meter")
     }
 }
 

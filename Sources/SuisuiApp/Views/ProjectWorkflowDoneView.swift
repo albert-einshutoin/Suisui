@@ -150,7 +150,7 @@ struct DoneWorkflowView: View {
                         value: "\(analytics.completedProjectCount)",
                         systemImage: "folder.badge.checkmark"
                     )
-                    DoneStatValueTile(
+                    DoneStatTile(
                         title: "On-Time",
                         accessibilityTitle: "On-Time Rate",
                         value: analytics.onTimeRate.map { "\(Int($0 * 100))%" } ?? "—",
@@ -454,35 +454,6 @@ struct ExecutionReceiptHistoryFileDocument: FileDocument {
 }
 
 private struct DoneStatTile: View {
-    let title: LocalizedStringKey
-    var accessibilityTitle: LocalizedStringKey? = nil
-    let value: String
-    let systemImage: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label(title, systemImage: systemImage)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .minimumScaleFactor(0.85)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(value)
-                .font(.title3.weight(.semibold))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 64, maxHeight: .infinity, alignment: .leading)
-        .padding(10)
-        .background(SuisuiSurface.groupedContent, in: RoundedRectangle(cornerRadius: SuisuiRadius.card))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityTitle ?? title)
-        .accessibilityValue(value)
-    }
-}
-
-private struct DoneStatValueTile: View {
     let title: LocalizedStringKey
     var accessibilityTitle: LocalizedStringKey? = nil
     let value: String

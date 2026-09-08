@@ -5287,17 +5287,6 @@ public final class ProjectBoardViewModel: ObservableObject {
         errorMessage = nil
     }
 
-    public func startFocusOnRecommendedTask(
-        on referenceDate: Date = Date(),
-        calendar: Calendar = .current
-    ) {
-        guard let task = todayPlan(on: referenceDate, calendar: calendar).recommendedTask else {
-            todayCommandFeedback = String(localized: "No focus task is available.")
-            return
-        }
-        startFocus(taskID: task.id)
-    }
-
     @discardableResult
     public func prepareTaskAutomationReview(
         settings: TaskAutoExecutionSettings,

@@ -60,8 +60,6 @@ public struct PublicAlphaParticipantID: Codable, Equatable, Hashable, Sendable {
         var container = encoder.singleValueContainer()
         try container.encode(digest)
     }
-
-    public var redactedValue: String { digest }
 }
 
 /// A closed, opaque reference shared by the events for one local job. The

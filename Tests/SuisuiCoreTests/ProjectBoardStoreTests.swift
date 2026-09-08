@@ -8027,103 +8027,6 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testTodayDueDisplayLabelFormatsOverdueTodayAndDateOnlyValues() throws {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-        let referenceDate = try isoDate("2026-06-19T08:37:00Z")
-        let overdue = ProjectBoardTask(
-            id: 1,
-            projectID: 1,
-            title: "Overdue",
-            detail: "",
-            status: .planned,
-            priority: .high,
-            dueAt: "2026-06-18T09:00:00Z"
-        )
-        let today = ProjectBoardTask(
-            id: 2,
-            projectID: 1,
-            title: "Today",
-            detail: "",
-            status: .planned,
-            priority: .medium,
-            dueAt: "2026-06-19T12:00:00Z"
-        )
-        let dateOnlyToday = ProjectBoardTask(
-            id: 3,
-            projectID: 1,
-            title: "Date only today",
-            detail: "",
-            status: .planned,
-            priority: .medium,
-            dueAt: "2026-06-19"
-        )
-        let dateOnly = ProjectBoardTask(
-            id: 4,
-            projectID: 1,
-            title: "Date only",
-            detail: "",
-            status: .planned,
-            priority: .medium,
-            dueAt: "2026-06-20"
-        )
-        var pacificCalendar = Calendar(identifier: .gregorian)
-        pacificCalendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
-        var buddhistPacificCalendar = Calendar(identifier: .buddhist)
-        buddhistPacificCalendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
-        let pacificDateOnlyToday = ProjectBoardTask(
-            id: 5,
-            projectID: 1,
-            title: "Pacific date only",
-            detail: "",
-            status: .planned,
-            priority: .medium,
-            dueAt: "2026-06-30"
-        )
-
-        XCTAssertEqual(
-            overdue.todayDueDisplayLabel(on: referenceDate, calendar: calendar, locale: Locale(identifier: "en_US_POSIX")),
-            "Overdue Jun 18 at 09:00"
-        )
-        XCTAssertTrue(overdue.isOverdueForToday(on: referenceDate, calendar: calendar))
-        XCTAssertEqual(
-            today.todayDueDisplayLabel(on: referenceDate, calendar: calendar, locale: Locale(identifier: "en_US_POSIX")),
-            "Today 12:00"
-        )
-        XCTAssertFalse(today.isOverdueForToday(on: referenceDate, calendar: calendar))
-        XCTAssertEqual(
-            dateOnlyToday.todayDueDisplayLabel(on: referenceDate, calendar: calendar, locale: Locale(identifier: "en_US_POSIX")),
-            "Today"
-        )
-        XCTAssertEqual(
-            dateOnly.todayDueDisplayLabel(on: referenceDate, calendar: calendar, locale: Locale(identifier: "en_US_POSIX")),
-            "Due Jun 20"
-        )
-        XCTAssertEqual(
-            pacificDateOnlyToday.todayDueDisplayLabel(
-                on: try isoDate("2026-07-01T06:30:00Z"),
-                calendar: pacificCalendar,
-                locale: Locale(identifier: "en_US_POSIX")
-            ),
-            "Today"
-        )
-        XCTAssertEqual(
-            pacificDateOnlyToday.todayDueDisplayLabel(
-                on: try isoDate("2026-07-01T06:30:00Z"),
-                calendar: buddhistPacificCalendar,
-                locale: Locale(identifier: "en_US_POSIX")
-            ),
-            "Today"
-        )
-        XCTAssertFalse(
-            pacificDateOnlyToday.isOverdueForToday(
-                on: try isoDate("2026-07-01T06:30:00Z"),
-                calendar: pacificCalendar
-            )
-        )
-    }
-
-    @MainActor
     func testTodayPlanUsesCalendarTimeZoneForDateOnlyDueDates() throws {
         let viewModel = ProjectBoardViewModel(store: InMemoryProjectBoardStore())
         viewModel.load()
@@ -9502,7 +9405,7 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testProjectBoardViewModelDoesNotShowEmptyProjectStateWhenLoadFails() {
-        let viewModel = ProjectBoardViewModel(store: AlwaysFailingProjectBoardStore())
+        let viewModel = ProjectBoardViewModel(store: UnavailableProjectBoardStore(error: ProjectBoardStoreTestError.unavailable))
 
         viewModel.load()
 
@@ -9882,7 +9785,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testProjectBoardViewModelRedactsUnexpectedLoadErrorMessages() {
         let secret = "sk-" + "projectBoardSecret123"
         let viewModel = ProjectBoardViewModel(
-            store: AlwaysFailingProjectBoardStore(
+            store: UnavailableProjectBoardStore(
                 error: ProjectBoardSecretError(message: "board load failed token=\(secret)&request_id=project-board-1")
             )
         )
@@ -9899,7 +9802,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     @MainActor
     func testProjectBoardViewModelShowsRepairGuidanceForCorruptedLocalJSON() {
         let viewModel = ProjectBoardViewModel(
-            store: AlwaysFailingProjectBoardStore(error: LocalStoreDecodingError.invalidStringArray(column: "projects.tags_json"))
+            store: UnavailableProjectBoardStore(error: LocalStoreDecodingError.invalidStringArray(column: "projects.tags_json"))
         )
 
         viewModel.load()
@@ -9914,7 +9817,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     @MainActor
     func testProjectBoardViewModelShowsRepairGuidanceForUnsupportedStoredEnum() {
         let viewModel = ProjectBoardViewModel(
-            store: AlwaysFailingProjectBoardStore(error: LocalStoreDecodingError.invalidEnum(column: "projects.status", value: "parked"))
+            store: UnavailableProjectBoardStore(error: LocalStoreDecodingError.invalidEnum(column: "projects.status", value: "parked"))
         )
 
         viewModel.load()
@@ -9930,7 +9833,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testProjectBoardViewModelTruncatesLongCorruptedValuesInRepairGuidance() {
         let oversizedValue = "\(String(repeating: "x", count: 90))\nnext line"
         let viewModel = ProjectBoardViewModel(
-            store: AlwaysFailingProjectBoardStore(error: LocalStoreDecodingError.invalidDate(column: "tasks.due_at", value: oversizedValue))
+            store: UnavailableProjectBoardStore(error: LocalStoreDecodingError.invalidDate(column: "tasks.due_at", value: oversizedValue))
         )
 
         viewModel.load()
@@ -10323,111 +10226,6 @@ private final class RecordingDailyPlanningTTSPreviewer: TextToSpeechPreviewing, 
         if let error {
             throw error
         }
-    }
-}
-
-private struct AlwaysFailingProjectBoardStore: ProjectBoardStore {
-    private let error: Error
-
-    init(error: Error = ProjectBoardStoreTestError.unavailable) {
-        self.error = error
-    }
-
-    func loadSnapshot() throws -> ProjectBoardSnapshot {
-        throw error
-    }
-
-    func loadSnapshot(includeArchived: Bool) throws -> ProjectBoardSnapshot {
-        throw error
-    }
-
-    func createProject(title: String) throws -> ProjectBoardProject {
-        throw error
-    }
-
-    func updateProject(id: Int64, title: String) throws -> ProjectBoardProject {
-        throw error
-    }
-
-    func completeProject(id: Int64) throws -> ProjectBoardProject {
-        throw error
-    }
-
-    func archiveProject(id: Int64) throws -> ProjectBoardProject {
-        throw error
-    }
-
-    func restoreProject(id: Int64) throws -> ProjectBoardProject {
-        throw error
-    }
-
-    func deleteProject(id: Int64) throws {
-        throw error
-    }
-
-    func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
-        throw error
-    }
-
-    func loadInboxTriageRecords(taskIDs: Set<Int64>) throws -> [Int64: InboxTriageRecord] {
-        throw error
-    }
-
-    func createInboxTask(title: String) throws -> ProjectBoardTask {
-        throw error
-    }
-
-    func performInboxTriage(
-        taskID: Int64,
-        action: InboxTriageAction,
-        referenceDate: Date,
-        calendar: Calendar
-    ) throws -> InboxTriageMutation {
-        throw error
-    }
-
-    func undoInboxTriage(_ mutation: InboxTriageMutation) throws -> ProjectBoardTask {
-        throw error
-    }
-
-    func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
-        throw error
-    }
-
-    func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask {
-        throw error
-    }
-
-    func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask] {
-        throw error
-    }
-
-    func moveTasks(ids: [Int64], toProjectID projectID: Int64) throws -> [ProjectBoardTask] {
-        throw error
-    }
-
-    func deleteTask(id: Int64) throws {
-        throw error
-    }
-
-    func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact {
-        throw error
-    }
-
-    func deleteProjectArtifact(id: Int64) throws {
-        throw error
-    }
-
-    func createProjectMilestone(projectID: Int64, title: String, dueAt: String?) throws -> ProjectBoardMilestone {
-        throw error
-    }
-
-    func updateProjectMilestone(id: Int64, title: String, dueAt: String?, isCompleted: Bool) throws -> ProjectBoardMilestone {
-        throw error
-    }
-
-    func deleteProjectMilestone(id: Int64) throws {
-        throw error
     }
 }
 

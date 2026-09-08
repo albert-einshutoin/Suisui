@@ -139,12 +139,6 @@ public struct VoiceModelCatalog: Equatable, Sendable {
         models.first { $0.id == id }
     }
 
-    public func readinessRows(using manager: any VoiceModelManaging) -> [VoiceModelReadinessRow] {
-        models.map { model in
-            VoiceModelReadinessRow(model: model, status: manager.status(for: model))
-        }
-    }
-
     private static func validationIssues(for model: VoiceModelDescriptor) -> [ValidationIssue] {
         var issues: [ValidationIssue] = []
         if model.sourceURL.scheme?.lowercased() != "https" || model.sourceURL.host?.isEmpty != false {

@@ -859,7 +859,6 @@
 "%@ is overdue." = "%@ は期限超過です。";
 "%@ is high priority." = "%@ は高優先度です。";
 "Focused on \"%@\"." = "\"%@\" に集中します。";
-"No focus task is available." = "集中対象のタスクがありません。";
 "Prepared %d time blocks for schedule review." = "確認用に %d 件の時間ブロックを準備しました。";
 "%d projects compared" = "プロジェクト %d 件を比較";
 "%d project compared" = "プロジェクト %d 件を比較";

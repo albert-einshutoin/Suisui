@@ -772,52 +772,6 @@ public final class AppSettingsViewModel: ObservableObject {
         }
     }
 
-    /// Read the readiness state for the currently selected provider only. Used
-    /// by the onboarding path to keep the wait short when only one provider
-    /// is needed to decide whether to advance past the finish step.
-    public func refreshSelectedProviderReadiness() async {
-        isRefreshingProviderReadiness = true
-        defer { isRefreshingProviderReadiness = false }
-        let selected = settings.aiProvider
-        guard let key = Self.secretKey(for: selected) else {
-            // Non-API-key providers (OpenCode/Ollama) have no Keychain read.
-            return
-        }
-        let state = await Task.detached(priority: .userInitiated) { [secretStore = self.secretStore, key] in
-            do {
-                return AppSettingsViewModel.classifyAPIKeyValue(try secretStore.read(key))
-            } catch {
-                return ProviderAPIKeyReadinessState.unavailable
-            }
-        }.value
-        applySelectedProviderState(state, for: selected)
-    }
-
-    private func applySelectedProviderState(_ state: ProviderAPIKeyReadinessState, for provider: AIProvider) {
-        switch provider {
-        case .openaiResponses:
-            openAIAPIKeyReadinessState = state
-            openAIAPIKeyStatusLabel = Self.statusLabel(for: state)
-            openAIProviderSmokeStatusLabel = Self.providerSmokeStatusLabel(for: state)
-        case .openRouterCompatible:
-            openRouterAPIKeyReadinessState = state
-            openRouterAPIKeyStatusLabel = Self.statusLabel(for: state)
-        case .claudeMessages:
-            anthropicAPIKeyReadinessState = state
-            anthropicAPIKeyStatusLabel = Self.statusLabel(for: state)
-        case .geminiDirect:
-            geminiAPIKeyReadinessState = state
-            geminiAPIKeyStatusLabel = Self.statusLabel(for: state)
-            geminiProviderSmokeStatusLabel = Self.providerSmokeStatusLabel(for: state)
-        case .groqOpenAICompatible:
-            groqAPIKeyReadinessState = state
-            groqAPIKeyStatusLabel = Self.statusLabel(for: state)
-            groqProviderSmokeStatusLabel = Self.providerSmokeStatusLabel(for: state)
-        case .codexLocal, .opencodeLocal, .ollamaCompatible, .geminiOpenAICompatible:
-            return
-        }
-    }
-
     nonisolated static func secretKey(for provider: AIProvider) -> SecretKey? {
         switch provider {
         case .openaiResponses:

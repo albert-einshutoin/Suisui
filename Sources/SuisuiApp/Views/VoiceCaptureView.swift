@@ -1072,9 +1072,13 @@ private struct LowLatencyVoiceAgentPanel: View {
 /// observes only the dedicated level slice so the ~10Hz samples re-render this
 /// small view instead of the whole voice capture window. With Reduce Motion
 /// enabled the animated bars become a static localized "Recording" chip.
-private struct VoiceInputLevelMeter: View {
+/// Shared by the Secretary capture surface and the conversation workspace;
+/// only the accessibility identifier differs so runtime smoke scripts can
+/// address each surface separately.
+struct VoiceInputLevelMeter: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var meter: MicrophoneInputLevelMeter
+    var accessibilityIdentifier = "voice-input-level-meter"
 
     /// Fill thresholds for each bar; the first lights up on faint input so a
     /// live microphone is visibly distinct from silence.
@@ -1105,7 +1109,7 @@ private struct VoiceInputLevelMeter: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Microphone input level")
-        .accessibilityIdentifier("voice-input-level-meter")
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 }
 
