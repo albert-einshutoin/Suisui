@@ -9405,7 +9405,7 @@ final class ProjectBoardStoreTests: XCTestCase {
 
     @MainActor
     func testProjectBoardViewModelDoesNotShowEmptyProjectStateWhenLoadFails() {
-        let viewModel = ProjectBoardViewModel(store: AlwaysFailingProjectBoardStore())
+        let viewModel = ProjectBoardViewModel(store: UnavailableProjectBoardStore(error: ProjectBoardStoreTestError.unavailable))
 
         viewModel.load()
 
@@ -9785,7 +9785,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testProjectBoardViewModelRedactsUnexpectedLoadErrorMessages() {
         let secret = "sk-" + "projectBoardSecret123"
         let viewModel = ProjectBoardViewModel(
-            store: AlwaysFailingProjectBoardStore(
+            store: UnavailableProjectBoardStore(
                 error: ProjectBoardSecretError(message: "board load failed token=\(secret)&request_id=project-board-1")
             )
         )
@@ -9802,7 +9802,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     @MainActor
     func testProjectBoardViewModelShowsRepairGuidanceForCorruptedLocalJSON() {
         let viewModel = ProjectBoardViewModel(
-            store: AlwaysFailingProjectBoardStore(error: LocalStoreDecodingError.invalidStringArray(column: "projects.tags_json"))
+            store: UnavailableProjectBoardStore(error: LocalStoreDecodingError.invalidStringArray(column: "projects.tags_json"))
         )
 
         viewModel.load()
@@ -9817,7 +9817,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     @MainActor
     func testProjectBoardViewModelShowsRepairGuidanceForUnsupportedStoredEnum() {
         let viewModel = ProjectBoardViewModel(
-            store: AlwaysFailingProjectBoardStore(error: LocalStoreDecodingError.invalidEnum(column: "projects.status", value: "parked"))
+            store: UnavailableProjectBoardStore(error: LocalStoreDecodingError.invalidEnum(column: "projects.status", value: "parked"))
         )
 
         viewModel.load()
@@ -9833,7 +9833,7 @@ final class ProjectBoardStoreTests: XCTestCase {
     func testProjectBoardViewModelTruncatesLongCorruptedValuesInRepairGuidance() {
         let oversizedValue = "\(String(repeating: "x", count: 90))\nnext line"
         let viewModel = ProjectBoardViewModel(
-            store: AlwaysFailingProjectBoardStore(error: LocalStoreDecodingError.invalidDate(column: "tasks.due_at", value: oversizedValue))
+            store: UnavailableProjectBoardStore(error: LocalStoreDecodingError.invalidDate(column: "tasks.due_at", value: oversizedValue))
         )
 
         viewModel.load()
@@ -10226,111 +10226,6 @@ private final class RecordingDailyPlanningTTSPreviewer: TextToSpeechPreviewing, 
         if let error {
             throw error
         }
-    }
-}
-
-private struct AlwaysFailingProjectBoardStore: ProjectBoardStore {
-    private let error: Error
-
-    init(error: Error = ProjectBoardStoreTestError.unavailable) {
-        self.error = error
-    }
-
-    func loadSnapshot() throws -> ProjectBoardSnapshot {
-        throw error
-    }
-
-    func loadSnapshot(includeArchived: Bool) throws -> ProjectBoardSnapshot {
-        throw error
-    }
-
-    func createProject(title: String) throws -> ProjectBoardProject {
-        throw error
-    }
-
-    func updateProject(id: Int64, title: String) throws -> ProjectBoardProject {
-        throw error
-    }
-
-    func completeProject(id: Int64) throws -> ProjectBoardProject {
-        throw error
-    }
-
-    func archiveProject(id: Int64) throws -> ProjectBoardProject {
-        throw error
-    }
-
-    func restoreProject(id: Int64) throws -> ProjectBoardProject {
-        throw error
-    }
-
-    func deleteProject(id: Int64) throws {
-        throw error
-    }
-
-    func createTask(_ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
-        throw error
-    }
-
-    func loadInboxTriageRecords(taskIDs: Set<Int64>) throws -> [Int64: InboxTriageRecord] {
-        throw error
-    }
-
-    func createInboxTask(title: String) throws -> ProjectBoardTask {
-        throw error
-    }
-
-    func performInboxTriage(
-        taskID: Int64,
-        action: InboxTriageAction,
-        referenceDate: Date,
-        calendar: Calendar
-    ) throws -> InboxTriageMutation {
-        throw error
-    }
-
-    func undoInboxTriage(_ mutation: InboxTriageMutation) throws -> ProjectBoardTask {
-        throw error
-    }
-
-    func updateTask(id: Int64, _ draft: ProjectBoardTaskDraft) throws -> ProjectBoardTask {
-        throw error
-    }
-
-    func moveTask(id: Int64, to status: ProjectTaskStatus) throws -> ProjectBoardTask {
-        throw error
-    }
-
-    func moveTasks(ids: [Int64], to status: ProjectTaskStatus) throws -> [ProjectBoardTask] {
-        throw error
-    }
-
-    func moveTasks(ids: [Int64], toProjectID projectID: Int64) throws -> [ProjectBoardTask] {
-        throw error
-    }
-
-    func deleteTask(id: Int64) throws {
-        throw error
-    }
-
-    func createProjectArtifact(projectID: Int64, expectedPath: String) throws -> ProjectBoardArtifact {
-        throw error
-    }
-
-    func deleteProjectArtifact(id: Int64) throws {
-        throw error
-    }
-
-    func createProjectMilestone(projectID: Int64, title: String, dueAt: String?) throws -> ProjectBoardMilestone {
-        throw error
-    }
-
-    func updateProjectMilestone(id: Int64, title: String, dueAt: String?, isCompleted: Bool) throws -> ProjectBoardMilestone {
-        throw error
-    }
-
-    func deleteProjectMilestone(id: Int64) throws {
-        throw error
     }
 }
 

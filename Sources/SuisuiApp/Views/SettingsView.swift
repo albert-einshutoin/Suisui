@@ -908,7 +908,30 @@ struct SettingsOverviewProjectionBuilder {
     }
 
     var syncOverviewTone: SettingsStatusTone {
-        switch syncStatusLabelForOverview {
+        SettingsSyncStatusPresentation.tone(forStatusLabel: syncStatusLabelForOverview)
+    }
+
+    var syncPaidValueLabel: String {
+        SettingsSyncStatusPresentation.paidValueLabel(forStatusLabel: syncStatusLabelForOverview)
+    }
+
+    var syncSafetyBoundaryLabel: String {
+        SettingsSyncStatusPresentation.safetyBoundaryLabel(forStatusLabel: syncStatusLabelForOverview)
+    }
+
+    var privacyOverviewTone: SettingsStatusTone {
+        // Privacy readiness describes the local/Keychain boundary, while
+        // notification permission has its own row and must not redefine privacy.
+        .ready
+    }
+
+}
+
+/// Sync status copy shared by the Overview tile and the Sync tab so the two
+/// surfaces cannot drift apart. Keyed by `SyncSettingsViewModel.statusLabel`.
+enum SettingsSyncStatusPresentation {
+    static func tone(forStatusLabel label: String) -> SettingsStatusTone {
+        switch label {
         case "Ready", "Syncing":
             .ready
         case "Failed":
@@ -918,8 +941,8 @@ struct SettingsOverviewProjectionBuilder {
         }
     }
 
-    var syncPaidValueLabel: String {
-        switch syncStatusLabelForOverview {
+    static func paidValueLabel(forStatusLabel label: String) -> String {
+        switch label {
         case "Ready", "Syncing":
             "Projects, Tasks, and Settings are ready to sync."
         case "Sync backend is not configured":
@@ -931,8 +954,8 @@ struct SettingsOverviewProjectionBuilder {
         }
     }
 
-    var syncSafetyBoundaryLabel: String {
-        switch syncStatusLabelForOverview {
+    static func safetyBoundaryLabel(forStatusLabel label: String) -> String {
+        switch label {
         case "Ready", "Syncing":
             "Only selected Suisui data classes are included."
         case "Sync backend is not configured":
@@ -943,13 +966,6 @@ struct SettingsOverviewProjectionBuilder {
             "Sync fails closed before external communication."
         }
     }
-
-    var privacyOverviewTone: SettingsStatusTone {
-        // Privacy readiness describes the local/Keychain boundary, while
-        // notification permission has its own row and must not redefine privacy.
-        .ready
-    }
-
 }
 
 @MainActor
@@ -1180,40 +1196,15 @@ struct SettingsSyncProjectionBuilder {
     }
 
     var syncOverviewTone: SettingsStatusTone {
-        switch syncStatusLabelForOverview {
-        case "Ready", "Syncing":
-            .ready
-        case "Failed":
-            .danger
-        default:
-            .warning
-        }
+        SettingsSyncStatusPresentation.tone(forStatusLabel: syncStatusLabelForOverview)
     }
 
     var syncPaidValueLabel: String {
-        switch syncStatusLabelForOverview {
-        case "Ready", "Syncing":
-            "Projects, Tasks, and Settings are ready to sync."
-        case "Sync backend is not configured":
-            "Pro plan detected. Sync backend is not configured."
-        case "Upgrade required":
-            "Pro is required for Projects, Tasks, and Settings sync."
-        default:
-            "Sync keeps the local data classes explicit before any upload."
-        }
+        SettingsSyncStatusPresentation.paidValueLabel(forStatusLabel: syncStatusLabelForOverview)
     }
 
     var syncSafetyBoundaryLabel: String {
-        switch syncStatusLabelForOverview {
-        case "Ready", "Syncing":
-            "Only selected Suisui data classes are included."
-        case "Sync backend is not configured":
-            "No upload starts while the backend is missing."
-        case "Upgrade required":
-            "Free stays local. No data leaves this Mac."
-        default:
-            "Sync fails closed before external communication."
-        }
+        SettingsSyncStatusPresentation.safetyBoundaryLabel(forStatusLabel: syncStatusLabelForOverview)
     }
 
 }
