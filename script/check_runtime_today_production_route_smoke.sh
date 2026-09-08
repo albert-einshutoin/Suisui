@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Exercises the normal ProjectBoardView route with an isolated local database.
+# Exercises the normal ProjectBoardView routes with an isolated local database.
 # This intentionally does not use launch recovery: a healthy production route
-# must publish the real header and Today workflow without a recovery-only view.
+# must publish the real navigation and workflow without a recovery-only view.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METADATA_FILE="$ROOT_DIR/packaging/app_metadata.env"
@@ -280,7 +280,8 @@ launch_app() {
   terminate_app
   # Start from an empty environment so host API keys, proxy settings, and saved
   # smoke flags cannot supply credentials or alter this normal-route exercise.
-  # The default Today route remains SUISUI_PROJECT_BOARD_SELECTED_DESTINATION="today";
+  # Route selection is explicit so saved legacy values and the new primary
+  # surfaces are both exercised without relying on host preferences.
   /usr/bin/env -i \
     PATH="$PATH" \
     TMPDIR="$case_artifact_dir/tmp" \
@@ -489,10 +490,14 @@ verify_today_action_contract() {
 route_text_for() {
   local route="$1"
   case "$route:$locale_label" in
+    secretary:en) printf '%s' "Conversation" ;;
+    secretary:ja) printf '%s' "会話" ;;
     inbox:en) printf '%s' "Inbox" ;;
     inbox:ja) printf '%s' "インボックス" ;;
     today:en) printf '%s' "Today" ;;
     today:ja) printf '%s' "今日" ;;
+    work:en) printf '%s' "Work" ;;
+    work:ja) printf '%s' "仕事" ;;
     projects:en) printf '%s' "Projects" ;;
     projects:ja) printf '%s' "プロジェクト" ;;
     review:en) printf '%s' "Review" ;;
@@ -505,6 +510,16 @@ route_text_for() {
     review-automation:ja) printf '%s' "自動化アクティビティ" ;;
     review-assistant-queue:en) printf '%s' "Pending Actions" ;;
     review-assistant-queue:ja) printf '%s' "保留中のアクション" ;;
+    smart-list:en) printf '%s' "Due this week" ;;
+    smart-list:ja) printf '%s' "今週締切" ;;
+    work-inbox:en) printf '%s' "Inbox" ;;
+    work-inbox:ja) printf '%s' "インボックス" ;;
+    work-projects:en) printf '%s' "Projects" ;;
+    work-projects:ja) printf '%s' "プロジェクト" ;;
+    work-completed:en) printf '%s' "Completed" ;;
+    work-completed:ja) printf '%s' "完了" ;;
+    work-pending-actions:en) printf '%s' "Pending Actions" ;;
+    work-pending-actions:ja) printf '%s' "保留中のアクション" ;;
     project:*|inspector:*) printf '%s' "fixture-project-1" ;;
     *) return 1 ;;
   esac
@@ -658,7 +673,7 @@ launch_route_and_wait_for_markers() {
   # its AX route subtree is queryable; only a window-classified failure gets
   # one clean relaunch below.
   case_deadline=$((SECONDS + RUNTIME_TIMEOUT_SECONDS))
-  if [[ "$route_id" != "inbox" ]]; then
+  if [[ "$route_id" != "inbox" && "$route_id" != "work-inbox" ]]; then
     # Inbox owns its reference-matched sort/filter header and intentionally
     # hides the native window toolbar. Other routes prove the remaining
     # sidebar toggle before their route-specific AX contract.
@@ -816,14 +831,20 @@ run_normal_routes() {
   local route_content_marker_value
   local keep_app_running
   local routes=(
-    "inbox|inbox|sidebar-destination-inbox|inbox-workflow"
-    "today|today|sidebar-destination-today|today-workflow"
-    "review|primary:review|sidebar-destination-schedule|review-hub"
-    "review-schedule|review:schedule|sidebar-destination-schedule|schedule-workflow"
-    "review-completed|review:completed|sidebar-destination-completed|done-workflow"
-    "review-automation|review:automation|sidebar-destination-schedule|automation-activity-workflow"
-    "review-assistant-queue|review:assistant-queue|sidebar-destination-schedule|assistant-queue-workflow"
-    "projects|projects|sidebar-destination-projects|projects-portfolio-overview"
+    # At the canonical 1024px smoke width NavigationSplitView may compact the
+    # outer primary sidebar. Work routes therefore prove their visible compact
+    # chooser; Secretary/Schedule prove the shared sidebar toggle plus content.
+    # At this width Secretary exposes the conversation workspace rather than the wider Quick Capture header.
+    "secretary|secretary|project-board-sidebar-toggle|voice-conversation-workspace"
+    "review-schedule|schedule|project-board-sidebar-toggle|schedule-workflow"
+    "work|work|work-hub-compact-navigation|work-hub"
+    "today|today|work-hub-compact-navigation|today-workflow"
+    "work-inbox|inbox|work-hub-compact-navigation|inbox-workflow"
+    "work-projects|projects|work-hub-compact-navigation|projects-portfolio-overview"
+    "smart-list|smart-list-v1:cHJlc2V0LWR1ZS10aGlzLXdlZWs=|work-hub-compact-navigation|smart-list-workflow"
+    "work-completed|review:completed|work-hub-compact-navigation|done-workflow"
+    "review-assistant-queue|review:assistant-queue|work-hub-compact-navigation|assistant-queue-workflow"
+    "review-automation|review:automation|work-hub-compact-navigation|automation-activity-workflow"
   )
 
   for route_spec in "${routes[@]}"; do
@@ -841,7 +862,7 @@ run_normal_routes() {
   run_route \
     "project" \
     "project:$seed_project_id" \
-    "sidebar-destination-projects" \
+    "work-hub-compact-navigation" \
     "project-board-detail" \
     "$(route_text_for "project")"
 }
@@ -900,7 +921,7 @@ run_case() {
 
   # The first normal launch creates the schema. It uses the same isolated home,
   # database, and no-Keychain configuration as the measured launch.
-  launch_app "$locale" "today"
+  launch_app "$locale" "secretary"
   if ! resolve_app_pid || ! ax_wait_for_pid_owned_process "$APP_NAME" "$app_pid" "$RUNTIME_TIMEOUT_SECONDS" "$APP_BINARY"; then
     fail_case "launch" "database-bootstrap-launch-failed"
     return 1
@@ -935,10 +956,10 @@ run_case() {
   if [[ "$fixture" == "small" ]]; then
     run_normal_routes || return 1
   else
-    # The empty fixture preserves the original Today CPU/toolbar regression
-    # gate. The seeded fixture covers the complete navigation matrix in en/ja.
+    # The empty fixture preserves the Today CPU/toolbar regression gate. The
+    # seeded fixture covers the complete consolidated navigation matrix in en/ja.
     route_text="$(route_text_for "today")"
-    run_route "today" "today" "sidebar-destination-today" "today-workflow" "$route_text" || return 1
+    run_route "today" "today" "work-hub-compact-navigation" "today-workflow" "$route_text" || return 1
   fi
 
   printf 'status=passed\nfixture=%s\nlocale=%s\nlanguage_preference=%s\n' "$fixture" "$locale_label" "$locale" >"$case_artifact_dir/summary.txt"
@@ -959,7 +980,7 @@ fi
 for fixture in "${FIXTURES[@]}"; do
   for locale in "${LOCALES[@]}"; do
     if run_case "$fixture" "$locale"; then
-      printf 'OK: Today production route fixture=%s locale=%s reached localized markers, CPU convergence, and runtime diagnostics\n' "$fixture" "$(locale_label_for "$locale")"
+      printf 'OK: consolidated navigation fixture=%s locale=%s reached localized markers, CPU convergence, and runtime diagnostics\n' "$fixture" "$(locale_label_for "$locale")"
     else
       echo "BLOCKER: Today production route fixture=$fixture locale=$locale failed; artifact=$case_artifact_dir" >&2
       exit 1
@@ -967,4 +988,4 @@ for fixture in "${FIXTURES[@]}"; do
   done
 done
 
-printf 'OK: runtime Today production-route smoke passed; empty/small × en/ja reached normal Today markers and CPU convergence\n'
+printf 'OK: runtime consolidated-navigation smoke passed; empty/small × en/ja reached Secretary, Schedule, Work, and Today markers\n'

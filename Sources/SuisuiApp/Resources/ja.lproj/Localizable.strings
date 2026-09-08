@@ -1681,6 +1681,7 @@
 "Open Voice Command" = "音声コマンドを開く";
 "Opens Settings." = "設定を開きます。";
 "Opens Voice Command." = "音声コマンドを開きます。";
+"Opens Secretary." = "Secretaryを開きます。";
 "Opens the Inbox workflow entry for accessibility verification" = "アクセシビリティ検証用にInboxワークフロー入口を開きます";
 "Opens the Inbox workflow entry for accessibility verification." = "アクセシビリティ検証用にInboxワークフロー入口を開きます。";
 "Opens the Today workflow entry for accessibility verification" = "アクセシビリティ検証用にTodayワークフロー入口を開きます";
@@ -1729,7 +1730,7 @@
 "Review navigation" = "確認ナビゲーション";
 "Review receipt-derived AI usage and redacted execution history. This audit activity does not change completed task or project state." = "レシートに基づくAI使用量と編集済みの実行履歴を確認します。この監査アクティビティは、タスクやプロジェクトの完了状態を変更しません。";
 "Select Today, Inbox, Projects, or Review." = "今日、インボックス、プロジェクト、または確認を選択します。";
-"Work" = "作業";
+"Work" = "仕事";
 "Reviews workload and approval-ready schedule drafts from Review." = "確認から作業量と承認準備ができた予定ドラフトを確認します。";
 "Reviews completed tasks, completed projects, and local recap." = "完了したタスク、完了したプロジェクト、ローカルの振り返りを確認します。";
 "Catch Up (%d)" = "キャッチアップ（%d）";
@@ -2362,3 +2363,13 @@
 "Preparation task due date" = "準備タスクの期限";
 "Review in project" = "プロジェクトで確認";
 "Suisui suggestion" = "Suisui の提案";
+"Secretary" = "秘書";
+"Open Work" = "仕事を開く";
+"Primary navigation" = "メインナビゲーション";
+"Navigate secretary, schedule, or work." = "秘書・予定・仕事へ移動します。";
+"Choose Work destination." = "仕事の行き先を選択します。";
+"Work navigation" = "仕事のナビゲーション";
+"Open Secretary" = "秘書を開く";
+"Finishes setup and opens Secretary." = "セットアップを完了して秘書を開きます。";
+"Opens Work from this menu." = "このメニューから仕事を開きます。";
+"Opens Work with Today selected." = "今日を選択した状態で仕事を開きます。";

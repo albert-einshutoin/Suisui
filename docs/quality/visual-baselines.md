@@ -107,3 +107,20 @@ script/check_visual_regression_smoke.sh --update-baselines --allow-update
 Use the explicit paired form `--update-baselines --allow-update`; `--update-baselines` by itself is rejected. Before an update, the manifest's registered baseline `sourceCommit` must be intentionally aligned with the current product-source commit recorded by the receipt. Update mode validates that alignment, every current image, and the AX receipt before staging all PNGs and metadata (`sourceCommit`, route, locale, timezone, reference instant, appearance, logical viewport, raster dimensions, and generation time), then atomically replaces the baseline directory. It never partially overwrites a baseline set.
 
 Baseline update PRs must attach before/after artifact evidence and explain the product reason for the visual change. Do not use baseline updates to hide black screens, missing content, low contrast, AX frame overlap, or incorrect window captures.
+
+### Issue #616 hosted baseline approval
+
+The English and Japanese `apple-virtual-display` baselines now register product
+source `affaaa06bea92ee9f389929d3d94c78746276b99`. The intended differences are the
+Secretary / Schedule / Work sidebar, Settings utility placement, and the nested
+Work chooser above the existing workflows. All 47 captures per locale were
+visually reviewed and imported with `--update-baselines --allow-update` while
+their original runtime AX receipts were still fresh. No receipt timestamps,
+image-health requirements, or raster thresholds were changed.
+
+[CI run 34136033593](https://github.com/albert-einshutoin/Suisui/actions/runs/34136033593)
+contains the `ui-visual-en-US-34136033593-1` and
+`ui-visual-ja-JP-34136033593-1` artifacts: `diff/<screen>/<theme>/` holds the old
+baseline, current image, diff, and metrics; `current/` holds the captures and
+their source-bound AX receipts. This approval updates only the hosted profile;
+local-display reference pixels are not replaced with virtual-display captures.

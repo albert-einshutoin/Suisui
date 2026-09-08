@@ -214,6 +214,49 @@ final class SystemToolTests: XCTestCase {
         XCTAssertEqual(result.output["taskId"], .number(20))
     }
 
+    func testCalendarToolCarriesProposalTargetAndTimezone() throws {
+        let client = InMemoryCalendarClient()
+        let tool = CalendarTool(name: .calendarCreateWorkBlock, client: client)
+
+        let result = try tool.execute(
+            arguments: [
+                "title": .string("Deep work"),
+                "startAt": .string("2026-06-18T09:00:00Z"),
+                "durationMinutes": .number(30),
+                "taskId": .number(20),
+                "calendarIdentifier": .string(CalendarProposalIdentity.defaultCalendarIdentifier),
+                "timeZoneIdentifier": .string("Asia/Tokyo")
+            ],
+            context: approvedContext()
+        )
+
+        let event = try XCTUnwrap(client.listEvents().first)
+        XCTAssertEqual(event.draft.proposalID, CalendarProposalIdentity.make(taskID: 20))
+        XCTAssertEqual(event.draft.calendarIdentifier, CalendarProposalIdentity.defaultCalendarIdentifier)
+        XCTAssertEqual(event.draft.timeZoneIdentifier, "Asia/Tokyo")
+        XCTAssertEqual(result.output["proposalID"], .string(CalendarProposalIdentity.make(taskID: 20)))
+        XCTAssertEqual(result.output["calendarIdentifier"], .string(CalendarProposalIdentity.defaultCalendarIdentifier))
+        XCTAssertEqual(result.output["timeZoneIdentifier"], .string("Asia/Tokyo"))
+    }
+
+    func testCalendarToolRejectsInvalidTimezoneBeforeWriting() throws {
+        let client = InMemoryCalendarClient()
+        let tool = CalendarTool(name: .calendarCreateEvent, client: client)
+
+        XCTAssertThrowsError(
+            try tool.execute(
+                arguments: [
+                    "title": .string("Deep work"),
+                    "startAt": .string("2026-06-18T09:00:00Z"),
+                    "endAt": .string("2026-06-18T10:00:00Z"),
+                    "timeZoneIdentifier": .string("Invalid/Timezone")
+                ],
+                context: approvedContext()
+            )
+        )
+        XCTAssertTrue(try client.listEvents().isEmpty)
+    }
+
     func testCalendarLinkStoreRejectsCorruptedTaskIDInsteadOfDroppingLink() throws {
         let connection = try migratedConnection()
         let linkStore = SQLiteCalendarLinkStore(connection: connection)

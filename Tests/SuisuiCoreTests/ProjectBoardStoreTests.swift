@@ -6274,6 +6274,125 @@ final class ProjectBoardStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testEditingScheduleDraftInvalidatesApprovedCalendarProposal() throws {
+        var calendar = utcCalendar()
+        calendar.firstWeekday = 2
+        let referenceDate = try isoDate("2026-06-30T09:10:00Z")
+        let bundle = try makeStoreBundle()
+        let assistantQueueStore = SQLiteAssistantQueueStore(connection: bundle.connection)
+        let viewModel = ProjectBoardViewModel(
+            store: bundle.board,
+            assistantQueueStore: assistantQueueStore
+        )
+        viewModel.load()
+        let project = try XCTUnwrap(viewModel.createProject(title: "Schedule Queue"))
+        let task = try XCTUnwrap(viewModel.createTask(
+            title: "Review calendar plan",
+            projectID: project.id,
+            status: .planned,
+            priority: .high,
+            dueAt: "2026-06-30"
+        ))
+
+        _ = viewModel.prepareScheduleDraft(on: referenceDate, calendar: calendar)
+        XCTAssertTrue(viewModel.enqueueScheduleDraftCalendarApply(on: referenceDate, calendar: calendar))
+        let firstItemID = try XCTUnwrap(viewModel.assistantQueueSnapshot.rows.first?.id)
+        let firstItem = try assistantQueueStore.get(id: firstItemID)
+        guard case .actionPlan(let firstPlan) = firstItem.payload else {
+            return XCTFail("Expected first schedule action plan")
+        }
+        let firstProposalID = try XCTUnwrap(firstPlan.actions.first?.arguments["proposalID"]?.stringValue)
+        XCTAssertEqual(firstProposalID, CalendarProposalIdentity.make(taskID: task.id))
+
+        let approved = try AssistantQueueStateMachine.approve(firstItem, reviewerID: "tester")
+        try assistantQueueStore.save(approved)
+        let unrelatedCalendarPlan = ActionPlan(
+            id: "ordinary-calendar-action",
+            userInput: "Create a separate Calendar event",
+            summary: "Create a separate Calendar event",
+            actions: [
+                PlanAction(
+                    id: "ordinary-calendar-action-item",
+                    tool: .calendarCreateEvent,
+                    arguments: [
+                        "title": .string("Separate event"),
+                        "startAt": .string("2026-06-30T13:00:00Z"),
+                        "endAt": .string("2026-06-30T14:00:00Z"),
+                        "taskId": .number(Double(task.id))
+                    ],
+                    riskLevel: .write,
+                    requiresUserConfirmation: true
+                )
+            ],
+            riskLevel: .write,
+            requiresApproval: true
+        )
+        let unrelatedCalendarItem = AssistantQueueAdapter.makeItem(
+            actionPlan: unrelatedCalendarPlan,
+            sourceTranscript: unrelatedCalendarPlan.userInput,
+            interpretationSummary: unrelatedCalendarPlan.summary,
+            reason: "Separate Calendar event"
+        )
+        let unrelatedCalendarItemID = unrelatedCalendarItem.id
+        try assistantQueueStore.save(
+            try AssistantQueueStateMachine.approve(unrelatedCalendarItem, reviewerID: "tester")
+        )
+        for index in 0..<500 {
+            let fillerPlan = ActionPlan(
+                id: "schedule-invalidation-filler-\(index)",
+                userInput: "Queue filler",
+                summary: "Queue filler",
+                actions: [
+                    PlanAction(
+                        id: "schedule-invalidation-filler-action-\(index)",
+                        tool: .taskCreate,
+                        riskLevel: .write,
+                        requiresUserConfirmation: true
+                    )
+                ],
+                riskLevel: .write,
+                requiresApproval: true
+            )
+            let filler = AssistantQueueAdapter.makeItem(
+                actionPlan: fillerPlan,
+                sourceTranscript: fillerPlan.userInput,
+                interpretationSummary: fillerPlan.summary,
+                reason: "Queue filler"
+            )
+            try assistantQueueStore.save(
+                try AssistantQueueStateMachine.approve(filler, reviewerID: "filler")
+            )
+        }
+
+        let movedStart = try isoDate("2026-06-30T11:00:00Z")
+        let movedEnd = try isoDate("2026-06-30T11:30:00Z")
+        XCTAssertTrue(viewModel.placeTaskInScheduleDraft(
+            taskID: task.id,
+            startAt: movedStart,
+            endAt: movedEnd,
+            calendar: calendar
+        ))
+
+        let invalidated = try assistantQueueStore.get(id: firstItemID)
+        XCTAssertEqual(invalidated.state, .waitingReview)
+        XCTAssertNil(invalidated.approval)
+        XCTAssertEqual(
+            invalidated.reviewReason,
+            "Schedule proposal changed. Review the latest Calendar time before approval."
+        )
+        let unrelatedCalendarAfterEdit = try assistantQueueStore.get(id: unrelatedCalendarItemID)
+        XCTAssertEqual(unrelatedCalendarAfterEdit.state, .approved)
+        XCTAssertNotNil(unrelatedCalendarAfterEdit.approval)
+
+        XCTAssertTrue(viewModel.enqueueScheduleDraftCalendarApply(on: movedStart, calendar: calendar))
+        let proposals = try assistantQueueStore.list(filter: .all(limit: Int.max)).compactMap { item -> String? in
+            guard case .actionPlan(let plan) = item.payload else { return nil }
+            return plan.actions.first?.arguments["proposalID"]?.stringValue
+        }
+        XCTAssertEqual(proposals.filter { $0 == firstProposalID }.count, 2)
+    }
+
+    @MainActor
     func testScheduleDraftCalendarQueueUsesContentDigestSoUpdatedDraftDoesNotReuseStalePayload() throws {
         var calendar = utcCalendar()
         calendar.firstWeekday = 2

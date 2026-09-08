@@ -67,12 +67,23 @@ public protocol NotificationClient: Sendable {
     func listScheduled() throws -> [NotificationRecord]
 }
 
+public enum CalendarProposalIdentity {
+    public static let defaultCalendarIdentifier = "default"
+
+    public static func make(taskID: Int64) -> String {
+        "calendar-proposal:task:\(taskID)"
+    }
+}
+
 public struct CalendarEventDraft: Equatable, Sendable {
     public var title: String
     public var startAt: String
     public var endAt: String
     public var isAllDay: Bool
     public var notes: String?
+    public var proposalID: String?
+    public var calendarIdentifier: String?
+    public var timeZoneIdentifier: String?
     public var idempotencyKey: String?
 
     public init(
@@ -81,6 +92,9 @@ public struct CalendarEventDraft: Equatable, Sendable {
         endAt: String,
         isAllDay: Bool = false,
         notes: String? = nil,
+        proposalID: String? = nil,
+        calendarIdentifier: String? = nil,
+        timeZoneIdentifier: String? = nil,
         idempotencyKey: String? = nil
     ) {
         self.title = title
@@ -88,6 +102,9 @@ public struct CalendarEventDraft: Equatable, Sendable {
         self.endAt = endAt
         self.isAllDay = isAllDay
         self.notes = notes
+        self.proposalID = proposalID
+        self.calendarIdentifier = calendarIdentifier
+        self.timeZoneIdentifier = timeZoneIdentifier
         self.idempotencyKey = idempotencyKey
     }
 }

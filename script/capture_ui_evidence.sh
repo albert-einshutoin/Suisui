@@ -2401,7 +2401,9 @@ INBOX_VOICE_ROUTE_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL"
 # surface. Keep the visual harness independent of localized action copy so a
 # Japanese run validates the same selected detail as the English run.
 P0_INBOX_VOICE_TARGET_MARKERS="inbox-workflow=>$INBOX_ROUTE_LABEL|inbox-voice-intake-detail=>Voice intake detail for $INBOX_VOICE_TITLE|inbox-action-panel=>$INBOX_CLASSIFICATION_ACTIONS_LABEL"
-PROJECTS_TARGET_MARKERS="sidebar-destination-projects=>$PROJECTS_ROUTE_LABEL|projects-portfolio-overview=>$PROJECTS_ROUTE_LABEL"
+# Work navigation adapts to a closed Menu at compact widths; validate the
+# visible hub and localized Projects content instead of a hidden menu item.
+PROJECTS_TARGET_MARKERS="work-hub=>|projects-portfolio-overview=>$PROJECTS_ROUTE_LABEL"
 SCHEDULE_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-mode-overview=>|schedule-mini-calendar=>"
 SCHEDULE_COCKPIT_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-mode-overview=>|schedule-mini-calendar=>"
 SCHEDULE_WORKLOAD_TARGET_MARKERS="schedule-workflow=>$SCHEDULE_ROUTE_LABEL|schedule-mode-workload=>|schedule-mini-calendar=>"

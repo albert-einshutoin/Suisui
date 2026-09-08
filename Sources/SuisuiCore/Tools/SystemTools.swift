@@ -226,10 +226,19 @@ public struct CalendarTool: Tool {
             var draft: CalendarEventDraft
             switch name {
             case .calendarCreateEvent:
-                draft = try makeEventDraft(args: args)
+                draft = try makeEventDraft(args: args, entityReferences: entityReferences)
             case .calendarCreateDeadline:
                 let dueDate = try args.requiredString("dueDate")
-                draft = CalendarEventDraft(title: try args.requiredString("title"), startAt: dueDate, endAt: dueDate, isAllDay: true, notes: try args.optionalString("notes"))
+                draft = CalendarEventDraft(
+                    title: try args.requiredString("title"),
+                    startAt: dueDate,
+                    endAt: dueDate,
+                    isAllDay: true,
+                    notes: try args.optionalString("notes"),
+                    proposalID: entityReferences.proposalID,
+                    calendarIdentifier: entityReferences.calendarIdentifier,
+                    timeZoneIdentifier: entityReferences.timeZoneIdentifier
+                )
             case .calendarCreateWorkBlock:
                 let startAt = try args.requiredString("startAt")
                 let start = try ToolDateParser.date(from: startAt, tool: name)
@@ -239,7 +248,15 @@ public struct CalendarTool: Tool {
                 }
                 let duration = TimeInterval(durationMinutes * 60)
                 let endAt = ISO8601DateFormatter().string(from: start.addingTimeInterval(duration))
-                draft = CalendarEventDraft(title: try args.requiredString("title"), startAt: startAt, endAt: endAt, notes: try args.optionalString("notes"))
+                draft = CalendarEventDraft(
+                    title: try args.requiredString("title"),
+                    startAt: startAt,
+                    endAt: endAt,
+                    notes: try args.optionalString("notes"),
+                    proposalID: entityReferences.proposalID,
+                    calendarIdentifier: entityReferences.calendarIdentifier,
+                    timeZoneIdentifier: entityReferences.timeZoneIdentifier
+                )
             default:
                 throw ToolExecutionError.executionFailed(name, "Unsupported calendar tool.")
             }
@@ -259,11 +276,17 @@ public struct CalendarTool: Tool {
                     persistLocalState: {
                         try linkCalendarEventIfNeeded(
                             record: $0,
-                            entityReferences: entityReferences
+                            entityReferences: (
+                                projectID: entityReferences.projectID,
+                                taskID: entityReferences.taskID
+                            )
                         )
                         return calendarResult(
                             record: $0,
-                            entityReferences: entityReferences
+                            entityReferences: (
+                                projectID: entityReferences.projectID,
+                                taskID: entityReferences.taskID
+                            )
                         )
                     }
                 )
@@ -273,8 +296,20 @@ public struct CalendarTool: Tool {
                 draft.idempotencyKey = idempotencyKey
             }
             let record = try client.createEvent(draft)
-            try linkCalendarEventIfNeeded(record: record, entityReferences: entityReferences)
-            return calendarResult(record: record, entityReferences: entityReferences)
+            try linkCalendarEventIfNeeded(
+                record: record,
+                entityReferences: (
+                    projectID: entityReferences.projectID,
+                    taskID: entityReferences.taskID
+                )
+            )
+            return calendarResult(
+                record: record,
+                entityReferences: (
+                    projectID: entityReferences.projectID,
+                    taskID: entityReferences.taskID
+                )
+            )
         } catch let error as ToolClientError {
             throw ToolExecutionError.executionFailed(name, error.message)
         }
@@ -283,19 +318,45 @@ public struct CalendarTool: Tool {
     private func calendarSideEffectArguments(
         _ draft: CalendarEventDraft
     ) -> [String: JSONValue] {
-        [
+        var arguments: [String: JSONValue] = [
             "title": .string(draft.title),
             "startAt": .string(draft.startAt),
             "endAt": .string(draft.endAt),
             "isAllDay": .bool(draft.isAllDay),
             "notes": draft.notes.map(JSONValue.string) ?? .null
         ]
+        if let calendarIdentifier = draft.calendarIdentifier {
+            arguments["calendarIdentifier"] = .string(calendarIdentifier)
+        }
+        if let timeZoneIdentifier = draft.timeZoneIdentifier {
+            arguments["timeZoneIdentifier"] = .string(timeZoneIdentifier)
+        }
+        return arguments
     }
 
-    private func calendarEntityReferences(args: ToolArguments) throws -> (projectID: Int64?, taskID: Int64?) {
-        (
+    private func calendarEntityReferences(args: ToolArguments) throws -> (
+        projectID: Int64?,
+        taskID: Int64?,
+        proposalID: String?,
+        calendarIdentifier: String?,
+        timeZoneIdentifier: String?
+    ) {
+        let taskID = try args.optionalInt64("taskId")
+        let calendarIdentifier = try args.optionalNonBlankString("calendarIdentifier")
+        let timeZoneIdentifier = try args.optionalNonBlankString("timeZoneIdentifier")
+        if let timeZoneIdentifier, TimeZone(identifier: timeZoneIdentifier) == nil {
+            throw ToolExecutionError.validationFailed(name, "timeZoneIdentifier must be a valid IANA timezone.")
+        }
+        let proposalID = try args.optionalNonBlankString("proposalID")
+            ?? taskID.map {
+                CalendarProposalIdentity.make(taskID: $0)
+            }
+        return (
             projectID: try args.optionalInt64("projectId"),
-            taskID: try args.optionalInt64("taskId")
+            taskID: taskID,
+            proposalID: proposalID,
+            calendarIdentifier: calendarIdentifier,
+            timeZoneIdentifier: timeZoneIdentifier
         )
     }
 
@@ -328,6 +389,15 @@ public struct CalendarTool: Tool {
         if let taskID = entityReferences.taskID {
             output["taskId"] = .number(Double(taskID))
         }
+        if let proposalID = record.draft.proposalID {
+            output["proposalID"] = .string(proposalID)
+        }
+        if let calendarIdentifier = record.draft.calendarIdentifier {
+            output["calendarIdentifier"] = .string(calendarIdentifier)
+        }
+        if let timeZoneIdentifier = record.draft.timeZoneIdentifier {
+            output["timeZoneIdentifier"] = .string(timeZoneIdentifier)
+        }
         return output
     }
 
@@ -344,7 +414,16 @@ public struct CalendarTool: Tool {
         )
     }
 
-    private func makeEventDraft(args: ToolArguments) throws -> CalendarEventDraft {
+    private func makeEventDraft(
+        args: ToolArguments,
+        entityReferences: (
+            projectID: Int64?,
+            taskID: Int64?,
+            proposalID: String?,
+            calendarIdentifier: String?,
+            timeZoneIdentifier: String?
+        )
+    ) throws -> CalendarEventDraft {
         let startAt = try args.requiredString("startAt")
         let endAt = try args.requiredString("endAt")
         let start = try ToolDateParser.date(from: startAt, tool: name)
@@ -353,17 +432,25 @@ public struct CalendarTool: Tool {
             throw ToolExecutionError.validationFailed(name, "startAt must be before endAt.")
         }
 
-        return CalendarEventDraft(title: try args.requiredString("title"), startAt: startAt, endAt: endAt, notes: try args.optionalString("notes"))
+        return CalendarEventDraft(
+            title: try args.requiredString("title"),
+            startAt: startAt,
+            endAt: endAt,
+            notes: try args.optionalString("notes"),
+            proposalID: entityReferences.proposalID,
+            calendarIdentifier: entityReferences.calendarIdentifier,
+            timeZoneIdentifier: entityReferences.timeZoneIdentifier
+        )
     }
 
     private static func schema(for name: ActionTool) -> ToolInputSchema {
         switch name {
         case .calendarCreateEvent:
-            ToolInputSchema(required: ["title", "startAt", "endAt"], properties: ["title": "string", "startAt": "string", "endAt": "string", "notes": "string", "projectId": "integer", "taskId": "integer"])
+            ToolInputSchema(required: ["title", "startAt", "endAt"], properties: ["title": "string", "startAt": "string", "endAt": "string", "notes": "string", "projectId": "integer", "taskId": "integer", "proposalID": "string", "calendarIdentifier": "string", "timeZoneIdentifier": "string"])
         case .calendarCreateDeadline:
-            ToolInputSchema(required: ["title", "dueDate"], properties: ["title": "string", "dueDate": "string", "notes": "string", "projectId": "integer", "taskId": "integer"])
+            ToolInputSchema(required: ["title", "dueDate"], properties: ["title": "string", "dueDate": "string", "notes": "string", "projectId": "integer", "taskId": "integer", "proposalID": "string", "calendarIdentifier": "string", "timeZoneIdentifier": "string"])
         case .calendarCreateWorkBlock:
-            ToolInputSchema(required: ["title", "startAt", "durationMinutes"], properties: ["title": "string", "startAt": "string", "durationMinutes": "integer", "notes": "string", "projectId": "integer", "taskId": "integer"])
+            ToolInputSchema(required: ["title", "startAt", "durationMinutes"], properties: ["title": "string", "startAt": "string", "durationMinutes": "integer", "notes": "string", "projectId": "integer", "taskId": "integer", "proposalID": "string", "calendarIdentifier": "string", "timeZoneIdentifier": "string"])
         default:
             ToolInputSchema()
         }

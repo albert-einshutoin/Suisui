@@ -4,7 +4,6 @@ import SuisuiCore
 
 enum ProjectBoardShortcutAction {
     case commandPalette
-    case destination(BoardPrimaryDestination)
     case route(BoardRoute)
 }
 

@@ -7,16 +7,18 @@ final class ProjectBoardSidebarPresentationTests: XCTestCase {
         let systemImage: String
     }
 
-    func testItemsMatchApprovedSevenItemOrderAndSymbols() {
+    func testItemsMatchSecretaryScheduleWorkOrderAndSymbols() {
         XCTAssertEqual(
             ProjectBoardSidebarPresentation.items,
             [
-                .init(id: .inbox, title: "Inbox", systemImage: "tray", behavior: .route(.primary(.inbox))),
-                .init(id: .today, title: "Today", systemImage: "sun.max", behavior: .route(.primary(.today))),
-                .init(id: .projects, title: "Projects", systemImage: "folder", behavior: .route(.primary(.projects))),
+                .init(id: .secretary, title: "Secretary", systemImage: "person.crop.circle", behavior: .route(.voiceCommand)),
                 .init(id: .schedule, title: "Schedule", systemImage: "calendar", behavior: .route(.review(.schedule))),
-                .init(id: .completed, title: "Completed", systemImage: "checkmark.circle", behavior: .route(.review(.completed))),
-                .init(id: .voiceCommand, title: "Voice Command", systemImage: "mic", behavior: .route(.voiceCommand)),
+                .init(id: .work, title: "Work", systemImage: "checklist", behavior: .route(.primary(.today))),
+            ]
+        )
+        XCTAssertEqual(
+            ProjectBoardSidebarPresentation.utilityItems,
+            [
                 .init(id: .settings, title: "Settings", systemImage: "gearshape", behavior: .route(.settings)),
             ]
         )
@@ -37,20 +39,20 @@ final class ProjectBoardSidebarPresentationTests: XCTestCase {
     }
 
     func testRouteSelectionMapsOnlyOwnedDestinations() {
-        XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .primary(.inbox)), .inbox)
-        XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .primary(.today)), .today)
-        XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .primary(.projects)), .projects)
-        XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .project(42)), .projects)
-        XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .smartList("urgent")), .projects)
+        XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .voiceCommand), .secretary)
         XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .review(.schedule)), .schedule)
-        XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .review(.completed)), .completed)
+        XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .primary(.today)), .work)
+        XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .primary(.inbox)), .work)
+        XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .primary(.projects)), .work)
+        XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .project(42)), .work)
+        XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .smartList("urgent")), .work)
+        XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .review(.completed)), .work)
         XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .settings), .settings)
-        XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .voiceCommand), .voiceCommand)
+        XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .review(.assistantQueue)), .work)
     }
 
-    func testUnrepresentedReviewRoutesFailClosedWithoutSelection() {
-        XCTAssertNil(ProjectBoardSidebarPresentation.selectedItemID(for: .primary(.review)))
-        XCTAssertNil(ProjectBoardSidebarPresentation.selectedItemID(for: .review(.automationActivity)))
-        XCTAssertNil(ProjectBoardSidebarPresentation.selectedItemID(for: .review(.assistantQueue)))
+    func testRemovedReviewRoutesRemainInsideWorkInsteadOfPrimaryNavigation() {
+        XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .primary(.review)), .work)
+        XCTAssertEqual(ProjectBoardSidebarPresentation.selectedItemID(for: .review(.automationActivity)), .work)
     }
 }

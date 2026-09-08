@@ -3,7 +3,7 @@
   "artifactRoot": "docs/release/evidence/ui-screenshots",
   "baselineRoot": "docs/quality/visual-baselines-apple-virtual",
   "baselineContext": {
-    "sourceCommit": "85cd06995e03062026d36b3850f205c65a4f57c3",
+    "sourceCommit": "affaaa06bea92ee9f389929d3d94c78746276b99",
     "normalRoute": "normal",
     "locale": "en-US",
     "timeZoneIdentifier": "UTC",

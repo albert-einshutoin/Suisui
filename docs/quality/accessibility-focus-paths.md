@@ -10,7 +10,7 @@ The task path covers task listing, create, content entry, edit, status execution
 
 | Step | AX identifier | Expected role | Required behavior |
 | --- | --- | --- | --- |
-| Project navigation | `project-board-sidebar` | outline | User can choose Inbox, Today, Projects, or a concrete project before entering detail. |
+| Project navigation | `project-board-sidebar` | outline | User can choose Secretary, Schedule, Work, or a concrete project before entering detail. |
 | Project detail | `project-board-detail` | group | The selected project board or workflow region is reachable after navigation. |
 | Task list | `project-task-list` | group | Lists the selected project's current tasks before the user creates, edits, executes, or deletes task content. |
 | Add task | `project-header-add-task` | button | Opens the inline task composer. |
@@ -40,7 +40,7 @@ The actionable Today path covers the `ui-samples/01.png` inspired cockpit: openi
 
 | Step | AX identifier | Expected role | Required behavior |
 | --- | --- | --- | --- |
-| Open Today | `sidebar-destination-today` | button | User can move from navigation into the Today cockpit. |
+| Open Today | `work-destination-today` | button | User can move from Work into the Today cockpit. |
 | Today region | `today-workflow` | group | The Today surface is exposed as the selected workflow. |
 | Briefing panel | `today-briefing-panel` | group | The recommendation, primary action, command input, secondary actions, and flow strip are reachable before the rail. |
 | Focus recommendation | `today-focus-recommendation` | group | Announces the recommended task and reason, or the empty-state “No focus task” summary, before an action. |
@@ -99,7 +99,7 @@ Voice CommandのConversationタブは、`voice-conversation-scope` → `voice-co
 | `genericButtons=0` | No unlabeled primary CRUD controls | No primary action is exposed only as a generic button without help or child text. |
 | `crudSignals=8/8` | Save Changes, Delete Task confirmation, No unlabeled primary CRUD controls | Add Task, Open task, status movement, local suggestion apply, task Save, selected-task automation review, approved execution, and Delete Task entry points are visible to AX. |
 | `buttonA11ySignals=8/8` | No unlabeled primary CRUD controls | Primary task lifecycle buttons retain a concrete label, visible text, help, or child text. |
-| `screenSignals=4/4` | Project navigation | Inbox, Today, Settings, and Voice Command entry points are present before manual navigation starts. |
+| `screenSignals=4/4` | Project navigation | Secretary, Schedule, Work, and Settings entry points are present before manual navigation starts. |
 | `focusPathSignals=6/6` | Project navigation, Project board detail, Open task, Inline Task Composer, Status controls, Task inspector | The automated focus anchors exist in lifecycle order; manual VoiceOver still verifies final spoken announcements and keyboard traversal. |
 | `destructiveCancelSignals=1/1` | Delete Task confirmation, No keyboard trap | Cancel Delete Task is present after opening the destructive confirmation, and the manual pass still verifies it returns to the inspector without mutating local data. |
 

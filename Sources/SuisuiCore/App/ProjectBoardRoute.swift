@@ -1,15 +1,14 @@
 import Foundation
 
-/// The four stable top-level areas of the Project Board.
+/// Legacy typed destinations retained for saved routes and deep links.
 public enum BoardPrimaryDestination: String, CaseIterable, Hashable, Sendable {
     case today
     case inbox
     case projects
     case review
 
-    /// ⌘1–⌘4 must land on the same rows the sidebar renders, in the same
-    /// order, or the shortcut and the list disagree about what "2" means.
-    /// `ProjectBoardSidebarView` renders this order.
+    /// Legacy keyboard ordering for typed route consumers. The current app
+    /// commands use Secretary, Schedule, and Work.
     public static let orderedForKeyboardSelection: [BoardPrimaryDestination] = [
         .today, .inbox, .projects, .review
     ]
@@ -37,7 +36,7 @@ public enum BoardRoute: Hashable, Sendable {
 }
 
 /// A contextual focus preserved while an older route is migrated into the
-/// stable four-area information architecture.
+/// consolidated information architecture.
 public enum BoardRouteFocus: Hashable, Sendable {
     case catchUp
 }
@@ -95,7 +94,7 @@ public enum ProjectBoardRouteCodec {
         case "catch-up":
             route = .primary(.today)
             focus = .catchUp
-        case "today", "primary:today":
+        case "today", "primary:today", "work":
             route = .primary(.today)
             focus = nil
         case "inbox", "primary:inbox":
@@ -122,7 +121,7 @@ public enum ProjectBoardRouteCodec {
         case "settings":
             route = .settings
             focus = nil
-        case "voice-command":
+        case "secretary", "voice-command":
             route = .voiceCommand
             focus = nil
         default:
@@ -147,7 +146,7 @@ public enum ProjectBoardRouteCodec {
         case .review(let reviewRoute):
             switch reviewRoute {
             case .schedule:
-                return "review:schedule"
+                return "schedule"
             case .completed:
                 return "review:completed"
             case .automationActivity:
@@ -158,7 +157,7 @@ public enum ProjectBoardRouteCodec {
         case .settings:
             return "settings"
         case .voiceCommand:
-            return "voice-command"
+            return "secretary"
         }
     }
 

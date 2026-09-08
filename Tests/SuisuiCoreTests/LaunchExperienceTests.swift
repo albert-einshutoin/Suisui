@@ -401,8 +401,8 @@ final class LaunchExperienceTests: XCTestCase {
         // second notification-driven routing implementation.
         XCTAssertTrue(menuBarSource.contains("sceneCoordinator.openInActiveSceneOrRequestNew(route: .primary(.today))"))
         XCTAssertTrue(menuBarSource.contains("openWindow(id: \"project-board\")"))
-        XCTAssertTrue(menuBarSource.contains(".accessibilityIdentifier(\"menu-bar-open-today\")"))
-        XCTAssertTrue(menuBarSource.contains("Label(\"Open Today\", systemImage: \"chevron.right.circle\")"))
+        XCTAssertTrue(menuBarSource.contains(".accessibilityIdentifier(\"menu-bar-open-work\")"))
+        XCTAssertTrue(menuBarSource.contains("Label(\"Open Work\", systemImage: \"chevron.right.circle\")"))
     }
 
     func testFallbackProjectBoardWindowUsesTodayLaunchRecoveryView() throws {
@@ -517,11 +517,12 @@ final class LaunchExperienceTests: XCTestCase {
         let source = try readPackageFile("script/check_runtime_today_production_route_smoke.sh")
 
         XCTAssertFalse(source.contains("SUISUI_LAUNCH_RECOVERY_MODE="))
-        XCTAssertTrue(source.contains("SUISUI_PROJECT_BOARD_SELECTED_DESTINATION=\"today\""))
+        XCTAssertTrue(source.contains("\"today|today|work-hub-compact-navigation|today-workflow\""))
         // The marker waiter is deliberately generic: the production smoke must
         // exercise both concrete markers through that helper, not duplicate it.
         XCTAssertTrue(source.contains("wait_for_marker_until()"))
         XCTAssertTrue(source.contains("wait_for_marker_until \"project-board-sidebar-toggle\" \"\" \"$case_deadline\""))
+        XCTAssertTrue(source.contains("if [[ \"$route_id\" != \"inbox\" && \"$route_id\" != \"work-inbox\" ]]; then"))
         XCTAssertTrue(source.contains("wait_for_marker_until \"today-workflow\" \"$expected_today_label\" \"$case_deadline\""))
         XCTAssertTrue(source.contains("RUNTIME_TIMEOUT_SECONDS=\"${SUISUI_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS:-30}\""))
         XCTAssertFalse(source.contains("RUNTIME_TIMEOUT_SECONDS=\"${SUISUI_RUNTIME_TODAY_PRODUCTION_ROUTE_TIMEOUT_SECONDS:-10}\""))
@@ -568,15 +569,15 @@ final class LaunchExperienceTests: XCTestCase {
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-board-detail\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-board-sidebar\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-board-sidebar-toggle\")"))
-        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"sidebar-destination-inbox\")"))
-        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"sidebar-destination-today\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"work-destination-inbox\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"work-destination-today\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-board-settings-link\")"))
-        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-board-voice-command\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"sidebar-destination-secretary\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"task-status-move-controls\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"task-inspector-apply-suggestion\")"))
         XCTAssertTrue(source.contains("case .projects"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"projects-portfolio-overview\")"))
-        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"sidebar-destination-projects\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"work-destination-projects\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-board-add-project\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"project-header-add-task\")"))
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"inline-task-title\")"))

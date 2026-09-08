@@ -119,7 +119,7 @@ final class SuisuiHarnessTests: XCTestCase {
         }
         XCTAssertEqual(
             SuisuiHarnessTodayCockpitOperation.openToday.requiredFocusNodeIDs,
-            ["sidebar-destination-today", "today-workflow"]
+            ["work-destination-today", "today-workflow"]
         )
         XCTAssertEqual(
             SuisuiHarnessTodayCockpitOperation.railActions.requiredFocusNodeIDs,
@@ -843,10 +843,10 @@ final class SuisuiHarnessTests: XCTestCase {
             node("inbox-selected-context", role: .group, label: "Selected Item"),
             node("inbox-action-grid", role: .group, label: "Inbox classification actions"),
             node(
-                "review-hub-compact-navigation",
+                "work-hub-compact-navigation",
                 role: .button,
-                label: "Review view chooser",
-                help: "Choose Review destination."
+                label: "Work view chooser",
+                help: "Choose Work destination."
             ),
             node(
                 "projects-hub-compact-navigation",

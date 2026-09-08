@@ -25,12 +25,8 @@ struct ProjectBoardSidebarCounts: Equatable {
 
     func count(for itemID: ProjectBoardSidebarItemID) -> Int? {
         switch itemID {
-        case .today: today
-        case .inbox: inbox
-        case .projects: projects
         case .schedule: schedule
-        case .completed: completed
-        case .voiceCommand, .settings: nil
+        case .secretary, .work, .settings: nil
         }
     }
 }
@@ -96,9 +92,9 @@ struct ProjectBoardSidebarView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(LocalizedStringKey("Suisui")))
 
-            // Search, destinations, and Quick Actions share one Liquid Glass
-            // sampling region. Destinations stay outside a ScrollView so all
-            // seven sample items remain visible at the 1024×676 contract.
+            // Search, primary destinations, and Quick Actions share one Liquid
+            // Glass sampling region. The three primary items stay outside a
+            // ScrollView so the product grouping remains visible at compact widths.
             VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
                 Button(action: onOpenSearch) {
                     HStack(spacing: 8) {
@@ -142,6 +138,12 @@ struct ProjectBoardSidebarView: View {
             }
             .suisuiLiquidGlassControlGroup(spacing: SuisuiSpacing.sm)
 
+            VStack(alignment: .leading, spacing: 1) {
+                ForEach(ProjectBoardSidebarPresentation.utilityItems, id: \.id) { item in
+                    sidebarRow(item)
+                }
+            }
+
             Spacer(minLength: 0)
 
             profileFooter
@@ -150,8 +152,8 @@ struct ProjectBoardSidebarView: View {
         .padding(.vertical, SuisuiSpacing.sm)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("project-board-sidebar")
-        .accessibilityLabel(Text(LocalizedStringKey("Project navigation")))
-        .accessibilityHint(Text(LocalizedStringKey("Navigate work or open a quick action.")))
+        .accessibilityLabel(Text(LocalizedStringKey("Primary navigation")))
+        .accessibilityHint(Text(LocalizedStringKey("Navigate secretary, schedule, or work.")))
     }
 
     private var profileFooter: some View {
@@ -301,12 +303,8 @@ struct ProjectBoardSidebarView: View {
         }
         guard count > 0 else {
             return switch itemID {
-            case .inbox: localizedDisplay("No pending items")
-            case .today: localizedDisplay("No items today")
-            case .projects: localizedDisplay("No projects")
             case .schedule: localizedDisplay("No scheduled items")
-            case .completed: localizedDisplay("No completed items")
-            case .voiceCommand, .settings: ""
+            case .secretary, .work, .settings: ""
             }
         }
         return localizedCount(count, one: "%d item", other: "%d items")
@@ -319,7 +317,7 @@ struct ProjectBoardSidebarView: View {
         case .addTask:
             "Opens the inline composer for a new local task."
         case .addByVoice:
-            "Opens Voice Command."
+            "Opens Secretary."
         case .blockTime:
             "Creates a local schedule draft without writing Calendar."
         case .importTasks:
@@ -329,12 +327,9 @@ struct ProjectBoardSidebarView: View {
 
     private func accessibilityIdentifier(for itemID: ProjectBoardSidebarItemID) -> String {
         switch itemID {
-        case .inbox: "sidebar-destination-inbox"
-        case .today: "sidebar-destination-today"
-        case .projects: "sidebar-destination-projects"
+        case .secretary: "sidebar-destination-secretary"
         case .schedule: "sidebar-destination-schedule"
-        case .completed: "sidebar-destination-completed"
-        case .voiceCommand: "sidebar-action-voice-command"
+        case .work: "sidebar-destination-work"
         case .settings: "sidebar-action-settings"
         }
     }

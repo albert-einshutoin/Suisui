@@ -1,12 +1,9 @@
 import Foundation
 
 public enum ProjectBoardSidebarItemID: String, CaseIterable, Hashable, Sendable {
-    case inbox
-    case today
-    case projects
+    case secretary
     case schedule
-    case completed
-    case voiceCommand
+    case work
     case settings
 }
 
@@ -60,27 +57,24 @@ public enum ProjectBoardSidebarQuickAction: String, CaseIterable, Hashable, Send
 
 public enum ProjectBoardSidebarPresentation {
     public static let items: [ProjectBoardSidebarItemPresentation] = [
-        .init(id: .inbox, title: "Inbox", systemImage: "tray", behavior: .route(.primary(.inbox))),
-        .init(id: .today, title: "Today", systemImage: "sun.max", behavior: .route(.primary(.today))),
-        .init(id: .projects, title: "Projects", systemImage: "folder", behavior: .route(.primary(.projects))),
+        .init(id: .secretary, title: "Secretary", systemImage: "person.crop.circle", behavior: .route(.voiceCommand)),
         .init(id: .schedule, title: "Schedule", systemImage: "calendar", behavior: .route(.review(.schedule))),
-        .init(id: .completed, title: "Completed", systemImage: "checkmark.circle", behavior: .route(.review(.completed))),
-        .init(id: .voiceCommand, title: "Voice Command", systemImage: "mic", behavior: .route(.voiceCommand)),
+        .init(id: .work, title: "Work", systemImage: "checklist", behavior: .route(.primary(.today))),
+    ]
+
+    /// Settings is a utility surface, not a work destination.
+    public static let utilityItems: [ProjectBoardSidebarItemPresentation] = [
         .init(id: .settings, title: "Settings", systemImage: "gearshape", behavior: .route(.settings)),
     ]
 
     public static func selectedItemID(for route: BoardRoute) -> ProjectBoardSidebarItemID? {
         switch route {
-        case .primary(.inbox): .inbox
-        case .primary(.today): .today
-        case .primary(.projects), .project, .smartList: .projects
+        case .voiceCommand:
+            .secretary
         case .review(.schedule): .schedule
-        case .review(.completed): .completed
         case .settings: .settings
-        case .voiceCommand: .voiceCommand
-        // These routes have no dedicated sidebar row; selecting a nearby row
-        // would falsely imply the user is viewing that destination.
-        case .primary(.review), .review(.automationActivity), .review(.assistantQueue): nil
+        case .primary, .project, .smartList, .review:
+            .work
         }
     }
 }

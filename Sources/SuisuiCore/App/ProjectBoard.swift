@@ -5780,6 +5780,74 @@ public final class ProjectBoardViewModel: ObservableObject {
         draft.timeBlocks.compactMap(ScheduleDraftApplyWriteCandidate.init(block:))
     }
 
+    private func invalidateApprovedScheduleQueueItems(taskIDs: Set<Int64>) -> Bool {
+        guard !taskIDs.isEmpty, let assistantQueueStore else {
+            return true
+        }
+
+        do {
+            // This safety invalidation must inspect every approved item. A windowed
+            // fetch could leave an older approved Calendar proposal executable.
+            let items = try assistantQueueStore.list(filter: .states([.approved], limit: Int.max))
+            for item in items where item.state == .approved {
+                guard case .actionPlan(let plan) = item.payload,
+                      plan.actions.contains(where: {
+                          Self.isCalendarProposalAction($0)
+                              && taskIDs.contains(Self.calendarTaskID(in: $0) ?? -1)
+                      }) else {
+                    continue
+                }
+
+                _ = try assistantQueueStore.transition(id: item.id) { current in
+                    guard current.state == .approved,
+                          case .actionPlan(let currentPlan) = current.payload,
+                          currentPlan.actions.contains(where: {
+                              Self.isCalendarProposalAction($0)
+                                  && taskIDs.contains(Self.calendarTaskID(in: $0) ?? -1)
+                          }) else {
+                        return current
+                    }
+                    return try AssistantQueueStateMachine.editReviewDetails(
+                        current,
+                        reviewReason: "Schedule proposal changed. Review the latest Calendar time before approval.",
+                        redactedSummary: current.redactedSummary
+                    )
+                }
+            }
+            _ = refreshAssistantQueueSnapshot()
+            return true
+        } catch {
+            let message = AssistantQueueStoreError.userMessage(for: error)
+            errorMessage = message
+            todayCommandFeedback = message
+            return false
+        }
+    }
+
+    private static func isCalendarProposalAction(_ action: PlanAction) -> Bool {
+        switch action.tool {
+        case .calendarCreateEvent, .calendarCreateDeadline, .calendarCreateWorkBlock:
+            guard let taskID = calendarTaskID(in: action),
+                  action.arguments["proposalID"]?.stringValue == CalendarProposalIdentity.make(taskID: taskID) else {
+                return false
+            }
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func calendarTaskID(in action: PlanAction) -> Int64? {
+        switch action.arguments["taskId"] {
+        case .number(let value)? where value.isFinite && value.rounded(.towardZero) == value:
+            return Int64(exactly: value)
+        case .string(let value)?:
+            return Int64(value)
+        default:
+            return nil
+        }
+    }
+
     private func makeReminderActionPlan(
         for task: ProjectBoardTask,
         referenceDate: Date,
@@ -5936,7 +6004,10 @@ public final class ProjectBoardViewModel: ObservableObject {
                 calendar: calendar
             ),
             userInput: "Queue reviewed Schedule draft for Calendar apply",
-            summary: Self.scheduleDraftCalendarApplySummary(candidateCount: candidates.count),
+            summary: Self.scheduleDraftCalendarApplySummary(
+                candidates: candidates,
+                calendar: calendar
+            ),
             actions: candidates.enumerated().compactMap { offset, candidate in
                 guard let durationMinutes = Self.scheduleDraftDurationMinutes(for: candidate) else {
                     return nil
@@ -5950,7 +6021,14 @@ public final class ProjectBoardViewModel: ObservableObject {
                         "durationMinutes": .number(Double(durationMinutes)),
                         "notes": .string(String(localized: "Created from a reviewed Suisui schedule draft.")),
                         "taskId": .number(Double(candidate.taskID)),
-                        "projectId": .number(Double(candidate.projectID))
+                        "projectId": .number(Double(candidate.projectID)),
+                        "proposalID": .string(
+                            CalendarProposalIdentity.make(taskID: candidate.taskID)
+                        ),
+                        "calendarIdentifier": .string(
+                            CalendarProposalIdentity.defaultCalendarIdentifier
+                        ),
+                        "timeZoneIdentifier": .string(calendar.timeZone.identifier)
                     ],
                     riskLevel: .write
                 )
@@ -6000,11 +6078,14 @@ public final class ProjectBoardViewModel: ObservableObject {
         return formatter.string(from: referenceDate)
     }
 
-    private static func scheduleDraftCalendarApplySummary(candidateCount: Int) -> String {
-        if candidateCount == 1 {
-            return "Schedule draft Calendar apply for 1 work block."
-        }
-        return "Schedule draft Calendar apply for \(candidateCount) work blocks."
+    private static func scheduleDraftCalendarApplySummary(
+        candidates: [ScheduleDraftApplyWriteCandidate],
+        calendar: Calendar
+    ) -> String {
+        let count = candidates.count
+        let blockLabel = count == 1 ? "1 work block" : "\(count) work blocks"
+        let times = candidates.map { "\($0.startAt)–\($0.endAt)" }.joined(separator: "; ")
+        return "Schedule draft Calendar apply for \(blockLabel). Calendar: \(CalendarProposalIdentity.defaultCalendarIdentifier). Timezone: \(calendar.timeZone.identifier). Times: \(times)."
     }
 
     private static func scheduleDraftQueueReason(candidateCount: Int) -> String {
@@ -6207,6 +6288,11 @@ public final class ProjectBoardViewModel: ObservableObject {
             timeBlocks: todayDraft.timeBlocks,
             unscheduledTasks: unscheduledScheduleTasks(excludingTaskIDs: [])
         )
+        let affectedTaskIDs = Set((scheduleDraft?.timeBlocks ?? []).map(\.task.id))
+            .union(draft.timeBlocks.map(\.task.id))
+        guard invalidateApprovedScheduleQueueItems(taskIDs: affectedTaskIDs) else {
+            return scheduleDraft ?? draft
+        }
         scheduleDraft = draft
         rebuildScheduleReadModel(around: referenceDate, calendar: calendar)
         scheduleApplyResult = nil
@@ -6250,6 +6336,11 @@ public final class ProjectBoardViewModel: ObservableObject {
 
         // This is a local review artifact, not task scheduling. The task keeps
         // its nil due date until the user separately approves Calendar/app writes.
+        let affectedTaskIDs = Set((scheduleDraft?.timeBlocks ?? []).map(\.task.id))
+            .union(draft.timeBlocks.map(\.task.id))
+        guard invalidateApprovedScheduleQueueItems(taskIDs: affectedTaskIDs) else {
+            return false
+        }
         draft.timeBlocks.append(block)
         draft.unscheduledTasks.removeAll { $0.id == taskID }
         scheduleDraft = draft
@@ -6294,6 +6385,12 @@ public final class ProjectBoardViewModel: ObservableObject {
             startAt: isoFormatter.string(from: startAt),
             endAt: isoFormatter.string(from: endAt)
         )
+
+        let affectedTaskIDs = Set((scheduleDraft?.timeBlocks ?? []).map(\.task.id))
+            .union([taskID])
+        guard invalidateApprovedScheduleQueueItems(taskIDs: affectedTaskIDs) else {
+            return false
+        }
 
         var draft = scheduleDraft ?? ScheduleDraft(
             timeBlocks: [],
@@ -6341,6 +6438,10 @@ public final class ProjectBoardViewModel: ObservableObject {
             return false
         }
 
+        let affectedTaskIDs = Set(draft.timeBlocks.map(\.task.id))
+        guard invalidateApprovedScheduleQueueItems(taskIDs: affectedTaskIDs) else {
+            return false
+        }
         draft.timeBlocks.removeAll { $0.task.id == taskID }
         draft.unscheduledTasks = unscheduledScheduleTasks(
             excludingTaskIDs: Set(draft.timeBlocks.map(\.task.id))
