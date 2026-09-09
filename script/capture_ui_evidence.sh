@@ -1216,6 +1216,10 @@ localized_evidence_day_label() {
 }
 
 prepare_visual_fixture_seeder() {
+  if [[ -n "${SUISUI_UI_PREBUILT_APP:-}" ]]; then
+    "$ROOT_DIR/script/verify_ui_debug_app.sh" "$SUISUI_UI_PREBUILT_APP" || return $?
+    VISUAL_FIXTURE_SEEDER_BIN="$SUISUI_UI_PREBUILT_APP/Contents/MacOS/SuisuiVisualFixtureSeeder"
+  fi
   if [[ -n "$VISUAL_FIXTURE_SEEDER_BIN" ]]; then
     if [[ ! -f "$VISUAL_FIXTURE_SEEDER_BIN" || ! -x "$VISUAL_FIXTURE_SEEDER_BIN" || -L "$VISUAL_FIXTURE_SEEDER_BIN" ]]; then
       echo "BLOCKER: SUISUI_VISUAL_FIXTURE_SEEDER_BIN must be a non-symlink executable file" >&2

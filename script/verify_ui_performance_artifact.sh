@@ -7,7 +7,7 @@ failure() {
   exit 1
 }
 
-if [[ "$#" -ne 5 ]]; then
+if [[ "$#" -ne 5 && "$#" -ne 6 ]]; then
   failure "usage-invalid"
 fi
 
@@ -16,6 +16,8 @@ DESTINATION_DIRECTORY="$2"
 APP_NAME="$3"
 EXPECTED_SOURCE_COMMIT="$4"
 RECEIPT_DIRECTORY="$5"
+EXPECTED_CONFIGURATION="${6:-release}"
+[[ "$EXPECTED_CONFIGURATION" == release || "$EXPECTED_CONFIGURATION" == debug ]] || failure "configuration-invalid"
 REQUIRED_RESOURCE_BUNDLE_NAMES=(
   "Suisui_Suisui.bundle"
   "Suisui_SuisuiCore.bundle"
@@ -60,7 +62,7 @@ BUILD_CONFIGURATION="$(manifest_value build_configuration)"
 EXPECTED_SHA256="$(manifest_value archive_sha256)"
 ACTUAL_SHA256="$(shasum -a 256 "$ARCHIVE" | awk '{print $1}')"
 if [[ "$FORMAT_VERSION" != "1" || ! "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ||
-      "$SOURCE_COMMIT" != "$EXPECTED_SOURCE_COMMIT" || "$BUILD_CONFIGURATION" != "release" ||
+      "$SOURCE_COMMIT" != "$EXPECTED_SOURCE_COMMIT" || "$BUILD_CONFIGURATION" != "$EXPECTED_CONFIGURATION" ||
       ! "$EXPECTED_SHA256" =~ ^[0-9a-f]{64}$ || "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]]; then
   failure "manifest-verification-failed"
 fi
@@ -153,6 +155,10 @@ if ! /usr/bin/codesign --verify --deep --strict "$EXTRACTED_APP" >/dev/null 2>&1
   failure "app-signature-invalid"
 fi
 
+if [[ "$EXPECTED_CONFIGURATION" == debug ]]; then
+  "$(dirname "$0")/verify_ui_debug_app.sh" "$EXTRACTED_APP" || failure "debug-app-invalid"
+fi
+
 VALIDATED_MANIFEST_RECEIPT="$RECEIPT_DIRECTORY/validated-artifact-manifest.env"
 VERIFICATION_RECEIPT="$RECEIPT_DIRECTORY/artifact-verification.env"
 if [[ -e "$VALIDATED_MANIFEST_RECEIPT" || -L "$VALIDATED_MANIFEST_RECEIPT" ||
@@ -161,6 +167,6 @@ if [[ -e "$VALIDATED_MANIFEST_RECEIPT" || -L "$VALIDATED_MANIFEST_RECEIPT" ||
 fi
 mv "$EXTRACTED_APP" "$DESTINATION_APP"
 cp "$MANIFEST" "$VALIDATED_MANIFEST_RECEIPT"
-printf 'format_version=1\nverification=passed\nsource_commit=%s\nbuild_configuration=release\narchive_sha256=%s\n' \
-  "$SOURCE_COMMIT" "$ACTUAL_SHA256" >"$VERIFICATION_RECEIPT"
-printf 'OK: verified immutable release performance artifact\n'
+printf 'format_version=1\nverification=passed\nsource_commit=%s\nbuild_configuration=%s\narchive_sha256=%s\n' \
+  "$SOURCE_COMMIT" "$BUILD_CONFIGURATION" "$ACTUAL_SHA256" >"$VERIFICATION_RECEIPT"
+printf 'OK: verified immutable %s UI artifact\n' "$BUILD_CONFIGURATION"
