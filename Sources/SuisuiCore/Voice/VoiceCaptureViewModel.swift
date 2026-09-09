@@ -1630,6 +1630,9 @@ public final class VoiceCaptureViewModel: ObservableObject {
                 finishUnresolvedQuickCapture()
                 return
             }
+            // A restored clarification supersedes review state from an older link.
+            planningResponse = nil
+            assistantQueueItem = nil
             conversationWorkspaceLocalAnswerItems = []
             clarificationSession = nil
             orchestratedClarificationQuestion = question
