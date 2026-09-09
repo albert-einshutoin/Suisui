@@ -101,7 +101,11 @@ PRでは選択planが指定したunit、integration、E2Eと常時smokeだけを
 
 ## キャッシュとコスト
 
-cache keyはOS、CPU architecture、Swift major、`Package.swift`/`Package.resolved` hash、impact config/analyzer hashを含む。PR strategyまたは完全検証jobだけがcacheを保存し、並列UI jobはrestore-onlyにして競合saveと余分な転送を避ける。cache hitは成功条件ではなく、破損時は通常build/testが失敗する。
+cache keyはOS、CPU architecture、Swift major、manifest/lockfile、impact config/analyzer hashを含む。コミットごとの大型cache保存は行わない。PR strategyと完全検証jobが保存し、Release buildだけがrestore-onlyで再利用する。cache hitは検証成功を意味しない。
+
+Runtimeと両言語Visualは親の成功したdebug appとSeederを1日保持のartifactで共有する。親が既に作ったappへportable Seederを同梱して署名し、SHA-256 manifestを付ける。consumerはproducerのartifact-idを参照するため、consumerだけの再実行でも元の成果物を使う。展開時は既存Release verifierのarchive/署名/リソース検証とdebug設定・コミット検証を通し、各再利用時も署名と現在のclean checkoutを照合する。欠落・改変・異なるrevision/configはエラーにし、再ビルドへfallbackしない。
+
+`SUISUI_UI_PREBUILT_APP`は検証済みbundleを指定するCI用入口。未指定のローカル検証は従来どおりビルドする。UIの証跡・待機・言語matrix・performanceの直列化は変えない。評価では親のSeeder生成時間とartifact転送時間を含む全job秒、キュー待ち込みの完了時間、archive bytesを分けて比較する。公開repoの標準hosted runnerは無料なので、時間削減を請求額削減として扱わない。
 
 ローカルのキャッシュを消すには、実行中のSwiftPM processがないことを確認してからリポジトリ内の `.build/` を削除する。GitHub Actions cacheはRepository SettingsのActions cachesから対象keyを削除する。共有runnerで無制限に並列化せず、PRのUI gateはplanで必要な種類だけ起動する。
 

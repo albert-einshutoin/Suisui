@@ -403,6 +403,15 @@ swiftpm_product_directory() {
   esac
 }
 
+if [[ -n "${SUISUI_UI_PREBUILT_APP:-}" ]]; then
+  [[ "$BUILD_CONFIGURATION" == debug && "$RELEASE_BUILD_PURPOSE" == distribution && "$RUNTIME_POLICY" == public-alpha ]] || { echo "BLOCKER: prebuilt app requires public-alpha debug configuration" >&2; exit 1; }
+  "$ROOT_DIR/script/verify_ui_debug_app.sh" "$SUISUI_UI_PREBUILT_APP" "$BUILD_CONFIGURATION_FINGERPRINT"
+  [[ "$(cd "$SUISUI_UI_PREBUILT_APP" && pwd -P)" != "$APP_BUNDLE" ]] || { echo "BLOCKER: prebuilt app must be separate from dist" >&2; exit 1; }
+  rm -rf "$APP_BUNDLE"
+  mkdir -p "$DIST_DIR"
+  /usr/bin/ditto "$SUISUI_UI_PREBUILT_APP" "$APP_BUNDLE"
+  printf 'OK: reused verified debug UI app without compilation\n'
+else
 build_suisui_product
 BUILD_DIR="$(swiftpm_product_directory)"
 # Native SwiftPM preserves the macOS 26-linked SwiftUI window behavior used by
@@ -556,6 +565,8 @@ if [[ "$BUILD_CONFIGURATION" == "debug" || "$RELEASE_BUILD_PURPOSE" == "performa
   if [[ "$RELEASE_BUILD_PURPOSE" == "performance" ]]; then
     codesign --verify --deep --strict "$APP_BUNDLE"
   fi
+fi
+
 fi
 
 activate_app() {

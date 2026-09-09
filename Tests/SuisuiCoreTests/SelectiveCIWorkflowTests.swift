@@ -36,6 +36,32 @@ final class SelectiveCIWorkflowTests: XCTestCase {
         XCTAssertFalse(workflow.contains("./ci/compare-runs.py"))
     }
 
+    func testSwiftCacheRemainsBoundedAcrossBuildJobs() throws {
+        let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        let keys = workflow.components(separatedBy: "\n").filter {
+            $0.contains("key:") && $0.contains("-swift-6-")
+        }
+        XCTAssertEqual(keys.count, 3)
+        XCTAssertEqual(Set(keys).count, 1, "all producers and consumers must use the same cache key")
+        for key in keys {
+            XCTAssertFalse(key.contains("github.sha"), "do not save a large build cache per commit")
+            XCTAssertFalse(key.contains("pull_request.head.sha"))
+        }
+    }
+
+    func testDebugUIJobsConsumeProducerArtifactInsteadOfBuildCache() throws {
+        let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        for name in ["ui-runtime", "ui-visual-locales"] {
+            let job = workflow.components(separatedBy: "\n  \(name):")[1]
+                .components(separatedBy: "\n  ui-")[0]
+            XCTAssertTrue(job.contains("artifact-ids: ${{ needs.test_strategy.outputs.ui-artifact-id || needs.full_validation.outputs.ui-artifact-id }}"))
+            XCTAssertTrue(job.contains("SUISUI_UI_PREBUILT_APP:"))
+            XCTAssertFalse(job.contains("actions/cache/restore"))
+            XCTAssertTrue(job.contains("verify_ui_performance_artifact.sh"))
+        }
+        XCTAssertEqual(workflow.components(separatedBy: "run: ./ci/package-ui-debug-app.sh").count - 1, 2)
+    }
+
     func testImpactPolicyAndIndependentFullRunnerAreSourceControlledContracts() throws {
         let config = try readRepositoryFile("ci/config/impact.json")
         let fullRunner = try readRepositoryFile("ci/run-full.sh")

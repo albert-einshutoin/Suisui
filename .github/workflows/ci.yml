@@ -39,6 +39,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 40
     outputs:
+      ui-artifact-id: ${{ steps.upload-ui-debug-app.outputs.artifact-id }}
       strategy: ${{ steps.plan_outputs.outputs.strategy }}
       ui_runtime: ${{ steps.plan_outputs.outputs.ui_runtime }}
       ui_visual_state: ${{ steps.normalize_visual_selection.outputs.state }}
@@ -54,6 +55,7 @@ jobs:
           # remains the contributor head used only for analysis and provenance.
           fetch-depth: 0
 
+      # Build caches accelerate compilation; UI jobs consume a verified artifact.
       - name: Restore bounded Swift build cache
         uses: actions/cache@v4
         with:
@@ -155,8 +157,25 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
+      - name: Package immutable debug UI app
+        if: ${{ success() && (steps.plan_outputs.outputs.ui_runtime == 'true' || steps.normalize_visual_selection.outputs.state != '0') }}
+        run: ./ci/package-ui-debug-app.sh
+
+      - name: Upload immutable debug UI app
+        if: ${{ success() && (steps.plan_outputs.outputs.ui_runtime == 'true' || steps.normalize_visual_selection.outputs.state != '0') }}
+        id: upload-ui-debug-app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-debug-app-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/ui-debug-app
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+
   full_validation:
     name: Complete validation
+    outputs:
+      ui-artifact-id: ${{ steps.upload-ui-debug-app.outputs.artifact-id }}
     if: ${{ github.event_name != 'pull_request' }}
     runs-on: macos-26
     timeout-minutes: 40
@@ -166,6 +185,7 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Build caches accelerate compilation; UI jobs consume a verified artifact.
       - name: Restore bounded Swift build cache
         uses: actions/cache@v4
         with:
@@ -206,6 +226,19 @@ jobs:
           SUISUI_CI_IMPACT_ARTIFACT_DIR: ${{ github.workspace }}/.tmp/ci-impact
           SUISUI_SWIFTPM_ARTIFACT_DIR: ${{ github.workspace }}/.tmp/ci-artifacts/swiftpm
         run: ./ci/run-full.sh
+
+      - name: Package immutable debug UI app
+        run: ./ci/package-ui-debug-app.sh
+
+      - name: Upload immutable debug UI app
+        id: upload-ui-debug-app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-debug-app-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/ui-debug-app
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
 
       - name: Upload complete SwiftPM test evidence
         if: always()
@@ -259,19 +292,25 @@ jobs:
       - name: Checkout tested revision
         uses: actions/checkout@v4
 
-      - name: Restore Swift build cache
-        uses: actions/cache/restore@v4
+      - name: Require successful debug artifact producer
+        env:
+          ARTIFACT_ID: ${{ needs.test_strategy.outputs.ui-artifact-id || needs.full_validation.outputs.ui-artifact-id }}
+          PRODUCER_RESULT: ${{ github.event_name == 'pull_request' && needs.test_strategy.result || needs.full_validation.result }}
+        run: test "$PRODUCER_RESULT" = success && test -n "$ARTIFACT_ID"
+
+      - name: Download immutable debug UI app
+        uses: actions/download-artifact@v4
         with:
-          path: |
-            .build
-            ~/.cache/org.swift.swiftpm
-            ~/Library/Caches/org.swift.swiftpm
-          key: ${{ runner.os }}-${{ runner.arch }}-swift-6-${{ hashFiles('Package.resolved', 'Package.swift') }}-${{ hashFiles('ci/config/**', 'ci/impact/**') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-swift-6-
+          artifact-ids: ${{ needs.test_strategy.outputs.ui-artifact-id || needs.full_validation.outputs.ui-artifact-id }}
+          merge-multiple: true
+          path: .tmp/ui-debug-app
+
+      - name: Verify immutable debug UI app
+        run: ./script/verify_ui_performance_artifact.sh .tmp/ui-debug-app .build/ui-debug Suisui "$(git rev-parse HEAD)" .tmp/ui-debug-receipt debug
 
       - name: Verify production runtime
         env:
+          SUISUI_UI_PREBUILT_APP: ${{ github.workspace }}/.build/ui-debug/Suisui.app
           SUISUI_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
           # GitHub's 1024x676 GUI cannot exercise the 1420x860 wide-layout gate.
           # Complete UI evidence remains a release-machine/run-all requirement.
@@ -309,19 +348,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Restore Swift build cache
-        uses: actions/cache/restore@v4
+      - name: Require successful debug artifact producer
+        env:
+          ARTIFACT_ID: ${{ needs.test_strategy.outputs.ui-artifact-id || needs.full_validation.outputs.ui-artifact-id }}
+          PRODUCER_RESULT: ${{ github.event_name == 'pull_request' && needs.test_strategy.result || needs.full_validation.result }}
+        run: test "$PRODUCER_RESULT" = success && test -n "$ARTIFACT_ID"
+
+      - name: Download immutable debug UI app
+        uses: actions/download-artifact@v4
         with:
-          path: |
-            .build
-            ~/.cache/org.swift.swiftpm
-            ~/Library/Caches/org.swift.swiftpm
-          key: ${{ runner.os }}-${{ runner.arch }}-swift-6-${{ hashFiles('Package.resolved', 'Package.swift') }}-${{ hashFiles('ci/config/**', 'ci/impact/**') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-swift-6-
+          artifact-ids: ${{ needs.test_strategy.outputs.ui-artifact-id || needs.full_validation.outputs.ui-artifact-id }}
+          merge-multiple: true
+          path: .tmp/ui-debug-app
+
+      - name: Verify immutable debug UI app
+        run: ./script/verify_ui_performance_artifact.sh .tmp/ui-debug-app .build/ui-debug Suisui "$(git rev-parse HEAD)" .tmp/ui-debug-receipt debug
 
       - name: Capture and compare live UI
         env:
+          SUISUI_UI_PREBUILT_APP: ${{ github.workspace }}/.build/ui-debug/Suisui.app
           SUISUI_CI_ARTIFACT_ROOT: ${{ github.workspace }}/.tmp/ci-artifacts
           SUISUI_CI_VISUAL_GATE_LOCALE: ${{ matrix.locale }}
           # Liquid Glass samples the active display environment. Keep hosted
