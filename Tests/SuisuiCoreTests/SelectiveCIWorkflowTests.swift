@@ -36,6 +36,19 @@ final class SelectiveCIWorkflowTests: XCTestCase {
         XCTAssertFalse(workflow.contains("./ci/compare-runs.py"))
     }
 
+    func testSwiftCacheRefreshesForTestedRevisionAcrossProducerAndConsumers() throws {
+        let workflow = try readRepositoryFile(".github/workflows/ci.yml")
+        let keys = workflow.components(separatedBy: "\n").filter {
+            $0.contains("key:") && $0.contains("-swift-6-")
+        }
+        XCTAssertEqual(keys.count, 5)
+        XCTAssertEqual(Set(keys).count, 1, "all producers and consumers must use the same cache key")
+        for key in keys {
+            XCTAssertTrue(key.hasSuffix("-${{ github.sha }}"), "cache must refresh for the tested merge revision")
+            XCTAssertFalse(key.contains("pull_request.head.sha"))
+        }
+    }
+
     func testImpactPolicyAndIndependentFullRunnerAreSourceControlledContracts() throws {
         let config = try readRepositoryFile("ci/config/impact.json")
         let fullRunner = try readRepositoryFile("ci/run-full.sh")

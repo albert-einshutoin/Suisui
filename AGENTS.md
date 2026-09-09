@@ -46,6 +46,7 @@
 | 非 UI の完全検証 | `./ci/run-full.sh` |
 | PR の変更影響検証（`ci-pr`） | `./ci/run-pr-ci.sh --base-revision origin/main --head-revision HEAD` |
 | 計画確認（`ci-plan`） | `python3 ci/impact/analyze.py --repo . --base-revision origin/main --head-revision HEAD --config ci/config/impact.json --output .tmp/ci-impact/test-plan.json` |
+| Swift cache workflow の対象検証 | `swift test --filter SelectiveCIWorkflowTests` |
 | 選択runner の対象検証 | `python3 -m unittest discover -s ci/tests -p test_execution.py -v` |
 | impact planner の検証 | `python3 -m unittest discover -s ci/tests -v` |
 | Actions ローカル確認（`ci-act`） | 非対応。macOS hosted runner 固有のため GitHub Actions を正とする |

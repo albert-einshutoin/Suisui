@@ -101,7 +101,7 @@ PRでは選択planが指定したunit、integration、E2Eと常時smokeだけを
 
 ## キャッシュとコスト
 
-cache keyはOS、CPU architecture、Swift major、`Package.swift`/`Package.resolved` hash、impact config/analyzer hashを含む。PR strategyまたは完全検証jobだけがcacheを保存し、並列UI jobはrestore-onlyにして競合saveと余分な転送を避ける。cache hitは成功条件ではなく、破損時は通常build/testが失敗する。
+cache keyはOS、CPU architecture、Swift major、`Package.swift`/`Package.resolved` hash、impact config/analyzer hashと検証対象の `github.sha`（PRではmerge revision）を含む。ソース変更時にも新しいキーで成功したビルドを保存し、後続UI jobが同じrevisionのキャッシュを復元する。完全一致がなければ同じ依存/configのprefix、次に既存のOS/architecture/Swift majorのprefixで復元し、通常のbuild/testで検証する。キャッシュ未取得や保存不可でも検証は省略しない。revisionごとに保存容量と転送量が増えるため、実行時間と併せてActionsのcache使用量を確認する。PR strategyまたは完全検証jobだけがcacheを保存し、並列UI jobはrestore-onlyにして競合saveと余分な転送を避ける。cache hitは成功条件ではなく、破損時は通常build/testが失敗する。
 
 ローカルのキャッシュを消すには、実行中のSwiftPM processがないことを確認してからリポジトリ内の `.build/` を削除する。GitHub Actions cacheはRepository SettingsのActions cachesから対象keyを削除する。共有runnerで無制限に並列化せず、PRのUI gateはplanで必要な種類だけ起動する。
 
