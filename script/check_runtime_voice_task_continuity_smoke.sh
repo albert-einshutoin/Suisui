@@ -9,14 +9,16 @@ ARTIFACT_ROOT="${SUISUI_VOICE_TASK_CONTINUITY_ARTIFACT_DIR:-$ROOT_DIR/.tmp/runti
 DRIVER="${SUISUI_VOICE_TASK_CONTINUITY_DRIVER:-$ROOT_DIR/script/drive_runtime_voice_task_continuity.sh}"
 KEEP_FIXTURE="${SUISUI_VOICE_TASK_CONTINUITY_KEEP_FIXTURE:-0}"
 SQLITE3="${SQLITE3:-/usr/bin/sqlite3}"
+FACTS_FILE="${SUISUI_VOICE_TASK_CONTINUITY_FACTS_FILE:-}"
+LOCALE="${SUISUI_VOICE_TASK_CONTINUITY_LOCALE:-english}"
 
 # Stable, non-user fixtures keep AX/SQLite evidence attributable to this run.
 FIXTURE_PROJECT_ID="1833801"
-FIXTURE_PROJECT_TITLE="P18 338 Voice Continuity"
+FIXTURE_PROJECT_TITLE="P17 617 Core Value Loop"
 FIXTURE_TASK_ONE_ID="1833811"
 FIXTURE_TASK_TWO_ID="1833812"
-FIXTURE_TASK_ONE_TITLE="P18 338 prepare review"
-FIXTURE_TASK_TWO_TITLE="P18 338 submit summary"
+FIXTURE_TASK_ONE_TITLE="P17 617 prepare review"
+FIXTURE_TASK_TWO_TITLE="P17 617 submit summary"
 FIXTURE_DUE_DATE="2031-03-08"
 
 runtime_dir=""
@@ -68,6 +70,7 @@ write_artifact_atomically() {
     printf '  "sourceCommit": "%s",\n' "$source_commit"
     printf '  "appBinarySHA256": "%s",\n' "$app_binary_sha256"
     printf '  "buildConfigurationFingerprint": "%s",\n' "$build_configuration_fingerprint"
+    printf '  "locale": "%s",\n' "$LOCALE"
     printf '  "fixture": {"projectID": "%s", "taskIDs": ["%s", "%s"]},\n' "$FIXTURE_PROJECT_ID" "$FIXTURE_TASK_ONE_ID" "$FIXTURE_TASK_TWO_ID"
     printf '  "completedStages": ['
     for index in "${!completed_stages[@]}"; do
@@ -215,6 +218,8 @@ validate_stage_contract() {
     normal_product_route)
       require_witness_fact "$stage" "$layer" "project_board_ax" "visible"
       require_witness_fact "$stage" "$layer" "voice_command_ax" "visible"
+      require_witness_fact "$stage" "$layer" "locale" "$LOCALE"
+      require_witness_fact "$stage" "$layer" "window_size" "[0-9]+x[0-9]+"
       ;;
     session_start)
       require_witness_fact "$stage" "$layer" "session_started" "true"
@@ -244,6 +249,30 @@ validate_stage_contract() {
       require_witness_fact "$stage" "$layer" "task_postcondition" "passed"
       require_witness_fact "$stage" "$layer" "receipt_link" "present"
       require_witness_fact "$stage" "$layer" "action_link" "present"
+      require_witness_fact "$stage" "$layer" "source_turn_id" "[[:alnum:]-]+"
+      require_witness_fact "$stage" "$layer" "action_plan_id" "[[:alnum:]_-]+"
+      require_witness_fact "$stage" "$layer" "relation_count" "1"
+      ;;
+    route_round_trip)
+      require_witness_fact "$stage" "$layer" "route_transitions" "[1-9][0-9]*"
+      require_witness_fact "$stage" "$layer" "same_session" "true"
+      require_witness_fact "$stage" "$layer" "proposal_preserved" "true"
+      require_witness_fact "$stage" "$layer" "queue_item_preserved" "true"
+      ;;
+    result_displayed)
+      require_witness_fact "$stage" "$layer" "result_receipt_ax" "visible"
+      require_witness_fact "$stage" "$layer" "result_status" "done"
+      require_witness_fact "$stage" "$layer" "receipt_id" "[[:alnum:]_:-]+"
+      ;;
+    measurement)
+      require_witness_fact "$stage" "$layer" "same_work_id" "true"
+      require_witness_fact "$stage" "$layer" "candidate_build_matches_source" "true"
+      require_witness_fact "$stage" "$layer" "candidate_result_matches_source" "true"
+      require_witness_fact "$stage" "$layer" "candidate_stage_count" "[[:alnum:]_,]+"
+      require_witness_fact "$stage" "$layer" "external_write_count" "[0-9]+"
+      require_witness_fact "$stage" "$layer" "transcript_row_count" "[0-9]+"
+      require_witness_fact "$stage" "$layer" "screen_transition_count" "[0-9]+"
+      require_witness_fact "$stage" "$layer" "input_proposal_queue_result_receipt" "present"
       ;;
     restart)
       require_witness_fact "$stage" "$layer" "app_restarted" "true"
@@ -277,6 +306,7 @@ run_product_stage() {
       SUISUI_VOICE_TASK_CONTINUITY_PRE_APPROVAL_SNAPSHOT="$pre_approval_snapshot" \
       SUISUI_VOICE_TASK_CONTINUITY_SOURCE_COMMIT="$source_commit" \
       SUISUI_VOICE_TASK_CONTINUITY_APP_BINARY_SHA256="$app_binary_sha256" \
+      SUISUI_VOICE_TASK_CONTINUITY_LOCALE="$LOCALE" \
       "$DRIVER" --run-all; then
       local failure_file="$witness_dir/driver-failure.env"
       if [[ -f "$failure_file" ]]; then
@@ -298,6 +328,52 @@ run_product_stage() {
   completed_stages+=("$stage")
 }
 
+read_witness_fact() {
+  local stage="$1" key="$2" witness="$witness_dir/$stage.witness"
+  grep -E "^${key}=" "$witness" | tail -1 | cut -d= -f2-
+}
+
+write_observation_facts() {
+  [[ -n "$FACTS_FILE" ]] || return 0
+  local temporary_file
+  mkdir -p "$(dirname "$FACTS_FILE")"
+  temporary_file="$(mktemp "${FACTS_FILE}.XXXXXX")"
+  {
+    printf 'locale=%s\n' "$LOCALE"
+    for entry in \
+      "same_work_id measurement" \
+      "candidate_build_matches_source measurement" \
+      "candidate_result_matches_source measurement" \
+      "candidate_stage_count measurement" \
+      "external_write_count measurement" \
+      "transcript_row_count measurement" \
+      "screen_transition_count measurement" \
+      "input_proposal_queue_result_receipt measurement" \
+      "result_receipt_ax result_displayed" \
+      "result_status result_displayed" \
+      "route_transitions route_round_trip" \
+      "same_session route_round_trip" \
+      "proposal_preserved route_round_trip" \
+      "queue_item_preserved route_round_trip"
+    do
+      set -- $entry
+      local key="$1" stage="$2" value
+      value="$(read_witness_fact "$stage" "$key")" || {
+        rm -f "$temporary_file"
+        return 1
+      }
+      case "$value" in
+        ""|*[!A-Za-z0-9_,=-]*)
+          rm -f "$temporary_file"
+          return 1
+          ;;
+      esac
+      printf '%s=%s\n' "$key" "$value"
+    done
+  } >"$temporary_file"
+  mv -f "$temporary_file" "$FACTS_FILE"
+}
+
 verify_pre_approval_snapshot() {
   [[ -s "$pre_approval_snapshot" ]] || fail_stage "pre_approval_snapshot" "pre-approval" "pre_approval_snapshot_missing"
   grep -Eq '^[a-f0-9]{64}[[:space:]]+database$' "$pre_approval_snapshot" || fail_stage "pre_approval_snapshot" "pre-approval" "pre_approval_snapshot_invalid"
@@ -313,6 +389,7 @@ verify_final_evidence() {
   grep -Fq "\"buildConfigurationFingerprint\": \"$build_configuration_fingerprint\"" "$artifact_file" || fail_stage "redacted_source_bound_artifact" "evidence" "artifact_configuration_fingerprint_mismatch"
   grep -Fq '"manualVoiceOver": "not-run"' "$artifact_file" || fail_stage "redacted_source_bound_artifact" "evidence" "manual_voiceover_claimed"
   completed_stages+=("redacted_source_bound_artifact")
+  write_observation_facts || fail_stage "redacted_source_bound_artifact" "evidence" "observation_facts_missing"
   write_artifact_atomically "passed" "" "" ""
 }
 
@@ -333,10 +410,13 @@ main() {
   verify_pre_approval_snapshot
   run_product_stage "queue_approval_execution" "queue-execution"
   run_product_stage "postcondition_receipt_action_link" "postcondition-receipt-action-link"
+  run_product_stage "route_round_trip" "route"
+  run_product_stage "result_displayed" "result"
+  run_product_stage "measurement" "evidence"
   run_product_stage "restart" "restart"
   run_product_stage "resume" "resume"
   verify_final_evidence
-  printf 'OK: voice task continuity passed (14 stages, source %s, artifact %s)\n' "$source_commit" "$(repo_relative_path "$ARTIFACT_ROOT/voice-task-continuity.json")"
+  printf 'OK: voice task continuity passed (17 stages, locale %s, source %s, artifact %s)\n' "$LOCALE" "$source_commit" "$(repo_relative_path "$ARTIFACT_ROOT/voice-task-continuity.json")"
 }
 
 main "$@"

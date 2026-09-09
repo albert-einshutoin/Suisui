@@ -538,8 +538,99 @@ final class VoiceCaptureViewModelTests: XCTestCase {
         XCTAssertEqual(callCount, 0)
     }
 
+    func testConversationReviewRestorePreservesHistoryAndReportsMissingQueue() throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteVoiceTaskConversationStore(connection: connection)
+        let queue = SQLiteAssistantQueueStore(connection: connection)
+        let sessionID = UUID()
+        let initial = makeConversationWorkspaceViewModel(sessionID: sessionID)
+        initial.configureConversationWorkspace(store: store, scope: .init())
+        let turn = try VoiceTaskConversationTurn(
+            sessionID: sessionID, author: .user, userConfirmedText: "Keep this conversation"
+        )
+        try store.saveTurn(turn)
+        let plan = ActionPlan(
+            id: "restore-plan", userInput: "Create task", summary: "Create task",
+            actions: [PlanAction(id: "create", tool: .taskCreate, arguments: ["title": .string("Review")])],
+            riskLevel: .write, requiresApproval: true
+        )
+        try store.saveActionLink(ConversationActionLink(
+            sessionID: sessionID, sourceTurnID: turn.id, actionPlanID: plan.id,
+            assistantQueueItemID: "restore-queue", executionReceiptID: "restore-receipt",
+            operation: .taskCreated, reviewedFingerprint: "restore-fingerprint"
+        ))
+        let missing = makeConversationWorkspaceViewModel(sessionID: sessionID, queueStore: queue)
+        missing.configureConversationWorkspace(store: store, scope: .init())
+        XCTAssertEqual(missing.conversationWorkspaceTurns.map(\.text), ["Keep this conversation"])
+        XCTAssertEqual(missing.conversationWorkspaceTurnListState, .loaded(hasMore: false))
+        XCTAssertEqual(missing.phase, .failed("Conversation review could not be restored. Check Assistant Queue."))
+
+        _ = try queue.save(AssistantQueueItem(
+            id: "restore-queue", state: .done, payload: .actionPlan(plan), riskLevel: .write,
+            sourceTranscript: nil, interpretationSummary: nil, reviewReason: "Review",
+            redactedSummary: "Review", requiredCapabilities: []
+        ))
+        let restored = makeConversationWorkspaceViewModel(sessionID: sessionID, queueStore: queue)
+        restored.configureConversationWorkspace(store: store, scope: .init())
+        restored.refreshConversationWorkspaceCloseout()
+        XCTAssertEqual(restored.assistantQueueItem?.id, "restore-queue")
+        XCTAssertEqual(restored.planningResponse?.actionPlan?.id, plan.id)
+        XCTAssertEqual(restored.conversationWorkspaceCloseout.receiptID, "restore-receipt")
+    }
+
+    func testRestoredClarificationClearsPreviouslyRestoredReview() async throws {
+        let connection = try SQLiteConnection(path: ":memory:")
+        try SQLiteMigrationRunner.migrate(connection: connection, migrations: CoreMigrations.current)
+        let store = SQLiteVoiceTaskConversationStore(connection: connection)
+        let queue = SQLiteAssistantQueueStore(connection: connection)
+        let sessionID = UUID()
+        let initial = makeConversationWorkspaceViewModel(sessionID: sessionID)
+        initial.configureConversationWorkspace(store: store, scope: .init())
+
+        let turn = try VoiceTaskConversationTurn(
+            sessionID: sessionID, author: .user, userConfirmedText: "Create a task"
+        )
+        try store.saveTurn(turn)
+        let plan = ActionPlan(
+            id: "stale-plan", userInput: "Create a task", summary: "Old proposal",
+            actions: [PlanAction(id: "create", tool: .taskCreate, arguments: ["title": .string("Old task")])],
+            riskLevel: .write, requiresApproval: true
+        )
+        try store.saveActionLink(try ConversationActionLink(
+            sessionID: sessionID, sourceTurnID: turn.id, actionPlanID: plan.id,
+            assistantQueueItemID: "stale-queue", executionReceiptID: "stale-receipt",
+            operation: .taskCreated, reviewedFingerprint: "stale-fingerprint",
+            taskSnapshotFingerprint: nil
+        ))
+        _ = try queue.save(AssistantQueueItem(
+            id: "stale-queue", state: .waitingReview, payload: .actionPlan(plan), riskLevel: .write,
+            sourceTranscript: nil, interpretationSummary: nil, reviewReason: "Old proposal",
+            redactedSummary: "Old proposal", requiredCapabilities: []
+        ))
+
+        let orchestrator = RecordingVoiceConversationOrchestrator(outcomes: [
+            .clarification(ClarificationQuestion(slot: .dueDate, prompt: "Which date?"))
+        ])
+        let viewModel = makeConversationWorkspaceViewModel(
+            sessionID: sessionID, queueStore: queue, conversationOrchestrator: orchestrator
+        )
+        viewModel.configureConversationWorkspace(store: store, scope: .init())
+        XCTAssertEqual(viewModel.assistantQueueItem?.id, "stale-queue")
+        XCTAssertEqual(viewModel.planningResponse?.actionPlan?.id, plan.id)
+
+        await viewModel.restoreConversationIfNeeded()
+
+        XCTAssertEqual(viewModel.clarificationQuestion, ClarificationQuestion(slot: .dueDate, prompt: "Which date?"))
+        XCTAssertNil(viewModel.planningResponse)
+        XCTAssertNil(viewModel.assistantQueueItem)
+        XCTAssertEqual(viewModel.phase, .needsClarification("Which date?"))
+    }
+
     private func makeConversationWorkspaceViewModel(
-        sessionID: UUID
+        sessionID: UUID,
+        queueStore: (any AssistantQueueStore)? = nil,
+        conversationOrchestrator: (any VoiceTaskConversationOrchestrating)? = nil
     ) -> VoiceCaptureViewModel {
         VoiceCaptureViewModel(
             audioRecorder: FakeAudioRecorder(),
@@ -554,7 +645,8 @@ final class VoiceCaptureViewModelTests: XCTestCase {
                     validationResult: .init(issues: [])
                 )
             ),
-            conversationOrchestrator: nil,
+            assistantQueueStore: queueStore,
+            conversationOrchestrator: conversationOrchestrator,
             conversationSessionID: sessionID
         )
     }

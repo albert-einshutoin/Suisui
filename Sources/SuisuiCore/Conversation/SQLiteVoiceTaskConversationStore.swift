@@ -541,7 +541,8 @@ public final class SQLiteVoiceTaskConversationStore:
 
         try connection.transaction {
             if let existing = try latestActionLinkUnlocked(
-                assistantQueueItemID: assistantQueueItemID
+                whereSQL: "assistant_queue_item_id = ?",
+                parameters: [.text(assistantQueueItemID)]
             ) {
                 guard reviewIdentityMatches(
                     existing,
@@ -624,18 +625,24 @@ public final class SQLiteVoiceTaskConversationStore:
         lock.lock()
         defer { lock.unlock() }
         return try latestActionLinkUnlocked(
-            assistantQueueItemID: assistantQueueItemID
+            whereSQL: "assistant_queue_item_id = ?",
+            parameters: [.text(assistantQueueItemID)]
+        )
+    }
+
+    public func latestActionLink(sessionID: UUID) throws -> ConversationActionLink? {
+        lock.lock()
+        defer { lock.unlock() }
+        return try latestActionLinkUnlocked(
+            whereSQL: "session_id = ?",
+            parameters: [.text(sessionID.uuidString)]
         )
     }
 
     private func latestActionLinkUnlocked(
-        assistantQueueItemID: String
+        whereSQL: String,
+        parameters: [SQLiteValue]
     ) throws -> ConversationActionLink? {
-        guard !assistantQueueItemID
-            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else {
-            return nil
-        }
         let rows = try connection.queryRows(
             """
             SELECT
@@ -654,11 +661,11 @@ public final class SQLiteVoiceTaskConversationStore:
                 retry_of_action_link_id,
                 created_at
             FROM conversation_action_links
-            WHERE assistant_queue_item_id = ?
+            WHERE \(whereSQL)
             ORDER BY created_at DESC, id DESC
             LIMIT 1;
             """,
-            parameters: [.text(assistantQueueItemID)]
+            parameters: parameters
         )
         guard let row = rows.first else {
             return nil

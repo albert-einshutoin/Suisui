@@ -3074,6 +3074,10 @@ private final class RecordingConversationActionLinkStore:
     private let lock = NSLock()
     private var links: [ConversationActionLink] = []
 
+    func latestActionLink(sessionID: UUID) throws -> ConversationActionLink? {
+        lock.withLock { links.last { $0.sessionID == sessionID } }
+    }
+
     func saveActionLink(_ link: ConversationActionLink) throws {
         lock.withLock {
             links.append(link)

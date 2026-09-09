@@ -36,9 +36,9 @@ Tracking issue: [#244 Release closeout: complete manual VoiceOver evidence](http
 Preparation only: this runbook update does not complete #244. Start the manual
 pass only after #611 is complete and the final candidate includes #630's real
 local measurements and #617's same-work normal-route evidence. Use that same
-candidate for #246. The command below is delivered by PR #624; until that
-implementation and its observed evidence are available, this prerequisite is
-blocked. Independent smoke/unit-test results or fixed manifest values do not
+candidate for #246. The command below is delivered by the current #617 change;
+until its implementation and observed evidence are available, this prerequisite
+is blocked. Independent smoke/unit-test results or fixed manifest values do not
 satisfy #617.
 
 Prerequisite: run `./script/check_runtime_core_value_loop_smoke.sh` from a clean
@@ -232,7 +232,7 @@ and #617's final-candidate evidence. Before fixing that candidate, evaluate the
 release-blocking remainder of #351 (dependency/input provenance) and #353
 (existing backup/restore gaps); do not claim reproducibility or recoverability
 without that evidence. Do not expand either issue to unrelated full features.
-The #624 command below remains a blocked prerequisite until implemented and
+The #617 command below remains a blocked prerequisite until implemented and
 validated; a fixed `passed` value is not observed evidence.
 
 Operator prerequisite: #617 の通常route証跡と #244 の同一candidate向けVoiceOver
