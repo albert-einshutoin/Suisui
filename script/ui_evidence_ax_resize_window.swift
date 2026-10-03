@@ -124,7 +124,9 @@ let sizeStatus = AXUIElementSetAttributeValue(
 )
 
 let sizeRequestCompletionUnconfirmed = sizeStatus == .cannotComplete
-guard positionStatus == .success, sizeStatus == .success || sizeRequestCompletionUnconfirmed else {
+let sizeRequestRejected = sizeStatus == .attributeUnsupported
+guard positionStatus == .success,
+      sizeStatus == .success || sizeRequestCompletionUnconfirmed || sizeRequestRejected else {
     fputs("AX resize failed (position=\(positionStatus.rawValue), size=\(sizeStatus.rawValue)).\n", stderr)
     exit(1)
 }
@@ -174,6 +176,13 @@ print(
 
 // A reply can time out after AppKit applies the size. The same target's
 // observed requested size proves completion; minimum-size clamping does not.
+// An unsupported size request also remains a nonzero diagnostic. The negative
+// minimum-size gate can verify rejection against CG/content evidence. A
+// supported-size gate must independently prove a real frame/content transition.
+if sizeRequestRejected {
+    fputs("AX size request was rejected; the original owned window frame remains readable.\n", stderr)
+    exit(3)
+}
 let requestedSizeObserved = abs(finalSize.width - targetWidth) <= tolerance
     && abs(finalSize.height - targetHeight) <= tolerance
 if sizeRequestCompletionUnconfirmed && !requestedSizeObserved {

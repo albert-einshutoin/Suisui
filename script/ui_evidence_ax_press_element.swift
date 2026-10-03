@@ -2,20 +2,36 @@ import ApplicationServices
 import AppKit
 import Foundation
 
-guard (CommandLine.arguments.count == 3 || (
-        CommandLine.arguments.count == 4 && CommandLine.arguments[3] == "--exact"
+let countsToolbar = CommandLine.arguments.count >= 3 && CommandLine.arguments[2] == "--toolbar-count"
+let readsMenuState = CommandLine.arguments.count >= 3 && CommandLine.arguments[2] == "--menu-item-state"
+let pressesMenu = CommandLine.arguments.count >= 3 && CommandLine.arguments[2] == "--menu-press"
+guard (countsToolbar ? CommandLine.arguments.count == 3 :
+       readsMenuState ? CommandLine.arguments.count == 5 :
+       pressesMenu ? CommandLine.arguments.count == 4 :
+       CommandLine.arguments.count == 3 || (
+        CommandLine.arguments.count == 4 && ["--exact", "--center"].contains(CommandLine.arguments[3])
       )),
       let rawPID = Int32(CommandLine.arguments[1]),
       rawPID > 0 else {
-    fputs("AX element press requires an app pid and AX identifier marker, optionally --exact.\n", stderr)
+    fputs("AX element press requires a pid and identifier [--exact|--center], --toolbar-count, --menu-item-state title localized-title, or --menu-press identifier.\n", stderr)
     exit(2)
 }
 
 let appPID = pid_t(rawPID)
-let marker = CommandLine.arguments[2]
-let exactMatch = CommandLine.arguments.count == 4
+let marker = pressesMenu ? CommandLine.arguments[3] : CommandLine.arguments[2]
+let exactMatch = pressesMenu || CommandLine.arguments.count == 4
+let centersElement = !pressesMenu && CommandLine.arguments.count == 4 && CommandLine.arguments[3] == "--center"
+guard !marker.isEmpty,
+      !readsMenuState || (!CommandLine.arguments[3].isEmpty && !CommandLine.arguments[4].isEmpty) else {
+    fputs("AX identifiers and menu titles must not be empty.\n", stderr)
+    exit(2)
+}
 let environment = ProcessInfo.processInfo.environment
 let maxNodes = Int(environment["SUISUI_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
+guard maxNodes > 0 else {
+    fputs("SUISUI_UI_EVIDENCE_AX_MAX_NODES must be positive.\n", stderr)
+    exit(2)
+}
 
 guard AXIsProcessTrusted() else {
     fputs("Accessibility permission is required to press Suisui UI elements.\n", stderr)
@@ -165,7 +181,12 @@ func frame(of element: AXUIElement) -> CGRect? {
 // bound to the launched evidence app, matching the AppleScript
 // "click at {center}" pattern already used by the header-layout gate.
 func clickElementCenter(_ element: AXUIElement, windows: [AXUIElement]) -> Bool {
-    guard let frame = frame(of: element), activateTarget() else {
+    guard let frame = frame(of: element) else {
+        fputs("Owned AX element has no positive visible frame.\n", stderr)
+        return false
+    }
+    guard activateTarget() else {
+        fputs("Could not activate owned PID \(appPID); frontmost PID is \(NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1).\n", stderr)
         return false
     }
     for window in windows {
@@ -211,7 +232,78 @@ guard !windows.isEmpty else {
     exit(2)
 }
 
-var queue = windows
+// System Events can omit SwiftUI toolbar descendants. Use the same native AX
+// tree for toolbar discovery and actions, scoped to the owned Project Board.
+func descendants(of roots: [AXUIElement]) -> [AXUIElement] {
+    var queue = roots
+    var visited = [AXUIElement]()
+    var cursor = 0
+    while cursor < queue.count {
+        let element = queue[cursor]
+        cursor += 1
+        if visited.contains(where: { CFEqual($0, element) }) { continue }
+        guard visited.count < maxNodes else {
+            fputs("AX toolbar traversal reached SUISUI_UI_EVIDENCE_AX_MAX_NODES.\n", stderr)
+            exit(1)
+        }
+        visited.append(element)
+        for attribute in childAttributes {
+            queue.append(contentsOf: elements(from: copyAttribute(element, attribute as CFString)))
+        }
+    }
+    return visited
+}
+
+if countsToolbar {
+    let projectBoardIdentifiers = Set(["project-board-sidebar-toggle", "project-board-integrations-menu"])
+    let projectBoardWindows = windows.filter { window in
+        let identifiers = Set(descendants(of: [window]).compactMap {
+            stringValue(copyAttribute($0, "AXIdentifier" as CFString))
+        })
+        return projectBoardIdentifiers.isSubset(of: identifiers)
+    }
+    guard projectBoardWindows.count == 1 else {
+        fputs("Expected one PID-owned Project Board AX window, found \(projectBoardWindows.count).\n", stderr)
+        exit(1)
+    }
+    let toolbars = descendants(of: projectBoardWindows).filter {
+        stringValue(copyAttribute($0, kAXRoleAttribute as CFString)) == (kAXToolbarRole as String)
+    }
+    guard toolbars.count == 1 else {
+        fputs("Expected one native Project Board toolbar, found \(toolbars.count).\n", stderr)
+        exit(1)
+    }
+    print(toolbars.count)
+    exit(0)
+}
+
+if readsMenuState {
+    let menuTitles = Set([CommandLine.arguments[3], CommandLine.arguments[4]])
+    for _ in 0..<20 {
+        let matches = descendants(of: [appElement]).filter {
+            stringValue(copyAttribute($0, kAXRoleAttribute as CFString)) == (kAXMenuItemRole as String)
+                && menuTitles.contains(stringValue(copyAttribute($0, kAXTitleAttribute as CFString)) ?? "")
+                && frame(of: $0) != nil
+        }
+        guard matches.count <= 1 else {
+            fputs("Expected one visible owned menu item, found \(matches.count).\n", stderr)
+            exit(1)
+        }
+        if let item = matches.first {
+            guard let enabled = copyAttribute(item, kAXEnabledAttribute as CFString) as? NSNumber else {
+                fputs("Owned menu item enabled state is unknown.\n", stderr)
+                exit(1)
+            }
+            print(enabled.boolValue ? "enabled" : "disabled")
+            exit(0)
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    }
+    fputs("Owned visible menu item was not available.\n", stderr)
+    exit(1)
+}
+
+var queue = pressesMenu ? [appElement] : windows
 var cursor = 0
 var visitedCount = 0
 var foundUnpressableMatch = false
@@ -223,6 +315,26 @@ while cursor < queue.count && visitedCount < maxNodes {
 
     let identifier = stringValue(copyAttribute(element, "AXIdentifier" as CFString)) ?? ""
     if exactMatch ? identifier == marker : identifier.contains(marker) {
+        if centersElement {
+            guard clickElementCenter(element, windows: windows) else {
+                fputs("Could not click the owned exact AX element center.\n", stderr)
+                exit(1)
+            }
+            print("clicked owned AX element center \(identifier)")
+            exit(0)
+        }
+        if pressesMenu {
+            guard stringValue(copyAttribute(element, kAXRoleAttribute as CFString)) == (kAXMenuItemRole as String),
+                  frame(of: element) != nil,
+                  let enabled = copyAttribute(element, kAXEnabledAttribute as CFString) as? NSNumber,
+                  enabled.boolValue,
+                  AXUIElementPerformAction(element, kAXPressAction as CFString) == .success else {
+                fputs("Owned menu item was not visibly enabled and pressable.\n", stderr)
+                exit(1)
+            }
+            print("pressed owned menu item \(identifier)")
+            exit(0)
+        }
         if pressElementOrAncestor(element, windows: windows) {
             print("pressed AX element \(identifier)")
             exit(0)
