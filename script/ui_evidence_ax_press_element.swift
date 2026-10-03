@@ -2,15 +2,18 @@ import ApplicationServices
 import AppKit
 import Foundation
 
-guard CommandLine.arguments.count == 3,
+guard (CommandLine.arguments.count == 3 || (
+        CommandLine.arguments.count == 4 && CommandLine.arguments[3] == "--exact"
+      )),
       let rawPID = Int32(CommandLine.arguments[1]),
       rawPID > 0 else {
-    fputs("AX element press requires an app pid and AX identifier marker.\n", stderr)
+    fputs("AX element press requires an app pid and AX identifier marker, optionally --exact.\n", stderr)
     exit(2)
 }
 
 let appPID = pid_t(rawPID)
 let marker = CommandLine.arguments[2]
+let exactMatch = CommandLine.arguments.count == 4
 let environment = ProcessInfo.processInfo.environment
 let maxNodes = Int(environment["SUISUI_UI_EVIDENCE_AX_MAX_NODES"] ?? "6000") ?? 6000
 
@@ -219,7 +222,7 @@ while cursor < queue.count && visitedCount < maxNodes {
     visitedCount += 1
 
     let identifier = stringValue(copyAttribute(element, "AXIdentifier" as CFString)) ?? ""
-    if identifier.contains(marker) {
+    if exactMatch ? identifier == marker : identifier.contains(marker) {
         if pressElementOrAncestor(element, windows: windows) {
             print("pressed AX element \(identifier)")
             exit(0)

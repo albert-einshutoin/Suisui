@@ -7902,8 +7902,16 @@ final class ReleasePipelineTests: XCTestCase {
 
     func testLayoutStabilitySmokeScriptSamplesImmediateFramesAndWritesArtifacts() throws {
         let script = try readPackageFile("script/check_layout_stability_smoke.sh")
+        XCTAssertTrue(script.contains("click_sidebar_toggle() {\n  click_ax_identifier \"project-board-sidebar-toggle\" --exact\n}"))
+        XCTAssertTrue(script.contains("click_sidebar_toggle\nwait_for_ax_identifier_absent \"project-board-sidebar\"\nassert_layout_stable \"sidebar-hidden\""))
+        XCTAssertFalse(script.contains("tell toolbar 1 of window 1"))
         let frameHelper = try readPackageFile("script/ui_evidence_ax_frame_dump.swift")
+        XCTAssertTrue(frameHelper.contains("kAXSheetRole as String"))
+        XCTAssertTrue(frameHelper.contains("entry.isInSheet ||"))
+        XCTAssertTrue(frameHelper.contains("isInSheet || !isContainedInExpectedWindow"))
         let pressElementHelper = try readPackageFile("script/ui_evidence_ax_press_element.swift")
+        XCTAssertTrue(pressElementHelper.contains("CommandLine.arguments[3] == \"--exact\""))
+        XCTAssertTrue(pressElementHelper.contains("exactMatch ? identifier == marker : identifier.contains(marker)"))
         let resizeWindowHelper = try readPackageFile("script/ui_evidence_ax_resize_window.swift")
         let windowMetadataHelper = try readPackageFile("script/ui_evidence_window_metadata.swift")
         let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")
