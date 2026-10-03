@@ -18,6 +18,48 @@ or SwiftTerm. SwiftUI feature views must not construct SQLite stores directly.
 OAuth, network, Keychain, EventKit, and similar runtime adapters must stay in
 app composition or adapter files.
 
+## Local Workspace Implementation Owners
+
+The macOS client stays in one process. No frontend/backend server split is
+needed for local work. The dependency direction above applies within it.
+
+| Responsibility | Current owner |
+| --- | --- |
+| Board state, initial load, selection, typed failure/retry | `Sources/SuisuiCore/App/ProjectBoard.swift` |
+| Capture values shared by Inbox, menu bar, and palette | `WorkManagement/InboxTaskDraft.swift`, `QuickCaptureDraft.swift` |
+| Atomic Inbox creation, triage, task/project persistence | `WorkManagement/WorkManagementStore.swift`, `WorkManagementSQLiteStore.swift` |
+| Deterministic date, priority, and time-block decisions | `WorkManagement/LocalPlanningPolicy.swift` |
+| Board value/read models | `WorkManagement/ProjectBoardReadModels.swift`, `ProjectBoardPresentationModels.swift` |
+| Inbox, task commands, undo, local schedule, Today | `App/ProjectBoard/ProjectBoard+Inbox.swift`, `+Tasks.swift`, `+Undo.swift`, `+Schedule.swift`, `+Today.swift` |
+| Read-model publication and cache invalidation | `App/ProjectBoard/ProjectBoard+ReadModels.swift`, `+PlanningPolicy.swift` |
+| Reviewed draft translation and task automation | `App/ProjectBoard/ProjectBoard+ReviewDrafts.swift`, `+ReviewDraftPolicy.swift`, `+TaskAutomation.swift` |
+| Queue execution, receipts, external integration | `App/ProjectBoard/ProjectBoard+AssistantQueue.swift`, `+Receipts.swift`, `+Integrations.swift` |
+| Developer automation review and progress | `App/ProjectBoard/ProjectBoard+DeveloperReviews.swift`, `+DeveloperProgress.swift`, `+DeveloperReviewPolicy.swift`, `DeveloperMode/ProjectDevelopmentPresentation.swift` |
+| Asynchronous content search and state | `App/CommandPaletteSearchViewModel.swift`, `Tools/CommandPaletteContentSearch.swift` |
+| macOS shell, platform layout, commands, display values | `SuisuiApp/Views/ProjectBoardView.swift`, `ProjectBoardPlatformPresentation.swift`, `ProjectBoardCommands.swift`, `ProjectBoardDisplay.swift` |
+| Previewed date editing, read-only knowledge destination | `SuisuiApp/Views/QuickCaptureDatePreview.swift`, `KnowledgeFramePreviewView.swift` |
+| Local failure text and redaction | `WorkManagement/LocalWorkspaceFailureMessage.swift`, board `recordFailure` |
+
+Core paths in this table are relative to `Sources/SuisuiCore`. The feature
+extensions are one presentation facade, not independent stores or execution
+engines. Their module-only members let those owners implement the facade;
+clients outside Core still receive read-only published state. Failure is a
+single typed state; `errorMessage` is a read-only projection, not a second
+synchronized error channel.
+
+An Inbox draft always enters one atomic store command, including explicit
+triage metadata. Capturing a due date does not itself classify the input as
+processed. The title-only Store convenience method simply constructs that
+same canonical draft. UI parses input once, edits the displayed draft, and
+saves those exact values. Removing date interpretation retains the raw words.
+
+A content lookup throws on storage failure. Presentation exposes loading,
+empty success, and redacted failure independently. Request identity and task
+cancellation reject late results. Knowledge results open the exact searched
+local content in a read-only preview, with no second network/file operation.
+Origin-tagged board notifications avoid a redundant refresh in the writing
+scene while keeping other scenes and untagged external changes up to date.
+
 ## Domain Table
 
 | Domain | Owns | Current code area | Boundary rule |
@@ -41,9 +83,9 @@ app composition or adapter files.
   stores, `UserDefaults` settings stores, Keychain-backed stores, OAuth
   services, EventKit clients, and Google Calendar runtime factories are allowed.
 - Core presentation view-model exception: `Sources/SuisuiCore/App/ProjectBoard.swift`
-  currently contains `ObservableObject`/`@Published` view-model state without
-  importing SwiftUI. This is allowed until Phase 1 isolates Work Management
-  value types, stores, services, and presentation state in smaller files.
+  contains the `ObservableObject`/`@Published` presentation facade without
+  importing SwiftUI. Value types, stores, pure policies, and feature
+  implementations are separated under the owners listed above.
 - SQLite ownership exception: Core may contain SQLite store implementations and
   app/runtime composition may instantiate them. The boundary violation is a
   SwiftUI feature view owning `SQLiteConnection`, `SQLite*Store`,
@@ -51,8 +93,9 @@ app composition or adapter files.
 - `Sources/SuisuiApp/Adapters/*` may import platform frameworks such as
   AVFoundation, EventKit, UserNotifications, and ServiceManagement because
   those files are adapter boundaries, not feature views.
-- `Sources/SuisuiApp/Views/ProjectBoardView.swift` and
-  `Sources/SuisuiApp/Views/TerminalPanelView.swift` currently import AppKit for
+- `Sources/SuisuiApp/Views/ProjectBoardView.swift`,
+  `Sources/SuisuiApp/Views/ProjectBoardPlatformPresentation.swift`, and
+  `Sources/SuisuiApp/Views/TerminalPanelView.swift` import AppKit for
   macOS-specific presentation/terminal bridging. New business logic, persistence,
   OAuth, network, or EventKit ownership must not be added there.
 - The app target may link narrow runtime packages such as
@@ -83,8 +126,9 @@ app composition or adapter files.
 
 1. Phase 0: add this document and boundary tests only.
 2. Phase 1: split Work Management from `ProjectBoard.swift` into board
-   snapshots, command/application services, stores, and scheduler/read-model
-   helpers without changing public behavior.
+   snapshots, store commands, pure scheduling policies, and feature-owned
+   presentation implementations. These owners are now extracted; future
+   changes should use them rather than grow the facade again.
 3. Phase 2: keep Today, Schedule, Catch Up, Done, Inbox, Assistant Queue, and
    shared layout in their feature-owned view files while preserving stable
    accessibility identifiers and localization. The superseded

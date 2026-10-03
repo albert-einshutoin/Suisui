@@ -7,7 +7,7 @@ struct MenuBarPanel: View {
     @ObservedObject var controller: MenuBarSummaryController
     @ObservedObject var quickCaptureController: MenuBarQuickCaptureController
     @ObservedObject var sceneCoordinator: ProjectBoardSceneCoordinator
-    @State private var quickCaptureTitle = ""
+    @State private var quickCapture = QuickCaptureDraft()
 
     private var viewModel: MenuBarSummaryViewModel {
         controller.viewModel
@@ -70,7 +70,7 @@ struct MenuBarPanel: View {
     private var quickCaptureSection: some View {
         VStack(alignment: .leading, spacing: SuisuiSpacing.sm) {
             HStack(spacing: SuisuiSpacing.sm) {
-                TextField("Quick add to Inbox", text: $quickCaptureTitle)
+                TextField("Quick add to Inbox", text: $quickCapture.input)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(addQuickCapture)
                     .accessibilityIdentifier("menu-bar-quick-capture-title")
@@ -82,12 +82,14 @@ struct MenuBarPanel: View {
                         .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(quickCaptureTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(quickCapture.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .keyboardShortcut(.return, modifiers: [.command])
                 .help("Add to Inbox")
                 .accessibilityIdentifier("menu-bar-quick-capture-button")
                 .accessibilityHint("Adds the typed item to the local Inbox.")
             }
+
+            QuickCaptureDatePreview(capture: $quickCapture, accessibilityPrefix: "menu-bar-quick-capture")
 
             if let errorMessage = quickCaptureController.errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
@@ -189,13 +191,13 @@ struct MenuBarPanel: View {
     }
 
     private func addQuickCapture() {
-        let title = quickCaptureTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = quickCapture.input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else {
             return
         }
 
-        if quickCaptureController.createInboxTask(title: title) != nil {
-            quickCaptureTitle = ""
+        if quickCaptureController.createInboxTask(quickCapture.draft) != nil {
+            quickCapture = QuickCaptureDraft()
             controller.refresh()
         }
     }

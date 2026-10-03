@@ -34,46 +34,23 @@ public final class MenuBarQuickCaptureController: ObservableObject {
         priority: ProjectTaskPriority = .medium,
         dueAt: String? = nil
     ) -> ProjectBoardTask? {
-        var trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty else {
-            errorMessage = "Task title is required."
-            return nil
-        }
+        var draft = dueAt == nil ? InboxTaskDraft.parsing(title) : InboxTaskDraft(title: title, dueAt: dueAt)
+        draft.detail = detail
+        draft.priority = priority
+        return createInboxTask(draft)
+    }
 
-        var resolvedDueAt = dueAt
-        if dueAt == nil {
-            let parsed = QuickAddDueDateParser.parse(trimmedTitle)
-            if let parsedDueAt = parsed.dueAt {
-                trimmedTitle = parsed.title
-                resolvedDueAt = DeadlineDateParser.string(from: parsedDueAt)
-            }
-        }
-
+    @discardableResult
+    public func createInboxTask(_ draft: InboxTaskDraft) -> ProjectBoardTask? {
         do {
-            let store = try resolvedStore()
-            let snapshot = try store.loadSnapshot(includeArchived: false)
-            let inboxProject = try activeInboxProject(in: snapshot, store: store)
-            let task = try store.createTask(ProjectBoardTaskDraft(
-                projectID: inboxProject.id,
-                title: trimmedTitle,
-                detail: detail,
-                status: .backlog,
-                priority: priority,
-                dueAt: resolvedDueAt
-            ))
+            let task = try resolvedStore().createInboxTask(draft)
             errorMessage = nil
             onChange()
             return task
-        } catch ProjectBoardStoreError.emptyTitle {
-            errorMessage = "Task title is required."
-        } catch ProjectBoardStoreError.archivedProjectCannotAcceptTasks {
-            errorMessage = "Restore the project before adding tasks."
-        } catch ProjectBoardStoreError.emptyProjectTitle {
-            errorMessage = "Project title is required."
         } catch {
-            errorMessage = "Project board could not be updated: \(error.localizedDescription)"
+            errorMessage = LocalPathRedactor.redact(LocalWorkspaceFailureMessage.message(for: error))
+            return nil
         }
-        return nil
     }
 
     private func resolvedStore() throws -> any ProjectBoardStore {
@@ -88,19 +65,4 @@ public final class MenuBarQuickCaptureController: ObservableObject {
         return store
     }
 
-    private func activeInboxProject(
-        in snapshot: ProjectBoardSnapshot,
-        store: any ProjectBoardStore
-    ) throws -> ProjectBoardProject {
-        if let inboxProject = snapshot.projects.first(where: {
-            $0.title.caseInsensitiveCompare("Inbox") == .orderedSame && !$0.isArchived
-        }) {
-            return inboxProject
-        }
-
-        // Menu bar capture is intentionally narrower than ProjectBoardViewModel:
-        // it creates the Inbox only when needed and avoids loading receipt history,
-        // assistant queue state, or connector runtimes before the main window opens.
-        return try store.createProject(title: "Inbox")
-    }
 }

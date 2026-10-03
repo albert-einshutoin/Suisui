@@ -194,12 +194,13 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
     }
 
     @discardableResult
-    public func createInboxTask(title: String) throws -> ProjectBoardTask {
-        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    public func createInboxTask(_ draft: InboxTaskDraft) throws -> ProjectBoardTask {
+        let normalizedTitle = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedTitle.isEmpty else {
             throw ProjectBoardStoreError.emptyTitle
         }
 
+        let dueAt = draft.dueAt?.trimmingCharacters(in: .whitespacesAndNewlines)
         return try connection.transaction {
             let inbox = try ensureActiveInboxProject()
             // Quick capture writes through TaskStore directly, so preserve the
@@ -208,9 +209,11 @@ public final class SQLiteProjectBoardStore: ProjectBoardStore, @unchecked Sendab
             let record = try taskStore.create(
                 title: normalizedTitle,
                 projectID: inbox.id,
-                priority: ProjectTaskPriority.medium.rawValue,
+                dueAt: dueAt?.isEmpty == true ? nil : dueAt,
+                priority: draft.priority.rawValue,
                 sourceCommand: "app.project-board.inbox",
-                status: ProjectTaskStatus.backlog.rawValue
+                status: ProjectTaskStatus.backlog.rawValue,
+                detail: draft.detail.trimmingCharacters(in: .whitespacesAndNewlines)
             )
             let task = try makeBoardTask(record).requiredTask()
             try upsertInboxTriageRecord(

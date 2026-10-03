@@ -8,6 +8,7 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
     private var nextMilestoneID: Int64
     private var inboxRecordsByTaskID: [Int64: InboxTriageRecord]
     var inboxTriageReadError: Error?
+    var snapshotReadError: Error?
 
     init(
         snapshot: ProjectBoardSnapshot = ProjectBoardSnapshot(projects: [
@@ -30,10 +31,12 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
     }
 
     func loadSnapshot() throws -> ProjectBoardSnapshot {
-        snapshot
+        if let snapshotReadError { throw snapshotReadError }
+        return snapshot
     }
 
     func loadSnapshot(includeArchived: Bool) throws -> ProjectBoardSnapshot {
+        if let snapshotReadError { throw snapshotReadError }
         if includeArchived {
             return snapshot
         }
@@ -51,8 +54,8 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
     }
 
     @discardableResult
-    func createInboxTask(title: String) throws -> ProjectBoardTask {
-        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    func createInboxTask(_ draft: InboxTaskDraft) throws -> ProjectBoardTask {
+        let normalizedTitle = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedTitle.isEmpty else {
             throw ProjectBoardStoreError.emptyTitle
         }
@@ -65,7 +68,10 @@ final class InMemoryProjectBoardStore: ProjectBoardStore, @unchecked Sendable {
         let task = try createTask(ProjectBoardTaskDraft(
             projectID: inbox.id,
             title: normalizedTitle,
-            status: .backlog
+            detail: draft.detail,
+            status: .backlog,
+            priority: draft.priority,
+            dueAt: draft.dueAt
         ))
         inboxRecordsByTaskID[task.id] = try InboxTriageRecord(
             taskID: task.id,

@@ -33,7 +33,7 @@ Layout-sensitive operation は、ユーザー操作と同じ同期境界で stat
 - 例外は bounded retry にし、user-triggered display-mode/sidebar changes mutate the toolbar synchronously without forcing a full view-tree layout であることをコメントと `AppExperienceSourceTests` で固定する。
 - 例外は runtime smoke を緑にするための隠れ retry ではなく、AppKit object が存在しない期間だけを吸収する。
 
-SwiftUI state mutationは最小scopeのtransactionに閉じる。AppKit interopはProjectBoardToolbarLayoutBridgeView のような局所 bridge に置き、View tree の通常 rendering と責務を混ぜない。
+SwiftUI state mutationは最小scopeのtransactionに閉じる。AppKit interopはProjectBoardToolbarLayoutBridgeView（`ProjectBoardPlatformPresentation.swift`）のような局所 bridge に置き、View tree の通常 rendering と責務を混ぜない。
 
 ## Options Considered
 
@@ -63,7 +63,7 @@ SwiftUI state mutationは最小scopeのtransactionに閉じる。AppKit interop�
 ## Links
 
 - Related task: tasks/Phase14-QualityRegressionHardening.md
-- Related implementation: Sources/SuisuiApp/Views/ProjectBoardView.swift
+- Related implementation: Sources/SuisuiApp/Views/ProjectBoardPlatformPresentation.swift
 - Related tests: Tests/SuisuiCoreTests/AppExperienceSourceTests.swift
 - Related runtime smoke: script/check_layout_stability_smoke.sh
 - Related runtime smoke: script/check_project_board_header_layout_smoke.sh

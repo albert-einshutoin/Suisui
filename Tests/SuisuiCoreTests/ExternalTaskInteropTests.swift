@@ -1202,8 +1202,8 @@ private final class CountingProjectBoardStore: ProjectBoardStore, @unchecked Sen
         try wrapped.loadInboxTriageRecords(taskIDs: taskIDs)
     }
 
-    func createInboxTask(title: String) throws -> ProjectBoardTask {
-        try wrapped.createInboxTask(title: title)
+    func createInboxTask(_ draft: InboxTaskDraft) throws -> ProjectBoardTask {
+        try wrapped.createInboxTask(draft)
     }
 
     func performInboxTriage(

@@ -73,6 +73,7 @@ extension AppRuntimeFactory {
         switch runtime {
         case let .available(connection, projectBoardStore, externalTaskLinkStore, assistantQueueStore, executionReceiptStore, googleCalendarSyncStatus):
             let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)
+            let changeSourceID = UUID()
             return ProjectBoardViewModel(
                 store: projectBoardStore,
                 inboxCaptureStore: inboxCaptureStore,
@@ -104,7 +105,8 @@ extension AppRuntimeFactory {
                         secretStore: secretStore
                     )
                 },
-                onChange: postProjectBoardDidChange
+                changeSourceID: changeSourceID,
+                onChange: { postProjectBoardDidChange(originID: changeSourceID) }
             )
         case let .unavailable(error):
             return ProjectBoardViewModel(store: UnavailableProjectBoardStore(error: error))

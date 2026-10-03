@@ -7299,7 +7299,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("pressButtonContaining \"workflow-task-row-$task_id\""))
         XCTAssertTrue(
             script.contains(
-                "pressButtonContaining \"inbox-quick-add-button\" >&2\n  waitForTextFieldContaining \"inbox-quick-add-title\""
+                "pressButtonContaining \"inbox-quick-add-button\" >&2 || return 1\n  waitForTextFieldContaining \"inbox-quick-add-title\""
             )
         )
         XCTAssertTrue(script.contains("pressButtonContaining \"inbox-action-make-task\""))
@@ -7315,7 +7315,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("t.status='planned' AND t.due_at IS NOT NULL"))
         XCTAssertTrue(script.contains("t.status='backlog' AND t.due_at IS NULL"))
         XCTAssertTrue(script.contains("SELECT count(*) FROM projects WHERE title='AX Runtime Inbox Project Conversion';"))
-        XCTAssertTrue(script.contains("OK: runtime inbox triage smoke covered quick add, make-task, schedule, review-later, project conversion, and undo through the visible app"))
+        XCTAssertTrue(script.contains("OK: runtime inbox triage smoke covered capture preview/removal, triage/undo, knowledge preview, and search failure/retry through the visible app"))
         XCTAssertFalse(script.contains(":memory:"))
         XCTAssertFalse(script.contains("not implemented yet"))
     }

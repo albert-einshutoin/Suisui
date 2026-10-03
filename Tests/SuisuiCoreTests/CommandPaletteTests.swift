@@ -73,7 +73,7 @@ final class CommandPaletteTests: XCTestCase {
         let items = CommandPaletteComposer.items(query: "tdy", projects: [])
 
         XCTAssertEqual(items.first?.id, "create-inbox-task")
-        XCTAssertEqual(items.first?.kind, .createInboxTask(title: "tdy"))
+        XCTAssertEqual(items.first?.kind, .createInboxTask(draft: InboxTaskDraft(title: "tdy")))
         XCTAssertEqual(items.first?.title, "tdy")
         XCTAssertEqual(items.first?.subtitle, "Add to Inbox")
         XCTAssertTrue(items.contains { $0.id == "destination-today" })
@@ -91,13 +91,13 @@ final class CommandPaletteTests: XCTestCase {
 
         XCTAssertTrue(items.contains { $0.kind == .openProject(id: 1, title: "Release prep") })
         XCTAssertFalse(items.contains { $0.id == "project-2" })
-        XCTAssertEqual(items.first?.kind, .createInboxTask(title: "rel"))
+        XCTAssertEqual(items.first?.kind, .createInboxTask(draft: InboxTaskDraft(title: "rel")))
     }
 
     func testQueryTrimsWhitespaceBeforeComposingCreateAction() {
         let items = CommandPaletteComposer.items(query: "  buy milk tomorrow  ", projects: [])
 
-        XCTAssertEqual(items.first?.kind, .createInboxTask(title: "buy milk tomorrow"))
+        XCTAssertEqual(items.first?.kind, .createInboxTask(draft: InboxTaskDraft(title: "buy milk tomorrow")))
     }
 
     func testQueryResultsAreCappedAtTwelveItems() {
@@ -148,7 +148,7 @@ final class CommandPaletteTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(items.first?.kind, .createInboxTask(title: "high"))
+        XCTAssertEqual(items.first?.kind, .createInboxTask(draft: InboxTaskDraft(title: "high")))
         XCTAssertTrue(items.contains { $0.kind == .openSmartList(id: "preset-high-priority", name: "High priority") })
         XCTAssertTrue(items.contains { $0.kind == .openProject(id: 1, title: "High seas") })
         XCTAssertFalse(items.contains { $0.id == "smart-list-saved-1" })
@@ -240,7 +240,7 @@ final class CommandPaletteTests: XCTestCase {
         XCTAssertEqual(short, "tiny note")
     }
 
-    func testContentItemsFromFakeProviderMapToNavigationKindsAndStableIdentifiers() {
+    func testContentItemsFromFakeProviderMapToNavigationKindsAndStableIdentifiers() throws {
         let fakeProvider: CommandPaletteContentSearch = { _ in
             [
                 CommandPaletteContentMatch(
@@ -261,12 +261,12 @@ final class CommandPaletteTests: XCTestCase {
             ]
         }
 
-        let items = CommandPaletteComposer.contentItems(query: "signup", matches: fakeProvider("signup"))
+        let items = CommandPaletteComposer.contentItems(query: "signup", matches: try fakeProvider("signup"))
 
         XCTAssertEqual(items.map(\.id), ["fts-task-7", "fts-task-8", "fts-knowledge-4"])
         XCTAssertEqual(items[0].kind, .revealTask(id: 7, projectID: 12, title: "Write launch email"))
         XCTAssertEqual(items[1].kind, .revealTask(id: 8, projectID: nil, title: "Inbox capture"))
-        XCTAssertEqual(items[2].kind, .openKnowledgeFrame(id: 4, name: "Signup policy"))
+        XCTAssertEqual(items[2].kind, .openKnowledgeFrame(id: 4, name: "Signup policy", content: "Signups require a verified email."))
         XCTAssertEqual(items[0].subtitle, "Mention the beta signup link.")
     }
 

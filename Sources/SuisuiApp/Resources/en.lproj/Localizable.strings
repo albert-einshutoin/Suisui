@@ -2389,3 +2389,18 @@
 "Import user-confirmed weekly record?" = "Import user-confirmed weekly record?";
 "Confirm that commitment, outcome and feedback counts were verified with the participant. Task completion alone is not an achieved outcome." = "Confirm that commitment, outcome and feedback counts were verified with the participant. Task completion alone is not an achieved outcome.";
 "The weekly record could not be imported. Check its participant, week, build and counts." = "The weekly record could not be imported. Check its participant, week, build and counts.";
+
+"Remove due date" = "Remove due date";
+
+"Local knowledge preview" = "Local knowledge preview";
+
+"Searching local content…" = "Searching local content…";
+
+"No matching local content." = "No matching local content.";
+
+"Retry search" = "Retry search";
+
+"Opens a read-only preview of this local knowledge." = "Opens a read-only preview of this local knowledge.";
+
+"Close" = "Close";
+"Today reminder draft status is unavailable. Reload to try again." = "Today reminder draft status is unavailable. Reload to try again.";

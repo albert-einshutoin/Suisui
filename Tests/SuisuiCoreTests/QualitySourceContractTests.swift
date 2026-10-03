@@ -6,7 +6,7 @@ final class QualitySourceContractTests: XCTestCase {
         let docs = try readPackageFile("docs/quality/accessibility-focus-paths.md")
         let script = try readPackageFile("script/check_pseudo_voiceover_paths.sh")
         let preflight = try readPackageFile("script/check_accessibility_preflight.sh")
-        let projectBoard = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let projectBoard = try readProjectBoardImplementation()
         // Accessibility receipts are rendered by the composed board surface;
         // leaf extraction must not make this quality contract file-location
         // dependent.
@@ -91,7 +91,7 @@ final class QualitySourceContractTests: XCTestCase {
         XCTAssertTrue(script.contains("--swift-test"))
         XCTAssertTrue(script.contains("swift test --filter AccessibilityFocusPathAuditTests"))
         XCTAssertTrue(script.contains("swift test --filter SuisuiHarnessTests"))
-        XCTAssertTrue(projectBoard.contains("@Published public private(set) var approvedAutomationExecutionReceipts"))
+        XCTAssertTrue(projectBoard.contains("@Published public internal(set) var approvedAutomationExecutionReceipts"))
         XCTAssertTrue(projectBoard.contains("retainUnexecutedReviewedTasks"))
         XCTAssertTrue(projectBoardView.contains("approved-execution-receipt"))
         XCTAssertTrue(projectBoardView.contains("latestApprovedExecutionReceipt"))

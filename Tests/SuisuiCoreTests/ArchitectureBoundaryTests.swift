@@ -2,6 +2,20 @@ import Foundation
 import XCTest
 
 final class ArchitectureBoundaryTests: XCTestCase {
+    func testLocalWorkspaceFacadeHasFeatureOwnersAndOneFailureState() throws {
+        let facade = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        XCTAssertTrue(facade.contains("public var errorMessage: String? { failure?.message }"))
+        XCTAssertFalse(facade.contains("isSynchronizingFailure"))
+        XCTAssertFalse(facade.contains("Compatibility overload"))
+        for operation in ["prepareScheduleDraft", "createInboxTask", "runAssistantQueueItem", "prepareDevelopmentCommitReview"] {
+            XCTAssertFalse(facade.contains("func \(operation)("), "\(operation) belongs to its feature owner")
+        }
+        let policy = try readPackageFile("Sources/SuisuiCore/WorkManagement/LocalPlanningPolicy.swift")
+        for dependency in ["ProjectBoardViewModel", "ProjectBoardStore", "SQLite", "URLSession", "@Published", "@MainActor"] {
+            XCTAssertFalse(policy.contains(dependency), "Pure local planning must not depend on \(dependency)")
+        }
+    }
+
     func testDomainBoundaryDocumentationDefinesOwnershipAndDependencyDirection() throws {
         let doc = try readPackageFile("docs/architecture/domain-boundaries.md")
 

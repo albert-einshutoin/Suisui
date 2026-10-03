@@ -88,7 +88,11 @@ enum AppRuntimeFactory {
     }
 
     static func postProjectBoardDidChange() {
-        NotificationCenter.default.post(name: .suisuiProjectBoardDidChange, object: nil)
+        postProjectBoardDidChange(originID: nil)
+    }
+
+    static func postProjectBoardDidChange(originID: UUID?) {
+        NotificationCenter.default.post(name: .suisuiProjectBoardDidChange, object: originID)
     }
 
     static func applicationDatabaseURL() throws -> URL {

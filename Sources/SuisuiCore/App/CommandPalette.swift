@@ -2,9 +2,8 @@ import Foundation
 
 /// Actions the Project Board command palette (⌘K) can execute.
 public enum CommandPaletteActionKind: Equatable, Sendable {
-    /// Creates a task in the Inbox from the palette query text. Natural-language
-    /// due-date parsing happens downstream in `createInboxTask`, not here.
-    case createInboxTask(title: String)
+    /// Presentation supplies the exact previewed local draft on execution.
+    case createInboxTask(draft: InboxTaskDraft)
     case openDestination(ProjectBoardSidebarDestination)
     case openProject(id: Int64, title: String)
     case openSmartList(id: String, name: String)
@@ -13,11 +12,8 @@ public enum CommandPaletteActionKind: Equatable, Sendable {
     /// Content-search hit on a task title/detail. Reveals the task on the
     /// board: the owning project when one exists, otherwise the Inbox.
     case revealTask(id: Int64, projectID: Int64?, title: String)
-    /// Content-search hit on a knowledge frame. Knowledge frames have no
-    /// dedicated browsing surface (and no owning project) yet, so executing
-    /// this action currently only dismisses the palette; the matched snippet
-    /// in the row is the visible payload.
-    case openKnowledgeFrame(id: Int64, name: String)
+    /// Open a read-only preview of the exact local content shown by search.
+    case openKnowledgeFrame(id: Int64, name: String, content: String)
 }
 
 /// A full-text/content hit produced by a palette content-search provider.
@@ -43,7 +39,7 @@ public struct CommandPaletteContentMatch: Equatable, Sendable {
 /// Injected palette content-search closure. The UI debounces keystrokes and
 /// calls this off the main actor; tests substitute their own closure while
 /// the app wires the SQLite-backed `CommandPaletteContentSearchService`.
-public typealias CommandPaletteContentSearch = @Sendable (String) -> [CommandPaletteContentMatch]
+public typealias CommandPaletteContentSearch = @Sendable (String) throws -> [CommandPaletteContentMatch]
 
 public struct CommandPaletteItem: Identifiable, Equatable, Sendable {
     public let id: String
@@ -165,7 +161,7 @@ public enum CommandPaletteComposer {
                     title: match.title,
                     subtitle: snippet.isEmpty ? nil : snippet,
                     systemImage: "book",
-                    kind: .openKnowledgeFrame(id: id, name: match.title)
+                    kind: .openKnowledgeFrame(id: id, name: match.title, content: match.content)
                 )
             }
         }
@@ -312,7 +308,7 @@ public enum CommandPaletteComposer {
             title: title,
             subtitle: "Add to Inbox",
             systemImage: "plus.circle",
-            kind: .createInboxTask(title: title)
+            kind: .createInboxTask(draft: InboxTaskDraft(title: title))
         )
     }
 }
