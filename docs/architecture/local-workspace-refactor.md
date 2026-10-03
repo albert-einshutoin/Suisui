@@ -63,3 +63,10 @@ No server, new dependency, or persistent schema migration is needed.
 - Final complete CI, current-source UI, Companion review, and hosted checks
   are merge gates. Their final results and reviewed head are recorded in the
   associated PR; the plan alone does not claim those gates passed.
+- Complete CI exposed two additional local-flow defects: native toolbar
+  cleanup could remove the custom sidebar button by its shared help text, and
+  Git process capture could wait forever when stderr filled before exit. The
+  toolbar now has a stable native product ID. Git/GitHub CLI share concurrent
+  stdout/stderr capture while retaining their command and approval boundaries.
+  Their focused checks cover native/custom items, both output streams beyond
+  pipe capacity, nonzero exit status, and launch failure.

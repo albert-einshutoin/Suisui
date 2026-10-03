@@ -43,8 +43,6 @@ public struct ProcessGitCommandRunner: GitCommandRunner {
         throw GitReadOnlyError.workspaceUnavailable("Git command execution is available only on macOS.")
         #else
         let process = Process()
-        let standardOutput = Pipe()
-        let standardError = Pipe()
 
         let environment = ProcessInfo.processInfo.environment
         if let smokeOutput = Self.runtimeDevelopmentSmokePushOutput(
@@ -71,19 +69,12 @@ public struct ProcessGitCommandRunner: GitCommandRunner {
             process.arguments = ["git"] + arguments
         }
         process.currentDirectoryURL = workingDirectory
-        process.standardOutput = standardOutput
-        process.standardError = standardError
-
-        try process.run()
-        process.waitUntilExit()
-
-        let outputData = standardOutput.fileHandleForReading.readDataToEndOfFile()
-        let errorData = standardError.fileHandleForReading.readDataToEndOfFile()
+        let captured = try ProcessCapturedOutput.run(process)
 
         return GitCommandOutput(
-            standardOutput: String(data: outputData, encoding: .utf8) ?? "",
-            standardError: String(data: errorData, encoding: .utf8) ?? "",
-            exitCode: process.terminationStatus
+            standardOutput: String(data: captured.standardOutput, encoding: .utf8) ?? "",
+            standardError: String(data: captured.standardError, encoding: .utf8) ?? "",
+            exitCode: captured.exitCode
         )
         #endif
     }
