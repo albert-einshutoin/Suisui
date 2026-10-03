@@ -49,8 +49,6 @@ public struct ProcessGitHubCLICommandRunner: GitHubCLICommandRunner {
         )
         #else
         let process = Process()
-        let standardOutput = Pipe()
-        let standardError = Pipe()
         let environment = ProcessInfo.processInfo.environment
 
         // Runtime UI smoke must exercise the approval path without contacting
@@ -66,23 +64,17 @@ public struct ProcessGitHubCLICommandRunner: GitHubCLICommandRunner {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["gh"] + arguments
         process.currentDirectoryURL = workingDirectory
-        process.standardOutput = standardOutput
-        process.standardError = standardError
         process.environment = [
             "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
             "HOME": ProcessInfo.processInfo.environment["HOME"] ?? NSHomeDirectory()
         ]
 
-        try process.run()
-        process.waitUntilExit()
-
-        let outputData = standardOutput.fileHandleForReading.readDataToEndOfFile()
-        let errorData = standardError.fileHandleForReading.readDataToEndOfFile()
+        let captured = try ProcessCapturedOutput.run(process)
 
         return GitHubCLICommandOutput(
-            standardOutput: String(data: outputData, encoding: .utf8) ?? "",
-            standardError: String(data: errorData, encoding: .utf8) ?? "",
-            exitCode: process.terminationStatus
+            standardOutput: String(data: captured.standardOutput, encoding: .utf8) ?? "",
+            standardError: String(data: captured.standardError, encoding: .utf8) ?? "",
+            exitCode: captured.exitCode
         )
         #endif
     }

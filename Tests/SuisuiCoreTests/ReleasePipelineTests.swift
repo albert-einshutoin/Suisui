@@ -7299,7 +7299,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("pressButtonContaining \"workflow-task-row-$task_id\""))
         XCTAssertTrue(
             script.contains(
-                "pressButtonContaining \"inbox-quick-add-button\" >&2\n  waitForTextFieldContaining \"inbox-quick-add-title\""
+                "pressButtonContaining \"inbox-quick-add-button\" >&2 || return 1\n  waitForTextFieldContaining \"inbox-quick-add-title\""
             )
         )
         XCTAssertTrue(script.contains("pressButtonContaining \"inbox-action-make-task\""))
@@ -7315,7 +7315,7 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertTrue(script.contains("t.status='planned' AND t.due_at IS NOT NULL"))
         XCTAssertTrue(script.contains("t.status='backlog' AND t.due_at IS NULL"))
         XCTAssertTrue(script.contains("SELECT count(*) FROM projects WHERE title='AX Runtime Inbox Project Conversion';"))
-        XCTAssertTrue(script.contains("OK: runtime inbox triage smoke covered quick add, make-task, schedule, review-later, project conversion, and undo through the visible app"))
+        XCTAssertTrue(script.contains("OK: runtime inbox triage smoke covered capture preview/removal, triage/undo, knowledge preview, and search failure/retry through the visible app"))
         XCTAssertFalse(script.contains(":memory:"))
         XCTAssertFalse(script.contains("not implemented yet"))
     }
@@ -7900,10 +7900,85 @@ final class ReleasePipelineTests: XCTestCase {
         XCTAssertFalse(script.contains("fake success"))
     }
 
+    func testHeaderResizeRequiresRealTransitionAndFreshContent() throws {
+        let source = try readPackageFile("script/check_project_board_header_layout_smoke.sh")
+        let start = try XCTUnwrap(source.range(of: "resize_window_below_minimum() {"))
+        let end = try XCTUnwrap(source.range(of: "\n\nassert_utility_menu_items_reachable() {", range: start.upperBound..<source.endIndex))
+        let function = String(source[start.lowerBound..<end.lowerBound])
+        let directory = packageRoot().appendingPathComponent(".build/test-header-resize-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let content = directory.appendingPathComponent("content.txt")
+        let harness = directory.appendingPathComponent("harness.sh")
+        let contentReader = directory.appendingPathComponent("window_content_size")
+        try "#!/bin/bash\ncat \"$1\"\n".write(to: contentReader, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: contentReader.path)
+        try """
+        set -euo pipefail
+        TIMEOUT_SECONDS=1
+        CONTENT_SIZE_FILE="$1"
+        OUTPUT_DIR="$2"
+        mode="$3"
+        app_pid=42
+        window_id=42; window_x=120; window_y=160; window_width=960; window_height=760
+        phase=0
+        read_window_metadata() {
+          if [[ "$mode" == replacement || "$mode" == drift ]]; then
+            if [[ "$phase" -eq 1 ]]; then
+              phase=2
+            elif [[ "$phase" -eq 2 ]]; then
+              [[ "$mode" != replacement ]] || window_id=$((window_id + 1))
+              window_width=960
+              phase=3
+            fi
+          elif [[ "$mode" == final-replacement ]]; then
+            if [[ "$phase" -eq 4 ]]; then
+              phase=5
+            elif [[ "$phase" -eq 5 ]]; then
+              window_id=$((window_id + 1))
+              phase=6
+            fi
+          fi
+        }
+        wait_for_window_metadata() { read_window_metadata; }
+        run_bounded_ax_tool() {
+          if [[ "$mode" != no-op && "$7" -ge 960 ]]; then
+            window_width="$7"; window_height="$8"
+            [[ "$7" -ne 1024 ]] || phase=1
+            if [[ "$mode" == final-replacement && "$7" -eq 960 ]]; then phase=4; fi
+            if [[ "$mode" == fresh || "$mode" == replacement || "$mode" == drift || "$mode" == final-replacement ]]; then
+              printf '%s 708\\n' "$window_width" > "$CONTENT_SIZE_FILE.next"
+              mv "$CONTENT_SIZE_FILE.next" "$CONTENT_SIZE_FILE"
+            fi
+          fi
+          return 3
+        }
+        \(function)
+        resize_window_below_minimum
+        """.write(to: harness, atomically: true, encoding: .utf8)
+        for mode in ["no-op", "stale", "replacement", "drift", "final-replacement", "fresh"] {
+            try "960 708\n".write(to: content, atomically: true, encoding: .utf8)
+            let result = try runTool(["bash", harness.path, content.path, directory.path, mode])
+            if mode == "fresh" {
+                XCTAssertEqual(result.exitCode, 0, result.output)
+            } else {
+                XCTAssertNotEqual(result.exitCode, 0, "\(mode) must not prove that resizing works: \(result.output)")
+            }
+        }
+    }
+
     func testLayoutStabilitySmokeScriptSamplesImmediateFramesAndWritesArtifacts() throws {
         let script = try readPackageFile("script/check_layout_stability_smoke.sh")
+        XCTAssertTrue(script.contains("click_sidebar_toggle() {\n  click_ax_identifier \"project-board-sidebar-toggle\" --exact\n}"))
+        XCTAssertTrue(script.contains("click_sidebar_toggle\nwait_for_ax_identifier_absent \"project-board-sidebar\"\nassert_layout_stable \"sidebar-hidden\""))
+        XCTAssertFalse(script.contains("tell toolbar 1 of window 1"))
         let frameHelper = try readPackageFile("script/ui_evidence_ax_frame_dump.swift")
+        XCTAssertTrue(frameHelper.contains("kAXSheetRole as String"))
+        XCTAssertTrue(frameHelper.contains("entry.isInSheet ||"))
+        XCTAssertTrue(frameHelper.contains("isInSheet || !isContainedInExpectedWindow"))
         let pressElementHelper = try readPackageFile("script/ui_evidence_ax_press_element.swift")
+        XCTAssertTrue(pressElementHelper.contains("[\"--exact\", \"--center\"].contains(CommandLine.arguments[3])"))
+        XCTAssertTrue(pressElementHelper.contains("exactMatch ? identifier == marker : identifier.contains(marker)"))
         let resizeWindowHelper = try readPackageFile("script/ui_evidence_ax_resize_window.swift")
         let windowMetadataHelper = try readPackageFile("script/ui_evidence_window_metadata.swift")
         let phase = try readPackageFile("tasks/Phase14-QualityRegressionHardening.md")

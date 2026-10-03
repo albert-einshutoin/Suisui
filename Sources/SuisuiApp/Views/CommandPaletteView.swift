@@ -7,19 +7,38 @@ import SwiftUI
 struct CommandPaletteView: View {
     let projects: [(id: Int64, title: String, isArchived: Bool)]
     var smartLists: [(id: String, name: String)] = []
-    var contentSearch: CommandPaletteContentSearch?
     let onExecute: (CommandPaletteActionKind) -> Void
     let onDismiss: () -> Void
 
-    /// Fuzzy filtering stays instant; the SQLite-backed content search only
-    /// fires this long after the last keystroke so fast typing never queries.
-    private static let contentSearchDebounceNanoseconds: UInt64 = 150_000_000
-
-    @State private var query = ""
+    @StateObject private var searchModel: CommandPaletteSearchViewModel
+    @State private var capture = QuickCaptureDraft()
     @State private var selectedIndex = 0
-    @State private var contentItems: [CommandPaletteItem] = []
-    @State private var contentSearchTask: Task<Void, Never>?
+    @State private var retryRevision = 0
     @FocusState private var isInputFocused: Bool
+
+    init(
+        projects: [(id: Int64, title: String, isArchived: Bool)],
+        smartLists: [(id: String, name: String)] = [],
+        contentSearch: CommandPaletteContentSearch? = nil,
+        onExecute: @escaping (CommandPaletteActionKind) -> Void,
+        onDismiss: @escaping () -> Void
+    ) {
+        self.projects = projects
+        self.smartLists = smartLists
+        self.onExecute = onExecute
+        self.onDismiss = onDismiss
+        _searchModel = StateObject(wrappedValue: CommandPaletteSearchViewModel(provider: contentSearch))
+    }
+
+    private var query: String { capture.input }
+    private var contentItems: [CommandPaletteItem] {
+        CommandPaletteComposer.contentItems(query: query, matches: searchModel.matches)
+    }
+
+    private struct SearchRequest: Hashable {
+        let query: String
+        let revision: Int
+    }
 
     private var items: [CommandPaletteItem] {
         CommandPaletteComposer.items(query: query, projects: projects, smartLists: smartLists)
@@ -43,10 +62,13 @@ struct CommandPaletteView: View {
         }
         .onChange(of: query) { _, newQuery in
             selectedIndex = 0
-            scheduleContentSearch(for: newQuery)
+            searchModel.reset()
+        }
+        .task(id: SearchRequest(query: query, revision: retryRevision)) {
+            await searchModel.search(query: query)
         }
         .onDisappear {
-            contentSearchTask?.cancel()
+            searchModel.reset()
         }
     }
 
@@ -54,7 +76,7 @@ struct CommandPaletteView: View {
         let primaryItems = items
         let visibleItems = CommandPaletteComposer.visibleItems(primary: primaryItems, content: contentItems)
         return VStack(spacing: 0) {
-            TextField("Type a command or task…", text: $query)
+            TextField("Type a command or task…", text: $capture.input)
                 .textFieldStyle(.plain)
                 .font(.title3)
                 .focused($isInputFocused)
@@ -76,6 +98,12 @@ struct CommandPaletteView: View {
                 .padding(SuisuiSpacing.lg)
                 .accessibilityIdentifier("command-palette-input")
 
+            QuickCaptureDatePreview(capture: $capture, accessibilityPrefix: "command-palette")
+                .padding(.horizontal, SuisuiSpacing.lg)
+            searchStatus
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, SuisuiSpacing.lg)
             Divider()
 
             ScrollViewReader { proxy in
@@ -206,7 +234,7 @@ struct CommandPaletteView: View {
         case .revealTask:
             return "Opens this task on the Project Board."
         case .openKnowledgeFrame:
-            return "Closes the palette. Knowledge frames do not have a dedicated view yet."
+            return "Opens a read-only preview of this local knowledge."
         default:
             return ""
         }
@@ -224,37 +252,26 @@ struct CommandPaletteView: View {
         }
     }
 
-    /// Debounced content search: cancels the in-flight lookup on every
-    /// keystroke and reruns the injected provider off the main actor once the
-    /// query has been stable for 150ms. Queries under the minimum length clear
-    /// the section immediately.
-    private func scheduleContentSearch(for newQuery: String) {
-        contentSearchTask?.cancel()
-        let trimmedQuery = newQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Content rows belong to the previous query. Clear them before the
-        // debounce so keyboard and pointer actions can never execute stale
-        // results while the next SQLite lookup is pending.
-        contentItems = []
-        guard let contentSearch,
-              trimmedQuery.count >= CommandPaletteComposer.minimumContentSearchQueryLength else {
-            return
-        }
-
-        contentSearchTask = Task {
-            try? await Task.sleep(nanoseconds: Self.contentSearchDebounceNanoseconds)
-            guard !Task.isCancelled else {
-                return
+    @ViewBuilder
+    private var searchStatus: some View {
+        switch searchModel.state {
+        case .idle:
+            EmptyView()
+        case .loading:
+            Label("Searching local content…", systemImage: "magnifyingglass")
+                .accessibilityIdentifier("command-palette-search-loading")
+        case .loaded(let matches):
+            if matches.isEmpty {
+                Text("No matching local content.")
+                    .accessibilityIdentifier("command-palette-search-empty")
             }
-            let matches = await Task.detached {
-                contentSearch(trimmedQuery)
-            }.value
-            guard !Task.isCancelled else {
-                return
+        case .failed(let message):
+            HStack {
+                Text(message).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("command-palette-search-error")
+                Button("Retry search") { retryRevision += 1 }
+                    .accessibilityIdentifier("command-palette-search-retry")
             }
-            guard query.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedQuery else {
-                return
-            }
-            contentItems = CommandPaletteComposer.contentItems(query: trimmedQuery, matches: matches)
         }
     }
 
@@ -274,8 +291,12 @@ struct CommandPaletteView: View {
     }
 
     private func execute(_ item: CommandPaletteItem) {
-        onExecute(item.kind)
-        query = ""
+        if case .createInboxTask = item.kind {
+            onExecute(.createInboxTask(draft: capture.draft))
+        } else {
+            onExecute(item.kind)
+        }
+        capture = QuickCaptureDraft()
         selectedIndex = 0
     }
 }

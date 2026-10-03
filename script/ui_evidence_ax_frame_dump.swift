@@ -140,10 +140,16 @@ func isContainedInExpectedWindow(position: CGPoint, dimensions: CGSize) -> Bool 
 }
 
 func traverse(_ roots: [AXUIElement], overlayOnly: Bool) {
-    var queue = roots
+    var queue = roots.map { (element: $0, isInSheet: false) }
     var cursor = 0
     while cursor < queue.count && visitedCount < maxNodes {
-        let element = queue[cursor]
+        let entry = queue[cursor]
+        let element = entry.element
+        // A compact inspector sheet is an overlay even when AX publishes it
+        // under the main window and its frame fits inside that window. Keep
+        // inline inspectors in the body overlap/clipping checks.
+        let isInSheet = entry.isInSheet ||
+            stringValue(copyAttribute(element, kAXRoleAttribute as CFString)) == (kAXSheetRole as String)
         cursor += 1
         visitedCount += 1
 
@@ -161,7 +167,7 @@ func traverse(_ roots: [AXUIElement], overlayOnly: Bool) {
             ]
             if overlayOnly || (
                 overlayIdentifiers.contains(identifier)
-                    && !isContainedInExpectedWindow(position: position, dimensions: dimensions)
+                    && (isInSheet || !isContainedInExpectedWindow(position: position, dimensions: dimensions))
             ) {
                 fields.append("overlay")
             }
@@ -169,7 +175,9 @@ func traverse(_ roots: [AXUIElement], overlayOnly: Bool) {
         }
 
         for attribute in childAttributes {
-            queue.append(contentsOf: elements(from: copyAttribute(element, attribute as CFString)))
+            queue.append(contentsOf: elements(from: copyAttribute(element, attribute as CFString)).map {
+                (element: $0, isInSheet: isInSheet)
+            })
         }
     }
 }

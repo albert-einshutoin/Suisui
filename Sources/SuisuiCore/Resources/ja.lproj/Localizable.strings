@@ -72,3 +72,6 @@
 "%d items synced" = "%d件を同期済み";
 "Last synced %@. %@" = "最終同期 %@。%@";
 "%@: %@." = "%1$@: %2$@。";
+
+"Content search failed. Try again." = "内容の検索に失敗しました。再試行してください。";
+"Today reminder draft status is unavailable. Reload to try again." = "今日のリマインダー下書きの状態を確認できません。再読み込みしてお試しください。";

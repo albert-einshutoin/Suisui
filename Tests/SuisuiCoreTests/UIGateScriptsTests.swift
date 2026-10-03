@@ -1,4 +1,5 @@
 import Foundation
+@testable import SuisuiCore
 import XCTest
 
 final class UIGateScriptsTests: XCTestCase {
@@ -1172,16 +1173,12 @@ final class UIGateScriptsTests: XCTestCase {
         environment: [String: String] = [:]
     ) throws -> (exitCode: Int32, output: String) {
         let process = Process()
-        let pipe = Pipe()
         process.executableURL = URL(fileURLWithPath: arguments[0])
         process.arguments = Array(arguments.dropFirst())
         process.currentDirectoryURL = packageRoot()
-        process.standardOutput = pipe
-        process.standardError = pipe
         process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
-        try process.run()
-        process.waitUntilExit()
-        let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        return (process.terminationStatus, output)
+        let captured = try ProcessCapturedOutput.run(process)
+        let output = String(decoding: captured.standardOutput + captured.standardError, as: UTF8.self)
+        return (captured.exitCode, output)
     }
 }

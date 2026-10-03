@@ -1,4 +1,5 @@
 import Foundation
+@testable import SuisuiCore
 import XCTest
 
 final class MCPInspectorEvidenceTests: XCTestCase {
@@ -350,15 +351,9 @@ final class MCPInspectorEvidenceTests: XCTestCase {
         process.currentDirectoryURL = packageRoot()
         process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
 
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = output
-
-        try process.run()
-        process.waitUntilExit()
-
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
+        let captured = try ProcessCapturedOutput.run(process)
+        let data = captured.standardOutput + captured.standardError
+        return (captured.exitCode, String(data: data, encoding: .utf8) ?? "")
     }
 
     private func packageRoot() -> URL {

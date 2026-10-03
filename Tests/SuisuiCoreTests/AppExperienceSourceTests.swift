@@ -693,7 +693,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testBoardRoutePriorityAndFocusCancellationAreDeterministic() throws {
-        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardShellImplementation()
         let transient = try XCTUnwrap(source.range(of: "if let transientBoardRoute"))
         let environment = try XCTUnwrap(
             source.range(
@@ -715,7 +715,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testVoiceDailyPlanningUsesTypedRouteForCatchUpAndQueueOutcomes() throws {
-        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardShellImplementation()
         let start = try XCTUnwrap(source.range(of: "private func handleVoiceDailyPlanningReviewRequest(\n        sourceTranscript:"))
         let end = try XCTUnwrap(source.range(of: "private func playDailyPlanningReadoutFromSettings", range: start.lowerBound..<source.endIndex))
         let block = String(source[start.lowerBound..<end.lowerBound])
@@ -825,7 +825,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testWorkPreservesReceiptHistoryAndCompactSmartListDeletion() throws {
         let hub = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardWorkHubView.swift")
-        let board = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let board = try readProjectBoardShellImplementation()
         XCTAssertTrue(hub.contains("compactDestination(.review(.automationActivity), title: \"Automation Activity\")"))
         XCTAssertTrue(hub.contains("workRow(.review(.automationActivity), title: \"Automation Activity\", systemImage: \"doc.text.magnifyingglass\")"))
         XCTAssertTrue(hub.contains("work-hub-compact-delete-smart-list"))
@@ -941,7 +941,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardLoadFailureIsNotRenderedAsNoProjects() throws {
-        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardShellImplementation()
 
         XCTAssertTrue(source.contains("Project Board Unavailable"))
         XCTAssertTrue(source.contains("case .fatal(let message, let canRetry) = viewModel.errorPresentation"))
@@ -954,7 +954,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testTaskInspectorUsesNativeOptionalDateEditingAndRecoverableSaveFeedback() throws {
         let source = try readProjectBoardSurfaceSources()
-        let modelSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let modelSource = try readProjectBoardImplementation()
         let taskInspector = try sourceBlock(
             in: source,
             from: "struct TaskInspectorView: View",
@@ -983,7 +983,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardRetryContextsMapBackToTheirOriginalOperations() throws {
-        let source = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let source = try readProjectBoardImplementation()
 
         let expectedMappings = [
             "case .createTask(let draft):": "_ = createTask(",
@@ -1007,7 +1007,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardRecoverableMessagesHaveEnglishAndJapaneseLocalizations() throws {
-        let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let coreSource = try readProjectBoardImplementation()
         let english = try readPackageFile("Sources/SuisuiApp/Resources/en.lproj/Localizable.strings")
         let japanese = try readPackageFile("Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings")
         let messages = [
@@ -1179,8 +1179,8 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testSelectionOnlyTodayRefreshReusesPlanPreviewAndRecommendationChips() throws {
-        let source = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
-        let start = try XCTUnwrap(source.range(of: "private func refreshTodayDerivedReadModelForSelectionChange()"))
+        let source = try readProjectBoardImplementation()
+        let start = try XCTUnwrap(source.range(of: "func refreshTodayDerivedReadModelForSelectionChange()"))
         let end = try XCTUnwrap(source.range(of: "private func makeCachedDailyPlanningReviewPreview(", range: start.upperBound..<source.endIndex))
         let selectionRefresh = String(source[start.lowerBound..<end.lowerBound])
 
@@ -1199,7 +1199,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardRuntimeLoadsAssistantQueueReadModel() throws {
         let appSource = try readAppShellSource()
-        let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let coreSource = try readProjectBoardImplementation()
         let reviewSessionSource = try readPackageFile("Sources/SuisuiCore/Review/ReviewSessionViewModel.swift")
 
         XCTAssertTrue(appSource.contains("assistantQueueStore: SQLiteAssistantQueueStore(connection: connection)"))
@@ -1210,7 +1210,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("managedAIUsageLedgerStore: SQLiteManagedAIUsageLedgerStore(connection: connection)"))
         XCTAssertTrue(appSource.contains("managedAIBillingSettingsProvider: { loadRuntimeAppSettings().managedAIBilling }"))
         XCTAssertTrue(appSource.contains("return AssistantQueueExecutionCoordinator("))
-        XCTAssertTrue(coreSource.contains("@Published public private(set) var assistantQueueSnapshot: AssistantQueueSnapshot"))
+        XCTAssertTrue(coreSource.contains("@Published public internal(set) var assistantQueueSnapshot: AssistantQueueSnapshot"))
         XCTAssertTrue(coreSource.contains("AssistantQueueReadModel.snapshot("))
         XCTAssertTrue(reviewSessionSource.contains("executionReceiptStore?.list(limit: 100)"))
     }
@@ -1219,7 +1219,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readProjectBoardSurfaceSources()
         let workflowSource = try readProjectWorkflowSources()
         let persistenceSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoardSelectionPersistence.swift")
-        let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let coreSource = try readProjectBoardImplementation()
 
         XCTAssertTrue(persistenceSource.contains("case assistantQueue"))
         XCTAssertTrue(persistenceSource.contains("return \"assistant-queue\""))
@@ -1579,7 +1579,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testAppearanceSelectionIsConfiguredOnlyFromSettings() throws {
         let appSource = try readAppShellSource()
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardShellImplementation()
         let appearanceSectionSource = try readPackageFile("Sources/SuisuiApp/Views/SettingsAppearanceSection.swift")
 
         XCTAssertTrue(appSource.contains("SettingsAppearanceSection(appearancePreference: context.$appearancePreference, languagePreference: context.$languagePreference)"))
@@ -1727,7 +1727,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readProjectBoardSurfaceSources()
         let workflowSource = try readProjectWorkflowSources()
         let appSource = try readAppShellSource()
-        let coreBoardSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let coreBoardSource = try readProjectBoardImplementation()
         let japaneseKeys = try localizableKeys(in: "Sources/SuisuiApp/Resources/ja.lproj/Localizable.strings")
 
         XCTAssertTrue(boardSource.contains("localizedTaskCount(project.taskCount)"))
@@ -1799,7 +1799,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testCalmSignalDeskTokensStayOutOfNativeContainerRoots() throws {
         let designSource = try readPackageFile("Sources/SuisuiApp/Views/SuisuiDesignSystem.swift")
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardShellImplementation()
         let settingsSource = try readSettingsSurfaceSources()
 
         XCTAssertTrue(designSource.contains("func soloAssistantSignal() -> some View"))
@@ -2158,7 +2158,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardUsesOneNativeContextualToolbarLayer() throws {
         let appSource = try readAppShellSource()
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardShellImplementation()
         let toolbarSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardToolbarContent.swift")
 
         XCTAssertTrue(appSource.contains(".windowStyle(.hiddenTitleBar)"))
@@ -2413,21 +2413,6 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(source.contains(".help(task.detail)"))
     }
 
-    func testCommandPaletteClearsStaleContentBeforeStartingAnotherDebouncedSearch() throws {
-        let source = try readPackageFile("Sources/SuisuiApp/Views/CommandPaletteView.swift")
-        let searchFunction = try sourceBlock(
-            in: source,
-            from: "private func scheduleContentSearch(for newQuery: String)",
-            to: "private func moveSelection("
-        )
-        let clearRange = try XCTUnwrap(searchFunction.range(of: "contentItems = []"))
-        let providerGuardRange = try XCTUnwrap(searchFunction.range(of: "guard let contentSearch"))
-        let taskRange = try XCTUnwrap(searchFunction.range(of: "contentSearchTask = Task"))
-
-        XCTAssertLessThan(clearRange.lowerBound, providerGuardRange.lowerBound)
-        XCTAssertLessThan(clearRange.lowerBound, taskRange.lowerBound)
-    }
-
     func testFullVisualCaptureFinishesBoardAndSettingsRoutesBeforeVoiceWindows() throws {
         let script = try readPackageFile("script/capture_ui_evidence.sh")
         let fullCaptureStart = try XCTUnwrap(
@@ -2512,7 +2497,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardWindowRestorationUsesNarrowPresentationOnlyBridge() throws {
         let appSource = try readAppShellSource()
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardShellImplementation()
         let bridgeSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardWindowStateBridge.swift")
         let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoardWindowPresentationState.swift")
 
@@ -2561,7 +2546,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardHeaderIsSharedAndColumnsUseSynchronizedBounds() throws {
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardShellImplementation()
         let appSource = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
         let detailStart = try XCTUnwrap(boardSource.range(of: "} detail: {"))
         let inspectorStart = try XCTUnwrap(boardSource.range(of: ".inspector(isPresented: wideInspectorBinding)"))
@@ -2634,7 +2619,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardHeaderLayoutBridgeAvoidsDelayedCorrectionDuringStateChanges() throws {
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardShellImplementation()
         let bridgeStart = try XCTUnwrap(boardSource.range(of: "private final class ProjectBoardToolbarLayoutBridgeView"))
         let appKitEnd = try XCTUnwrap(boardSource.range(of: "#else", range: bridgeStart.upperBound..<boardSource.endIndex))
         let bridgeSource = String(boardSource[bridgeStart.lowerBound..<appKitEnd.lowerBound])
@@ -2651,9 +2636,9 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testRuntimeDiagnosticsExposeOnlyStablePublicDiagnosticValues() throws {
-        let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let coreSource = try readProjectBoardImplementation()
         let dailyPlanningSource = try readPackageFile("Sources/SuisuiCore/App/DailyPlanningReview.swift")
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardShellImplementation()
         let bridgeStart = try XCTUnwrap(boardSource.range(of: "private final class ProjectBoardToolbarLayoutBridgeView"))
         let appKitEnd = try XCTUnwrap(boardSource.range(of: "#else", range: bridgeStart.upperBound..<boardSource.endIndex))
         let bridgeSource = String(boardSource[bridgeStart.lowerBound..<appKitEnd.lowerBound])
@@ -2727,11 +2712,11 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(timerCorrections.isEmpty, timerCorrections.joined(separator: "\n"))
         XCTAssertEqual(delayedCorrections.count, 2, delayedCorrections.joined(separator: "\n"))
         XCTAssertTrue(
-            delayedCorrections.allSatisfy { $0.hasPrefix("Sources/SuisuiApp/Views/ProjectBoardView.swift:") },
+            delayedCorrections.allSatisfy { $0.hasPrefix("Sources/SuisuiApp/Views/ProjectBoardPlatformPresentation.swift:") },
             delayedCorrections.joined(separator: "\n")
         )
 
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardShellImplementation()
         let bridgeStart = try XCTUnwrap(boardSource.range(of: "private final class ProjectBoardToolbarLayoutBridgeView"))
         let appKitEnd = try XCTUnwrap(boardSource.range(of: "#else", range: bridgeStart.upperBound..<boardSource.endIndex))
         let bridgeSource = String(boardSource[bridgeStart.lowerBound..<appKitEnd.lowerBound])
@@ -2743,7 +2728,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testLayoutSensitiveStateMutationsUseSynchronousTransactionPolicy() throws {
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardShellImplementation()
         let toggleStart = try XCTUnwrap(boardSource.range(of: "private func toggleSidebarVisibility()"))
         let toolbarBridgeStart = try XCTUnwrap(boardSource.range(of: "private func refreshProjectBoardColumnsAfterToolbarDisplayModeChange()"))
         let toggleSource = String(boardSource[toggleStart.lowerBound..<toolbarBridgeStart.lowerBound])
@@ -2761,7 +2746,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardReplacesDefaultSidebarToggleWithShortAdaptiveToolbarItem() throws {
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardShellImplementation()
         let toolbarSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardToolbarContent.swift")
         let toggleStart = try XCTUnwrap(boardSource.range(of: "private func toggleSidebarVisibility()"))
         let toolbarBridgeStart = try XCTUnwrap(boardSource.range(of: "private func refreshProjectBoardColumnsAfterToolbarDisplayModeChange()"))
@@ -2793,6 +2778,22 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardHeaderLayoutRuntimeSmokeCoversNativeChromeMinimumWidthAndUtilities() throws {
         let script = try readPackageFile("script/check_project_board_header_layout_smoke.sh")
+        let pressHelper = try readPackageFile("script/ui_evidence_ax_press_element.swift")
+        let resizeHelper = try readPackageFile("script/ui_evidence_ax_resize_window.swift")
+        XCTAssertTrue(resizeHelper.contains("sizeRequestRejected = sizeStatus == .attributeUnsupported"))
+        XCTAssertTrue(resizeHelper.contains("if sizeRequestRejected {\n    fputs(\"AX size request was rejected; the original owned window frame remains readable.\\n\", stderr)\n    exit(3)\n}"))
+        XCTAssertTrue(script.contains("\"$OUTPUT_DIR/ax_press_element\" \"$app_pid\" --toolbar-count"))
+        XCTAssertTrue(script.contains("\"$OUTPUT_DIR/ax_press_element\" \"$app_pid\" --menu-item-state"))
+        XCTAssertFalse(script.contains("count of toolbars of candidateWindow"))
+        XCTAssertFalse(script.contains("tell toolbar 1 of window 1"))
+        XCTAssertTrue(pressHelper.contains("kAXToolbarRole as String"))
+        XCTAssertTrue(pressHelper.contains("projectBoardWindows.count == 1"))
+        XCTAssertTrue(pressHelper.contains("toolbars.count == 1"))
+        XCTAssertTrue(pressHelper.contains("kAXMenuItemRole as String"))
+        XCTAssertTrue(pressHelper.contains("frame(of: element) != nil"))
+        XCTAssertTrue(script.contains("wait_for_toolbar_buttons \"sidebar-visibility\" \\\n    \"project-board-sidebar-toggle\" \"project-board-integrations-menu\" || return 1"))
+        XCTAssertTrue(script.contains("required_identifiers=(\"project-board-sidebar-toggle\" \"project-board-inspector-toggle\" \"project-board-integrations-menu\")"))
+        XCTAssertTrue(script.contains("if [[ \"$status\" -ne 0 && \"$status\" -ne 3 ]]; then"))
 
         XCTAssertTrue(script.contains("./script/build_and_run.sh --build-only"))
         XCTAssertTrue(script.contains("Project Board schema was not initialized for native toolbar smoke"))
@@ -2818,8 +2819,9 @@ final class AppExperienceSourceTests: XCTestCase {
         let toolbarStart = try XCTUnwrap(script.range(of: "assert_single_native_toolbar() {"))
         let toolbarEnd = try XCTUnwrap(script.range(of: "\n}\n", range: toolbarStart.upperBound..<script.endIndex))
         let toolbarSource = String(script[toolbarStart.lowerBound..<toolbarEnd.lowerBound])
-        XCTAssertTrue(toolbarSource.contains("project-board-sidebar-toggle"))
-        XCTAssertTrue(toolbarSource.contains("project-board-integrations-menu"))
+        XCTAssertTrue(pressHelper.contains("project-board-sidebar-toggle"))
+        XCTAssertTrue(pressHelper.contains("project-board-integrations-menu"))
+        XCTAssertTrue(toolbarSource.contains("--toolbar-count"))
         XCTAssertFalse(toolbarSource.contains("project-board-detail"))
         XCTAssertTrue(script.contains("assert_action_buttons_are_trailing"))
         XCTAssertTrue(script.contains("assert_utility_menu_items_reachable"))
@@ -2868,13 +2870,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(keyboardShortcutSource.contains("if [[ \"$focus_board\" == \"focus-board\" ]]"))
         XCTAssertTrue(keyboardShortcutSource.contains("AXMenuItemCmdChar"))
         XCTAssertTrue(keyboardShortcutSource.contains("PID-owned command menu item did not become enabled"))
+        XCTAssertTrue(keyboardShortcutSource.contains("\"$OUTPUT_DIR/ax_keyboard_shortcut\" \"$app_pid\" \"$key_code\" \"$modifier\""))
+        let keyboardHelper = try readPackageFile("script/ui_evidence_ax_keyboard_shortcut.swift")
+        XCTAssertTrue(keyboardHelper.contains("event.post(tap: .cghidEventTap)"))
+        XCTAssertTrue(keyboardHelper.contains("NSWorkspace.shared.frontmostApplication?.processIdentifier == pid"))
+        XCTAssertFalse(keyboardShortcutSource.contains("key code targetKeyCode"))
         let clickCenterStart = try XCTUnwrap(script.range(of: "click_ax_identifier_center() {"))
         let clickCenterEnd = try XCTUnwrap(
             script.range(of: "\n}\n\nwait_for_ax_identifier_present()", range: clickCenterStart.upperBound..<script.endIndex)
         )
         let clickCenterSource = String(script[clickCenterStart.lowerBound..<clickCenterEnd.lowerBound])
-        XCTAssertTrue(clickCenterSource.contains("/usr/bin/osascript - \"$app_pid\""))
-        XCTAssertTrue(clickCenterSource.contains("repeat with candidateWindow in windows"))
+        XCTAssertTrue(clickCenterSource.contains("\"$OUTPUT_DIR/ax_press_element\" \"$app_pid\" \"$target_identifier\" --center"))
+        XCTAssertTrue(pressHelper.contains("guard clickElementCenter(element, windows: windows) else"))
+        XCTAssertTrue(pressHelper.contains("NSRunningApplication(processIdentifier: appPID)"))
         XCTAssertFalse(clickCenterSource.contains("window 1"))
         XCTAssertTrue(script.contains("press_keyboard_shortcut 40 \"command\""))
         XCTAssertFalse(script.contains("exercise_primary_destination_shortcut()"))
@@ -2895,7 +2903,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(script.contains("project-board-fallback-loading"))
         XCTAssertTrue(script.contains("index($1, wanted \"-\") == 1"))
         XCTAssertTrue(script.contains("wait_for_ax_identifier_absent \"open-panel\""))
-        XCTAssertTrue(script.contains("for helper in ax_resize_window ax_frame_dump window_content_size"))
+        XCTAssertTrue(script.contains("for helper in ax_resize_window ax_frame_dump ax_press_element ax_keyboard_shortcut window_content_size"))
         XCTAssertTrue(script.contains("700 500 120 160"))
         XCTAssertTrue(script.contains("supported 960x760 resize did not produce fresh frame/content evidence"))
         XCTAssertTrue(script.contains("restore_project_board_window"))
@@ -2948,7 +2956,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardDropPayloadsAreValidatedByViewModel() throws {
         let boardSource = try readProjectBoardSurfaceSources()
-        let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let coreSource = try readProjectBoardImplementation()
         let storeSource = try readPackageFile("Sources/SuisuiCore/WorkManagement/WorkManagementStore.swift")
 
         XCTAssertTrue(boardSource.contains(".draggable(String(task.id))"))
@@ -2967,7 +2975,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readProjectBoardSurfaceSources()
         let workflowSource = try readProjectWorkflowSources()
         let persistenceSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoardSelectionPersistence.swift")
-        let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let coreSource = try readProjectBoardImplementation()
         let modelSource = try readPackageFile("Sources/SuisuiCore/WorkManagement/WorkManagementModels.swift")
 
         XCTAssertTrue(persistenceSource.contains("case done"))
@@ -3010,12 +3018,12 @@ final class AppExperienceSourceTests: XCTestCase {
         let todayFeatureSource = try readPackageFile("Sources/SuisuiCore/App/TodayFeatureViewModel.swift")
         let scheduleWorkflowSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowScheduleView.swift")
         let doneWorkflowSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift")
-        let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let coreSource = try readProjectBoardImplementation()
         let sqliteStoreSource = try readPackageFile("Sources/SuisuiCore/WorkManagement/WorkManagementSQLiteStore.swift")
 
         XCTAssertTrue(coreSource.contains("public struct ProjectBoardDerivedReadModels"))
-        XCTAssertTrue(coreSource.contains("@Published public private(set) var derivedReadModels"))
-        XCTAssertTrue(coreSource.contains("private func rebuildDerivedReadModels("))
+        XCTAssertTrue(coreSource.contains("@Published public internal(set) var derivedReadModels"))
+        XCTAssertTrue(coreSource.contains("func rebuildDerivedReadModels("))
         XCTAssertTrue(coreSource.contains("public func refreshScheduleReadModel("))
         XCTAssertTrue(boardSource.contains("let sidebarMetrics = viewModel.derivedReadModels.sidebarMetrics"))
         XCTAssertTrue(boardSource.contains("today: sidebarMetrics.todayCount"))
@@ -3468,10 +3476,10 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectBoardGroupsWorkDestinationsUnderWorkHub() throws {
         let source = try readProjectBoardSurfaceSources()
-        let ownerSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let ownerSource = try readProjectBoardShellImplementation()
         let workHubSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardWorkHubView.swift")
         let workflowSource = try readProjectWorkflowSources()
-        let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let coreSource = try readProjectBoardImplementation()
 
         XCTAssertTrue(source.contains("ProjectBoardSidebarView("))
         XCTAssertTrue(source.contains("sidebar-destination-secretary"))
@@ -3503,7 +3511,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let dashboardSource = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardView.swift")
         let calendarFactorySource = try readPackageFile("Sources/SuisuiApp/Composition/GoogleCalendarRuntimeCompositionFactory.swift")
         let doneWorkflowSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowDoneView.swift")
-        let boardSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let boardSource = try readProjectBoardImplementation()
 
         XCTAssertTrue(dashboardSource.contains("today-briefing-panel"))
         XCTAssertTrue(dashboardSource.contains("@State private var isWideReviewActionsExpanded = true"))
@@ -3566,7 +3574,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testPrimaryDestinationsOwnCommandNumberShortcutsAndInboxUsesControlCommand() throws {
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardShellImplementation()
         let appSource = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
         let coordinatorSource = try readPackageFile("Sources/SuisuiApp/Composition/ProjectBoardSceneCoordinator.swift")
         let windowBridgeSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardWindowStateBridge.swift")
@@ -3609,11 +3617,11 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testInboxActionPanelSurfacesClassificationFeedbackAndUndo() throws {
         let workflowSource = try readProjectWorkflowSources()
-        let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let coreSource = try readProjectBoardImplementation()
         let modelSource = try readPackageFile("Sources/SuisuiCore/WorkManagement/WorkManagementModels.swift")
 
         XCTAssertTrue(modelSource.contains("public struct InboxClassificationFeedback"))
-        XCTAssertTrue(coreSource.contains("@Published public private(set) var inboxClassificationFeedback"))
+        XCTAssertTrue(coreSource.contains("@Published public internal(set) var inboxClassificationFeedback"))
         XCTAssertTrue(coreSource.contains("public func undoLastInboxClassification()"))
         XCTAssertTrue(workflowSource.contains("if let feedback = viewModel.inboxClassificationFeedback"))
         XCTAssertTrue(workflowSource.contains("Label(feedback.message, systemImage: feedback.systemImage)"))
@@ -3722,7 +3730,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let workflowSource = try readProjectWorkflowSources()
         let inboxWorkflowSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift")
         let appSource = try readAppShellSource()
-        let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let coreSource = try readProjectBoardImplementation()
         let modelSource = try readPackageFile("Sources/SuisuiCore/WorkManagement/WorkManagementModels.swift")
         let voiceSource = try readPackageFile("Sources/SuisuiCore/Voice/InboxCapture.swift")
 
@@ -3847,7 +3855,7 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(workflowSource.contains("Transcript failed. Review the original voice memo before converting."))
         XCTAssertTrue(workflowSource.contains("AI interpretation unavailable because transcription failed."))
         XCTAssertTrue(workflowSource.contains("No AI interpretation yet."))
-        XCTAssertTrue(coreSource.contains("private var inboxCaptureRecordsByTaskID: [Int64: [InboxCaptureRecord]]"))
+        XCTAssertTrue(coreSource.contains("var inboxCaptureRecordsByTaskID: [Int64: [InboxCaptureRecord]]"))
         XCTAssertTrue(coreSource.contains("$0.transcriptionStatus == .succeeded"))
         XCTAssertTrue(appSource.contains("let inboxCaptureStore = SQLiteInboxCaptureStore(connection: connection)"))
         XCTAssertTrue(appSource.contains("inboxCaptureStore: inboxCaptureStore"))
@@ -3971,14 +3979,14 @@ final class AppExperienceSourceTests: XCTestCase {
     func testInboxReferenceUIUsesPersistedTriageLifecycle() throws {
         let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowInboxView.swift")
 
-        XCTAssertTrue(source.contains("viewModel.createInboxTask(title: title)"))
+        XCTAssertTrue(source.contains("viewModel.createInboxTask(quickCapture.draft)"))
         XCTAssertTrue(source.contains("task.createdAt"))
         XCTAssertTrue(source.contains("viewModel.inboxTriageRecord(for:"))
         XCTAssertTrue(source.contains("viewModel.refreshInboxReviewAvailability(at:"))
     }
 
     func testInboxSelectionKeepsTriageInWorkflowInsteadOfInspector() throws {
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardShellImplementation()
         let workflowSource = try readProjectWorkflowSources()
 
         XCTAssertTrue(boardSource.contains("InboxWorkflowView("))
@@ -4102,7 +4110,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectDetailOrganizesTasksArtifactsTimelineAndSuggestions() throws {
         let source = try readProjectBoardSurfaceSources()
-        let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let coreSource = try readProjectBoardImplementation()
         let modelSource = try readPackageFile("Sources/SuisuiCore/WorkManagement/WorkManagementModels.swift")
         let storeSource = try readPackageFile("Sources/SuisuiCore/WorkManagement/WorkManagementStore.swift")
         let sqliteStoreSource = try readPackageFile("Sources/SuisuiCore/WorkManagement/WorkManagementSQLiteStore.swift")
@@ -4269,7 +4277,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testProjectDetailSurfacesMilestonesTimelineAndAssistantWithoutDroppingExistingSections() throws {
         let source = try readProjectBoardSurfaceSources()
-        let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let coreSource = try readProjectBoardImplementation()
         let modelSource = try readPackageFile("Sources/SuisuiCore/WorkManagement/WorkManagementModels.swift")
 
         XCTAssertTrue(source.contains("ProjectMilestoneSection(project: project, viewModel: viewModel)"))
@@ -4522,7 +4530,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testTodayWorkflowShowsRecommendationDueCountsAndTimeBlocks() throws {
         let workflowSource = try readProjectWorkflowSources()
-        let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let coreSource = try readProjectBoardImplementation()
         let modelSource = try readPackageFile("Sources/SuisuiCore/WorkManagement/WorkManagementModels.swift")
         let dailyPlanningSource = try readPackageFile("Sources/SuisuiCore/App/DailyPlanningReview.swift")
         let dailyPlanningDraftSource = try readPackageFile("Sources/SuisuiCore/App/DailyPlanningActionDraft.swift")
@@ -4667,7 +4675,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testSceneRequestPayloadIsStoredBeforePublicationAndCannotRewriteInitialRoute() throws {
         let voiceSource = try readPackageFile("Sources/SuisuiApp/Views/VoiceCaptureView.swift")
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardShellImplementation()
 
         for (functionName, storeMarker, requestMarker, discardMarker, endMarker) in [
             (
@@ -4769,7 +4777,7 @@ final class AppExperienceSourceTests: XCTestCase {
     func testVoiceInboxTriageBridgeUsesLocalProjectBoardInboxCommands() throws {
         let voiceSource = try readPackageFile("Sources/SuisuiCore/Voice/VoiceCaptureViewModel.swift")
         let appSource = try readAppShellSource()
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardShellImplementation()
 
         XCTAssertTrue(voiceSource.contains("public struct VoiceInboxTriageRequest"))
         XCTAssertTrue(voiceSource.contains("@Published public private(set) var inboxTriageRequest"))
@@ -4878,7 +4886,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let snapshotBuilder = try readPackageFile("Sources/SuisuiCore/App/TodayDashboardSnapshot.swift")
         let featureViewModel = try readPackageFile("Sources/SuisuiCore/App/TodayFeatureViewModel.swift")
         let todayWorkflow = try readPackageFile("Sources/SuisuiApp/Views/ProjectWorkflowTodayView.swift")
-        let board = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let board = try readProjectBoardShellImplementation()
 
         XCTAssertTrue(dashboard.contains("TodayDashboardSnapshotBuilder.make("))
         XCTAssertTrue(dashboard.contains("VisualEvidenceRuntimeContext.referenceDate()"))
@@ -5247,7 +5255,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let boardSource = try readProjectBoardSurfaceSources()
         let workflowSource = try readProjectWorkflowSources()
         let persistenceSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoardSelectionPersistence.swift")
-        let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let coreSource = try readProjectBoardImplementation()
         let modelSource = try readPackageFile("Sources/SuisuiCore/WorkManagement/WorkManagementModels.swift")
 
         XCTAssertTrue(boardSource.contains("sidebar-destination-schedule"))
@@ -5298,7 +5306,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testScheduleWorkflowShowsLocalDailyWorkloadDashboardWithoutCalendarWrites() throws {
         let workflowSource = try readProjectWorkflowSources()
-        let coreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let coreSource = try readProjectBoardImplementation()
         let workloadSource = try readPackageFile("Sources/SuisuiCore/App/DailyWorkloadDashboard.swift")
         let weeklySource = try readPackageFile("Sources/SuisuiCore/App/WeeklyScheduleCockpit.swift")
         let captureScript = try readPackageFile("script/capture_ui_evidence.sh")
@@ -5546,7 +5554,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testScheduleRemainsATopLevelWorkflow() throws {
-        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let source = try readProjectBoardShellImplementation()
 
         XCTAssertTrue(source.contains("case .review(.schedule):"))
         XCTAssertTrue(source.contains("ScheduleWorkflowView(viewModel: viewModel)"))
@@ -5600,6 +5608,19 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertEqual(labelSource.components(separatedBy: "controller.refresh()").count - 1, 2)
     }
 
+    func testBoardChangeNotificationUsesOriginAwareRefresh() throws {
+        let source = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let start = try XCTUnwrap(source.range(of: ".onReceive(NotificationCenter.default.publisher(for: .suisuiProjectBoardDidChange))"))
+        let end = try XCTUnwrap(source.range(of: ".onReceive(", range: start.upperBound..<source.endIndex))
+        let handler = String(source[start.lowerBound..<end.lowerBound])
+        XCTAssertTrue(handler.contains("viewModel.reloadAfterChange(from: notification.object as? UUID)"))
+        XCTAssertFalse(handler.contains("viewModel.load()"))
+        let followUp = try XCTUnwrap(handler.range(of: "viewModel.scheduleMissedTaskDailyFollowUp("))
+        let originReturn = try XCTUnwrap(handler.range(of: "guard didReload else { return }"))
+        XCTAssertLessThan(followUp.lowerBound, originReturn.lowerBound,
+                          "An origin notification must still re-evaluate missed-task follow-up")
+    }
+
     func testMenuBarPanelProvidesFastInboxCaptureWithLightweightController() throws {
         let appSource = try readAppShellSource()
         let phase = try readPackageFile("tasks/Phase11-ProviderSyncUXProductization.md")
@@ -5610,14 +5631,14 @@ final class AppExperienceSourceTests: XCTestCase {
         XCTAssertTrue(appSource.contains("quickCaptureController: menuBarQuickCaptureController,"))
         XCTAssertTrue(appSource.contains("sceneCoordinator: projectBoardSceneCoordinator"))
         XCTAssertTrue(appSource.contains("@ObservedObject var quickCaptureController: MenuBarQuickCaptureController"))
-        XCTAssertTrue(appSource.contains("@State private var quickCaptureTitle = \"\""))
-        XCTAssertTrue(appSource.contains("TextField(\"Quick add to Inbox\", text: $quickCaptureTitle)"))
-        XCTAssertTrue(appSource.contains("quickCaptureController.createInboxTask(title: title)"))
+        XCTAssertTrue(appSource.contains("@State private var quickCapture = QuickCaptureDraft()"))
+        XCTAssertTrue(appSource.contains("TextField(\"Quick add to Inbox\", text: $quickCapture.input)"))
+        XCTAssertTrue(appSource.contains("quickCaptureController.createInboxTask(quickCapture.draft)"))
         XCTAssertTrue(appSource.contains("MenuBarQuickCaptureController(\n            storeFactory: {"))
         XCTAssertTrue(appSource.contains(".keyboardShortcut(.return, modifiers: [.command])"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"menu-bar-quick-capture-title\")"))
         XCTAssertTrue(appSource.contains(".accessibilityIdentifier(\"menu-bar-quick-capture-button\")"))
-        XCTAssertTrue(appSource.contains("NotificationCenter.default.post(name: .suisuiProjectBoardDidChange, object: nil)"))
+        XCTAssertTrue(appSource.contains("NotificationCenter.default.post(name: .suisuiProjectBoardDidChange, object: originID)"))
         XCTAssertFalse(appSource.contains("_menuBarQuickCaptureViewModel = StateObject(wrappedValue: AppRuntimeFactory.makeProjectBoardViewModel())"))
         XCTAssertFalse(appSource.contains("quickCaptureViewModel.load()"))
         XCTAssertTrue(audit.contains("menu bar Quick AddからInboxへ0画面遷移で実タスクを作れる"))
@@ -5675,7 +5696,7 @@ final class AppExperienceSourceTests: XCTestCase {
 
     func testSettingsEvidenceOpensTheInBoardWorkspace() throws {
         let appSource = try readPackageFile("Sources/SuisuiApp/SuisuiApp.swift")
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardShellImplementation()
         let settingsSource = try readPackageFile("Sources/SuisuiApp/Views/SettingsView.swift")
         let functionStart = try XCTUnwrap(
             appSource.range(of: "private func openInAppSettingsForEvidenceIfRequested()")
@@ -7522,7 +7543,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardGoogleCalendarSyncMenuUsesRuntimeReadinessInsteadOfHardcodedDisabled() throws {
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardShellImplementation()
         let toolbarSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardToolbarContent.swift")
         let menuStart = try XCTUnwrap(toolbarSource.range(of: "Button(action: onRequestGoogleCalendarSync)"))
         let menuEnd = try XCTUnwrap(toolbarSource.range(of: "if context.showsAutomation", range: menuStart.lowerBound..<toolbarSource.endIndex))
@@ -7538,7 +7559,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     func testProjectBoardGoogleCalendarSyncRequiresDialogApprovalToken() throws {
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardShellImplementation()
         let dialogStart = try XCTUnwrap(boardSource.range(of: ".confirmationDialog(\n                \"Sync due tasks to Google Calendar?\""))
         let dialogEnd = try XCTUnwrap(boardSource.range(of: "private var projectBoardLifecycleChrome", range: dialogStart.lowerBound..<boardSource.endIndex))
         let dialogSource = String(boardSource[dialogStart.lowerBound..<dialogEnd.lowerBound])
@@ -7643,7 +7664,7 @@ final class AppExperienceSourceTests: XCTestCase {
         let seederSource = try readPackageFile("Sources/SuisuiVisualFixtureSeeder/main.swift")
         let windowMetadataScript = try readPackageFile("script/ui_evidence_window_metadata.swift")
         let contentCheckScript = try readPackageFile("script/ui_evidence_content_check.swift")
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        let boardSource = try readProjectBoardShellImplementation()
         let persistenceSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoardSelectionPersistence.swift")
         let evidence = try readPackageFile("docs/release/evidence/ui-screenshots.md")
         let audit = try readPackageFile("docs/ux/click-path-audit.md")
@@ -8659,8 +8680,8 @@ final class AppExperienceSourceTests: XCTestCase {
         let dashboardViewSource = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardView.swift")
         let railSource = try readPackageFile("Sources/SuisuiApp/Views/TodayDashboardRailView.swift")
         let featureViewModelSource = try readPackageFile("Sources/SuisuiCore/App/TodayFeatureViewModel.swift")
-        let boardSource = try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
-        let projectBoardCoreSource = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let boardSource = try readProjectBoardShellImplementation()
+        let projectBoardCoreSource = try readProjectBoardImplementation()
         let appSettingsSource = try readPackageFile("Sources/SuisuiCore/App/AppSettings.swift")
         let settingsSource = try readPackageFile("Sources/SuisuiApp/Views/SettingsView.swift")
         let runtimeBundleSource = try readPackageFile("Sources/SuisuiApp/Composition/ProjectBoardRuntimeFactory.swift")
@@ -8914,7 +8935,7 @@ final class AppExperienceSourceTests: XCTestCase {
     }
 
     private func readProjectBoardOwnerSource() throws -> String {
-        try readPackageFile("Sources/SuisuiApp/Views/ProjectBoardView.swift")
+        try readProjectBoardShellImplementation()
     }
 
     private func readProjectBoardDetailSource() throws -> String {

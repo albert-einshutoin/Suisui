@@ -7216,7 +7216,7 @@ final class ProjectBoardStoreTests: XCTestCase {
         XCTAssertEqual(viewModel.inboxTriageCount(for: .voice), 2)
         XCTAssertEqual(viewModel.inboxTriageCount(for: .aiSuggested), 1)
         XCTAssertEqual(viewModel.inboxTriageCount(for: .manual), 2)
-        XCTAssertEqual(viewModel.inboxTriageCount(for: .unprocessed), 3)
+        XCTAssertEqual(viewModel.inboxTriageCount(for: .unprocessed), 4)
 
         viewModel.setInboxTriageFilter(.voice)
         XCTAssertEqual(viewModel.filteredInboxTasks.map(\.id), [suggested.id, voice.id])
@@ -10356,7 +10356,7 @@ private final class PartiallyFailingBulkMoveProjectBoardStore: ProjectBoardStore
         return [:]
     }
 
-    func createInboxTask(title: String) throws -> ProjectBoardTask {
+    func createInboxTask(_ draft: InboxTaskDraft) throws -> ProjectBoardTask {
         throw ProjectBoardStoreTestError.unavailable
     }
 

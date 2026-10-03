@@ -2389,3 +2389,18 @@
 "Import user-confirmed weekly record?" = "利用者確認済みの週次記録をインポートしますか？";
 "Confirm that commitment, outcome and feedback counts were verified with the participant. Task completion alone is not an achieved outcome." = "約束・成果・フィードバックの件数を参加者と確認したことを確認してください。タスクの完了だけでは成果達成とみなしません。";
 "The weekly record could not be imported. Check its participant, week, build and counts." = "週次記録をインポートできませんでした。参加者・週・ビルド・件数を確認してください。";
+
+"Remove due date" = "期限の解釈を解除";
+
+"Local knowledge preview" = "ローカルの関連情報";
+
+"Searching local content…" = "ローカルの内容を検索中…";
+
+"No matching local content." = "一致するローカルの内容はありません。";
+
+"Retry search" = "検索を再試行";
+
+"Opens a read-only preview of this local knowledge." = "このローカル情報の閲覧用プレビューを開きます。";
+
+"Close" = "閉じる";
+"Today reminder draft status is unavailable. Reload to try again." = "今日のリマインダー下書きの状態を確認できません。再読み込みしてお試しください。";

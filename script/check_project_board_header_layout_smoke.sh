@@ -206,7 +206,7 @@ run_bounded_ax_tool() {
 
 prepare_header_layout_candidate() {
   ./script/build_and_run.sh --build-only
-  for helper in ax_resize_window ax_frame_dump window_content_size; do
+  for helper in ax_resize_window ax_frame_dump ax_press_element ax_keyboard_shortcut window_content_size; do
     /usr/bin/swiftc "$ROOT_DIR/script/ui_evidence_${helper}.swift" -o "$OUTPUT_DIR/$helper"
   done
   # This smoke owns its isolated database. Reusing an interrupted zero-byte
@@ -378,41 +378,7 @@ launch_runtime_crud_recovery_candidate() {
 
 assert_single_native_toolbar() {
   local count
-  count="$(/usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT'
-on containsIdentifier(uiElement, targetIdentifier, depth)
-  tell application "System Events"
-    try
-      if value of attribute "AXIdentifier" of uiElement is targetIdentifier then return true
-    end try
-    if depth < 8 then
-      try
-        repeat with childElement in UI elements of uiElement
-          if my containsIdentifier(childElement, targetIdentifier, depth + 1) then return true
-        end repeat
-      end try
-    end if
-  end tell
-  return false
-end containsIdentifier
-
-on run argv
-  set appName to item 1 of argv
-  set targetPID to (item 2 of argv) as integer
-  tell application "System Events"
-    set matchingProcesses to every process whose unix id is targetPID
-    if (count of matchingProcesses) is not 1 then return "0"
-    tell item 1 of matchingProcesses
-      repeat with candidateWindow in windows
-        if my containsIdentifier(candidateWindow, "project-board-sidebar-toggle", 0) and my containsIdentifier(candidateWindow, "project-board-integrations-menu", 0) then
-          return (count of toolbars of candidateWindow) as text
-        end if
-      end repeat
-      return "0"
-    end tell
-  end tell
-end run
-APPLESCRIPT
-)"
+  count="$(run_bounded_ax_tool "$OUTPUT_DIR/ax_press_element" "$app_pid" --toolbar-count)" || return 1
   if [[ "$count" != "1" ]]; then
     echo "BLOCKER: expected one native Project Board toolbar, observed $count" >&2
     return 1
@@ -421,47 +387,64 @@ APPLESCRIPT
 }
 
 resize_window_below_minimum() {
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  local initial_id initial_frame initial_stamp positive_id positive_frame positive_stamp status=0
-  local attempt positive_ready=0
-  # A SwiftUI scene can replace its AX window during hydration. Retry only a
-  # failed window read, at most once, and prove the replacement independently.
+  local deadline initial_id initial_stamp positive_id positive_frame positive_stamp status=0
+  local attempt requested_width positive_ready=0 transition_ready
+  # Start at a different supported width so an unsupported no-op at 960 cannot
+  # pass. Every requested transition requires the same window and fresh content.
+  # One attempt owns one window ID for the entire sequence. Hydration or frame
+  # drift invalidates that attempt; the bounded retry restages both widths.
   for attempt in 1 2; do
     read_window_metadata
     initial_id="$window_id"
-    initial_frame="$window_width $window_height"
-    initial_stamp="$(stat -f '%i:%m' "$CONTENT_SIZE_FILE")"
-    status=0
-    run_bounded_ax_tool "$OUTPUT_DIR/ax_resize_window" \
-      "$app_pid" "$window_x" "$window_y" "$window_width" "$window_height" \
-      960 760 120 160 || status=$?
-    if [[ "$status" -ne 0 ]]; then
-      if [[ "$status" -ne 1 || "$attempt" -eq 2 ]]; then
-        echo "BLOCKER: supported resize failed with AX helper status $status" >&2
-        return 1
-      fi
-      sleep 0.2
-      continue
-    fi
-    deadline=$((SECONDS + TIMEOUT_SECONDS))
-    while [[ "$SECONDS" -lt "$deadline" ]]; do
+    for requested_width in 1024 960; do
       read_window_metadata
       [[ "$window_id" == "$initial_id" ]] || break
-      if [[ "$window_width $window_height" == "960 760" ]] &&
-        { [[ "$initial_frame" == "960 760" ]] ||
-          [[ "$(stat -f '%i:%m' "$CONTENT_SIZE_FILE")" != "$initial_stamp" ]]; }; then
-        assert_window_respects_minimum
+      if [[ "$requested_width" -eq 960 && "$window_width $window_height" != "1024 760" ]]; then
+        break
+      fi
+      if [[ "$requested_width" -eq 1024 && "$window_width $window_height" == "1024 760" ]]; then
+        continue
+      fi
+      initial_stamp="$(stat -f '%i:%m' "$CONTENT_SIZE_FILE")"
+      status=0
+      run_bounded_ax_tool "$OUTPUT_DIR/ax_resize_window" \
+        "$app_pid" "$window_x" "$window_y" "$window_width" "$window_height" \
+        "$requested_width" 760 120 160 || status=$?
+      # Status 3 is unconfirmed, never success by itself. Verify its effects
+      # independently, including when AX reports attributeUnsupported.
+      if [[ "$status" -ne 0 && "$status" -ne 3 ]]; then
+        if [[ "$status" -ne 1 || "$attempt" -eq 2 ]]; then
+          echo "BLOCKER: supported resize failed with AX helper status $status" >&2
+          return 1
+        fi
+        sleep 0.2
+        break
+      fi
+      deadline=$((SECONDS + TIMEOUT_SECONDS))
+      transition_ready=0
+      while [[ "$SECONDS" -lt "$deadline" ]]; do
+        read_window_metadata
+        [[ "$window_id" == "$initial_id" ]] || break
+        if [[ "$window_width $window_height" == "$requested_width 760" ]] &&
+          [[ "$(stat -f '%i:%m' "$CONTENT_SIZE_FILE")" != "$initial_stamp" ]]; then
+          transition_ready=1
+          break
+        fi
+        sleep 0.1
+      done
+      [[ "$transition_ready" -eq 1 ]] || break
+      if [[ "$requested_width" -eq 960 ]]; then
+        assert_window_respects_minimum "$initial_id"
         positive_ready=1
         break 2
       fi
-      sleep 0.1
     done
   done
   if [[ "$positive_ready" -ne 1 ]]; then
     echo "BLOCKER: supported 960x760 resize did not produce fresh frame/content evidence" >&2
     return 1
   fi
-  positive_id="$window_id"
+  positive_id="$initial_id"
   positive_frame="$window_x $window_y $window_width $window_height"
   positive_stamp="$(stat -f '%i:%m' "$CONTENT_SIZE_FILE")"
   status=0
@@ -478,7 +461,7 @@ resize_window_below_minimum() {
     if [[ "$window_id" == "$positive_id" ]] &&
       { [[ "$window_x $window_y $window_width $window_height" == "$positive_frame" ]] ||
         [[ "$(stat -f '%i:%m' "$CONTENT_SIZE_FILE")" != "$positive_stamp" ]]; }; then
-      assert_window_respects_minimum
+      assert_window_respects_minimum "$positive_id"
       printf 'OK: below-minimum request outcome=%s; minimum-width content remains valid\n' "$status"
       return 0
     fi
@@ -491,8 +474,14 @@ resize_window_below_minimum() {
 }
 
 assert_window_respects_minimum() {
+  local expected_window_id="${1:?expected CG window ID is required}"
   local content_width content_height
   wait_for_window_metadata
+  # Metadata refreshes must not replace the identity proved by the caller.
+  if [[ "$window_id" != "$expected_window_id" ]]; then
+    echo "BLOCKER: minimum-size verification replaced the owned CG window" >&2
+    return 1
+  fi
   read -r content_width content_height < <("$OUTPUT_DIR/window_content_size" "$CONTENT_SIZE_FILE")
   if [[ "$window_width" -ne 960 || "$content_width" -ne 960 || "$content_height" -lt 572 ]]; then
     echo "BLOCKER: minimum-width window violated the 960x572 content floor: ${content_width}x${content_height}" >&2
@@ -506,46 +495,11 @@ assert_utility_menu_items_reachable() {
   local automation_title="$1"
   local localized_automation_title="$2"
   click_first_ax_identifier "project-board-integrations-menu"
-  /usr/bin/osascript - "$APP_NAME" "$app_pid" "$automation_title" "$localized_automation_title" <<'APPLESCRIPT' >/dev/null
-on containsEitherNamedMenuItem(uiElement, primaryName, localizedName, depth)
-  tell application "System Events"
-    try
-      if role of uiElement is "AXMenuItem" then
-        set elementName to name of uiElement
-        if elementName is primaryName or elementName is localizedName then return true
-      end if
-    end try
-    if depth < 4 then
-      try
-        repeat with childElement in UI elements of uiElement
-          if my containsEitherNamedMenuItem(childElement, primaryName, localizedName, depth + 1) then return true
-        end repeat
-      end try
-    end if
-  end tell
-  return false
-end containsEitherNamedMenuItem
-
-on run argv
-  set appName to item 1 of argv
-  set targetPID to (item 2 of argv) as integer
-  set automationTitle to item 3 of argv
-  set localizedAutomationTitle to item 4 of argv
-  tell application "System Events"
-    set matchingProcesses to every process whose unix id is targetPID
-    if (count of matchingProcesses) is not 1 then error "owned process missing"
-    tell item 1 of matchingProcesses
-      repeat with candidateWindow in windows
-        if my containsEitherNamedMenuItem(candidateWindow, automationTitle, localizedAutomationTitle, 0) then
-          key code 53
-          return true
-        end if
-      end repeat
-      error "owned Project Board utility menu missing"
-    end tell
-  end tell
-end run
-APPLESCRIPT
+  local state
+  state="$(run_bounded_ax_tool "$OUTPUT_DIR/ax_press_element" "$app_pid" --menu-item-state \
+    "$automation_title" "$localized_automation_title")" || return 1
+  [[ "$state" == enabled ]] || { echo "BLOCKER: automation menu item was not enabled" >&2; return 1; }
+  dismiss_utilities_menu
   printf "OK: automation is reachable from native toolbar overflow\n"
 }
 
@@ -553,48 +507,28 @@ open_utilities_menu() {
   click_first_ax_identifier "project-board-integrations-menu"
 }
 
+press_menu_identifier() {
+  run_bounded_ax_tool "$OUTPUT_DIR/ax_press_element" "$app_pid" --menu-press "$1"
+}
+
+dismiss_utilities_menu() {
+  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null
+on run argv
+  tell application "System Events"
+    tell (first process whose unix id is (item 1 of argv as integer))
+      set frontmost to true
+      key code 53
+    end tell
+  end tell
+end run
+APPLESCRIPT
+}
+
 wait_for_file_panel_and_cancel() {
   local label="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT' >/dev/null 2>&1
-on pressCancel(uiElement, depth)
-  tell application "System Events"
-    set identifierValue to ""
-    try
-      set identifierValue to value of attribute "AXIdentifier" of uiElement
-    end try
-    if identifierValue is "CancelButton" then
-      perform action "AXPress" of uiElement
-      return true
-    end if
-    if depth < 8 then
-      try
-        repeat with childElement in UI elements of uiElement
-          if my pressCancel(childElement, depth + 1) then return true
-        end repeat
-      end try
-    end if
-  end tell
-  return false
-end pressCancel
-
-on run argv
-  set appName to item 1 of argv
-  set targetPID to (item 2 of argv) as integer
-  tell application "System Events"
-    set matchingProcesses to every process whose unix id is targetPID
-    if (count of matchingProcesses) is not 1 then error "owned process missing"
-    tell item 1 of matchingProcesses
-      repeat with candidateWindow in windows
-        if my pressCancel(candidateWindow, 0) then return true
-      end repeat
-    end tell
-  end tell
-  error "file panel not visible yet"
-end run
-APPLESCRIPT
-    then
+    if run_bounded_ax_tool "$OUTPUT_DIR/ax_press_element" "$app_pid" "CancelButton" --exact; then
       printf "OK: %s opened a cancellable file panel\n" "$label"
       return 0
     fi
@@ -610,7 +544,7 @@ exercise_file_utility() {
   local identifier="$1"
   local label="$2"
   open_utilities_menu
-  click_first_ax_identifier "$identifier"
+  press_menu_identifier "$identifier"
   wait_for_file_panel_and_cancel "$label"
   # AX closes the native panel asynchronously; do not let the next toolbar
   # action target controls behind a still-active modal surface.
@@ -620,53 +554,17 @@ exercise_file_utility() {
 
 assert_google_calendar_utility_is_safely_disabled() {
   open_utilities_menu
-  /usr/bin/osascript - "$APP_NAME" "$app_pid" <<'APPLESCRIPT' >/dev/null
-on findGoogleCalendarItem(uiElement, depth)
-  tell application "System Events"
-    try
-      if role of uiElement is "AXMenuItem" then
-        set itemName to name of uiElement
-        if itemName is "Google Calendar Sync" or itemName is "Googleカレンダー同期" then
-          if enabled of uiElement then error "Google Calendar utility unexpectedly enabled"
-          return true
-        end if
-      end if
-    end try
-    if depth < 4 then
-      try
-        repeat with childElement in UI elements of uiElement
-          if my findGoogleCalendarItem(childElement, depth + 1) then return true
-        end repeat
-      end try
-    end if
-  end tell
-  return false
-end findGoogleCalendarItem
-
-on run argv
-  set appName to item 1 of argv
-  set targetPID to (item 2 of argv) as integer
-  tell application "System Events"
-    set matchingProcesses to every process whose unix id is targetPID
-    if (count of matchingProcesses) is not 1 then error "owned process missing"
-    tell item 1 of matchingProcesses
-      repeat with candidateWindow in windows
-        if my findGoogleCalendarItem(candidateWindow, 0) then
-          key code 53
-          return true
-        end if
-      end repeat
-      error "Google Calendar utility missing"
-    end tell
-  end tell
-end run
-APPLESCRIPT
+  local state
+  state="$(run_bounded_ax_tool "$OUTPUT_DIR/ax_press_element" "$app_pid" --menu-item-state \
+    "Google Calendar Sync" "Googleカレンダー同期")" || return 1
+  [[ "$state" == disabled ]] || { echo "BLOCKER: Google Calendar utility unexpectedly enabled" >&2; return 1; }
+  dismiss_utilities_menu
   printf "OK: Google Calendar utility exposes the safe disabled readiness state\n"
 }
 
 exercise_automation_utility() {
   open_utilities_menu
-  click_first_ax_identifier "project-board-task-auto-execution-review"
+  press_menu_identifier "project-board-task-auto-execution-review"
   wait_for_ax_identifier_present "task-inspector"
   click_first_ax_identifier "task-inspector-close"
   wait_for_ax_identifier_absent "task-inspector"
@@ -761,9 +659,11 @@ exercise_settings_utility() {
 }
 
 ensure_sidebar_visible() {
-  local probe_file="$OUTPUT_DIR/sidebar-visibility.tsv"
-  if toolbar_items_deduplicated >"$probe_file" 2>/dev/null &&
-    awk -F $'\t' '$1 == "project-board-sidebar" { found = 1 } END { exit(found ? 0 : 1) }' "$probe_file"; then
+  # A failed frame probe is unknown, not proof that the sidebar is hidden.
+  # Reuse the bounded owned-window probe before deciding whether to toggle.
+  wait_for_toolbar_buttons "sidebar-visibility" \
+    "project-board-sidebar-toggle" "project-board-integrations-menu" || return 1
+  if awk -F $'\t' '$1 == "project-board-sidebar" { found = 1 } END { exit(found ? 0 : 1) }' "$button_state_file"; then
     return 0
   fi
   click_sidebar_toggle
@@ -821,16 +721,10 @@ on run argv
       delay 0.05
     end repeat
     if not commandReady then error "PID-owned command menu item did not become enabled"
-    if modifierName is "command" then
-      key code targetKeyCode using command down
-    else if modifierName is "command-shift" then
-      key code targetKeyCode using {command down, shift down}
-    else
-      error "unsupported shortcut modifier"
-    end if
   end tell
 end run
 APPLESCRIPT
+  run_bounded_ax_tool "$OUTPUT_DIR/ax_keyboard_shortcut" "$app_pid" "$key_code" "$modifier"
 }
 
 # Utility windows can remain in SwiftUI's scene list after AX close. Keep the
@@ -873,7 +767,7 @@ exercise_runtime_crud_recovery_entrypoints() {
 
 exercise_terminal_utility() {
   open_utilities_menu
-  click_first_ax_identifier "project-board-terminal-toggle"
+  press_menu_identifier "project-board-terminal-toggle"
   wait_for_ax_identifier_present "embedded-terminal-close"
   click_first_ax_identifier "embedded-terminal-close"
   wait_for_ax_identifier_absent "embedded-terminal-close"
@@ -1176,15 +1070,22 @@ assert_button_present() {
 
 wait_for_toolbar_buttons() {
   local label="$1"
+  shift
+  local required_identifiers=("$@")
+  if [[ "${#required_identifiers[@]}" -eq 0 ]]; then
+    required_identifiers=("project-board-sidebar-toggle" "project-board-inspector-toggle" "project-board-integrations-menu")
+  fi
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   button_state_file="$OUTPUT_DIR/toolbar-${label}.tsv"
   while true; do
     if toolbar_items_deduplicated >"$button_state_file" 2>"$OUTPUT_DIR/toolbar-${label}.err"; then
-      if awk -F $'\t' '
-        $1 == "project-board-sidebar-toggle" { sidebar = 1 }
-        $1 == "project-board-inspector-toggle" { inspector = 1 }
-        $1 == "project-board-integrations-menu" { utilities = 1 }
-        END { exit !(sidebar && inspector && utilities) }
+      if awk -F $'\t' -v required="${required_identifiers[*]}" '
+        BEGIN { count = split(required, identifiers, " ") }
+        { seen[$1] = 1 }
+        END {
+          for (i = 1; i <= count; i++) if (!seen[identifiers[i]]) exit 1
+          exit 0
+        }
       ' "$button_state_file"; then
         return 0
       fi
@@ -1286,99 +1187,15 @@ assert_toolbar_layout_is_stable() {
 
 click_first_ax_identifier() {
   local target_identifier="$1"
-  /usr/bin/osascript - "$APP_NAME" "$app_pid" "$target_identifier" <<'APPLESCRIPT' >/dev/null
-on clickMatchingIdentifier(uiElement, targetIdentifier)
-  tell application "System Events"
-    set identifierValue to ""
-    try
-      set identifierValue to value of attribute "AXIdentifier" of uiElement
-    end try
-    if identifierValue is targetIdentifier then
-      try
-        perform action "AXPress" of uiElement
-        return true
-      end try
-      try
-        click uiElement
-      end try
-      try
-        set itemPosition to position of uiElement
-        set itemSize to size of uiElement
-        click at {((item 1 of itemPosition) + ((item 1 of itemSize) / 2)), ((item 2 of itemPosition) + ((item 2 of itemSize) / 2))}
-        return true
-      end try
-      return true
-    end if
+  run_bounded_ax_tool "$OUTPUT_DIR/ax_press_element" "$app_pid" "$target_identifier" --exact
 
-    try
-      repeat with childElement in UI elements of uiElement
-        if my clickMatchingIdentifier(childElement, targetIdentifier) then return true
-      end repeat
-    end try
-  end tell
-  return false
-end clickMatchingIdentifier
-
-on run argv
-  set appName to item 1 of argv
-  set targetPID to (item 2 of argv) as integer
-  set targetIdentifier to item 3 of argv
-  tell application "System Events"
-    set matchingProcesses to every process whose unix id is targetPID
-    if (count of matchingProcesses) is not 1 then error "owned process missing"
-    tell item 1 of matchingProcesses
-      set frontmost to true
-      repeat with candidateWindow in windows
-        if my clickMatchingIdentifier(candidateWindow, targetIdentifier) then return true
-      end repeat
-      error "BLOCKER: AX identifier was not clickable in owned process: " & targetIdentifier
-    end tell
-  end tell
-end run
-APPLESCRIPT
 }
 
 click_ax_identifier_center() {
   local target_identifier="$1"
-  /usr/bin/osascript - "$app_pid" "$target_identifier" <<'APPLESCRIPT' >/dev/null
-on clickIdentifierCenter(uiElement, targetIdentifier)
-  tell application "System Events"
-    set identifierValue to ""
-    try
-      set identifierValue to value of attribute "AXIdentifier" of uiElement
-    end try
-    if identifierValue is targetIdentifier then
-      set itemPosition to position of uiElement
-      set itemSize to size of uiElement
-      click at {((item 1 of itemPosition) + ((item 1 of itemSize) / 2)), ((item 2 of itemPosition) + ((item 2 of itemSize) / 2))}
-      return true
-    end if
+  activate_app
+  run_bounded_ax_tool "$OUTPUT_DIR/ax_press_element" "$app_pid" "$target_identifier" --center
 
-    try
-      repeat with childElement in UI elements of uiElement
-        if my clickIdentifierCenter(childElement, targetIdentifier) then return true
-      end repeat
-    end try
-  end tell
-  return false
-end clickIdentifierCenter
-
-on run argv
-  set targetPID to item 1 of argv as integer
-  set targetIdentifier to item 2 of argv
-  tell application "System Events"
-    set matchingProcesses to application processes whose unix id is targetPID
-    if (count of matchingProcesses) is not 1 then error "owned process missing"
-    tell item 1 of matchingProcesses
-      set frontmost to true
-      repeat with candidateWindow in windows
-        if my clickIdentifierCenter(candidateWindow, targetIdentifier) then return true
-      end repeat
-      error "BLOCKER: AX identifier center was not clickable: " & targetIdentifier
-    end tell
-  end tell
-end run
-APPLESCRIPT
 }
 
 wait_for_ax_identifier_present() {
@@ -1426,13 +1243,15 @@ wait_for_process_ax_identifier() {
   while true; do
     if SUISUI_UI_EVIDENCE_AX_REQUIRE_EXACT_IDENTIFIER=1 \
       /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_marker_check.swift" \
-      "$APP_NAME" "$target_identifier" "" "$app_pid" >/dev/null 2>&1; then
+      "$APP_NAME" "$target_identifier" "" "$app_pid" >/dev/null 2>"$OUTPUT_DIR/process-marker.err"; then
       [[ "$expected_presence" == "present" ]] && return 0
     else
       [[ "$expected_presence" == "absent" ]] && return 0
     fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
       echo "BLOCKER: process AX identifier did not become $expected_presence: $target_identifier" >&2
+      cat "$OUTPUT_DIR/process-marker.err" >&2
+      run_bounded_ax_tool "$OUTPUT_DIR/ax_frame_dump" "$app_pid" >"$OUTPUT_DIR/process-marker-frames.tsv" || true
       return 1
     fi
     sleep 0.2
@@ -1448,7 +1267,7 @@ click_task_card_open_details() {
 }
 
 click_terminal_toggle() {
-  click_first_ax_identifier "project-board-terminal-toggle"
+  press_menu_identifier "project-board-terminal-toggle"
 }
 
 click_terminal_close() {
@@ -1569,64 +1388,6 @@ wait_for_display_mode_content() {
   done
 }
 
-set_toolbar_display_mode() {
-  local mode="$1"
-  local primary_title localized_title
-  case "$mode" in
-    icon-only)
-      primary_title="Icon Only"
-      localized_title="アイコンのみ"
-      ;;
-    icon-and-label)
-      primary_title="Icon and Text"
-      localized_title="アイコンとテキスト"
-      ;;
-    *)
-      echo "unknown toolbar display mode: $mode" >&2
-      return 2
-      ;;
-  esac
-
-  /usr/bin/osascript - "$app_pid" "$primary_title" "$localized_title" <<'APPLESCRIPT' >/dev/null
-on pressDisplayModeMenuItem(toolbarElement, primaryTitle, localizedTitle)
-  tell application "System Events"
-    repeat with attempt from 1 to 20
-      if (exists menu 1 of toolbarElement) then
-        tell menu 1 of toolbarElement
-          if exists menu item primaryTitle then
-            perform action "AXPress" of menu item primaryTitle
-            return true
-          end if
-          if exists menu item localizedTitle then
-            perform action "AXPress" of menu item localizedTitle
-            return true
-          end if
-        end tell
-      end if
-      delay 0.05
-    end repeat
-  end tell
-  return false
-end pressDisplayModeMenuItem
-
-on run argv
-  set appName to item 1 of argv
-  set primaryTitle to item 2 of argv
-  set localizedTitle to item 3 of argv
-  tell application "System Events"
-    tell (first process whose unix id is (appName as integer))
-      set frontmost to true
-      tell toolbar 1 of window 1
-        perform action "AXShowMenu"
-        if my pressDisplayModeMenuItem(it, primaryTitle, localizedTitle) is false then
-          error "BLOCKER: toolbar display mode menu item was not available: " & primaryTitle & " / " & localizedTitle
-        end if
-      end tell
-    end tell
-  end tell
-end run
-APPLESCRIPT
-}
 
 trap terminate_app EXIT
 
@@ -1652,7 +1413,7 @@ assert_action_buttons_are_trailing "sidebar-visible"
 
 resize_window_below_minimum
 wait_for_visible_windows
-assert_window_respects_minimum
+assert_window_respects_minimum "$window_id"
 assert_action_buttons_are_trailing "minimum-width"
 capture_window "minimum-width"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"
@@ -1665,7 +1426,7 @@ wait_for_project_detail_visible
 assert_single_native_toolbar
 resize_window_below_minimum
 wait_for_visible_windows
-assert_window_respects_minimum
+assert_window_respects_minimum "$window_id"
 assert_action_buttons_are_trailing "minimum-width-japanese"
 capture_window "minimum-width-japanese"
 assert_utility_menu_items_reachable "Review Task Automation" "タスク自動化を確認"

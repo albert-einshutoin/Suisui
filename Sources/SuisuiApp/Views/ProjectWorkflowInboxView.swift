@@ -19,7 +19,7 @@ struct InboxWorkflowView: View {
     var selectInboxTask: (ProjectBoardTask) -> Void = { _ in }
     let requestsQuickAddFocus: Bool
     let onQuickAddFocusConsumed: () -> Void
-    @State private var quickTitle = ""
+    @State private var quickCapture = QuickCaptureDraft()
     @State private var voiceMemoDraft = ""
     @State private var voiceMemoCaptureID: Int64?
     // Sorting stays view-local so reviewing the same Inbox from another window
@@ -254,7 +254,7 @@ struct InboxWorkflowView: View {
             viewModel: viewModel,
             referenceDate: Date(),
             onSelectTask: selectInboxTask,
-            quickTitle: $quickTitle,
+            quickCapture: $quickCapture,
             isQuickAddExpanded: $isQuickAddExpanded,
             isQuickAddFocused: $isQuickAddFocused,
             addInboxTask: addInboxTask
@@ -262,16 +262,16 @@ struct InboxWorkflowView: View {
     }
 
     private func addInboxTask() {
-        let title = quickTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = quickCapture.input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else {
             return
         }
-        guard viewModel.createInboxTask(title: title) != nil else {
+        guard viewModel.createInboxTask(quickCapture.draft) != nil else {
             isQuickAddExpanded = true
             isQuickAddFocused = true
             return
         }
-        quickTitle = ""
+        quickCapture = QuickCaptureDraft()
         isQuickAddExpanded = false
     }
 
@@ -425,7 +425,7 @@ private struct InboxReferenceTaskList: View {
     @ObservedObject var viewModel: ProjectBoardViewModel
     let referenceDate: Date
     let onSelectTask: (ProjectBoardTask) -> Void
-    @Binding var quickTitle: String
+    @Binding var quickCapture: QuickCaptureDraft
     @Binding var isQuickAddExpanded: Bool
     @FocusState.Binding var isQuickAddFocused: Bool
     let addInboxTask: () -> Void
@@ -465,11 +465,16 @@ private struct InboxReferenceTaskList: View {
 
             Divider()
             InboxQuickAddRow(
-                title: $quickTitle,
+                title: $quickCapture.input,
                 isExpanded: $isQuickAddExpanded,
                 isFocused: $isQuickAddFocused,
                 onAdd: addInboxTask
             )
+            if isQuickAddExpanded {
+                QuickCaptureDatePreview(capture: $quickCapture, accessibilityPrefix: "inbox-quick-add")
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 8)
+            }
         }
         .background(.background, in: RoundedRectangle(cornerRadius: 12))
         .overlay {

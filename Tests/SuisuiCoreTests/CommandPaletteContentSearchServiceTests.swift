@@ -20,7 +20,7 @@ final class CommandPaletteContentSearchServiceTests: XCTestCase {
         )
         _ = try knowledgeStore.create(name: "Billing rules", body: "Each invoice must reference the contract number.")
 
-        let matches = service.search(query: "invoice")
+        let matches = try service.search(query: "invoice")
 
         XCTAssertEqual(matches.count, 2)
         XCTAssertEqual(matches[0].source, .task(id: task.id, projectID: project.id))
@@ -42,7 +42,7 @@ final class CommandPaletteContentSearchServiceTests: XCTestCase {
 
         let inboxTask = try taskStore.create(title: "Renew passport before summer")
 
-        let matches = service.search(query: "passport")
+        let matches = try service.search(query: "passport")
 
         XCTAssertEqual(matches.count, 1)
         XCTAssertEqual(matches[0].source, .task(id: inboxTask.id, projectID: nil))
@@ -59,7 +59,7 @@ final class CommandPaletteContentSearchServiceTests: XCTestCase {
         let task = try taskStore.create(title: "請求書リリース確認")
 
         XCTAssertEqual(
-            service.search(query: "リリース").map(\.source),
+            try service.search(query: "リリース").map(\.source),
             [.task(id: task.id, projectID: nil)]
         )
     }
@@ -74,7 +74,7 @@ final class CommandPaletteContentSearchServiceTests: XCTestCase {
         let task = try taskStore.create(title: "Prepare invoice report")
 
         XCTAssertEqual(
-            service.search(query: "voice").map(\.source),
+            try service.search(query: "voice").map(\.source),
             [.task(id: task.id, projectID: nil)]
         )
     }
@@ -90,7 +90,7 @@ final class CommandPaletteContentSearchServiceTests: XCTestCase {
         let ftsTask = try taskStore.create(title: "Record voice memo")
 
         XCTAssertEqual(
-            service.search(query: "voice", limit: 2).map(\.source),
+            try service.search(query: "voice", limit: 2).map(\.source),
             [
                 .task(id: ftsTask.id, projectID: nil),
                 .task(id: substringTask.id, projectID: nil),
@@ -110,7 +110,7 @@ final class CommandPaletteContentSearchServiceTests: XCTestCase {
         let openTask = try taskStore.create(title: "Read the beta feedback")
 
         XCTAssertEqual(
-            service.search(query: "beta feedback").map(\.source),
+            try service.search(query: "beta feedback").map(\.source),
             [.task(id: openTask.id, projectID: nil)]
         )
     }
@@ -131,7 +131,7 @@ final class CommandPaletteContentSearchServiceTests: XCTestCase {
         let inboxTask = try taskStore.create(title: "Review inbox brief")
 
         XCTAssertEqual(
-            service.search(query: "review").map(\.source),
+            try service.search(query: "review").map(\.source),
             [
                 .task(id: inboxTask.id, projectID: nil),
                 .task(id: activeTask.id, projectID: activeProject.id),
@@ -151,7 +151,7 @@ final class CommandPaletteContentSearchServiceTests: XCTestCase {
             _ = try taskStore.create(title: "Rehearsal step \(index)", detail: "shared keyword rehearsal")
         }
 
-        XCTAssertEqual(service.search(query: "rehearsal").count, CommandPaletteComposer.maxContentItemCount)
+        XCTAssertEqual(try service.search(query: "rehearsal").count, CommandPaletteComposer.maxContentItemCount)
     }
 
     func testQuotesAsterisksAndLikeWildcardsAreSanitizedNotInterpreted() throws {
@@ -166,17 +166,17 @@ final class CommandPaletteContentSearchServiceTests: XCTestCase {
 
         // FTS control characters must not throw; the store-level sanitizer
         // (quoted phrase + escaped quotes) is reused, not reimplemented.
-        XCTAssertNoThrow(_ = service.search(query: "\"smart quotes\""))
-        XCTAssertNoThrow(_ = service.search(query: "quote*"))
-        XCTAssertNoThrow(_ = service.search(query: "AND OR NEAR("))
+        XCTAssertNoThrow(_ = try service.search(query: "\"smart quotes\""))
+        XCTAssertNoThrow(_ = try service.search(query: "quote*"))
+        XCTAssertNoThrow(_ = try service.search(query: "AND OR NEAR("))
 
         // LIKE wildcards match literally: only the task actually containing
         // "50%" comes back, not every "…done…" row.
         XCTAssertEqual(
-            service.search(query: "50% done").map(\.source),
+            try service.search(query: "50% done").map(\.source),
             [.task(id: progressTask.id, projectID: nil)]
         )
-        XCTAssertTrue(service.search(query: "0_ done").isEmpty)
+        XCTAssertTrue(try service.search(query: "0_ done").isEmpty)
     }
 
     func testTaskContentSearchFiltersTokenizedFTSCandidatesBeforeUsingItsLimit() throws {
@@ -193,7 +193,7 @@ final class CommandPaletteContentSearchServiceTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            service.search(query: "50% done", limit: 1).map(\.source),
+            try service.search(query: "50% done", limit: 1).map(\.source),
             [.task(id: literalTask.id, projectID: nil)]
         )
     }
@@ -207,8 +207,8 @@ final class CommandPaletteContentSearchServiceTests: XCTestCase {
         )
         _ = try taskStore.create(title: "A single letter should not query")
 
-        XCTAssertTrue(service.search(query: "a").isEmpty)
-        XCTAssertTrue(service.search(query: "  a  ").isEmpty)
+        XCTAssertTrue(try service.search(query: "a").isEmpty)
+        XCTAssertTrue(try service.search(query: "  a  ").isEmpty)
     }
 
     private func migratedConnection() throws -> SQLiteConnection {

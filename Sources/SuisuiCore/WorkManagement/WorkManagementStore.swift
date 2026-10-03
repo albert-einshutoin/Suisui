@@ -30,7 +30,7 @@ public protocol ProjectBoardStore {
     func restoreTask(from snapshot: ProjectBoardTask) throws -> ProjectBoardTask
     func applyTaskUndoSnapshot(_ snapshot: ProjectBoardTask) throws -> ProjectBoardTask
     func loadInboxTriageRecords(taskIDs: Set<Int64>) throws -> [Int64: InboxTriageRecord]
-    func createInboxTask(title: String) throws -> ProjectBoardTask
+    func createInboxTask(_ draft: InboxTaskDraft) throws -> ProjectBoardTask
     func performInboxTriage(
         taskID: Int64,
         action: InboxTriageAction,
@@ -95,7 +95,7 @@ public struct UnavailableProjectBoardStore: ProjectBoardStore {
         throw error
     }
 
-    public func createInboxTask(title: String) throws -> ProjectBoardTask {
+    public func createInboxTask(_ draft: InboxTaskDraft) throws -> ProjectBoardTask {
         throw error
     }
 
@@ -154,6 +154,11 @@ public struct UnavailableProjectBoardStore: ProjectBoardStore {
 }
 
 public extension ProjectBoardStore {
+    /// Text-only callers enter the same atomic capture operation.
+    func createInboxTask(title: String) throws -> ProjectBoardTask {
+        try createInboxTask(InboxTaskDraft(title: title))
+    }
+
     func setProjectWorkspacePath(id: Int64, path: String?, bookmarkData: Data?) throws -> ProjectBoardProject {
         throw ProjectBoardStoreError.nonAbsoluteWorkspacePath
     }

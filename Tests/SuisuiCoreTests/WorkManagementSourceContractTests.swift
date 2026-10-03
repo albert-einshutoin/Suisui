@@ -37,7 +37,7 @@ final class WorkManagementSourceContractTests: XCTestCase {
     }
 
     func testProjectBoardAnalyticsAreExtractedFromMonolith() throws {
-        let projectBoard = try readPackageFile("Sources/SuisuiCore/App/ProjectBoard.swift")
+        let projectBoard = try readProjectBoardImplementation()
         let analytics = try readPackageFile("Sources/SuisuiCore/WorkManagement/WorkManagementAnalytics.swift")
 
         XCTAssertTrue(analytics.contains("enum WorkManagementAnalyticsBuilder"))

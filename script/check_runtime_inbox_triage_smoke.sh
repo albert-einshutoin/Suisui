@@ -303,70 +303,9 @@ pressButtonContaining() {
   local fragment="$1"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
   while true; do
-    if /usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT'
-on run argv
-  set targetPID to (item 1 of argv) as integer
-  set fragment to item 2 of argv
-  tell application "System Events"
-    set targetProcess to first process whose unix id is targetPID
-    tell targetProcess
-      set windowCount to count of windows
-      if windowCount < 1 then error "target process has no visible windows"
-      try
-        set frontmost to true
-      end try
-      repeat with windowIndex from 1 to windowCount
-        set currentWindow to window windowIndex
-        try
-          perform action "AXRaise" of currentWindow
-        end try
-        set axItems to entire contents of currentWindow
-        repeat with axItem in axItems
-          set itemRole to ""
-          try
-            set itemRole to role of axItem as text
-          end try
-          if itemRole is "AXButton" or itemRole is "AXMenuItem" or itemRole is "AXMenuButton" or itemRole is "AXPopUpButton" then
-            set buttonName to ""
-            set buttonTitle to ""
-            set buttonDescription to ""
-            set buttonHelp to ""
-            set buttonIdentifier to ""
-            try
-              set buttonName to name of axItem as text
-            end try
-            try
-              set buttonTitle to value of attribute "AXTitle" of axItem as text
-            end try
-            try
-              set buttonDescription to description of axItem as text
-            end try
-            try
-              set buttonHelp to value of attribute "AXHelp" of axItem as text
-            end try
-            try
-              set buttonIdentifier to value of attribute "AXIdentifier" of axItem as text
-            end try
-            set signalText to buttonIdentifier & " " & buttonName & " " & buttonTitle & " " & buttonDescription & " " & buttonHelp
-            set isEnabled to true
-            try
-              set isEnabled to enabled of axItem as boolean
-            end try
-            if isEnabled and signalText contains fragment then
-              try
-                perform action "AXPress" of axItem
-                return "pressed " & fragment
-              end try
-            end if
-          end if
-        end repeat
-      end repeat
-    end tell
-  end tell
-  error "button signal not found: " & fragment
-end run
-APPLESCRIPT
-    then
+    # Native AX sees SwiftUI identifiers that System Events' entire-contents
+    # bridge can omit. This helper stays bound to the smoke's exact PID.
+    if /usr/bin/swift "$ROOT_DIR/script/ui_evidence_ax_press_element.swift" "$app_pid" "$fragment"; then
       return 0
     fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
@@ -395,96 +334,51 @@ setTextFieldContaining() {
 }
 
 waitForTextFieldContaining() {
-  local fragment="$1"
-  local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  while true; do
-    if /usr/bin/osascript - "$app_pid" "$fragment" <<'APPLESCRIPT' >/dev/null 2>&1
-on run argv
-  set targetPID to (item 1 of argv) as integer
-  set fragment to item 2 of argv
-  tell application "System Events"
-    set targetProcess to first process whose unix id is targetPID
-    tell targetProcess
-      set windowCount to count of windows
-      if windowCount < 1 then error "target process has no visible windows"
-      try
-        set frontmost to true
-      end try
-      repeat with windowIndex from 1 to windowCount
-        set currentWindow to window windowIndex
-        try
-          perform action "AXRaise" of currentWindow
-        end try
-        set axItems to entire contents of currentWindow
-        repeat with axItem in axItems
-          set itemRole to ""
-          try
-            set itemRole to role of axItem as text
-          end try
-          if itemRole is "AXTextField" or itemRole is "AXTextArea" then
-            set fieldIdentifier to ""
-            set fieldName to ""
-            set fieldTitle to ""
-            set fieldDescription to ""
-            set fieldHelp to ""
-            set fieldValue to ""
-            try
-              set fieldIdentifier to value of attribute "AXIdentifier" of axItem as text
-            end try
-            try
-              set fieldName to name of axItem as text
-            end try
-            try
-              set fieldTitle to value of attribute "AXTitle" of axItem as text
-            end try
-            try
-              set fieldDescription to description of axItem as text
-            end try
-            try
-              set fieldHelp to value of attribute "AXHelp" of axItem as text
-            end try
-            try
-              set fieldValue to value of axItem as text
-            end try
-            set signalText to fieldIdentifier & " " & fieldName & " " & fieldTitle & " " & fieldDescription & " " & fieldHelp & " " & fieldValue
-            if signalText contains fragment then return "found text field " & fragment
-          end if
-        end repeat
-      end repeat
-    end tell
-  end tell
-  error "text field signal not found: " & fragment
-end run
-APPLESCRIPT
-    then
-      return 0
-    fi
-    if [[ "$SECONDS" -ge "$deadline" ]]; then
-      echo "BLOCKER: text field did not appear in AX tree: $fragment" >&2
-      return 1
-    fi
-    sleep 1
-  done
+  wait_for_identifier "inbox-quick-add-title" "$1"
 }
 
 create_inbox_item() {
   local title="$1"
   local task_id=""
 
-  pressButtonContaining "inbox-quick-add-button" >&2
-  waitForTextFieldContaining "inbox-quick-add-title"
-  setTextFieldContaining "inbox-quick-add-title" "$title" >&2
-  waitForTextFieldContaining "$title"
+  pressButtonContaining "inbox-quick-add-button" >&2 || return 1
+  waitForTextFieldContaining "inbox-quick-add-title" || return 1
+  setTextFieldContaining "inbox-quick-add-title" "$title" >&2 || return 1
+  waitForTextFieldContaining "$title" || return 1
   pressButtonUntilSQLiteValue \
     "create inbox item: $title" \
     "inbox-quick-add-button" \
     "SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END FROM tasks t JOIN projects p ON p.id = t.project_id WHERE p.title='Inbox' AND t.title='$title' AND t.status='backlog' AND t.due_at IS NULL;" \
-    "1" >&2
+    "1" >&2 || return 1
   task_id="$(wait_for_nonempty_value \
     "task id: $title" \
-    "SELECT t.id FROM tasks t JOIN projects p ON p.id = t.project_id WHERE p.title='Inbox' AND t.title='$title' ORDER BY t.id DESC LIMIT 1;")"
-  pressButtonContaining "workflow-task-row-$task_id" >&2
+    "SELECT t.id FROM tasks t JOIN projects p ON p.id = t.project_id WHERE p.title='Inbox' AND t.title='$title' ORDER BY t.id DESC LIMIT 1;")" || return 1
+  pressButtonContaining "workflow-task-row-$task_id" >&2 || return 1
   printf "%s" "$task_id"
+}
+
+wait_for_identifier() {
+  local identifier="$1"
+  local text="${2:-}"
+  if ! ax_wait_for_ax_identifier "$APP_NAME" "$identifier" "$TIMEOUT_SECONDS" \
+    "$ROOT_DIR" "$tmp_dir/ax-probe.txt" "$text" "$app_pid"; then
+    echo "BLOCKER: owned app did not expose $identifier ($text)" >&2
+    cat "$tmp_dir/ax-probe.txt.err" >&2
+    return 1
+  fi
+}
+
+dismiss_with_escape() {
+  activate_app
+  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null
+on run argv
+  tell application "System Events"
+    tell (first process whose unix id is (item 1 of argv as integer))
+      key code 53
+    end tell
+  end tell
+end run
+APPLESCRIPT
 }
 
 printf "== Runtime inbox triage smoke ==\n"
@@ -533,4 +427,47 @@ verify_single_value "converted inbox item moved into project" "SELECT CASE WHEN 
 pressButtonUntilSQLiteValue "undo inbox project conversion" "inbox-classification-undo" "SELECT count(*) FROM projects WHERE title='AX Runtime Inbox Project Conversion';" "0"
 verify_single_value "restored inbox project conversion item" "SELECT CASE WHEN count(*) = 1 THEN 1 ELSE 0 END FROM tasks t JOIN projects p ON p.id = t.project_id JOIN inbox_triage_records r ON r.task_id=t.id WHERE p.title='Inbox' AND t.title='AX Runtime Inbox Project Conversion' AND t.status='backlog' AND t.due_at IS NULL AND r.disposition='unprocessed' AND r.review_at IS NULL;" "1"
 
-printf "OK: runtime inbox triage smoke covered quick add, make-task, schedule, review-later, project conversion, and undo through the visible app\n"
+# The visible preview and the persisted draft must agree, including removal of
+# an inferred date. All writes below belong to this smoke's isolated database.
+pressButtonContaining "inbox-quick-add-button"
+setTextFieldContaining "inbox-quick-add-title" "AX Capture Preview tomorrow"
+wait_for_identifier "inbox-quick-add-title-preview" "AX Capture Preview"
+wait_for_identifier "inbox-quick-add-due-date-preview"
+pressButtonUntilSQLiteValue "save inferred capture draft" "inbox-quick-add-button" \
+  "SELECT count(*) FROM tasks t JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.title='AX Capture Preview' AND t.due_at IS NOT NULL AND r.disposition='unprocessed';" "1"
+pressButtonContaining "inbox-quick-add-button"
+setTextFieldContaining "inbox-quick-add-title" "AX Capture Remove tomorrow"
+wait_for_identifier "inbox-quick-add-due-date-preview"
+pressButtonContaining "inbox-quick-add-remove-due-date"
+setTextFieldContaining "inbox-quick-add-title" "AX Capture Remove edited tomorrow"
+pressButtonUntilSQLiteValue "save capture without inferred date" "inbox-quick-add-button" \
+  "SELECT count(*) FROM tasks t JOIN inbox_triage_records r ON r.task_id=t.id WHERE t.title='AX Capture Remove edited tomorrow' AND t.due_at IS NULL AND r.disposition='unprocessed';" "1"
+
+"$SQLITE3" "$database_path" <<'SQL'
+BEGIN;
+INSERT INTO knowledge_frames (name, body, triggers_json)
+VALUES ('AX Local Knowledge', 'architecturepreviewmarker: full local knowledge body for the visible preview.', '[]');
+INSERT INTO knowledge_frames_fts (rowid, name, body)
+SELECT id, name, body FROM knowledge_frames WHERE name='AX Local Knowledge';
+COMMIT;
+SQL
+knowledge_id="$(query_single_value "SELECT id FROM knowledge_frames WHERE name='AX Local Knowledge';")"
+pressButtonContaining "sidebar-open-search"
+setTextFieldContaining "command-palette-input" "architecturepreviewmarker"
+wait_for_identifier "command-palette-fts-knowledge-$knowledge_id"
+pressButtonContaining "command-palette-fts-knowledge-$knowledge_id"
+wait_for_identifier "knowledge-preview-content" "full local knowledge body"
+pressButtonContaining "knowledge-preview-close"
+
+# Temporarily remove only the knowledge lookup table to exercise failure and
+# recovery through Retry. Keep the board's task/project tables intact.
+"$SQLITE3" "$database_path" "ALTER TABLE knowledge_frames RENAME TO smoke_unavailable_knowledge_frames;"
+pressButtonContaining "sidebar-open-search"
+setTextFieldContaining "command-palette-input" "axsearchabsentfixture"
+wait_for_identifier "command-palette-search-error"
+"$SQLITE3" "$database_path" "ALTER TABLE smoke_unavailable_knowledge_frames RENAME TO knowledge_frames;"
+pressButtonContaining "command-palette-search-retry"
+wait_for_identifier "command-palette-search-empty"
+dismiss_with_escape
+
+printf "OK: runtime inbox triage smoke covered capture preview/removal, triage/undo, knowledge preview, and search failure/retry through the visible app\n"

@@ -654,11 +654,12 @@ wait_for_ax_identifier_absent() {
 
 click_ax_identifier() {
   local identifier="$1"
+  shift
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
 
   while true; do
     if wait_for_visible_windows >/dev/null 2>&1 &&
-      "$AX_PRESS_ELEMENT_HELPER_BINARY" "$app_pid" "$identifier"; then
+      "$AX_PRESS_ELEMENT_HELPER_BINARY" "$app_pid" "$identifier" "$@"; then
       return 0
     fi
     if [[ "$SECONDS" -ge "$deadline" ]]; then
@@ -1184,21 +1185,7 @@ assert_layout_stable() {
 }
 
 click_sidebar_toggle() {
-  /usr/bin/osascript - "$app_pid" <<'APPLESCRIPT' >/dev/null
-on run argv
-  set appPID to item 1 of argv as integer
-  tell application "System Events"
-    set matchingProcesses to application processes whose unix id is appPID
-    if (count of matchingProcesses) is 0 then error "process missing"
-    set targetProcess to item 1 of matchingProcesses
-    tell targetProcess
-      tell toolbar 1 of window 1
-        click (first button whose value of attribute "AXIdentifier" is "project-board-sidebar-toggle")
-      end tell
-    end tell
-  end tell
-end run
-APPLESCRIPT
+  click_ax_identifier "project-board-sidebar-toggle" --exact
 }
 
 trap cleanup EXIT
@@ -1212,6 +1199,7 @@ wait_for_required_layout_subjects
 assert_layout_stable "initial"
 
 click_sidebar_toggle
+wait_for_ax_identifier_absent "project-board-sidebar"
 assert_layout_stable "sidebar-hidden" "project-board-integrations-menu" "project-board-detail"
 
 click_sidebar_toggle

@@ -4,9 +4,8 @@ import Foundation
 /// `CommandPaletteContentSearch` closure. Task hits lead because the board can
 /// reveal them directly; knowledge FTS hits fill the remaining slots.
 ///
-/// Store errors — including FTS syntax edge cases — degrade to an empty
-/// section instead of failing the palette, mirroring
-/// `WorkspaceQuestionRetriever`'s "never fail the question" policy.
+/// Errors propagate to presentation. An unsuccessful lookup must never look
+/// like a successful search with no matching content.
 public final class CommandPaletteContentSearchService: @unchecked Sendable {
     private let taskStore: SQLiteTaskStore
     private let knowledgeFrameStore: SQLiteKnowledgeFrameStore
@@ -19,7 +18,7 @@ public final class CommandPaletteContentSearchService: @unchecked Sendable {
     public func search(
         query: String,
         limit: Int = CommandPaletteComposer.maxContentItemCount
-    ) -> [CommandPaletteContentMatch] {
+    ) throws -> [CommandPaletteContentMatch] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count >= CommandPaletteComposer.minimumContentSearchQueryLength, limit > 0 else {
             return []
@@ -28,7 +27,7 @@ public final class CommandPaletteContentSearchService: @unchecked Sendable {
         var matches: [CommandPaletteContentMatch] = []
 
         // Tasks: FTS exact hits first, then bounded SQLite substring completion.
-        let tasks = (try? taskStore.searchOpenTasksByContent(text: trimmed, limit: limit)) ?? []
+        let tasks = try taskStore.searchOpenTasksByContent(text: trimmed, limit: limit)
         for task in tasks {
             // Snippet from the detail when the hit is there; a title-only hit
             // falls back to the title so the fragment always shows the match.
@@ -51,10 +50,10 @@ public final class CommandPaletteContentSearchService: @unchecked Sendable {
         // `SQLiteKnowledgeFrameStore.search` (`SQL.escapeFTS` + quoted phrase),
         // so quotes and asterisks in the query cannot break the MATCH clause.
         if matches.count < limit {
-            let frames = (try? knowledgeFrameStore.search(
+            let frames = try knowledgeFrameStore.search(
                 query: trimmed,
                 limit: limit - matches.count
-            )) ?? []
+            )
             for frame in frames {
                 matches.append(
                     CommandPaletteContentMatch(
