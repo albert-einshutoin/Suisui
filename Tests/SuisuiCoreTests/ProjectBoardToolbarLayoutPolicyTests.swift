@@ -65,6 +65,24 @@ final class ProjectBoardToolbarLayoutPolicyTests: XCTestCase {
         XCTAssertEqual(ProjectBoardToolbarLayoutPolicy.nativeSidebarRemovalIndexes(in: items), [1, 2])
     }
 
+    func testCustomSidebarToggleSurvivesLocalizedNativeHelpText() {
+        for help in ["Hide Sidebar", "Show Sidebar", "サイドバーを非表示", "サイドバーを表示"] {
+            let items = [
+                // SwiftUI's hosting view may not expose its AX identifier when
+                // AppKit first attaches the toolbar. The native item ID exists.
+                toolbarItem(identifier: "project-board-sidebar-toggle", label: "Sidebar", toolTip: help),
+                toolbarItem(
+                    identifier: "project.sidebar", label: "Sidebar", toolTip: help,
+                    accessibilityIdentifier: "project-board-sidebar-toggle"
+                ),
+                toolbarItem(identifier: "NSToolbarToggleSidebarItemIdentifier", toolTip: help),
+                toolbarItem(identifier: "NSToolbarSidebarTrackingSeparatorItemIdentifier")
+            ]
+
+            XCTAssertEqual(ProjectBoardToolbarLayoutPolicy.nativeSidebarRemovalIndexes(in: items), [2, 3], help)
+        }
+    }
+
     private func toolbarItem(
         identifier: String,
         label: String = "",

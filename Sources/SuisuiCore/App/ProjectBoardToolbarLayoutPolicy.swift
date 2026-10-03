@@ -94,6 +94,13 @@ public enum ProjectBoardToolbarLayoutPolicy {
     }
 
     private static func isNativeSidebarToggle(_ item: Item) -> Bool {
+        // The custom button uses the same localized show/hide help as AppKit.
+        // Its stable product identifier must win over that descriptive text.
+        if item.identifierRawValue == "project-board-sidebar-toggle"
+            || item.accessibilityIdentifier == "project-board-sidebar-toggle" {
+            return false
+        }
+
         if item.identifierRawValue == "NSToolbarToggleSidebarItemIdentifier" {
             return true
         }

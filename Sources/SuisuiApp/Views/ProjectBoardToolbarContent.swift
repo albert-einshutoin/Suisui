@@ -18,7 +18,7 @@ struct ProjectBoardToolbarContent: ToolbarContent {
 
     @ToolbarContentBuilder
     var body: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
+        ToolbarItem(id: "project-board-sidebar-toggle", placement: .navigation) {
             Button(action: onToggleSidebar) {
                 Label("Sidebar", systemImage: "sidebar.left")
             }
